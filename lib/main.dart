@@ -18,6 +18,7 @@ part 'src/screens/placeholder_page.dart';
 part 'src/theme/app_colors.dart';
 part 'src/utils/formatting.dart';
 part 'src/widgets/chat/chat_header.dart';
+part 'src/widgets/chat/chat_sidebar.dart';
 part 'src/widgets/chat/composer.dart';
 part 'src/widgets/chat/inline_banner.dart';
 part 'src/widgets/chat/message_widgets.dart';

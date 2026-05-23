@@ -3,10 +3,16 @@ part of 'package:companion_flutter/main.dart';
 enum ComposerPanel { none, emoji, more }
 
 class ChatPage extends StatefulWidget {
-  const ChatPage({super.key, required this.api, required this.session});
+  const ChatPage({
+    super.key,
+    required this.api,
+    required this.session,
+    required this.onOpenSidebar,
+  });
 
   final CompanionApi api;
   final AuthSession session;
+  final VoidCallback onOpenSidebar;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -505,6 +511,7 @@ class _ChatPageState extends State<ChatPage> {
               _ChatHeader(
                 agentName: widget.session.agentName ?? 'Companion',
                 subtitle: _connecting || _sending ? _typingHint : '在线',
+                onOpenSidebar: widget.onOpenSidebar,
               ),
               if (_historyError != null)
                 _InlineBanner(

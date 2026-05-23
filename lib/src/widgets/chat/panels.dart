@@ -119,35 +119,38 @@ class _MorePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       key: const ValueKey('more'),
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
       child: GridView.builder(
         physics: const NeverScrollableScrollPhysics(),
         itemCount: _tools.length,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
-          mainAxisSpacing: 18,
-          crossAxisSpacing: 18,
-          childAspectRatio: 1.02,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 16,
+          childAspectRatio: 1.36,
         ),
         itemBuilder: (context, index) {
           final tool = _tools[index];
-          return Column(
-            children: [
-              Container(
-                width: 58,
-                height: 58,
-                decoration: BoxDecoration(
-                  color: tool.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(18),
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: tool.color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(tool.icon, color: tool.color, size: 24),
                 ),
-                child: Icon(tool.icon, color: tool.color, size: 26),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                tool.label,
-                style: const TextStyle(color: AppColors.muted, fontSize: 12),
-              ),
-            ],
+                const SizedBox(height: 5),
+                Text(
+                  tool.label,
+                  style: const TextStyle(color: AppColors.muted, fontSize: 11),
+                ),
+              ],
+            ),
           );
         },
       ),

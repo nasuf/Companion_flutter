@@ -18,17 +18,42 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _index = 0;
+  bool _chatSidebarOpen = false;
+
+  void _setChatSidebarOpen(bool value) {
+    if (_chatSidebarOpen == value) return;
+    setState(() => _chatSidebarOpen = value);
+  }
+
+  void _openSidebarDestination(_SidebarDestination destination) {
+    _setChatSidebarOpen(false);
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => _SidebarDestinationPage(destination: destination),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final safeBottom = MediaQuery.paddingOf(context).bottom;
     final chatPage = widget.session.conversationId == null
         ? NoAgentPage(session: widget.session)
-        : ChatPage(api: widget.api, session: widget.session);
+        : ChatPage(
+            api: widget.api,
+            session: widget.session,
+            onOpenSidebar: () => _setChatSidebarOpen(true),
+          );
     final pages = [
       chatPage,
-      const PlaceholderPage(title: '日常', icon: CupertinoIcons.sun_max),
-      const PlaceholderPage(title: '记忆', icon: CupertinoIcons.book),
+      const PlaceholderPage(
+        title: '线上交互',
+        icon: CupertinoIcons.antenna_radiowaves_left_right,
+      ),
+      const PlaceholderPage(
+        title: '线下交互',
+        icon: CupertinoIcons.map_pin_ellipse,
+      ),
       PlaceholderPage(
         title: '我的',
         icon: CupertinoIcons.person_crop_circle,
@@ -40,15 +65,35 @@ class _MainShellState extends State<MainShell> {
       resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
-          IndexedStack(index: _index, children: pages),
-          Positioned(
-            left: 28,
-            right: 28,
-            bottom: math.max(10, safeBottom - 2),
-            child: _FloatingTabBar(
-              selectedIndex: _index,
-              onSelected: (value) => setState(() => _index = value),
+          AnimatedScale(
+            scale: _chatSidebarOpen ? 0.985 : 1,
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(
+                sigmaX: _chatSidebarOpen ? 9 : 0,
+                sigmaY: _chatSidebarOpen ? 9 : 0,
+              ),
+              child: Stack(
+                children: [
+                  IndexedStack(index: _index, children: pages),
+                  Positioned(
+                    left: 28,
+                    right: 28,
+                    bottom: math.max(10, safeBottom - 2),
+                    child: _FloatingTabBar(
+                      selectedIndex: _index,
+                      onSelected: (value) => setState(() => _index = value),
+                    ),
+                  ),
+                ],
+              ),
             ),
+          ),
+          _ChatSidebarOverlay(
+            visible: _chatSidebarOpen,
+            onDismiss: () => _setChatSidebarOpen(false),
+            onSelected: _openSidebarDestination,
           ),
         ],
       ),
@@ -66,10 +111,26 @@ class _FloatingTabBar extends StatelessWidget {
   final ValueChanged<int> onSelected;
 
   static const _items = [
-    (CupertinoIcons.chat_bubble_2_fill, '聊天'),
-    (CupertinoIcons.square_grid_2x2, '日常'),
-    (CupertinoIcons.book, '记忆'),
-    (CupertinoIcons.person_crop_circle, '我的'),
+    (
+      icon: CupertinoIcons.chat_bubble_2_fill,
+      selectedIcon: CupertinoIcons.chat_bubble_2_fill,
+      label: '聊天',
+    ),
+    (
+      icon: CupertinoIcons.antenna_radiowaves_left_right,
+      selectedIcon: CupertinoIcons.antenna_radiowaves_left_right,
+      label: '线上交互',
+    ),
+    (
+      icon: CupertinoIcons.map_pin_ellipse,
+      selectedIcon: CupertinoIcons.map_pin_ellipse,
+      label: '线下交互',
+    ),
+    (
+      icon: CupertinoIcons.person_crop_circle,
+      selectedIcon: CupertinoIcons.person_crop_circle_fill,
+      label: '我的',
+    ),
   ];
 
   @override
@@ -149,8 +210,9 @@ class _FloatingTabBar extends StatelessWidget {
                     for (var i = 0; i < _items.length; i += 1)
                       Expanded(
                         child: _TabBarItem(
-                          icon: _items[i].$1,
-                          label: _items[i].$2,
+                          icon: _items[i].icon,
+                          selectedIcon: _items[i].selectedIcon,
+                          label: _items[i].label,
                           selected: selectedIndex == i,
                           onTap: () => onSelected(i),
                         ),
@@ -169,12 +231,14 @@ class _FloatingTabBar extends StatelessWidget {
 class _TabBarItem extends StatelessWidget {
   const _TabBarItem({
     required this.icon,
+    required this.selectedIcon,
     required this.label,
     required this.selected,
     required this.onTap,
   });
 
   final IconData icon;
+  final IconData selectedIcon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -191,7 +255,7 @@ class _TabBarItem extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                icon,
+                selected ? selectedIcon : icon,
                 size: 23,
                 color: selected
                     ? AppColors.accent

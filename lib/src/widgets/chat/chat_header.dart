@@ -1,10 +1,15 @@
 part of 'package:companion_flutter/main.dart';
 
 class _ChatHeader extends StatelessWidget {
-  const _ChatHeader({required this.agentName, required this.subtitle});
+  const _ChatHeader({
+    required this.agentName,
+    required this.subtitle,
+    required this.onOpenSidebar,
+  });
 
   final String agentName;
   final String subtitle;
+  final VoidCallback onOpenSidebar;
 
   @override
   Widget build(BuildContext context) {
@@ -62,7 +67,7 @@ class _ChatHeader extends StatelessWidget {
           ),
           IconButton(
             tooltip: '更多',
-            onPressed: () {},
+            onPressed: onOpenSidebar,
             icon: const Icon(CupertinoIcons.ellipsis, size: 24),
           ),
         ],
