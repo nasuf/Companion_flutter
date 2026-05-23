@@ -21,6 +21,7 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
     final chatPage = widget.session.conversationId == null
         ? NoAgentPage(session: widget.session)
         : ChatPage(api: widget.api, session: widget.session);
@@ -41,9 +42,9 @@ class _MainShellState extends State<MainShell> {
         children: [
           IndexedStack(index: _index, children: pages),
           Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
+            left: 28,
+            right: 28,
+            bottom: math.max(10, safeBottom - 2),
             child: _FloatingTabBar(
               selectedIndex: _index,
               onSelected: (value) => setState(() => _index = value),
@@ -73,26 +74,93 @@ class _FloatingTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
-    return Container(
-      height: 64 + safeBottom,
-      padding: EdgeInsets.fromLTRB(24, 8, 24, math.max(8, safeBottom)),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.hairline)),
-      ),
-      child: Row(
-        children: [
-          for (var i = 0; i < _items.length; i += 1)
-            Expanded(
-              child: _TabBarItem(
-                icon: _items[i].$1,
-                label: _items[i].$2,
-                selected: selectedIndex == i,
-                onTap: () => onSelected(i),
-              ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: (details) {
+        final velocity = details.primaryVelocity ?? 0;
+        if (velocity.abs() < 180) return;
+        final next = velocity < 0 ? selectedIndex + 1 : selectedIndex - 1;
+        onSelected(next.clamp(0, _items.length - 1).toInt());
+      },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+          child: Container(
+            height: 64,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.66),
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF315B88).withValues(alpha: 0.12),
+                  blurRadius: 28,
+                  offset: const Offset(0, 14),
+                ),
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.70),
+                  blurRadius: 1,
+                  offset: const Offset(0, 1),
+                ),
+              ],
             ),
-        ],
+            child: Stack(
+              children: [
+                AnimatedAlign(
+                  alignment: Alignment(
+                    -1 + (selectedIndex * 2 / (_items.length - 1)),
+                    0,
+                  ),
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  child: FractionallySizedBox(
+                    widthFactor: 1 / _items.length,
+                    heightFactor: 1,
+                    child: Center(
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.white.withValues(alpha: 0.96),
+                              Colors.white.withValues(alpha: 0.56),
+                            ],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.accent.withValues(alpha: 0.16),
+                              blurRadius: 18,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    for (var i = 0; i < _items.length; i += 1)
+                      Expanded(
+                        child: _TabBarItem(
+                          icon: _items[i].$1,
+                          label: _items[i].$2,
+                          selected: selectedIndex == i,
+                          onTap: () => onSelected(i),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -113,41 +181,36 @@ class _TabBarItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkResponse(
-      onTap: onTap,
-      radius: 28,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            width: 52,
-            height: 28,
-            decoration: BoxDecoration(
-              color: selected ? const Color(0xFFE7F7EE) : Colors.transparent,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(
-              icon,
-              size: 22,
-              color: selected
-                  ? const Color(0xFF123B25)
-                  : const Color(0xFF48514C),
-            ),
+    return Tooltip(
+      message: label,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 28,
+        child: SizedBox.expand(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 23,
+                color: selected
+                    ? AppColors.accent
+                    : const Color(0xFF1B2733).withValues(alpha: 0.42),
+              ),
+              const SizedBox(height: 5),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                width: selected ? 5 : 0,
+                height: 5,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.accent,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: selected
-                  ? const Color(0xFF123B25)
-                  : const Color(0xFF48514C),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

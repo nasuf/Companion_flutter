@@ -20,7 +20,7 @@ class _ChatHeader extends StatelessWidget {
           const _Avatar(
             size: 38,
             label: '伴',
-            gradient: [Color(0xFFE8F8F3), Color(0xFFDDEBFF)],
+            gradient: [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
           ),
           const SizedBox(width: 10),
           Expanded(

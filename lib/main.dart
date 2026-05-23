@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -43,7 +44,7 @@ class CompanionApp extends StatelessWidget {
         useMaterial3: true,
         scaffoldBackgroundColor: AppColors.page,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.wechatGreen,
+          seedColor: AppColors.accent,
           brightness: Brightness.light,
         ),
         fontFamily: '.SF Pro Text',

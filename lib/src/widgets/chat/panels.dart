@@ -109,12 +109,10 @@ class _MorePanel extends StatelessWidget {
   static const _tools = [
     _ToolSpec('图片', CupertinoIcons.photo, Color(0xFF1F6FFF)),
     _ToolSpec('拍摄', CupertinoIcons.camera, Color(0xFF18C6C0)),
+    _ToolSpec('红包', CupertinoIcons.gift, Color(0xFFFF4D5F)),
     _ToolSpec('位置', CupertinoIcons.location, Color(0xFF22C66B)),
+    _ToolSpec('查找', CupertinoIcons.search, Color(0xFF7C3CFF)),
     _ToolSpec('电话', CupertinoIcons.phone, Color(0xFFFF8A3D)),
-    _ToolSpec('日程', CupertinoIcons.calendar, Color(0xFF7C3CFF)),
-    _ToolSpec('礼物', CupertinoIcons.gift, Color(0xFFE35B6F)),
-    _ToolSpec('文件', CupertinoIcons.doc, Color(0xFF64748B)),
-    _ToolSpec('收藏', CupertinoIcons.star, Color(0xFFFFBE3D)),
   ];
 
   @override
@@ -126,10 +124,10 @@ class _MorePanel extends StatelessWidget {
         physics: const NeverScrollableScrollPhysics(),
         itemCount: _tools.length,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 4,
+          crossAxisCount: 3,
           mainAxisSpacing: 18,
-          crossAxisSpacing: 14,
-          childAspectRatio: 0.82,
+          crossAxisSpacing: 18,
+          childAspectRatio: 1.02,
         ),
         itemBuilder: (context, index) {
           final tool = _tools[index];

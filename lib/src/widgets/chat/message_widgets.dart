@@ -67,8 +67,8 @@ class _MessageRow extends StatelessWidget {
       size: 28,
       label: message.isMine ? '我' : '伴',
       gradient: message.isMine
-          ? const [Color(0xFFE8F5FF), Color(0xFFF8F8FF)]
-          : const [Color(0xFFE8F8F3), Color(0xFFDDEBFF)],
+          ? const [Color(0xFFE8F3FF), Color(0xFFF8FBFF)]
+          : const [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
     );
 
     return Padding(
@@ -105,20 +105,25 @@ class _Bubble extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: 270),
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: message.isMine
-                    ? AppColors.wechatGreen
-                    : AppColors.surface,
+                color: message.isMine ? AppColors.accent : AppColors.surface,
                 borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(17),
-                  topRight: const Radius.circular(17),
-                  bottomLeft: Radius.circular(message.isMine ? 17 : 4),
-                  bottomRight: Radius.circular(message.isMine ? 4 : 17),
+                  topLeft: Radius.circular(message.isMine ? 17 : 3),
+                  topRight: Radius.circular(message.isMine ? 3 : 17),
+                  bottomLeft: const Radius.circular(17),
+                  bottomRight: const Radius.circular(17),
                 ),
                 border: Border.all(
-                  color: message.isMine
-                      ? AppColors.wechatGreen
-                      : AppColors.hairline,
+                  color: message.isMine ? AppColors.accent : AppColors.hairline,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: message.isMine
+                        ? AppColors.accent.withValues(alpha: 0.18)
+                        : const Color(0xFF24344A).withValues(alpha: 0.08),
+                    blurRadius: message.isMine ? 18 : 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(

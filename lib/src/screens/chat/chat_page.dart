@@ -18,7 +18,7 @@ class _ChatPageState extends State<ChatPage> {
   static const _composerHeight = 68.0;
   static const _tabBarContentHeight = 64.0;
   static const _emojiPanelHeight = 238.0;
-  static const _morePanelHeight = 258.0;
+  static const _morePanelHeight = 236.0;
   static const _messagePageSize = 100;
   static const _loadOlderThreshold = 80.0;
 
@@ -526,6 +526,21 @@ class _ChatPageState extends State<ChatPage> {
                 ),
               ),
             ],
+          ),
+          AnimatedPositioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: listBottomPadding,
+            duration: positionDuration,
+            curve: _animationCurve,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppColors.page.withValues(alpha: 0.96),
+                ),
+              ),
+            ),
           ),
           AnimatedPositioned(
             left: 0,

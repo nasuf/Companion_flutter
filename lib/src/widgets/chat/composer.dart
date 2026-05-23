@@ -84,7 +84,7 @@ class _Composer extends StatelessWidget {
                   style: FilledButton.styleFrom(
                     minimumSize: const Size(58, 38),
                     padding: EdgeInsets.zero,
-                    backgroundColor: AppColors.wechatGreen,
+                    backgroundColor: AppColors.accent,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(19),
@@ -134,12 +134,34 @@ class _RoundIconButton extends StatelessWidget {
           height: 38,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: selected ? const Color(0xFFE8F7EE) : AppColors.surface,
+            color: selected ? null : AppColors.surface,
+            gradient: selected
+                ? const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [AppColors.accentDeep, AppColors.accentCyan],
+                  )
+                : null,
             border: Border.all(
-              color: selected ? AppColors.wechatGreen : AppColors.hairline,
+              color: selected
+                  ? Colors.white.withValues(alpha: 0.28)
+                  : AppColors.hairline,
             ),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: AppColors.accent.withValues(alpha: 0.18),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ]
+                : null,
           ),
-          child: Icon(icon, size: 21, color: AppColors.text),
+          child: Icon(
+            icon,
+            size: 21,
+            color: selected ? Colors.white : AppColors.text,
+          ),
         ),
       ),
     );
