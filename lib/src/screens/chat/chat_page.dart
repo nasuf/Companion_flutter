@@ -37,6 +37,8 @@ class _ChatPageState extends State<ChatPage> {
   StreamSubscription<WsEnvelope>? _eventSub;
   StreamSubscription<ChatSocketState>? _stateSub;
   ComposerPanel _panel = ComposerPanel.none;
+  ComposerPanel _heldPanel = ComposerPanel.none;
+  Timer? _panelHoldTimer;
   bool _loadingInitial = true;
   bool _loadingOlder = false;
   bool _hasOlderMessages = false;
@@ -78,11 +80,12 @@ class _ChatPageState extends State<ChatPage> {
     _eventSub?.cancel();
     _stateSub?.cancel();
     _socket?.close();
+    _panelHoldTimer?.cancel();
     super.dispose();
   }
 
-  double get _panelHeight {
-    return switch (_panel) {
+  double _panelHeightFor(ComposerPanel panel) {
+    return switch (panel) {
       ComposerPanel.emoji => _emojiPanelHeight,
       ComposerPanel.more => _morePanelHeight,
       ComposerPanel.none => 0,
@@ -93,9 +96,12 @@ class _ChatPageState extends State<ChatPage> {
     await _eventSub?.cancel();
     await _stateSub?.cancel();
     await _socket?.close();
+    _panelHoldTimer?.cancel();
     if (!mounted) return;
     setState(() {
       _messages.clear();
+      _panel = ComposerPanel.none;
+      _heldPanel = ComposerPanel.none;
       _loadingInitial = true;
       _loadingOlder = false;
       _hasOlderMessages = false;
@@ -389,27 +395,45 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _setPanel(ComposerPanel panel) {
-    if (panel != ComposerPanel.none) {
+    _panelHoldTimer?.cancel();
+    final nextPanel = _panel == panel ? ComposerPanel.none : panel;
+    setState(() {
+      _heldPanel = ComposerPanel.none;
+      _panel = nextPanel;
+    });
+    if (nextPanel != ComposerPanel.none) {
       FocusScope.of(context).unfocus();
     }
-    setState(() {
-      _panel = _panel == panel ? ComposerPanel.none : panel;
-    });
   }
 
   void _focusInput() {
     _pinToBottomDuringKeyboard = _isNearBottomNow();
-    setState(() => _panel = ComposerPanel.none);
+    _panelHoldTimer?.cancel();
+    final panelToHold = _panel != ComposerPanel.none ? _panel : _heldPanel;
+    setState(() {
+      _panel = ComposerPanel.none;
+      _heldPanel = panelToHold;
+    });
     _inputFocus.requestFocus();
+    if (panelToHold != ComposerPanel.none) {
+      _panelHoldTimer = Timer(const Duration(milliseconds: 360), () {
+        if (!mounted || _heldPanel == ComposerPanel.none) return;
+        setState(() => _heldPanel = ComposerPanel.none);
+      });
+    }
   }
 
   void _dismissInputSurfaces() {
     FocusScope.of(context).unfocus();
-    if (_panel == ComposerPanel.none && !_pinToBottomDuringKeyboard) {
+    _panelHoldTimer?.cancel();
+    if (_panel == ComposerPanel.none &&
+        _heldPanel == ComposerPanel.none &&
+        !_pinToBottomDuringKeyboard) {
       return;
     }
     setState(() {
       _panel = ComposerPanel.none;
+      _heldPanel = ComposerPanel.none;
       _pinToBottomDuringKeyboard = false;
     });
   }
@@ -479,12 +503,14 @@ class _ChatPageState extends State<ChatPage> {
     if (!wasKeyboardOpen && isKeyboardOpen) {
       _pinToBottomDuringKeyboard = _isNearBottomNow();
     }
+    final visiblePanel = _panel != ComposerPanel.none ? _panel : _heldPanel;
+    final visiblePanelHeight = _panelHeightFor(visiblePanel);
     final keyboardLift = isKeyboardOpen ? bottomInset : 0.0;
-    final panelHeight = isKeyboardOpen ? 0.0 : _panelHeight;
+    final panelHeight = visiblePanelHeight;
     final safeBottom = MediaQuery.paddingOf(context).bottom;
     final tabBarLift = _tabBarContentHeight + safeBottom;
     final composerBottom = isKeyboardOpen
-        ? math.max(keyboardLift, tabBarLift)
+        ? math.max(keyboardLift, tabBarLift + panelHeight)
         : tabBarLift + panelHeight;
     final listBottomPadding = _composerHeight + composerBottom + 18;
     final keyboardTransition = isKeyboardOpen || wasKeyboardOpen;
@@ -562,6 +588,7 @@ class _ChatPageState extends State<ChatPage> {
               sending: _sending,
               onFocusInput: _focusInput,
               onToggleEmoji: () => _setPanel(ComposerPanel.emoji),
+              onShowKeyboard: _focusInput,
               onToggleMore: () => _setPanel(ComposerPanel.more),
               onSend: _sendMessage,
             ),
@@ -574,7 +601,7 @@ class _ChatPageState extends State<ChatPage> {
             duration: positionDuration,
             curve: _animationCurve,
             child: ClipRect(
-              child: _ChatPanel(panel: _panel, onEmojiTap: _appendEmoji),
+              child: _ChatPanel(panel: visiblePanel, onEmojiTap: _appendEmoji),
             ),
           ),
         ],

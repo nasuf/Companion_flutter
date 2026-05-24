@@ -11,6 +11,7 @@ import 'companion_api.dart';
 import 'models.dart';
 
 part 'src/app/auth_gate.dart';
+part 'src/screens/agent_create_page.dart';
 part 'src/screens/chat/chat_page.dart';
 part 'src/screens/login_page.dart';
 part 'src/screens/main_shell.dart';

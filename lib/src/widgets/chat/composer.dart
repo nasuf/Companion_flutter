@@ -8,6 +8,7 @@ class _Composer extends StatelessWidget {
     required this.sending,
     required this.onFocusInput,
     required this.onToggleEmoji,
+    required this.onShowKeyboard,
     required this.onToggleMore,
     required this.onSend,
   });
@@ -18,6 +19,7 @@ class _Composer extends StatelessWidget {
   final bool sending;
   final VoidCallback onFocusInput;
   final VoidCallback onToggleEmoji;
+  final VoidCallback onShowKeyboard;
   final VoidCallback onToggleMore;
   final VoidCallback onSend;
 
@@ -66,12 +68,14 @@ class _Composer extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           _RoundIconButton(
-            tooltip: '表情',
+            tooltip: activePanel == ComposerPanel.emoji ? '键盘' : '表情',
             icon: activePanel == ComposerPanel.emoji
                 ? CupertinoIcons.keyboard
                 : CupertinoIcons.smiley,
             selected: activePanel == ComposerPanel.emoji,
-            onTap: onToggleEmoji,
+            onTap: activePanel == ComposerPanel.emoji
+                ? onShowKeyboard
+                : onToggleEmoji,
           ),
           const SizedBox(width: 8),
           AnimatedBuilder(

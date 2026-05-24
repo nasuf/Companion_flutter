@@ -55,6 +55,15 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
+  void _openAgentCreatePage() {
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => const AgentCreatePage(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -136,7 +145,7 @@ class _LoginPageState extends State<LoginPage>
                           const SizedBox(height: 18),
                           const _LoginDivider(),
                           const SizedBox(height: 22),
-                          const _SocialLoginRow(),
+                          _SocialLoginRow(onWechatTap: _openAgentCreatePage),
                           const SizedBox(height: 26),
                           const _PrivacyLine(),
                         ],
@@ -490,18 +499,20 @@ class _LoginDivider extends StatelessWidget {
 }
 
 class _SocialLoginRow extends StatelessWidget {
-  const _SocialLoginRow();
+  const _SocialLoginRow({required this.onWechatTap});
+
+  final VoidCallback onWechatTap;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: const [
-        _SocialButton.apple(),
-        SizedBox(width: 20),
-        _SocialButton.douyin(),
-        SizedBox(width: 20),
-        _SocialButton.wechat(),
+      children: [
+        const _SocialButton.apple(),
+        const SizedBox(width: 20),
+        const _SocialButton.douyin(),
+        const SizedBox(width: 20),
+        _SocialButton.wechat(onTap: onWechatTap),
       ],
     );
   }
@@ -511,14 +522,16 @@ class _SocialButton extends StatelessWidget {
   const _SocialButton.apple()
     : color = const Color(0xFF0D1117),
       icon = null,
-      text = '\uF8FF';
+      text = '\uF8FF',
+      onTap = null;
 
   const _SocialButton.douyin()
     : color = const Color(0xFF1B2028),
       icon = CupertinoIcons.music_note_2,
-      text = null;
+      text = null,
+      onTap = null;
 
-  const _SocialButton.wechat()
+  const _SocialButton.wechat({required this.onTap})
     : color = const Color(0xFF14BA1A),
       icon = CupertinoIcons.chat_bubble_2_fill,
       text = null;
@@ -526,35 +539,41 @@ class _SocialButton extends StatelessWidget {
   final Color color;
   final IconData? icon;
   final String? text;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 58,
-      height: 58,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.74)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF233040).withValues(alpha: 0.18),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Center(
-        child: text != null
-            ? Text(
-                text!,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 25,
-                  fontWeight: FontWeight.w700,
-                ),
-              )
-            : Icon(icon, color: Colors.white, size: 25),
+    return CupertinoButton(
+      minimumSize: Size.zero,
+      padding: EdgeInsets.zero,
+      onPressed: onTap ?? () {},
+      child: Container(
+        width: 58,
+        height: 58,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.74)),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF233040).withValues(alpha: 0.18),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Center(
+          child: text != null
+              ? Text(
+                  text!,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 25,
+                    fontWeight: FontWeight.w700,
+                  ),
+                )
+              : Icon(icon, color: Colors.white, size: 25),
+        ),
       ),
     );
   }
