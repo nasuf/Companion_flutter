@@ -163,6 +163,27 @@ class CompanionApi {
         .toList();
   }
 
+  Future<AgentProfile> createAgent({
+    required String userId,
+    required String name,
+    required String gender,
+    required Map<String, int> personality,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/agents',
+              body: {
+                'user_id': userId,
+                'name': name,
+                'gender': gender,
+                'personality': personality,
+              },
+            )
+            as Map<String, dynamic>;
+    return AgentProfile.fromJson(json);
+  }
+
   Future<AuthSession> ensureConversation(AuthSession session) async {
     final agentId = session.agentId;
     if (!session.hasAgent || agentId == null || agentId.isEmpty) {

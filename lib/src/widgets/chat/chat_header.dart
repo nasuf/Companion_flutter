@@ -4,11 +4,13 @@ class _ChatHeader extends StatelessWidget {
   const _ChatHeader({
     required this.agentName,
     required this.subtitle,
+    this.avatarUrl,
     required this.onOpenSidebar,
   });
 
   final String agentName;
   final String subtitle;
+  final String? avatarUrl;
   final VoidCallback onOpenSidebar;
 
   @override
@@ -22,9 +24,10 @@ class _ChatHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const _Avatar(
+          _Avatar(
             size: 44,
             label: '伴',
+            imageUrl: avatarUrl,
             gradient: [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
           ),
           const SizedBox(width: 10),

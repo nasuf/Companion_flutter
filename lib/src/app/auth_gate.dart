@@ -18,6 +18,10 @@ class _AuthGateState extends State<AuthGate> {
     });
   }
 
+  void _onSessionChanged(AuthSession session) {
+    setState(() => _session = session);
+  }
+
   void _logout() {
     setState(() {
       _api = null;
@@ -30,7 +34,12 @@ class _AuthGateState extends State<AuthGate> {
     final session = _session;
     final api = _api;
     if (session != null && api != null) {
-      return MainShell(api: api, session: session, onLogout: _logout);
+      return MainShell(
+        api: api,
+        session: session,
+        onSessionChanged: _onSessionChanged,
+        onLogout: _logout,
+      );
     }
     return LoginPage(onAuthenticated: _onAuthenticated);
   }

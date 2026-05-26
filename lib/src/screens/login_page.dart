@@ -169,6 +169,13 @@ class _LoginPageState extends State<LoginPage>
                           const _LoginDivider(),
                           const SizedBox(height: 22),
                           _SocialLoginRow(
+                            onAppleTap: () {
+                              Navigator.of(context).push(
+                                CupertinoPageRoute<void>(
+                                  builder: (_) => const AgentCreatePage(),
+                                ),
+                              );
+                            },
                             onWechatTap: _loginWithWechat,
                             wechatLoading: _wechatSubmitting,
                           ),
@@ -538,10 +545,12 @@ class _LoginDivider extends StatelessWidget {
 
 class _SocialLoginRow extends StatelessWidget {
   const _SocialLoginRow({
+    required this.onAppleTap,
     required this.onWechatTap,
     required this.wechatLoading,
   });
 
+  final VoidCallback onAppleTap;
   final VoidCallback onWechatTap;
   final bool wechatLoading;
 
@@ -550,7 +559,7 @@ class _SocialLoginRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const _SocialButton.apple(),
+        _SocialButton.apple(onTap: onAppleTap),
         const SizedBox(width: 20),
         const _SocialButton.douyin(),
         const SizedBox(width: 20),
@@ -561,12 +570,11 @@ class _SocialLoginRow extends StatelessWidget {
 }
 
 class _SocialButton extends StatelessWidget {
-  const _SocialButton.apple()
+  const _SocialButton.apple({this.onTap})
     : color = const Color(0xFF0D1117),
       icon = null,
       text = '\uF8FF',
-      loading = false,
-      onTap = null;
+      loading = false;
 
   const _SocialButton.douyin()
     : color = const Color(0xFF1B2028),

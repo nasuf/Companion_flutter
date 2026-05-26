@@ -13,6 +13,8 @@ class AuthSession {
     required this.hasAgent,
     this.agentId,
     this.agentName,
+    this.agentAvatarKey,
+    this.agentAvatarUrl,
     this.workspaceId,
     this.conversationId,
   });
@@ -24,6 +26,8 @@ class AuthSession {
   final bool hasAgent;
   final String? agentId;
   final String? agentName;
+  final String? agentAvatarKey;
+  final String? agentAvatarUrl;
   final String? workspaceId;
   final String? conversationId;
 
@@ -36,6 +40,8 @@ class AuthSession {
       hasAgent: json['has_agent'] as bool? ?? false,
       agentId: json['agent_id'] as String?,
       agentName: json['agent_name'] as String?,
+      agentAvatarKey: json['agent_avatar_key'] as String?,
+      agentAvatarUrl: json['agent_avatar_url'] as String?,
       workspaceId: json['workspace_id'] as String?,
       conversationId: json['conversation_id'] as String?,
     );
@@ -50,8 +56,42 @@ class AuthSession {
       hasAgent: hasAgent,
       agentId: agentId,
       agentName: agentName,
+      agentAvatarKey: agentAvatarKey,
+      agentAvatarUrl: agentAvatarUrl,
       workspaceId: workspaceId ?? this.workspaceId,
       conversationId: conversationId ?? this.conversationId,
+    );
+  }
+}
+
+class AgentProfile {
+  const AgentProfile({
+    required this.id,
+    required this.name,
+    required this.userId,
+    this.workspaceId,
+    this.gender,
+    this.avatarKey,
+    this.avatarUrl,
+  });
+
+  final String id;
+  final String name;
+  final String userId;
+  final String? workspaceId;
+  final String? gender;
+  final String? avatarKey;
+  final String? avatarUrl;
+
+  factory AgentProfile.fromJson(Map<String, dynamic> json) {
+    return AgentProfile(
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      userId: json['user_id'] as String? ?? '',
+      workspaceId: json['workspace_id'] as String?,
+      gender: json['gender'] as String?,
+      avatarKey: json['avatar_key'] as String?,
+      avatarUrl: json['avatar_url'] as String?,
     );
   }
 }

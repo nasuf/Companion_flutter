@@ -512,7 +512,8 @@ class _ChatPageState extends State<ChatPage> {
     final composerBottom = isKeyboardOpen
         ? math.max(keyboardLift, tabBarLift + panelHeight)
         : tabBarLift + panelHeight;
-    final listBottomPadding = _composerHeight + composerBottom + 18;
+    final inputSurfaceHeight = _composerHeight + composerBottom;
+    final listBottomPadding = inputSurfaceHeight + 18;
     final keyboardTransition = isKeyboardOpen || wasKeyboardOpen;
     final positionDuration = keyboardTransition
         ? Duration.zero
@@ -537,6 +538,7 @@ class _ChatPageState extends State<ChatPage> {
               _ChatHeader(
                 agentName: widget.session.agentName ?? 'Companion',
                 subtitle: _connecting || _sending ? _typingHint : '在线',
+                avatarUrl: widget.session.agentAvatarUrl,
                 onOpenSidebar: widget.onOpenSidebar,
               ),
               if (_historyError != null)
@@ -555,6 +557,7 @@ class _ChatPageState extends State<ChatPage> {
                           messages: _messages,
                           isLoadingOlder: _loadingOlder,
                           bottomPadding: listBottomPadding,
+                          agentAvatarUrl: widget.session.agentAvatarUrl,
                         ),
                 ),
               ),
@@ -564,7 +567,7 @@ class _ChatPageState extends State<ChatPage> {
             left: 0,
             right: 0,
             bottom: 0,
-            height: listBottomPadding,
+            height: inputSurfaceHeight,
             duration: positionDuration,
             curve: _animationCurve,
             child: IgnorePointer(

@@ -5,11 +5,13 @@ class MainShell extends StatefulWidget {
     super.key,
     required this.api,
     required this.session,
+    required this.onSessionChanged,
     required this.onLogout,
   });
 
   final CompanionApi api;
   final AuthSession session;
+  final ValueChanged<AuthSession> onSessionChanged;
   final VoidCallback onLogout;
 
   @override
@@ -38,7 +40,11 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     final safeBottom = MediaQuery.paddingOf(context).bottom;
     final chatPage = widget.session.conversationId == null
-        ? NoAgentPage(session: widget.session)
+        ? NoAgentPage(
+            api: widget.api,
+            session: widget.session,
+            onSessionChanged: widget.onSessionChanged,
+          )
         : ChatPage(
             api: widget.api,
             session: widget.session,
@@ -275,9 +281,28 @@ class _TabBarItem extends StatelessWidget {
 }
 
 class NoAgentPage extends StatelessWidget {
-  const NoAgentPage({super.key, required this.session});
+  const NoAgentPage({
+    super.key,
+    required this.api,
+    required this.session,
+    required this.onSessionChanged,
+  });
 
+  final CompanionApi api;
   final AuthSession session;
+  final ValueChanged<AuthSession> onSessionChanged;
+
+  void _openCreatePage(BuildContext context) {
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => AgentCreatePage(
+          api: api,
+          session: session,
+          onCreated: onSessionChanged,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -313,9 +338,14 @@ class NoAgentPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    '请先在 Web 端完成 Agent 创建；Flutter 端会直接接入已有会话。',
+                    '先设定TA的名字、性别和灵魂倾向，头像会在后端自动生成。',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: AppColors.muted, height: 1.45),
+                  ),
+                  const SizedBox(height: 22),
+                  FilledButton(
+                    onPressed: () => _openCreatePage(context),
+                    child: const Text('创建 Agent'),
                   ),
                 ],
               ),

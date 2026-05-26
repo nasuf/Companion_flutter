@@ -6,12 +6,14 @@ class _MessageList extends StatelessWidget {
     required this.messages,
     required this.isLoadingOlder,
     required this.bottomPadding,
+    this.agentAvatarUrl,
   });
 
   final ScrollController controller;
   final List<ChatMessage> messages;
   final bool isLoadingOlder;
   final double bottomPadding;
+  final String? agentAvatarUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -50,17 +52,18 @@ class _MessageList extends StatelessWidget {
           );
         }
         final message = messages[index - 1];
-        return _MessageRow(message: message);
+        return _MessageRow(message: message, agentAvatarUrl: agentAvatarUrl);
       },
     );
   }
 }
 
 class _MessageRow extends StatelessWidget {
-  const _MessageRow({required this.message});
+  const _MessageRow({required this.message, this.agentAvatarUrl});
 
   final ChatMessage message;
-  static const _avatarSize = 36.0;
+  final String? agentAvatarUrl;
+  static const _avatarSize = 40.0;
   static const _avatarGap = 10.0;
 
   @override
@@ -68,6 +71,7 @@ class _MessageRow extends StatelessWidget {
     final avatar = _Avatar(
       size: _avatarSize,
       label: message.isMine ? '我' : '伴',
+      imageUrl: message.isMine ? null : agentAvatarUrl,
       gradient: message.isMine
           ? const [Color(0xFFE8F3FF), Color(0xFFF8FBFF)]
           : const [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
@@ -171,11 +175,13 @@ class _Avatar extends StatelessWidget {
     required this.size,
     required this.label,
     required this.gradient,
+    this.imageUrl,
   });
 
   final double size;
   final String label;
   final List<Color> gradient;
+  final String? imageUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -194,14 +200,33 @@ class _Avatar extends StatelessWidget {
           ),
         ],
       ),
-      child: Center(
-        child: Text(
-          label,
-          style: TextStyle(
-            color: AppColors.accent,
-            fontSize: math.max(12, size * 0.42),
-            fontWeight: FontWeight.w800,
-          ),
+      clipBehavior: Clip.antiAlias,
+      child: _hasImage
+          ? Image.network(
+              imageUrl!,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _fallback,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return _fallback;
+              },
+            )
+          : _fallback,
+    );
+  }
+
+  bool get _hasImage => imageUrl != null && imageUrl!.trim().isNotEmpty;
+
+  Widget get _fallback {
+    return Center(
+      child: Text(
+        label,
+        style: TextStyle(
+          color: AppColors.accent,
+          fontSize: math.max(12, size * 0.42),
+          fontWeight: FontWeight.w800,
         ),
       ),
     );

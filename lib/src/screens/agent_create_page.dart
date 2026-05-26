@@ -1,7 +1,11 @@
 part of 'package:companion_flutter/main.dart';
 
 class AgentCreatePage extends StatefulWidget {
-  const AgentCreatePage({super.key});
+  const AgentCreatePage({super.key, this.api, this.session, this.onCreated});
+
+  final CompanionApi? api;
+  final AuthSession? session;
+  final ValueChanged<AuthSession>? onCreated;
 
   @override
   State<AgentCreatePage> createState() => _AgentCreatePageState();
@@ -13,13 +17,15 @@ class _AgentCreatePageState extends State<AgentCreatePage>
   final _nameController = TextEditingController(text: '小芜');
   var _gender = _AgentGender.female;
   late List<_TraitDraft> _traits;
+  bool _submitting = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     _breathController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 7600),
+      duration: const Duration(milliseconds: 2800),
     )..repeat(reverse: true);
     _traits = _defaultTraits
         .map(
@@ -42,12 +48,74 @@ class _AgentCreatePageState extends State<AgentCreatePage>
   }
 
   void _randomizeTraits() {
+    final random = math.Random.secure();
     setState(() {
       for (var i = 0; i < _traits.length; i += 1) {
-        final seed = DateTime.now().millisecondsSinceEpoch + i * 97;
-        _traits[i] = _traits[i].copyWith(value: 42 + seed % 34);
+        _traits[i] = _traits[i].copyWith(value: 42 + random.nextInt(35));
       }
     });
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    FocusScope.of(context).unfocus();
+    final api = widget.api;
+    final session = widget.session;
+    final onCreated = widget.onCreated;
+    if (api == null || session == null || onCreated == null) {
+      setState(() => _error = '请先完成账号登录，再创建 Agent。');
+      return;
+    }
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = '先给TA起一个名字吧。');
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      final agent = await api.createAgent(
+        userId: session.userId,
+        name: name,
+        gender: _gender.apiValue,
+        personality: {
+          'lively': _traitValue('活泼度'),
+          'rational': _traitValue('理性度'),
+          'emotional': _traitValue('感性度'),
+          'planned': _traitValue('计划度'),
+          'spontaneous': _traitValue('随性度'),
+          'creative': _traitValue('脑洞度'),
+          'humor': _traitValue('幽默度'),
+        },
+      );
+      final createdSession = AuthSession(
+        token: session.token,
+        userId: session.userId,
+        username: session.username,
+        role: session.role,
+        hasAgent: true,
+        agentId: agent.id,
+        agentName: agent.name,
+        agentAvatarKey: agent.avatarKey,
+        agentAvatarUrl: agent.avatarUrl,
+        workspaceId: agent.workspaceId,
+      );
+      final readySession = await api.ensureConversation(createdSession);
+      if (!mounted) return;
+      onCreated(readySession);
+      Navigator.of(context).pop();
+    } catch (error) {
+      if (mounted) setState(() => _error = _asMessage(error));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  int _traitValue(String name) {
+    return _traits.firstWhere((trait) => trait.name == name).value;
   }
 
   @override
@@ -91,7 +159,7 @@ class _AgentCreatePageState extends State<AgentCreatePage>
                     ),
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(30, 20, 30, 0),
+                        padding: const EdgeInsets.fromLTRB(30, 14, 30, 0),
                         child: _TraitStudio(
                           traits: _traits,
                           progress: progress,
@@ -109,7 +177,27 @@ class _AgentCreatePageState extends State<AgentCreatePage>
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(30, 26, 30, 36),
-                        child: _CreateAgentButton(onPressed: () {}),
+                        child: Column(
+                          children: [
+                            if (_error != null) ...[
+                              Text(
+                                _error!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Color(0xFFD95B5B),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                            _CreateAgentButton(
+                              loading: _submitting,
+                              onPressed: _submit,
+                            ),
+                            const SizedBox(height: 22),
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -248,29 +336,29 @@ class _CreateHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 286,
+      height: 264,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           Positioned(
-            right: -28 + 14 * progress,
-            top: 94 + 16 * (0.5 - progress),
+            right: -68 + 18 * progress,
+            top: 96 + 18 * (0.5 - progress),
             child: _BreathingGlassOrb(progress: progress),
           ),
           const Positioned(
             left: 0,
-            top: 44,
+            top: 36,
             child: _ProfileKicker('FIRST PROFILE'),
           ),
           const Positioned(
             left: 0,
-            top: 102,
+            top: 88,
             right: 0,
             child: Text(
               '没有偶然的相遇\n只有灵魂与灵魂的\n呼应',
               style: TextStyle(
                 color: AppColors.text,
-                fontSize: 43,
+                fontSize: 38,
                 height: 1.04,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 0,
@@ -284,7 +372,7 @@ class _CreateHero extends StatelessWidget {
               '在这里，你设定的每一笔，都是找寻的起点',
               style: TextStyle(
                 color: Color(0x8A181F26),
-                fontSize: 17,
+                fontSize: 15,
                 height: 1.5,
                 fontWeight: FontWeight.w500,
               ),
@@ -300,7 +388,7 @@ class _SoulProfileIntro extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Padding(
-      padding: EdgeInsets.only(top: 16),
+      padding: EdgeInsets.only(top: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -310,7 +398,7 @@ class _SoulProfileIntro extends StatelessWidget {
             '灵魂印记',
             style: TextStyle(
               color: AppColors.text,
-              fontSize: 31,
+              fontSize: 28,
               height: 1.12,
               fontWeight: FontWeight.w900,
               letterSpacing: 0,
@@ -321,7 +409,7 @@ class _SoulProfileIntro extends StatelessWidget {
             '设定你的轮廓，让同频的TA找到你',
             style: TextStyle(
               color: Color(0x82181F26),
-              fontSize: 15,
+              fontSize: 14,
               height: 1.52,
               fontWeight: FontWeight.w500,
             ),
@@ -343,7 +431,7 @@ class _ProfileKicker extends StatelessWidget {
       text,
       style: const TextStyle(
         color: AppColors.text,
-        fontSize: 14,
+        fontSize: 13,
         height: 1,
         fontWeight: FontWeight.w900,
         letterSpacing: 1.1,
@@ -379,7 +467,7 @@ class _AgentBasicFields extends StatelessWidget {
             style: const TextStyle(
               color: AppColors.text,
               fontSize: 21,
-              height: 1.1,
+              height: 1.08,
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -406,7 +494,7 @@ class _DividerRow extends StatelessWidget {
         border: Border(bottom: BorderSide(color: Color(0x10181F26), width: 1)),
       ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 64),
+        constraints: const BoxConstraints(minHeight: 58),
         child: Row(
           children: [
             SizedBox(
@@ -436,8 +524,9 @@ class _GenderControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final selectedIndex = value.index;
     return Container(
-      height: 40,
+      height: 38,
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
@@ -451,24 +540,64 @@ class _GenderControl extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
-        children: [
-          _GenderPill(
-            label: '男',
-            selected: value == _AgentGender.male,
-            onTap: () => onChanged(_AgentGender.male),
-          ),
-          _GenderPill(
-            label: '女',
-            selected: value == _AgentGender.female,
-            onTap: () => onChanged(_AgentGender.female),
-          ),
-          _GenderPill(
-            label: '随机',
-            selected: value == _AgentGender.random,
-            onTap: () => onChanged(_AgentGender.random),
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final segmentWidth = constraints.maxWidth / 3;
+          return Stack(
+            children: [
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                left: segmentWidth * selectedIndex,
+                top: 0,
+                bottom: 0,
+                width: segmentWidth,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          AppColors.accentDeep.withValues(alpha: 0.94),
+                          AppColors.accentCyan.withValues(alpha: 0.88),
+                        ],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.accentDeep.withValues(alpha: 0.16),
+                          blurRadius: 18,
+                          offset: const Offset(0, 7),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  _GenderPill(
+                    label: '男',
+                    selected: value == _AgentGender.male,
+                    onTap: () => onChanged(_AgentGender.male),
+                  ),
+                  _GenderPill(
+                    label: '女',
+                    selected: value == _AgentGender.female,
+                    onTap: () => onChanged(_AgentGender.female),
+                  ),
+                  _GenderPill(
+                    label: '随机',
+                    selected: value == _AgentGender.random,
+                    onTap: () => onChanged(_AgentGender.random),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -493,28 +622,12 @@ class _GenderPill extends StatelessWidget {
         padding: EdgeInsets.zero,
         borderRadius: BorderRadius.circular(999),
         onPressed: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            color: selected ? Colors.white.withValues(alpha: 0.86) : null,
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: const Color(0xFF385258).withValues(alpha: 0.08),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ]
-                : null,
-          ),
+        child: Center(
           child: Text(
             label,
             style: TextStyle(
-              color: selected ? AppColors.text : const Color(0x8A181F26),
-              fontSize: 15,
+              color: selected ? Colors.white : const Color(0x8A181F26),
+              fontSize: 13,
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -542,7 +655,7 @@ class _TraitStudio extends StatelessWidget {
     return Column(
       children: [
         ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 60),
+          constraints: const BoxConstraints(minHeight: 52),
           child: Row(
             children: [
               const Expanded(
@@ -550,7 +663,7 @@ class _TraitStudio extends StatelessWidget {
                   '灵魂倾向',
                   style: TextStyle(
                     color: Color(0x7A181F26),
-                    fontSize: 15,
+                    fontSize: 12,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -568,7 +681,7 @@ class _TraitStudio extends StatelessWidget {
                   '随机生成',
                   style: TextStyle(
                     color: Color(0xFF143137),
-                    fontSize: 13,
+                    fontSize: 11,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -577,18 +690,20 @@ class _TraitStudio extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 174,
+          height: 138,
           child: CustomPaint(
             painter: _TraitMapPainter(traits: traits, progress: progress),
             child: const SizedBox.expand(),
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 4),
         Column(
           children: [
             for (var i = 0; i < traits.length; i += 1)
               _TraitSliderRow(
                 trait: traits[i],
+                previousColor: i == 0 ? null : traits[i - 1].color,
+                nextColor: i == traits.length - 1 ? null : traits[i + 1].color,
                 progress: progress,
                 onChanged: (value) => onChanged(i, value),
               ),
@@ -602,11 +717,15 @@ class _TraitStudio extends StatelessWidget {
 class _TraitSliderRow extends StatelessWidget {
   const _TraitSliderRow({
     required this.trait,
+    required this.previousColor,
+    required this.nextColor,
     required this.progress,
     required this.onChanged,
   });
 
   final _TraitDraft trait;
+  final Color? previousColor;
+  final Color? nextColor;
   final double progress;
   final ValueChanged<double> onChanged;
 
@@ -614,21 +733,24 @@ class _TraitSliderRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final value = trait.value.toDouble();
     return Container(
-      height: 112,
+      height: 58,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
           colors: [
-            trait.color.withValues(alpha: 0.035 + 0.025 * progress),
+            Colors.transparent,
+            trait.color.withValues(alpha: 0.026 + 0.018 * progress),
+            trait.color.withValues(alpha: 0.038 + 0.022 * progress),
             Colors.transparent,
           ],
+          stops: const [0, 0.24, 0.58, 1],
         ),
       ),
       child: Row(
         children: [
           SizedBox(
-            width: 28,
+            width: 18,
             child: Stack(
               alignment: Alignment.center,
               children: [
@@ -637,26 +759,40 @@ class _TraitSliderRow extends StatelessWidget {
                     alignment: Alignment.center,
                     child: Container(
                       width: 1,
-                      color: trait.color.withValues(alpha: 0.13),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            (previousColor ?? trait.color).withValues(
+                              alpha: previousColor == null ? 0.02 : 0.16,
+                            ),
+                            trait.color.withValues(alpha: 0.24),
+                            (nextColor ?? trait.color).withValues(
+                              alpha: nextColor == null ? 0.02 : 0.16,
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
                 AnimatedScale(
-                  scale: 1 + 0.08 * progress,
+                  scale: 1 + 0.05 * progress,
                   duration: const Duration(milliseconds: 120),
                   child: Container(
-                    width: 10,
-                    height: 10,
+                    width: 8,
+                    height: 8,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: trait.color,
                       boxShadow: [
                         BoxShadow(
                           color: trait.color.withValues(
-                            alpha: 0.16 + 0.14 * progress,
+                            alpha: 0.12 + 0.10 * progress,
                           ),
-                          blurRadius: 14 + 10 * progress,
-                          spreadRadius: 4 + 4 * progress,
+                          blurRadius: 10 + 6 * progress,
+                          spreadRadius: 3 + 3 * progress,
                         ),
                       ],
                     ),
@@ -665,7 +801,7 @@ class _TraitSliderRow extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 9),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -678,7 +814,7 @@ class _TraitSliderRow extends StatelessWidget {
                         trait.name,
                         style: const TextStyle(
                           color: AppColors.text,
-                          fontSize: 22,
+                          fontSize: 13,
                           height: 1,
                           fontWeight: FontWeight.w900,
                         ),
@@ -688,21 +824,21 @@ class _TraitSliderRow extends StatelessWidget {
                       trait.value.toString(),
                       style: const TextStyle(
                         color: AppColors.text,
-                        fontSize: 18,
+                        fontSize: 11,
                         height: 1,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 5),
                 Row(
                   children: [
                     Text(
                       trait.low,
                       style: const TextStyle(
                         color: Color(0x66181F26),
-                        fontSize: 13,
+                        fontSize: 8.5,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -711,23 +847,24 @@ class _TraitSliderRow extends StatelessWidget {
                       trait.high,
                       style: const TextStyle(
                         color: Color(0x66181F26),
-                        fontSize: 13,
+                        fontSize: 8.5,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 2),
                 SliderTheme(
                   data: SliderTheme.of(context).copyWith(
-                    trackHeight: 3,
+                    trackHeight: 2.6,
                     activeTrackColor: trait.color.withValues(alpha: 0.72),
                     inactiveTrackColor: const Color(0x12181F26),
                     thumbColor: Colors.white,
                     overlayColor: trait.color.withValues(alpha: 0.12),
+                    trackShape: const _FullWidthSliderTrackShape(),
                     thumbShape: _RingSliderThumbShape(color: trait.color),
                     overlayShape: const RoundSliderOverlayShape(
-                      overlayRadius: 18,
+                      overlayRadius: 12,
                     ),
                   ),
                   child: Slider(
@@ -754,29 +891,65 @@ class _TraitMapPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final fadePaint = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Colors.transparent, Color(0x4DFFFFFF), Colors.transparent],
-        stops: [0, 0.5, 1],
-      ).createShader(Offset.zero & size);
-    canvas.drawRect(Offset.zero & size, fadePaint);
+    final rect = Offset.zero & size;
+    canvas.saveLayer(rect, Paint());
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0x12FFFFFF),
+            Color(0x0E18C6C0),
+            Color(0x0B1F6FFF),
+            Color(0x12FFFFFF),
+          ],
+          stops: [0, 0.36, 0.72, 1],
+        ).createShader(rect),
+    );
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(0.78, -0.68),
+          radius: 0.9,
+          colors: [
+            AppColors.accentDeep.withValues(alpha: 0.10),
+            Colors.transparent,
+          ],
+        ).createShader(rect),
+    );
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(-0.72, 0.72),
+          radius: 0.86,
+          colors: [
+            AppColors.accentCyan.withValues(alpha: 0.10),
+            Colors.transparent,
+          ],
+        ).createShader(rect),
+    );
 
     final gridPaint = Paint()
-      ..color = const Color(0x11181F26)
+      ..color = const Color(0x0E181F26)
       ..strokeWidth = 1;
     for (var x = 34.0; x < size.width; x += 34) {
       canvas.drawLine(Offset(x, 12), Offset(x, size.height - 12), gridPaint);
-    }
-    for (var y = 26.0; y < size.height; y += 34) {
-      canvas.drawLine(Offset(12, y), Offset(size.width - 12, y), gridPaint);
     }
 
     final axisPaint = Paint()
       ..color = const Color(0x24181F26)
       ..strokeWidth = 1.2;
-    final axisY = size.height * 0.52;
+    final axisY = size.height * 0.5;
+    for (var y = axisY - 34; y >= 12; y -= 34) {
+      canvas.drawLine(Offset(12, y), Offset(size.width - 12, y), gridPaint);
+    }
+    for (var y = axisY + 34; y < size.height - 12; y += 34) {
+      canvas.drawLine(Offset(12, y), Offset(size.width - 12, y), gridPaint);
+    }
     canvas.drawLine(
       Offset(30, axisY),
       Offset(size.width - 30, axisY),
@@ -787,19 +960,54 @@ class _TraitMapPainter extends CustomPainter {
       final trait = traits[i];
       final x = size.width * (0.18 + i * 0.105);
       final valueY = (100 - trait.value) / 100;
-      final drift = math.sin(progress * math.pi * 2 + i * 0.74) * 4;
-      final y = 22 + valueY * (size.height - 54) + drift;
+      final y = 22 + valueY * (size.height - 54);
       final center = Offset(x, y);
+      final haloRadius = 13 + 7 * progress;
+      final dotRadius = 6.5 + 1.5 * progress;
       final haloPaint = Paint()
-        ..color = trait.color.withValues(alpha: 0.10 + 0.05 * progress);
-      canvas.drawCircle(center, 28 + 6 * progress, haloPaint);
+        ..color = trait.color.withValues(alpha: 0.11 - 0.04 * progress);
+      canvas.drawCircle(center, haloRadius, haloPaint);
       final glowPaint = Paint()
-        ..color = trait.color.withValues(alpha: 0.16)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
-      canvas.drawCircle(center.translate(0, 8), 16, glowPaint);
+        ..color = trait.color.withValues(alpha: 0.16 + 0.08 * progress)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 8 + 3 * progress);
+      canvas.drawCircle(center.translate(0, 7), 10 + 5 * progress, glowPaint);
       final dotPaint = Paint()..color = trait.color;
-      canvas.drawCircle(center, 8 + 1.2 * progress, dotPaint);
+      canvas.drawCircle(center, dotRadius, dotPaint);
     }
+
+    _applyEdgeMask(canvas, size);
+    canvas.restore();
+  }
+
+  void _applyEdgeMask(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final maskPaint = Paint()
+      ..blendMode = BlendMode.dstIn
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.transparent,
+          Colors.white,
+          Colors.white,
+          Colors.transparent,
+        ],
+        stops: [0, 0.22, 0.78, 1],
+      ).createShader(rect);
+    canvas.drawRect(rect, maskPaint);
+
+    maskPaint.shader = const LinearGradient(
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
+      colors: [
+        Colors.transparent,
+        Colors.white,
+        Colors.white,
+        Colors.transparent,
+      ],
+      stops: [0, 0.08, 0.92, 1],
+    ).createShader(rect);
+    canvas.drawRect(rect, maskPaint);
   }
 
   @override
@@ -815,7 +1023,7 @@ class _RingSliderThumbShape extends SliderComponentShape {
 
   @override
   Size getPreferredSize(bool isEnabled, bool isDiscrete) {
-    return const Size(20, 20);
+    return const Size(15, 15);
   }
 
   @override
@@ -836,28 +1044,52 @@ class _RingSliderThumbShape extends SliderComponentShape {
     final canvas = context.canvas;
     canvas.drawCircle(
       center,
-      15,
+      11,
       Paint()
         ..color = color.withValues(alpha: 0.18)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
     );
-    canvas.drawCircle(center, 10, Paint()..color = color);
-    canvas.drawCircle(center, 4.2, Paint()..color = Colors.white);
+    canvas.drawCircle(center, 7.5, Paint()..color = color);
+    canvas.drawCircle(center, 3.5, Paint()..color = Colors.white);
+  }
+}
+
+class _FullWidthSliderTrackShape extends RoundedRectSliderTrackShape {
+  const _FullWidthSliderTrackShape();
+
+  @override
+  Rect getPreferredRect({
+    required RenderBox parentBox,
+    Offset offset = Offset.zero,
+    required SliderThemeData sliderTheme,
+    bool isEnabled = false,
+    bool isDiscrete = false,
+  }) {
+    final trackHeight = sliderTheme.trackHeight ?? 2;
+    final trackTop = offset.dy + (parentBox.size.height - trackHeight) / 2;
+    return Rect.fromLTWH(
+      offset.dx,
+      trackTop,
+      parentBox.size.width,
+      trackHeight,
+    );
   }
 }
 
 class _CreateAgentButton extends StatelessWidget {
-  const _CreateAgentButton({required this.onPressed});
+  const _CreateAgentButton({required this.loading, required this.onPressed});
 
+  final bool loading;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 64,
+      width: double.infinity,
+      height: 50,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(21),
+          borderRadius: BorderRadius.circular(17),
           gradient: const LinearGradient(
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
@@ -872,19 +1104,22 @@ class _CreateAgentButton extends StatelessWidget {
           ],
         ),
         child: FilledButton(
-          onPressed: onPressed,
+          onPressed: loading ? null : onPressed,
           style: FilledButton.styleFrom(
             backgroundColor: Colors.transparent,
+            disabledBackgroundColor: Colors.transparent,
             shadowColor: Colors.transparent,
             foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(21),
+              borderRadius: BorderRadius.circular(17),
             ),
           ),
-          child: const Text(
-            '让故事开始',
-            style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
-          ),
+          child: loading
+              ? const CupertinoActivityIndicator(color: Colors.white)
+              : const Text(
+                  '让故事开始',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+                ),
         ),
       ),
     );
@@ -892,6 +1127,17 @@ class _CreateAgentButton extends StatelessWidget {
 }
 
 enum _AgentGender { male, female, random }
+
+extension _AgentGenderApi on _AgentGender {
+  String get apiValue {
+    return switch (this) {
+      _AgentGender.male => 'male',
+      _AgentGender.female => 'female',
+      _AgentGender.random =>
+        math.Random.secure().nextBool() ? 'male' : 'female',
+    };
+  }
+}
 
 class _TraitDraft {
   const _TraitDraft({
