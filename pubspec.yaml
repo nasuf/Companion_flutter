@@ -60,6 +60,10 @@ flutter:
 
   assets:
     - assets/prototype/logo.png
+    - assets/prototype/daily-journal.jpg
+    - assets/prototype/movie-bouquet.jpg
+    - assets/prototype/game-pieces.jpg
+    - assets/prototype/vinyl-record.jpg
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

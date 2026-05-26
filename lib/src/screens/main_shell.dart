@@ -46,10 +46,7 @@ class _MainShellState extends State<MainShell> {
           );
     final pages = [
       chatPage,
-      const PlaceholderPage(
-        title: '线上交互',
-        icon: CupertinoIcons.antenna_radiowaves_left_right,
-      ),
+      const OnlineInteractionPage(),
       const PlaceholderPage(
         title: '线下交互',
         icon: CupertinoIcons.map_pin_ellipse,

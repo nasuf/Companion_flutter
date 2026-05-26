@@ -17,6 +17,7 @@ part 'src/screens/agent_create_page.dart';
 part 'src/screens/chat/chat_page.dart';
 part 'src/screens/login_page.dart';
 part 'src/screens/main_shell.dart';
+part 'src/screens/online_interaction_page.dart';
 part 'src/screens/placeholder_page.dart';
 part 'src/theme/app_colors.dart';
 part 'src/utils/formatting.dart';
