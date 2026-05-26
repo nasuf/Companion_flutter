@@ -82,6 +82,22 @@ class CompanionApi {
     return session;
   }
 
+  Future<AuthSession> wechatMobileLogin(
+    String code, {
+    required String platform,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/auth/wechat/mobile',
+              body: {'code': code, 'platform': platform},
+            )
+            as Map<String, dynamic>;
+    final session = AuthSession.fromJson(json);
+    authToken = session.token;
+    return session;
+  }
+
   Future<AuthSession> getMe(String token) async {
     authToken = token;
     final json = await _request('GET', '/auth/me') as Map<String, dynamic>;

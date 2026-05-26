@@ -1,4 +1,5 @@
 import 'package:companion_flutter/main.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -19,5 +20,17 @@ void main() {
     expect(find.text('后端地址'), findsOneWidget);
     expect(find.text('账号'), findsOneWidget);
     expect(find.text('密码'), findsOneWidget);
+  });
+
+  testWidgets('wechat login shows unavailable state before sdk setup', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const CompanionApp());
+
+    await tester.tap(find.byIcon(CupertinoIcons.chat_bubble_2_fill));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('微信登录暂未开放'), findsOneWidget);
   });
 }

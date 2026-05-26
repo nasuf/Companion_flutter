@@ -14,7 +14,10 @@ class _LoginPageState extends State<LoginPage>
   final _apiBaseController = TextEditingController(text: defaultApiBaseUrl);
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _wechatLoginService = WeChatLoginService();
   late final AnimationController _breathController;
+  bool _wechatSubmitting = false;
+  String? _wechatError;
 
   @override
   void initState() {
@@ -55,13 +58,33 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
-  void _openAgentCreatePage() {
-    Navigator.of(context).push(
-      CupertinoPageRoute<void>(
-        fullscreenDialog: true,
-        builder: (_) => const AgentCreatePage(),
-      ),
+  Future<void> _loginWithWechat() async {
+    if (_wechatSubmitting) return;
+    FocusScope.of(context).unfocus();
+    final baseUrl = _apiBaseController.text.trim().replaceAll(
+      RegExp(r'/$'),
+      '',
     );
+    if (baseUrl.isEmpty) return;
+
+    setState(() {
+      _wechatSubmitting = true;
+      _wechatError = null;
+    });
+    try {
+      final api = CompanionApi(baseUrl: baseUrl);
+      final loggedIn = await _wechatLoginService.login(
+        api: api,
+        platform: currentWechatPlatform(),
+      );
+      final session = await api.ensureConversation(loggedIn);
+      if (!mounted) return;
+      widget.onAuthenticated(api, session);
+    } catch (error) {
+      if (mounted) setState(() => _wechatError = _asMessage(error));
+    } finally {
+      if (mounted) setState(() => _wechatSubmitting = false);
+    }
   }
 
   @override
@@ -145,8 +168,23 @@ class _LoginPageState extends State<LoginPage>
                           const SizedBox(height: 18),
                           const _LoginDivider(),
                           const SizedBox(height: 22),
-                          _SocialLoginRow(onWechatTap: _openAgentCreatePage),
-                          const SizedBox(height: 26),
+                          _SocialLoginRow(
+                            onWechatTap: _loginWithWechat,
+                            wechatLoading: _wechatSubmitting,
+                          ),
+                          if (_wechatError != null) ...[
+                            SizedBox(height: compact ? 8 : 12),
+                            Text(
+                              _wechatError!,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Color(0xFFD95B5B),
+                                fontSize: compact ? 12 : 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                          SizedBox(height: compact ? 14 : 26),
                           const _PrivacyLine(),
                         ],
                       ),
@@ -499,9 +537,13 @@ class _LoginDivider extends StatelessWidget {
 }
 
 class _SocialLoginRow extends StatelessWidget {
-  const _SocialLoginRow({required this.onWechatTap});
+  const _SocialLoginRow({
+    required this.onWechatTap,
+    required this.wechatLoading,
+  });
 
   final VoidCallback onWechatTap;
+  final bool wechatLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -512,7 +554,7 @@ class _SocialLoginRow extends StatelessWidget {
         const SizedBox(width: 20),
         const _SocialButton.douyin(),
         const SizedBox(width: 20),
-        _SocialButton.wechat(onTap: onWechatTap),
+        _SocialButton.wechat(onTap: onWechatTap, loading: wechatLoading),
       ],
     );
   }
@@ -523,15 +565,17 @@ class _SocialButton extends StatelessWidget {
     : color = const Color(0xFF0D1117),
       icon = null,
       text = '\uF8FF',
+      loading = false,
       onTap = null;
 
   const _SocialButton.douyin()
     : color = const Color(0xFF1B2028),
       icon = CupertinoIcons.music_note_2,
       text = null,
+      loading = false,
       onTap = null;
 
-  const _SocialButton.wechat({required this.onTap})
+  const _SocialButton.wechat({required this.onTap, this.loading = false})
     : color = const Color(0xFF14BA1A),
       icon = CupertinoIcons.chat_bubble_2_fill,
       text = null;
@@ -540,13 +584,14 @@ class _SocialButton extends StatelessWidget {
   final IconData? icon;
   final String? text;
   final VoidCallback? onTap;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
-      onPressed: onTap ?? () {},
+      onPressed: loading ? null : (onTap ?? () {}),
       child: Container(
         width: 58,
         height: 58,
@@ -563,7 +608,9 @@ class _SocialButton extends StatelessWidget {
           ],
         ),
         child: Center(
-          child: text != null
+          child: loading
+              ? const CupertinoActivityIndicator(color: Colors.white)
+              : text != null
               ? Text(
                   text!,
                   style: const TextStyle(

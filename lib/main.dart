@@ -5,12 +5,14 @@ import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:fluwx/fluwx.dart';
 
 import 'chat_socket.dart';
 import 'companion_api.dart';
 import 'models.dart';
 
 part 'src/app/auth_gate.dart';
+part 'src/auth/wechat_login_service.dart';
 part 'src/screens/agent_create_page.dart';
 part 'src/screens/chat/chat_page.dart';
 part 'src/screens/login_page.dart';
@@ -30,6 +32,8 @@ void main() {
 }
 
 String get defaultApiBaseUrl {
+  const configured = String.fromEnvironment('API_BASE_URL');
+  if (configured.isNotEmpty) return configured;
   if (Platform.isAndroid) return 'http://10.0.2.2:8000';
   return 'http://localhost:8000';
 }

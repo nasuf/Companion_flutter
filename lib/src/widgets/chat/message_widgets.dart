@@ -60,11 +60,13 @@ class _MessageRow extends StatelessWidget {
   const _MessageRow({required this.message});
 
   final ChatMessage message;
+  static const _avatarSize = 36.0;
+  static const _avatarGap = 10.0;
 
   @override
   Widget build(BuildContext context) {
     final avatar = _Avatar(
-      size: 28,
+      size: _avatarSize,
       label: message.isMine ? '我' : '伴',
       gradient: message.isMine
           ? const [Color(0xFFE8F3FF), Color(0xFFF8FBFF)]
@@ -79,9 +81,9 @@ class _MessageRow extends StatelessWidget {
             ? MainAxisAlignment.end
             : MainAxisAlignment.start,
         children: [
-          if (!message.isMine) ...[avatar, const SizedBox(width: 8)],
+          if (!message.isMine) ...[avatar, const SizedBox(width: _avatarGap)],
           _Bubble(message: message),
-          if (message.isMine) ...[const SizedBox(width: 8), avatar],
+          if (message.isMine) ...[const SizedBox(width: _avatarGap), avatar],
         ],
       ),
     );
@@ -184,6 +186,13 @@ class _Avatar extends StatelessWidget {
         shape: BoxShape.circle,
         gradient: LinearGradient(colors: gradient),
         border: Border.all(color: AppColors.hairline),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.accent.withValues(alpha: 0.10),
+            blurRadius: size * 0.42,
+            offset: Offset(0, size * 0.14),
+          ),
+        ],
       ),
       child: Center(
         child: Text(

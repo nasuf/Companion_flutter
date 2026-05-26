@@ -14,7 +14,7 @@ class _ChatHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 58,
+      height: 66,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: const BoxDecoration(
         color: AppColors.page,
@@ -23,7 +23,7 @@ class _ChatHeader extends StatelessWidget {
       child: Row(
         children: [
           const _Avatar(
-            size: 38,
+            size: 44,
             label: '伴',
             gradient: [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
           ),
