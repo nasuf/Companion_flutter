@@ -47,10 +47,7 @@ class _MainShellState extends State<MainShell> {
     final pages = [
       chatPage,
       const OnlineInteractionPage(),
-      const PlaceholderPage(
-        title: '线下交互',
-        icon: CupertinoIcons.map_pin_ellipse,
-      ),
+      OfflineInteractionPage(agentName: widget.session.agentName ?? '伴生'),
       PlaceholderPage(
         title: '我的',
         icon: CupertinoIcons.person_crop_circle,
