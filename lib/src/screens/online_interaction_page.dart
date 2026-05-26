@@ -16,7 +16,7 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 7600),
+      duration: const Duration(milliseconds: 18000),
     )..repeat(reverse: true);
   }
 
@@ -72,7 +72,7 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
                       final portal = _onlinePortals[index];
                       return Transform.translate(
                         offset: Offset(0, index.isOdd ? 12 : 0),
-                        child: _FloatingPortalCard(
+                        child: _OnlinePortalCard(
                           portal: portal,
                           index: index,
                           progress: progress,
@@ -111,8 +111,8 @@ class _OnlineBackground extends StatelessWidget {
         children: [
           Positioned.fill(child: CustomPaint(painter: _OnlineGridPainter())),
           Positioned(
-            right: -88 + 20 * progress,
-            top: -4 + 16 * progress,
+            right: -88 + 10 * progress,
+            top: -4 + 8 * progress,
             child: _OnlineAura(
               size: const Size(290, 250),
               color: const Color(0x5797D0FF),
@@ -120,8 +120,8 @@ class _OnlineBackground extends StatelessWidget {
             ),
           ),
           Positioned(
-            left: -126 - 10 * progress,
-            top: 108 + 18 * progress,
+            left: -126 - 5 * progress,
+            top: 108 + 9 * progress,
             child: _OnlineAura(
               size: const Size(280, 250),
               color: const Color(0x4DFFD6B9),
@@ -130,7 +130,7 @@ class _OnlineBackground extends StatelessWidget {
           ),
           Positioned(
             right: -72,
-            top: 408 - 20 * progress,
+            top: 408 - 10 * progress,
             child: _OnlineAura(
               size: const Size(320, 270),
               color: const Color(0x3DD9CFFF),
@@ -142,7 +142,7 @@ class _OnlineBackground extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: RadialGradient(
                   center: const Alignment(0.70, -0.58),
-                  radius: 0.72 + 0.04 * progress,
+                  radius: 0.72 + 0.025 * progress,
                   colors: [
                     Colors.white.withValues(alpha: 0.62),
                     Colors.transparent,
@@ -215,30 +215,31 @@ class _OnlineHero extends StatelessWidget {
         clipBehavior: Clip.none,
         children: [
           Positioned(
-            right: -2 + math.cos(progress * math.pi * 2) * 11,
-            top: 4 + math.sin(progress * math.pi * 2) * 9,
+            right: -2 + math.cos(progress * math.pi * 2) * 5,
+            top: 4 + math.sin(progress * math.pi * 2) * 4,
             child: Transform.rotate(
               angle:
-                  (13 + math.sin(progress * math.pi * 2) * 2.8) * math.pi / 180,
+                  (13 + math.sin(progress * math.pi * 2) * 1.4) * math.pi / 180,
               child: const _OnlinePrimaryFloater(),
             ),
           ),
           Positioned(
-            right: 50 + math.cos(progress * math.pi * 2 + 0.6) * 5,
-            top: 108 - math.sin(progress * math.pi * 2 + 0.6) * 6,
+            right: 50 + math.cos(progress * math.pi * 2 + 0.6) * 3,
+            top: 108 - math.sin(progress * math.pi * 2 + 0.6) * 3,
             child: Transform.rotate(
               angle:
-                  (10 + math.sin(progress * math.pi * 2 + 0.6) * 2.5) *
+                  (10 + math.sin(progress * math.pi * 2 + 0.6) * 1.2) *
                   math.pi /
                   180,
               child: const _OnlineGlassTile(),
             ),
           ),
           Positioned(
-            right: 60 + math.cos(progress * math.pi * 2 + 1.2) * 7,
-            top: 86 + math.sin(progress * math.pi * 2 + 1.2) * 5,
+            right: 60 + math.cos(progress * math.pi * 2 + 1.2) * 3,
+            top: 86 + math.sin(progress * math.pi * 2 + 1.2) * 2.5,
             child: Transform.rotate(
-              angle: (8 - math.sin(progress * math.pi * 2) * 6) * math.pi / 180,
+              angle:
+                  (8 - math.sin(progress * math.pi * 2) * 2.2) * math.pi / 180,
               child: const _OnlineGlassOrb(),
             ),
           ),
@@ -455,8 +456,8 @@ class _OrbitDot extends StatelessWidget {
   }
 }
 
-class _FloatingPortalCard extends StatelessWidget {
-  const _FloatingPortalCard({
+class _OnlinePortalCard extends StatelessWidget {
+  const _OnlinePortalCard({
     required this.portal,
     required this.index,
     required this.progress,
@@ -470,42 +471,42 @@ class _FloatingPortalCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final phase = progress * math.pi * 2 + index * 0.74;
-    return Transform.translate(
-      offset: Offset(math.cos(phase) * 1.8, math.sin(phase) * 3.2),
-      child: CupertinoButton(
-        padding: EdgeInsets.zero,
-        minimumSize: Size.zero,
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: Size.zero,
+      borderRadius: BorderRadius.circular(32),
+      onPressed: onTap,
+      child: ClipRRect(
         borderRadius: BorderRadius.circular(32),
-        onPressed: onTap,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(32),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.34),
-              borderRadius: BorderRadius.circular(32),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.86)),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF40546A).withValues(alpha: 0.14),
-                  blurRadius: 28,
-                  offset: const Offset(0, 16),
-                ),
-                BoxShadow(
-                  color: portal.accent.withValues(alpha: 0.12),
-                  blurRadius: 30,
-                  offset: const Offset(0, 14),
-                ),
-              ],
-            ),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                _BreathingPortalImage(portal: portal, progress: progress),
-                const _PortalBottomBlur(),
-                _PortalText(portal: portal),
-              ],
-            ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.34),
+            borderRadius: BorderRadius.circular(32),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.86)),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF40546A).withValues(alpha: 0.14),
+                blurRadius: 28,
+                offset: const Offset(0, 16),
+              ),
+              BoxShadow(
+                color: portal.accent.withValues(alpha: 0.12),
+                blurRadius: 30,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _BreathingPortalImage(
+                portal: portal,
+                progress: progress,
+                phaseOffset: index * 0.72,
+              ),
+              const _PortalBottomBlur(),
+              _PortalText(portal: portal),
+            ],
           ),
         ),
       ),
@@ -514,17 +515,25 @@ class _FloatingPortalCard extends StatelessWidget {
 }
 
 class _BreathingPortalImage extends StatelessWidget {
-  const _BreathingPortalImage({required this.portal, required this.progress});
+  const _BreathingPortalImage({
+    required this.portal,
+    required this.progress,
+    required this.phaseOffset,
+  });
 
   final _OnlinePortal portal;
   final double progress;
+  final double phaseOffset;
 
   @override
   Widget build(BuildContext context) {
-    final phase = Curves.easeInOut.transform(progress);
-    final dx = lerpDouble(portal.motion.startX, portal.motion.endX, phase)!;
-    final dy = lerpDouble(portal.motion.startY, portal.motion.endY, phase)!;
-    final scale = lerpDouble(1.075, 1.105, phase)!;
+    final wave = (math.sin(progress * math.pi * 2 + phaseOffset) + 1) / 2;
+    final eased = Curves.easeInOut.transform(wave);
+    final dx =
+        lerpDouble(portal.motion.startX, portal.motion.endX, eased)! * 0.52;
+    final dy =
+        lerpDouble(portal.motion.startY, portal.motion.endY, eased)! * 0.52;
+    final scale = lerpDouble(1.065, 1.085, eased)!;
     return Transform.translate(
       offset: Offset(dx, dy),
       child: Transform.scale(
