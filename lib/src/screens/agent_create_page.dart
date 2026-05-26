@@ -12,11 +12,13 @@ class AgentCreatePage extends StatefulWidget {
 }
 
 class _AgentCreatePageState extends State<AgentCreatePage>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _breathController;
+  late final AnimationController _traitMoveController;
   final _nameController = TextEditingController(text: '小芜');
   var _gender = _AgentGender.female;
   late List<_TraitDraft> _traits;
+  List<int>? _previousTraitValues;
   bool _submitting = false;
   String? _error;
 
@@ -27,6 +29,11 @@ class _AgentCreatePageState extends State<AgentCreatePage>
       vsync: this,
       duration: const Duration(milliseconds: 2800),
     )..repeat(reverse: true);
+    _traitMoveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 560),
+      value: 1,
+    );
     _traits = _defaultTraits
         .map(
           (trait) => _TraitDraft(
@@ -43,17 +50,26 @@ class _AgentCreatePageState extends State<AgentCreatePage>
   @override
   void dispose() {
     _breathController.dispose();
+    _traitMoveController.dispose();
     _nameController.dispose();
     super.dispose();
   }
 
   void _randomizeTraits() {
     final random = math.Random.secure();
+    final previousValues = _traits
+        .map((trait) => trait.value)
+        .toList(growable: false);
+    final nextTraits = <_TraitDraft>[];
+    for (final trait in _traits) {
+      nextTraits.add(trait.copyWith(value: 42 + random.nextInt(35)));
+    }
+    _traitMoveController.value = 0;
     setState(() {
-      for (var i = 0; i < _traits.length; i += 1) {
-        _traits[i] = _traits[i].copyWith(value: 42 + random.nextInt(35));
-      }
+      _previousTraitValues = previousValues;
+      _traits = nextTraits;
     });
+    _traitMoveController.forward();
   }
 
   Future<void> _submit() async {
@@ -123,9 +139,12 @@ class _AgentCreatePageState extends State<AgentCreatePage>
     return Scaffold(
       resizeToAvoidBottomInset: false,
       body: AnimatedBuilder(
-        animation: _breathController,
+        animation: Listenable.merge([_breathController, _traitMoveController]),
         builder: (context, _) {
           final progress = Curves.easeInOut.transform(_breathController.value);
+          final moveProgress = Curves.easeOutCubic.transform(
+            _traitMoveController.value,
+          );
           return Stack(
             children: [
               _AgentCreateBackdrop(progress: progress),
@@ -162,10 +181,14 @@ class _AgentCreatePageState extends State<AgentCreatePage>
                         padding: const EdgeInsets.fromLTRB(30, 14, 30, 0),
                         child: _TraitStudio(
                           traits: _traits,
+                          previousTraitValues: _previousTraitValues,
                           progress: progress,
+                          moveProgress: moveProgress,
                           onRandomize: _randomizeTraits,
                           onChanged: (index, value) {
+                            _traitMoveController.value = 1;
                             setState(() {
+                              _previousTraitValues = null;
                               _traits[index] = _traits[index].copyWith(
                                 value: value.round(),
                               );
@@ -640,13 +663,17 @@ class _GenderPill extends StatelessWidget {
 class _TraitStudio extends StatelessWidget {
   const _TraitStudio({
     required this.traits,
+    required this.previousTraitValues,
     required this.progress,
+    required this.moveProgress,
     required this.onRandomize,
     required this.onChanged,
   });
 
   final List<_TraitDraft> traits;
+  final List<int>? previousTraitValues;
   final double progress;
+  final double moveProgress;
   final VoidCallback onRandomize;
   final void Function(int index, double value) onChanged;
 
@@ -663,26 +690,45 @@ class _TraitStudio extends StatelessWidget {
                   '灵魂倾向',
                   style: TextStyle(
                     color: Color(0x7A181F26),
-                    fontSize: 12,
+                    fontSize: 15,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
-              CupertinoButton(
-                minimumSize: Size.zero,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppColors.accentDeep.withValues(alpha: 0.92),
+                      AppColors.accentCyan.withValues(alpha: 0.84),
+                    ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.accentDeep.withValues(alpha: 0.13),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
                 ),
-                borderRadius: BorderRadius.circular(999),
-                color: Colors.white.withValues(alpha: 0.44),
-                onPressed: onRandomize,
-                child: const Text(
-                  '随机生成',
-                  style: TextStyle(
-                    color: Color(0xFF143137),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
+                child: CupertinoButton(
+                  minimumSize: Size.zero,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  borderRadius: BorderRadius.circular(999),
+                  onPressed: onRandomize,
+                  child: const Text(
+                    '随机生成',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),
@@ -692,7 +738,12 @@ class _TraitStudio extends StatelessWidget {
         SizedBox(
           height: 138,
           child: CustomPaint(
-            painter: _TraitMapPainter(traits: traits, progress: progress),
+            painter: _TraitMapPainter(
+              traits: traits,
+              previousTraitValues: previousTraitValues,
+              progress: progress,
+              moveProgress: moveProgress,
+            ),
             child: const SizedBox.expand(),
           ),
         ),
@@ -704,6 +755,8 @@ class _TraitStudio extends StatelessWidget {
                 trait: traits[i],
                 previousColor: i == 0 ? null : traits[i - 1].color,
                 nextColor: i == traits.length - 1 ? null : traits[i + 1].color,
+                fadeTop: i == 0,
+                fadeBottom: i == traits.length - 1,
                 progress: progress,
                 onChanged: (value) => onChanged(i, value),
               ),
@@ -719,6 +772,8 @@ class _TraitSliderRow extends StatelessWidget {
     required this.trait,
     required this.previousColor,
     required this.nextColor,
+    required this.fadeTop,
+    required this.fadeBottom,
     required this.progress,
     required this.onChanged,
   });
@@ -726,156 +781,159 @@ class _TraitSliderRow extends StatelessWidget {
   final _TraitDraft trait;
   final Color? previousColor;
   final Color? nextColor;
+  final bool fadeTop;
+  final bool fadeBottom;
   final double progress;
   final ValueChanged<double> onChanged;
 
   @override
   Widget build(BuildContext context) {
     final value = trait.value.toDouble();
-    return Container(
+    return SizedBox(
       height: 58,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [
-            Colors.transparent,
-            trait.color.withValues(alpha: 0.026 + 0.018 * progress),
-            trait.color.withValues(alpha: 0.038 + 0.022 * progress),
-            Colors.transparent,
-          ],
-          stops: const [0, 0.24, 0.58, 1],
-        ),
-      ),
-      child: Row(
+      child: Stack(
         children: [
-          SizedBox(
-            width: 18,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Positioned.fill(
-                  child: Align(
-                    alignment: Alignment.center,
-                    child: Container(
-                      width: 1,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            (previousColor ?? trait.color).withValues(
-                              alpha: previousColor == null ? 0.02 : 0.16,
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _TraitRowBackgroundPainter(
+                color: trait.color,
+                progress: progress,
+                fadeTop: fadeTop,
+                fadeBottom: fadeBottom,
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              SizedBox(
+                width: 18,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Positioned.fill(
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: Container(
+                          width: 1,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                (previousColor ?? trait.color).withValues(
+                                  alpha: previousColor == null ? 0.02 : 0.16,
+                                ),
+                                trait.color.withValues(alpha: 0.24),
+                                (nextColor ?? trait.color).withValues(
+                                  alpha: nextColor == null ? 0.02 : 0.16,
+                                ),
+                              ],
                             ),
-                            trait.color.withValues(alpha: 0.24),
-                            (nextColor ?? trait.color).withValues(
-                              alpha: nextColor == null ? 0.02 : 0.16,
+                          ),
+                        ),
+                      ),
+                    ),
+                    AnimatedScale(
+                      scale: 1 + 0.05 * progress,
+                      duration: const Duration(milliseconds: 120),
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: trait.color,
+                          boxShadow: [
+                            BoxShadow(
+                              color: trait.color.withValues(
+                                alpha: 0.12 + 0.10 * progress,
+                              ),
+                              blurRadius: 10 + 6 * progress,
+                              spreadRadius: 3 + 3 * progress,
                             ),
                           ],
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-                AnimatedScale(
-                  scale: 1 + 0.05 * progress,
-                  duration: const Duration(milliseconds: 120),
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: trait.color,
-                      boxShadow: [
-                        BoxShadow(
-                          color: trait.color.withValues(
-                            alpha: 0.12 + 0.10 * progress,
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            trait.name,
+                            style: const TextStyle(
+                              color: AppColors.text,
+                              fontSize: 13,
+                              height: 1,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
-                          blurRadius: 10 + 6 * progress,
-                          spreadRadius: 3 + 3 * progress,
+                        ),
+                        Text(
+                          trait.value.toString(),
+                          style: const TextStyle(
+                            color: AppColors.text,
+                            fontSize: 11,
+                            height: 1,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        trait.name,
-                        style: const TextStyle(
-                          color: AppColors.text,
-                          fontSize: 13,
-                          height: 1,
-                          fontWeight: FontWeight.w900,
+                    const SizedBox(height: 5),
+                    Row(
+                      children: [
+                        Text(
+                          trait.low,
+                          style: const TextStyle(
+                            color: Color(0x66181F26),
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          trait.high,
+                          style: const TextStyle(
+                            color: Color(0x66181F26),
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 2.6,
+                        activeTrackColor: trait.color.withValues(alpha: 0.72),
+                        inactiveTrackColor: const Color(0x12181F26),
+                        thumbColor: Colors.white,
+                        overlayColor: trait.color.withValues(alpha: 0.12),
+                        trackShape: const _FullWidthSliderTrackShape(),
+                        thumbShape: _RingSliderThumbShape(color: trait.color),
+                        overlayShape: const RoundSliderOverlayShape(
+                          overlayRadius: 12,
                         ),
                       ),
-                    ),
-                    Text(
-                      trait.value.toString(),
-                      style: const TextStyle(
-                        color: AppColors.text,
-                        fontSize: 11,
-                        height: 1,
-                        fontWeight: FontWeight.w900,
+                      child: Slider(
+                        min: 0,
+                        max: 100,
+                        value: value,
+                        onChanged: onChanged,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 5),
-                Row(
-                  children: [
-                    Text(
-                      trait.low,
-                      style: const TextStyle(
-                        color: Color(0x66181F26),
-                        fontSize: 8.5,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      trait.high,
-                      style: const TextStyle(
-                        color: Color(0x66181F26),
-                        fontSize: 8.5,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 2.6,
-                    activeTrackColor: trait.color.withValues(alpha: 0.72),
-                    inactiveTrackColor: const Color(0x12181F26),
-                    thumbColor: Colors.white,
-                    overlayColor: trait.color.withValues(alpha: 0.12),
-                    trackShape: const _FullWidthSliderTrackShape(),
-                    thumbShape: _RingSliderThumbShape(color: trait.color),
-                    overlayShape: const RoundSliderOverlayShape(
-                      overlayRadius: 12,
-                    ),
-                  ),
-                  child: Slider(
-                    min: 0,
-                    max: 100,
-                    value: value,
-                    onChanged: onChanged,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
@@ -883,11 +941,80 @@ class _TraitSliderRow extends StatelessWidget {
   }
 }
 
+class _TraitRowBackgroundPainter extends CustomPainter {
+  const _TraitRowBackgroundPainter({
+    required this.color,
+    required this.progress,
+    required this.fadeTop,
+    required this.fadeBottom,
+  });
+
+  final Color color;
+  final double progress;
+  final bool fadeTop;
+  final bool fadeBottom;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    canvas.saveLayer(rect, Paint());
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            Colors.transparent,
+            color.withValues(alpha: 0.026 + 0.018 * progress),
+            color.withValues(alpha: 0.038 + 0.022 * progress),
+            Colors.transparent,
+          ],
+          stops: const [0, 0.24, 0.58, 1],
+        ).createShader(rect),
+    );
+
+    if (fadeTop || fadeBottom) {
+      final stops = fadeTop ? const [0.0, 0.42, 1.0] : const [0.0, 0.58, 1.0];
+      final colors = fadeTop
+          ? const [Colors.transparent, Colors.white, Colors.white]
+          : const [Colors.white, Colors.white, Colors.transparent];
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..blendMode = BlendMode.dstIn
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: colors,
+            stops: stops,
+          ).createShader(rect),
+      );
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _TraitRowBackgroundPainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.progress != progress ||
+        oldDelegate.fadeTop != fadeTop ||
+        oldDelegate.fadeBottom != fadeBottom;
+  }
+}
+
 class _TraitMapPainter extends CustomPainter {
-  const _TraitMapPainter({required this.traits, required this.progress});
+  const _TraitMapPainter({
+    required this.traits,
+    required this.previousTraitValues,
+    required this.progress,
+    required this.moveProgress,
+  });
 
   final List<_TraitDraft> traits;
+  final List<int>? previousTraitValues;
   final double progress;
+  final double moveProgress;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -959,7 +1086,13 @@ class _TraitMapPainter extends CustomPainter {
     for (var i = 0; i < traits.length; i += 1) {
       final trait = traits[i];
       final x = size.width * (0.18 + i * 0.105);
-      final valueY = (100 - trait.value) / 100;
+      final previousValue =
+          previousTraitValues != null && i < previousTraitValues!.length
+          ? previousTraitValues![i]
+          : trait.value;
+      final displayedValue =
+          lerpDouble(previousValue, trait.value, moveProgress) ?? trait.value;
+      final valueY = (100 - displayedValue) / 100;
       final y = 22 + valueY * (size.height - 54);
       final center = Offset(x, y);
       final haloRadius = 13 + 7 * progress;
@@ -1012,7 +1145,10 @@ class _TraitMapPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _TraitMapPainter oldDelegate) {
-    return true;
+    return oldDelegate.traits != traits ||
+        oldDelegate.previousTraitValues != previousTraitValues ||
+        oldDelegate.progress != progress ||
+        oldDelegate.moveProgress != moveProgress;
   }
 }
 
