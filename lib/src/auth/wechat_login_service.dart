@@ -5,7 +5,10 @@ const _wechatUniversalLink = String.fromEnvironment(
   defaultValue: 'https://banshengcomp.com/wechat/',
 );
 
-const _wechatAppId = String.fromEnvironment('WECHAT_APP_ID');
+const _wechatAppId = String.fromEnvironment(
+  'WECHAT_APP_ID',
+  defaultValue: 'wx1411402de055bd22',
+);
 
 class WeChatLoginException implements Exception {
   const WeChatLoginException(this.message);
