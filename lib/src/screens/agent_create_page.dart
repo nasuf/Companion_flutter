@@ -57,9 +57,22 @@ class _AgentCreatePageState extends State<AgentCreatePage>
 
   void _randomizeTraits() {
     final random = math.Random.secure();
-    final previousValues = _traits
-        .map((trait) => trait.value)
-        .toList(growable: false);
+    final traitMoveProgress = Curves.easeOutCubic.transform(
+      _traitMoveController.value,
+    );
+    final previousValues = List<int>.generate(_traits.length, (index) {
+      final previousValue =
+          _previousTraitValues != null && index < _previousTraitValues!.length
+          ? _previousTraitValues![index]
+          : _traits[index].value;
+      return (lerpDouble(
+                previousValue,
+                _traits[index].value,
+                traitMoveProgress,
+              ) ??
+              _traits[index].value)
+          .round();
+    }, growable: false);
     final nextTraits = <_TraitDraft>[];
     for (final trait in _traits) {
       nextTraits.add(trait.copyWith(value: 42 + random.nextInt(35)));
@@ -753,11 +766,17 @@ class _TraitStudio extends StatelessWidget {
             for (var i = 0; i < traits.length; i += 1)
               _TraitSliderRow(
                 trait: traits[i],
+                previousValue:
+                    previousTraitValues != null &&
+                        i < previousTraitValues!.length
+                    ? previousTraitValues![i]
+                    : null,
                 previousColor: i == 0 ? null : traits[i - 1].color,
                 nextColor: i == traits.length - 1 ? null : traits[i + 1].color,
                 fadeTop: i == 0,
                 fadeBottom: i == traits.length - 1,
                 progress: progress,
+                moveProgress: moveProgress,
                 onChanged: (value) => onChanged(i, value),
               ),
           ],
@@ -770,25 +789,32 @@ class _TraitStudio extends StatelessWidget {
 class _TraitSliderRow extends StatelessWidget {
   const _TraitSliderRow({
     required this.trait,
+    required this.previousValue,
     required this.previousColor,
     required this.nextColor,
     required this.fadeTop,
     required this.fadeBottom,
     required this.progress,
+    required this.moveProgress,
     required this.onChanged,
   });
 
   final _TraitDraft trait;
+  final int? previousValue;
   final Color? previousColor;
   final Color? nextColor;
   final bool fadeTop;
   final bool fadeBottom;
   final double progress;
+  final double moveProgress;
   final ValueChanged<double> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final value = trait.value.toDouble();
+    final value =
+        lerpDouble(previousValue ?? trait.value, trait.value, moveProgress) ??
+        trait.value.toDouble();
+    final displayedValue = value.round();
     return SizedBox(
       height: 58,
       child: Stack(
@@ -877,7 +903,7 @@ class _TraitSliderRow extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          trait.value.toString(),
+                          displayedValue.toString(),
                           style: const TextStyle(
                             color: AppColors.text,
                             fontSize: 11,
