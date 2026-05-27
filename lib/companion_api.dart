@@ -214,6 +214,43 @@ class CompanionApi {
         .toList();
   }
 
+  Future<TimeCapsule> getTimeCapsule(String capsuleId) async {
+    final json =
+        await _request(
+              'GET',
+              '/capsules/$capsuleId',
+              debugLabel: 'capsule.detail',
+            )
+            as Map<String, dynamic>;
+    return TimeCapsule.fromJson(json);
+  }
+
+  Future<Map<String, dynamic>> uploadTimeCapsuleMedia({
+    required String kind,
+    required String name,
+    required String mime,
+    required int size,
+    required String base64Data,
+    int? durationSeconds,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/capsules/media',
+              body: {
+                'kind': kind,
+                'name': name,
+                'mime': mime,
+                'size': size,
+                'duration_seconds': durationSeconds,
+                'base64': base64Data,
+              },
+              debugLabel: 'capsule.media.$kind',
+            )
+            as Map<String, dynamic>;
+    return Map<String, dynamic>.from(json);
+  }
+
   Future<TimeCapsule> createTimeCapsule({
     required String agentId,
     required String content,

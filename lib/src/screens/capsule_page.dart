@@ -238,10 +238,14 @@ class _CapsulePageState extends State<CapsulePage> {
   }
 
   Future<void> _openPending(List<TimeCapsule> pending) async {
-    await Navigator.of(context).push<void>(
-      CupertinoPageRoute(
-        builder: (_) => _PendingCapsulesPage(capsules: pending),
-      ),
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      enableDrag: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.42),
+      builder: (_) =>
+          _CapsulePickerSheet(title: '待开启', capsules: pending, locked: true),
     );
     if (!mounted) return;
     await _reloadLatestCapsules();
@@ -277,10 +281,10 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
   String _skin = 'paper';
   _CapsuleImageAttachment? _image;
   _CapsuleVoiceAttachment? _voice;
-  late final String _initialContent;
-  late final String _initialSkin;
-  late final DateTime? _initialOpenDate;
-  late final String _initialMediaKey;
+  late String _initialContent;
+  late String _initialSkin;
+  late DateTime? _initialOpenDate;
+  late String _initialMediaKey;
   bool _voicePlaying = false;
   Timer? _recordTimer;
   bool _recording = false;
@@ -301,6 +305,7 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
     _initialSkin = _skin;
     _initialOpenDate = _openDate;
     _initialMediaKey = _mediaKey(_mediaPayload());
+    unawaited(_loadDraftDetailMedia());
   }
 
   @override
@@ -313,6 +318,22 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
     }
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadDraftDetailMedia() async {
+    final draft = widget.draft;
+    if (draft == null || draft.media != null) return;
+    try {
+      final detail = await widget.api.getTimeCapsule(draft.id);
+      if (!mounted || _saving) return;
+      if (_mediaKey(_mediaPayload()) != _initialMediaKey) return;
+      setState(() {
+        _restoreMedia(detail.media);
+        _initialMediaKey = _mediaKey(_mediaPayload());
+      });
+    } catch (error) {
+      debugPrint('[capsule.detail] failed: $error');
+    }
   }
 
   void _restoreMedia(Map<String, dynamic>? media) {
@@ -330,6 +351,8 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
             size: (raw['size'] as num?)?.round() ?? bytes.length,
             base64Data: base64Value,
             bytes: bytes,
+            storageKey: raw['storage_key']?.toString(),
+            url: raw['url']?.toString(),
           );
         } catch (_) {
           _image = null;
@@ -347,6 +370,8 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
           size: (raw['size'] as num?)?.round() ?? 0,
           durationSeconds: (raw['duration_seconds'] as num?)?.round() ?? 1,
           base64Data: base64Value,
+          storageKey: raw['storage_key']?.toString(),
+          url: raw['url']?.toString(),
         );
       }
     }
@@ -418,10 +443,11 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
       final existing = widget.draft;
       final TimeCapsule saved;
       if (existing == null) {
+        final mediaForSave = await _prepareMediaForSave();
         _logSavePlan(
           action: 'create',
           status: status,
-          mediaAction: _mediaPayload() == null ? 'none' : 'upload',
+          mediaAction: mediaForSave == null ? 'none' : 'reference',
           requestFields: const [
             'content',
             'status',
@@ -430,18 +456,18 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
             'media',
           ],
         );
-        _setSavingMessage(_mediaPayload() == null ? '保存文字' : '上传附件');
+        _setSavingMessage('保存文字');
         saved = await widget.api.createTimeCapsule(
           agentId: agentId,
           workspaceId: widget.session.workspaceId,
           content: content,
           status: status,
           openDate: _openDate,
-          media: _mediaPayload(),
+          media: mediaForSave,
           skin: _skin,
         );
       } else {
-        final currentMedia = _mediaPayload();
+        var currentMedia = _mediaPayload();
         final mediaChanged = _mediaKey(currentMedia) != _initialMediaKey;
         final contentChanged = content != _initialContent;
         final skinChanged = _skin != _initialSkin;
@@ -461,11 +487,14 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
           }
           return;
         }
+        if (mediaChanged && currentMedia != null) {
+          currentMedia = await _prepareMediaForSave();
+        }
         final mediaAction = !mediaChanged
             ? 'skip'
             : currentMedia == null
             ? 'clear'
-            : 'upload';
+            : 'reference';
         _logSavePlan(
           action: 'update',
           status: status,
@@ -473,8 +502,8 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
           requestFields: requestFields,
         );
         _setSavingMessage(
-          mediaAction == 'upload'
-              ? '上传附件'
+          mediaAction == 'reference'
+              ? '保存附件'
               : statusChanged
               ? '更新状态'
               : '保存修改',
@@ -553,6 +582,35 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
       'images': [if (_image != null) _image!.toJson()],
       if (_voice != null) 'audio': _voice!.toJson(),
     };
+  }
+
+  Future<Map<String, dynamic>?> _prepareMediaForSave() async {
+    if (_image == null && _voice == null) return null;
+    if (_image != null && _image!.storageKey == null) {
+      _setSavingMessage('上传图片');
+      final uploaded = await widget.api.uploadTimeCapsuleMedia(
+        kind: 'image',
+        name: _image!.name,
+        mime: _image!.mime,
+        size: _image!.size,
+        base64Data: _image!.base64Data,
+      );
+      _image = _image!.withRemote(uploaded);
+    }
+    if (_voice != null && _voice!.storageKey == null) {
+      _setSavingMessage('上传语音');
+      final uploaded = await widget.api.uploadTimeCapsuleMedia(
+        kind: 'audio',
+        name: _voice!.name,
+        mime: _voice!.mime,
+        size: _voice!.size,
+        durationSeconds: _voice!.durationSeconds,
+        base64Data: _voice!.base64Data,
+      );
+      _voice = _voice!.withRemote(uploaded);
+    }
+    if (mounted) setState(() {});
+    return _mediaPayload();
   }
 
   String _mediaKey(Map<String, dynamic>? media) =>
@@ -968,6 +1026,8 @@ class _CapsuleImageAttachment {
     required this.size,
     required this.base64Data,
     required this.bytes,
+    this.storageKey,
+    this.url,
   });
 
   final String name;
@@ -975,9 +1035,30 @@ class _CapsuleImageAttachment {
   final int size;
   final String base64Data;
   final Uint8List bytes;
+  final String? storageKey;
+  final String? url;
 
   Map<String, dynamic> toJson() {
-    return {'name': name, 'mime': mime, 'size': size, 'base64': base64Data};
+    return {
+      'name': name,
+      'mime': mime,
+      'size': size,
+      if (storageKey != null) 'storage_key': storageKey,
+      if (url != null) 'url': url,
+      if (storageKey == null) 'base64': base64Data,
+    };
+  }
+
+  _CapsuleImageAttachment withRemote(Map<String, dynamic> remote) {
+    return _CapsuleImageAttachment(
+      name: remote['name']?.toString() ?? name,
+      mime: remote['mime']?.toString() ?? mime,
+      size: (remote['size'] as num?)?.round() ?? size,
+      base64Data: base64Data,
+      bytes: bytes,
+      storageKey: remote['storage_key']?.toString(),
+      url: remote['url']?.toString(),
+    );
   }
 }
 
@@ -988,6 +1069,8 @@ class _CapsuleVoiceAttachment {
     required this.size,
     required this.durationSeconds,
     required this.base64Data,
+    this.storageKey,
+    this.url,
   });
 
   final String name;
@@ -995,6 +1078,8 @@ class _CapsuleVoiceAttachment {
   final int size;
   final int durationSeconds;
   final String base64Data;
+  final String? storageKey;
+  final String? url;
 
   Map<String, dynamic> toJson() {
     return {
@@ -1002,8 +1087,23 @@ class _CapsuleVoiceAttachment {
       'mime': mime,
       'size': size,
       'duration_seconds': durationSeconds,
-      'base64': base64Data,
+      if (storageKey != null) 'storage_key': storageKey,
+      if (url != null) 'url': url,
+      if (storageKey == null) 'base64': base64Data,
     };
+  }
+
+  _CapsuleVoiceAttachment withRemote(Map<String, dynamic> remote) {
+    return _CapsuleVoiceAttachment(
+      name: remote['name']?.toString() ?? name,
+      mime: remote['mime']?.toString() ?? mime,
+      size: (remote['size'] as num?)?.round() ?? size,
+      durationSeconds:
+          (remote['duration_seconds'] as num?)?.round() ?? durationSeconds,
+      base64Data: base64Data,
+      storageKey: remote['storage_key']?.toString(),
+      url: remote['url']?.toString(),
+    );
   }
 }
 
@@ -2240,6 +2340,7 @@ class _CapsuleListTile extends StatelessWidget {
     required this.capsule,
     required this.enabled,
     this.compact = false,
+    this.locked = false,
     this.onTap,
   });
 
@@ -2247,10 +2348,14 @@ class _CapsuleListTile extends StatelessWidget {
   final TimeCapsule capsule;
   final bool enabled;
   final bool compact;
+  final bool locked;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final openDateLabel = capsule.openDate == null
+        ? '--/--'
+        : _formatCapsuleShortDate(capsule.openDate!);
     return CupertinoButton(
       padding: EdgeInsets.zero,
       onPressed: enabled ? onTap : null,
@@ -2282,19 +2387,27 @@ class _CapsuleListTile extends StatelessWidget {
                 width: compact ? 48 : 58,
                 height: compact ? 48 : 58,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE7D9FF),
+                  color: locked
+                      ? const Color(0xFFEFEFF4)
+                      : const Color(0xFFE7D9FF),
                   borderRadius: BorderRadius.circular(compact ? 15 : 18),
                 ),
                 alignment: Alignment.center,
-                child: Text(
-                  '$index',
-                  style: TextStyle(
-                    color: Color(0xFF7C3CFF),
-                    fontSize: compact ? 20 : 25,
-                    fontWeight: FontWeight.w900,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
+                child: locked
+                    ? Icon(
+                        CupertinoIcons.lock_fill,
+                        color: const Color(0xFF7B8280),
+                        size: compact ? 19 : 23,
+                      )
+                    : Text(
+                        '$index',
+                        style: TextStyle(
+                          color: Color(0xFF7C3CFF),
+                          fontSize: compact ? 20 : 25,
+                          fontWeight: FontWeight.w900,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
               ),
               SizedBox(width: compact ? 14 : 17),
               Expanded(
@@ -2303,7 +2416,7 @@ class _CapsuleListTile extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      capsule.displayTitle,
+                      locked ? '待开启胶囊' : capsule.displayTitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -2315,7 +2428,9 @@ class _CapsuleListTile extends StatelessWidget {
                     ),
                     SizedBox(height: compact ? 2 : 4),
                     Text(
-                      capsule.preview,
+                      locked
+                          ? '${_formatCapsuleCreatedStamp(capsule.createdAt)}创建'
+                          : capsule.preview,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -2330,12 +2445,10 @@ class _CapsuleListTile extends StatelessWidget {
               ),
               SizedBox(width: compact ? 10 : 12),
               Text(
-                capsule.openDate == null
-                    ? '--/--'
-                    : _formatCapsuleShortDate(capsule.openDate!),
+                locked ? '$openDateLabel开启' : openDateLabel,
                 style: TextStyle(
                   color: Color(0xFF9AA19E),
-                  fontSize: compact ? 16 : 18,
+                  fontSize: locked ? (compact ? 14 : 16) : (compact ? 16 : 18),
                   fontWeight: FontWeight.w900,
                   decoration: TextDecoration.none,
                 ),
@@ -2348,44 +2461,16 @@ class _CapsuleListTile extends StatelessWidget {
   }
 }
 
-class _PendingCapsulesPage extends StatelessWidget {
-  const _PendingCapsulesPage({required this.capsules});
-
-  final List<TimeCapsule> capsules;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.page,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: AppColors.page,
-        foregroundColor: AppColors.text,
-        title: const Text('待开启'),
-      ),
-      body: capsules.isEmpty
-          ? const Center(
-              child: Text('暂无待开启胶囊', style: TextStyle(color: AppColors.muted)),
-            )
-          : ListView.separated(
-              padding: const EdgeInsets.all(22),
-              itemCount: capsules.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 14),
-              itemBuilder: (context, index) => _CapsuleListTile(
-                index: index + 1,
-                capsule: capsules[index],
-                enabled: false,
-              ),
-            ),
-    );
-  }
-}
-
 class _CapsulePickerSheet extends StatelessWidget {
-  const _CapsulePickerSheet({required this.title, required this.capsules});
+  const _CapsulePickerSheet({
+    required this.title,
+    required this.capsules,
+    this.locked = false,
+  });
 
   final String title;
   final List<TimeCapsule> capsules;
+  final bool locked;
 
   @override
   Widget build(BuildContext context) {
@@ -2425,9 +2510,11 @@ class _CapsulePickerSheet extends StatelessWidget {
                   itemBuilder: (context, index) => _CapsuleListTile(
                     index: index + 1,
                     capsule: capsules[index],
-                    enabled: true,
+                    enabled: !locked,
                     compact: true,
+                    locked: locked,
                     onTap: () {
+                      if (locked) return;
                       final selected = capsules[index];
                       Navigator.of(context).pop(selected);
                     },
@@ -3006,6 +3093,15 @@ String _formatCapsuleDate(DateTime value) {
 
 String _formatCapsuleShortDate(DateTime value) {
   return '${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}';
+}
+
+String _formatCapsuleCreatedStamp(DateTime value) {
+  final local = value.toLocal();
+  final date =
+      '${local.month.toString().padLeft(2, '0')}/${local.day.toString().padLeft(2, '0')}';
+  final time =
+      '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}:${local.second.toString().padLeft(2, '0')}';
+  return '$date $time';
 }
 
 String _dateOnly(DateTime value) {
