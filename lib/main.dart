@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
@@ -20,6 +21,7 @@ part 'src/screens/main_shell.dart';
 part 'src/screens/offline_interaction_page.dart';
 part 'src/screens/online_interaction_page.dart';
 part 'src/screens/placeholder_page.dart';
+part 'src/screens/weather_page.dart';
 part 'src/theme/app_colors.dart';
 part 'src/utils/formatting.dart';
 part 'src/widgets/chat/chat_header.dart';

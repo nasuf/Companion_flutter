@@ -1,7 +1,7 @@
 part of 'package:companion_flutter/main.dart';
 
 enum _SidebarDestination {
-  cloud('云端', CupertinoIcons.cloud_fill, Color(0xFF0A84FF)),
+  weather('天气', CupertinoIcons.cloud_sun_fill, Color(0xFF0A84FF)),
   link('连接', CupertinoIcons.link, Color(0xFF12C7C1)),
   mail('信箱', CupertinoIcons.envelope_fill, Color(0xFF7C3CFF)),
   task('任务', CupertinoIcons.checkmark_seal_fill, Color(0xFFFF6B34)),
@@ -69,7 +69,7 @@ class _SidebarRail extends StatelessWidget {
   final ValueChanged<_SidebarDestination> onSelected;
 
   static const _grouped = [
-    _SidebarDestination.cloud,
+    _SidebarDestination.weather,
     _SidebarDestination.link,
     _SidebarDestination.mail,
     _SidebarDestination.task,
@@ -205,7 +205,7 @@ class _SidebarButton extends StatelessWidget {
 
   Color _badgeColor(_SidebarDestination destination) {
     return switch (destination) {
-      _SidebarDestination.cloud => AppColors.accentCyan,
+      _SidebarDestination.weather => AppColors.accentCyan,
       _SidebarDestination.link => AppColors.accentCyan,
       _SidebarDestination.mail => AppColors.accent,
       _SidebarDestination.task => const Color(0xFFFFC23A),
@@ -222,6 +222,10 @@ class _SidebarDestinationPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (destination == _SidebarDestination.weather) {
+      return const WeatherPage();
+    }
+
     return Scaffold(
       backgroundColor: AppColors.page,
       appBar: AppBar(
