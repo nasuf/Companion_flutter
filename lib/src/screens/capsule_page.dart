@@ -277,12 +277,17 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
   String _skin = 'paper';
   _CapsuleImageAttachment? _image;
   _CapsuleVoiceAttachment? _voice;
+  late final String _initialContent;
+  late final String _initialSkin;
+  late final DateTime? _initialOpenDate;
+  late final String _initialMediaKey;
   bool _voicePlaying = false;
   Timer? _recordTimer;
   bool _recording = false;
   int _recordSeconds = 0;
   bool _saving = false;
   String? _savingStatus;
+  String? _savingMessage;
   String? _error;
 
   @override
@@ -292,6 +297,10 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
     _openDate = widget.draft?.openDate;
     _skin = widget.draft?.skin ?? 'paper';
     _restoreMedia(widget.draft?.media);
+    _initialContent = widget.draft?.content.trim() ?? '';
+    _initialSkin = _skin;
+    _initialOpenDate = _openDate;
+    _initialMediaKey = _mediaKey(_mediaPayload());
   }
 
   @override
@@ -402,12 +411,26 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
     setState(() {
       _saving = true;
       _savingStatus = status;
+      _savingMessage = status == 'sealed' ? '准备封存' : '准备保存';
       _error = null;
     });
     try {
       final existing = widget.draft;
       final TimeCapsule saved;
       if (existing == null) {
+        _logSavePlan(
+          action: 'create',
+          status: status,
+          mediaAction: _mediaPayload() == null ? 'none' : 'upload',
+          requestFields: const [
+            'content',
+            'status',
+            'open_date',
+            'skin',
+            'media',
+          ],
+        );
+        _setSavingMessage(_mediaPayload() == null ? '保存文字' : '上传附件');
         saved = await widget.api.createTimeCapsule(
           agentId: agentId,
           workspaceId: widget.session.workspaceId,
@@ -418,16 +441,55 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
           skin: _skin,
         );
       } else {
+        final currentMedia = _mediaPayload();
+        final mediaChanged = _mediaKey(currentMedia) != _initialMediaKey;
+        final contentChanged = content != _initialContent;
+        final skinChanged = _skin != _initialSkin;
+        final openDateChanged = !_sameDay(_openDate, _initialOpenDate);
+        final statusChanged = status != existing.status;
+        final requestFields = <String>[
+          if (contentChanged) 'content',
+          if (statusChanged) 'status',
+          if (openDateChanged) 'open_date',
+          if (skinChanged) 'skin',
+          if (mediaChanged) 'media',
+        ];
+        if (requestFields.isEmpty) {
+          debugPrint('[capsule.save] no changes; skip network update');
+          if (mounted) {
+            Navigator.of(context).pop(_CapsuleEditorResult.saved(existing));
+          }
+          return;
+        }
+        final mediaAction = !mediaChanged
+            ? 'skip'
+            : currentMedia == null
+            ? 'clear'
+            : 'upload';
+        _logSavePlan(
+          action: 'update',
+          status: status,
+          mediaAction: mediaAction,
+          requestFields: requestFields,
+        );
+        _setSavingMessage(
+          mediaAction == 'upload'
+              ? '上传附件'
+              : statusChanged
+              ? '更新状态'
+              : '保存修改',
+        );
         saved = await widget.api.updateTimeCapsule(
           existing.id,
-          content: content,
-          status: status,
-          openDate: _openDate,
-          media: _mediaPayload(),
-          clearMedia: _image == null && _voice == null,
-          skin: _skin,
+          content: contentChanged ? content : null,
+          status: statusChanged ? status : null,
+          openDate: openDateChanged ? _openDate : null,
+          media: mediaChanged ? currentMedia : null,
+          clearMedia: mediaChanged && currentMedia == null,
+          skin: skinChanged ? _skin : null,
         );
       }
+      _setSavingMessage('完成');
       if (mounted) Navigator.of(context).pop(_CapsuleEditorResult.saved(saved));
     } catch (error) {
       if (mounted) setState(() => _error = _asMessage(error));
@@ -436,6 +498,7 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
         setState(() {
           _saving = false;
           _savingStatus = null;
+          _savingMessage = null;
         });
       }
     }
@@ -490,6 +553,34 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
       'images': [if (_image != null) _image!.toJson()],
       if (_voice != null) 'audio': _voice!.toJson(),
     };
+  }
+
+  String _mediaKey(Map<String, dynamic>? media) =>
+      media == null ? 'null' : jsonEncode(media);
+
+  bool _sameDay(DateTime? a, DateTime? b) {
+    if (a == null || b == null) return a == b;
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  void _setSavingMessage(String message) {
+    if (!mounted) return;
+    setState(() => _savingMessage = message);
+  }
+
+  void _logSavePlan({
+    required String action,
+    required String status,
+    required String mediaAction,
+    required List<String> requestFields,
+  }) {
+    final media = _mediaPayload();
+    final payloadBytes = media == null
+        ? 0
+        : utf8.encode(jsonEncode(media)).length;
+    debugPrint(
+      '[capsule.save] action=$action status=$status fields=${requestFields.join(',')} mediaAction=$mediaAction mediaBytes=$payloadBytes image=${_image?.size ?? 0} audio=${_voice?.size ?? 0}',
+    );
   }
 
   void _appendEmoji(String emoji) {
@@ -839,6 +930,9 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
                           filled: false,
                           enabled: !_saving,
                           loading: _savingStatus == 'draft',
+                          loadingLabel: _savingStatus == 'draft'
+                              ? _savingMessage
+                              : null,
                           onTap: () => _save('draft'),
                         ),
                       ),
@@ -849,6 +943,9 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
                           filled: true,
                           enabled: !_saving,
                           loading: _savingStatus == 'sealed',
+                          loadingLabel: _savingStatus == 'sealed'
+                              ? _savingMessage
+                              : null,
                           onTap: () => _save('sealed'),
                         ),
                       ),
@@ -2345,78 +2442,237 @@ class _CapsulePickerSheet extends StatelessWidget {
   }
 }
 
-class _CapsuleSealedOverlay extends StatelessWidget {
+class _CapsuleSealedOverlay extends StatefulWidget {
   const _CapsuleSealedOverlay({required this.capsule});
 
   final TimeCapsule capsule;
 
   @override
+  State<_CapsuleSealedOverlay> createState() => _CapsuleSealedOverlayState();
+}
+
+class _CapsuleSealedOverlayState extends State<_CapsuleSealedOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _drop;
+  late final Animation<double> _fade;
+  late final Animation<double> _sway;
+  late final Animation<double> _button;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 980),
+    )..forward();
+    _drop = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0, 0.72, curve: Curves.elasticOut),
+    );
+    _fade = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0, 0.34, curve: Curves.easeOut),
+    );
+    _sway = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.28, 1, curve: Curves.easeInOutCubic),
+    );
+    _button = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.55, 1, curve: Curves.easeOutBack),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final date = capsule.openDate;
+    final date = widget.capsule.openDate;
     return Material(
-      color: Colors.black.withValues(alpha: 0.72),
+      color: Colors.black.withValues(alpha: 0.70),
       child: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 44),
-            Container(width: 2, height: 88, color: Colors.white),
-            Container(
-              width: 280,
-              padding: const EdgeInsets.fromLTRB(24, 34, 24, 30),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFC542),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.24),
-                    blurRadius: 30,
-                    offset: const Offset(0, 18),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  const Icon(
-                    CupertinoIcons.capsule_fill,
-                    color: Colors.white,
-                    size: 54,
-                  ),
-                  const SizedBox(height: 34),
-                  Text(
-                    '时间胶囊已经封存，期待${date == null ? '未来某天' : _formatCapsuleDate(date)}开启。',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Color(0xFF151719),
-                      fontSize: 19,
-                      height: 1.55,
-                      fontWeight: FontWeight.w700,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            final cardTop = lerpDouble(-220, 110, _drop.value)!;
+            final rotation = math.sin(_sway.value * math.pi * 2) * 0.018;
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: _fade.value,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          center: const Alignment(0, -0.2),
+                          radius: 0.9,
+                          colors: [
+                            const Color(0xFFFFD86E).withValues(alpha: 0.18),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ],
-              ),
-            ),
-            const Spacer(),
-            CupertinoButton(
-              padding: EdgeInsets.zero,
-              onPressed: () => Navigator.of(context).pop(),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 12,
                 ),
-                color: Colors.white,
-                child: const Text(
-                  '完成',
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 30,
-                    fontWeight: FontWeight.w900,
+                Positioned(
+                  top: 42,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      width: 2,
+                      height: math.max(0, cardTop - 24),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.82),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
                   ),
                 ),
+                Positioned(
+                  top: cardTop,
+                  left: 0,
+                  right: 0,
+                  child: Transform.rotate(
+                    angle: rotation,
+                    child: Center(child: _SealedTicket(date: date)),
+                  ),
+                ),
+                Positioned(
+                  left: 40,
+                  right: 40,
+                  bottom: 54,
+                  child: Transform.scale(
+                    scale: _button.value.clamp(0.0, 1.0),
+                    child: Opacity(
+                      opacity: _button.value.clamp(0.0, 1.0),
+                      child: CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Container(
+                          height: 58,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(29),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.22),
+                                blurRadius: 24,
+                                offset: const Offset(0, 12),
+                              ),
+                            ],
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text(
+                            '完成',
+                            style: TextStyle(
+                              color: Color(0xFF151719),
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _SealedTicket extends StatelessWidget {
+  const _SealedTicket({required this.date});
+
+  final DateTime? date;
+
+  @override
+  Widget build(BuildContext context) {
+    final dateLabel = date == null ? '未来某天' : _formatCapsuleDate(date!);
+    return Container(
+      width: 292,
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 26),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFC944),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.28),
+            blurRadius: 32,
+            offset: const Offset(0, 20),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -18,
+            bottom: -20,
+            child: Container(
+              width: 94,
+              height: 94,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.22),
+                shape: BoxShape.circle,
               ),
             ),
-            const SizedBox(height: 44),
-          ],
-        ),
+          ),
+          Column(
+            children: [
+              Container(
+                width: 78,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(26),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.10),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  CupertinoIcons.lock_fill,
+                  color: Color(0xFFFFB526),
+                  size: 25,
+                ),
+              ),
+              const SizedBox(height: 26),
+              const Text(
+                '封存完成',
+                style: TextStyle(
+                  color: Color(0xFF151719),
+                  fontSize: 27,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '时间胶囊已经封存，期待$dateLabel开启。',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF2B2A25),
+                  fontSize: 17,
+                  height: 1.55,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -2428,6 +2684,7 @@ class _CapsuleActionButton extends StatelessWidget {
     required this.filled,
     required this.enabled,
     required this.loading,
+    required this.loadingLabel,
     required this.onTap,
   });
 
@@ -2435,6 +2692,7 @@ class _CapsuleActionButton extends StatelessWidget {
   final bool filled;
   final bool enabled;
   final bool loading;
+  final String? loadingLabel;
   final VoidCallback onTap;
 
   @override
@@ -2456,15 +2714,35 @@ class _CapsuleActionButton extends StatelessWidget {
           ),
           alignment: Alignment.center,
           child: loading
-              ? SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.2,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      filled ? Colors.white : const Color(0xFF7C3CFF),
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.1,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          filled ? Colors.white : const Color(0xFF7C3CFF),
+                        ),
+                      ),
                     ),
-                  ),
+                    if ((loadingLabel ?? '').isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        loadingLabel!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: filled
+                              ? Colors.white
+                              : const Color(0xFF7C3CFF),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ],
                 )
               : Text(
                   label,

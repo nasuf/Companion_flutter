@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import 'models.dart';
 
 class ApiException implements Exception {
@@ -25,9 +27,11 @@ class CompanionApi {
     String method,
     String path, {
     Map<String, dynamic>? body,
+    String? debugLabel,
   }) async {
     final client = HttpClient();
     client.connectionTimeout = const Duration(seconds: 8);
+    final stopwatch = Stopwatch()..start();
     try {
       final request = await client.openUrl(method, _uri(path));
       request.headers.contentType = ContentType.json;
@@ -38,11 +42,31 @@ class CompanionApi {
         );
       }
       if (body != null) {
-        request.write(jsonEncode(body));
+        final payload = jsonEncode(body);
+        if (debugLabel != null) {
+          debugPrint(
+            '[$debugLabel] request $method $path body=${utf8.encode(payload).length}B elapsed=${stopwatch.elapsedMilliseconds}ms',
+          );
+        }
+        request.write(payload);
+      } else if (debugLabel != null) {
+        debugPrint(
+          '[$debugLabel] request $method $path body=0B elapsed=${stopwatch.elapsedMilliseconds}ms',
+        );
       }
 
       final response = await request.close();
+      if (debugLabel != null) {
+        debugPrint(
+          '[$debugLabel] response headers status=${response.statusCode} elapsed=${stopwatch.elapsedMilliseconds}ms',
+        );
+      }
       final text = await response.transform(utf8.decoder).join();
+      if (debugLabel != null) {
+        debugPrint(
+          '[$debugLabel] response body=${utf8.encode(text).length}B elapsed=${stopwatch.elapsedMilliseconds}ms',
+        );
+      }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw ApiException(response.statusCode, _extractError(text));
       }
@@ -182,7 +206,9 @@ class CompanionApi {
       params['state'] = state;
     }
     final query = Uri(queryParameters: params).query;
-    final json = await _request('GET', '/capsules?$query') as List;
+    final json =
+        await _request('GET', '/capsules?$query', debugLabel: 'capsule.list')
+            as List;
     return json
         .map((item) => TimeCapsule.fromJson(item as Map<String, dynamic>))
         .toList();
@@ -212,6 +238,7 @@ class CompanionApi {
                 'status': status,
                 'open_date': _dateOnly(openDate),
               },
+              debugLabel: 'capsule.create',
             )
             as Map<String, dynamic>;
     return TimeCapsule.fromJson(json);
@@ -236,7 +263,12 @@ class CompanionApi {
       if (media != null) 'media': media else if (clearMedia) 'media': null,
     };
     final json =
-        await _request('PATCH', '/capsules/$capsuleId', body: body)
+        await _request(
+              'PATCH',
+              '/capsules/$capsuleId',
+              body: body,
+              debugLabel: 'capsule.update',
+            )
             as Map<String, dynamic>;
     return TimeCapsule.fromJson(json);
   }
