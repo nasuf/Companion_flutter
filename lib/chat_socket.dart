@@ -77,10 +77,18 @@ class ChatSocket {
     }
   }
 
-  bool sendMessage(String text, String clientId) {
+  bool sendMessage(
+    String text,
+    String clientId, {
+    ChatComponentCard? componentCard,
+  }) {
     return send({
       'type': 'message',
-      'data': {'message': text, 'client_id': clientId},
+      'data': {
+        'message': text,
+        'client_id': clientId,
+        if (componentCard != null) 'component_card': componentCard.toJson(),
+      },
     });
   }
 

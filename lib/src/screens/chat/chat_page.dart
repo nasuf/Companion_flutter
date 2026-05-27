@@ -51,7 +51,8 @@ class _ChatPageState extends State<ChatPage> {
   double _lastKeyboardInset = 0;
   bool _pinToBottomDuringKeyboard = false;
   bool _wasNearBottomBeforePaddingChange = true;
-  ({String text, String clientId})? _pendingSend;
+  ({String text, String clientId, ChatComponentCard? componentCard})?
+  _pendingSend;
 
   String get _conversationId => widget.session.conversationId!;
 
@@ -136,7 +137,11 @@ class _ChatPageState extends State<ChatPage> {
           });
           final pending = _pendingSend;
           if (pending != null) {
-            socket.sendMessage(pending.text, pending.clientId);
+            socket.sendMessage(
+              pending.text,
+              pending.clientId,
+              componentCard: pending.componentCard,
+            );
             _pendingSend = null;
           }
           _loadLatestMessages(showLoading: false);
@@ -349,8 +354,16 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  void sendComponentMessage(String text, ChatComponentCard componentCard) {
+    _sendText(text.trim(), componentCard: componentCard);
+  }
+
   void _sendMessage() {
     final text = _inputController.text.trim();
+    _sendText(text);
+  }
+
+  void _sendText(String text, {ChatComponentCard? componentCard}) {
     if (text.isEmpty) return;
     final clientId =
         'draft-${DateTime.now().microsecondsSinceEpoch}-${text.hashCode}';
@@ -359,18 +372,27 @@ class _ChatPageState extends State<ChatPage> {
       role: 'user',
       content: text,
       clientId: clientId,
+      metadata: componentCard == null
+          ? null
+          : {'component_card': componentCard.toJson()},
     );
     setState(() {
       _messages.add(draft);
-      _inputController.clear();
+      if (componentCard == null) _inputController.clear();
       _panel = ComposerPanel.none;
       _sending = true;
       _typingHint = _connecting ? '连接未就绪，正在重连...' : '已发送';
     });
 
-    final sent = _socket?.sendMessage(text, clientId) ?? false;
+    final sent =
+        _socket?.sendMessage(text, clientId, componentCard: componentCard) ??
+        false;
     if (!sent) {
-      _pendingSend = (text: text, clientId: clientId);
+      _pendingSend = (
+        text: text,
+        clientId: clientId,
+        componentCard: componentCard,
+      );
       unawaited(_socket?.connect());
     }
     WidgetsBinding.instance.addPostFrameCallback(

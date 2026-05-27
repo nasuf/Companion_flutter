@@ -35,6 +35,10 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   fluwx: ^5.7.5
+  image_picker: ^1.2.1
+  record: ^6.2.1
+  path_provider: ^2.1.5
+  audioplayers: ^6.5.1
 
 dev_dependencies:
   flutter_test:
@@ -62,6 +66,9 @@ flutter:
     - assets/prototype/logo.png
     - assets/prototype/daily-journal.jpg
     - assets/prototype/movie-bouquet.jpg
+    - assets/prototype/movie-super-mario-galaxy.jpeg
+    - assets/prototype/movie-mandalorian-grogu.jpg
+    - assets/prototype/movie-project-hail-mary.jpg
     - assets/prototype/game-pieces.jpg
     - assets/prototype/vinyl-record.jpg
 

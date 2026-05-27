@@ -21,19 +21,32 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
   bool _chatSidebarOpen = false;
+  final _chatPageKey = GlobalKey<_ChatPageState>();
 
   void _setChatSidebarOpen(bool value) {
     if (_chatSidebarOpen == value) return;
     setState(() => _chatSidebarOpen = value);
   }
 
-  void _openSidebarDestination(_SidebarDestination destination) {
+  Future<void> _openSidebarDestination(_SidebarDestination destination) async {
     _setChatSidebarOpen(false);
-    Navigator.of(context).push(
-      CupertinoPageRoute<void>(
-        builder: (_) => _SidebarDestinationPage(destination: destination),
+    final result = await Navigator.of(context).push<CapsuleChatDraft>(
+      CupertinoPageRoute<CapsuleChatDraft>(
+        builder: (_) => _SidebarDestinationPage(
+          destination: destination,
+          api: widget.api,
+          session: widget.session,
+        ),
       ),
     );
+    if (!mounted || result == null) return;
+    setState(() => _index = 0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chatPageKey.currentState?.sendComponentMessage(
+        result.agentText,
+        result.card,
+      );
+    });
   }
 
   @override
@@ -46,6 +59,7 @@ class _MainShellState extends State<MainShell> {
             onSessionChanged: widget.onSessionChanged,
           )
         : ChatPage(
+            key: _chatPageKey,
             api: widget.api,
             session: widget.session,
             onOpenSidebar: () => _setChatSidebarOpen(true),

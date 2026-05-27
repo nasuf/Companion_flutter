@@ -29,7 +29,9 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
   void _openPortal(_OnlinePortal portal) {
     Navigator.of(context).push(
       CupertinoPageRoute<void>(
-        builder: (_) => _OnlinePortalDetailPage(portal: portal),
+        builder: (_) => portal.id == 'movie'
+            ? const MoviePage()
+            : _OnlinePortalDetailPage(portal: portal),
       ),
     );
   }

@@ -113,6 +113,12 @@ class CompanionApi {
     return Conversation.fromJson(json);
   }
 
+  Future<AgentProfile> getAgent(String agentId) async {
+    final json =
+        await _request('GET', '/agents/$agentId') as Map<String, dynamic>;
+    return AgentProfile.fromJson(json);
+  }
+
   Future<List<Conversation>> listConversations({
     required String userId,
     String? workspaceId,
@@ -161,6 +167,82 @@ class CompanionApi {
     return json
         .map((item) => ChatMessage.fromJson(item as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<List<TimeCapsule>> listTimeCapsules({
+    required String agentId,
+    String? workspaceId,
+    String? state,
+  }) async {
+    final params = <String, String>{'agent_id': agentId};
+    if (workspaceId != null && workspaceId.isNotEmpty) {
+      params['workspace_id'] = workspaceId;
+    }
+    if (state != null && state.isNotEmpty) {
+      params['state'] = state;
+    }
+    final query = Uri(queryParameters: params).query;
+    final json = await _request('GET', '/capsules?$query') as List;
+    return json
+        .map((item) => TimeCapsule.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<TimeCapsule> createTimeCapsule({
+    required String agentId,
+    required String content,
+    required String status,
+    String? workspaceId,
+    DateTime? openDate,
+    String? title,
+    Map<String, dynamic>? media,
+    String skin = 'paper',
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/capsules',
+              body: {
+                'agent_id': agentId,
+                'workspace_id': workspaceId,
+                'title': title,
+                'content': content,
+                'media': media,
+                'skin': skin,
+                'status': status,
+                'open_date': _dateOnly(openDate),
+              },
+            )
+            as Map<String, dynamic>;
+    return TimeCapsule.fromJson(json);
+  }
+
+  Future<TimeCapsule> updateTimeCapsule(
+    String capsuleId, {
+    String? content,
+    String? status,
+    DateTime? openDate,
+    String? title,
+    Map<String, dynamic>? media,
+    String? skin,
+    bool clearMedia = false,
+  }) async {
+    final body = <String, dynamic>{
+      if (title != null) 'title': title,
+      if (content != null) 'content': content,
+      if (skin != null) 'skin': skin,
+      if (status != null) 'status': status,
+      if (openDate != null) 'open_date': _dateOnly(openDate),
+      if (media != null) 'media': media else if (clearMedia) 'media': null,
+    };
+    final json =
+        await _request('PATCH', '/capsules/$capsuleId', body: body)
+            as Map<String, dynamic>;
+    return TimeCapsule.fromJson(json);
+  }
+
+  Future<void> deleteTimeCapsule(String capsuleId) async {
+    await _request('DELETE', '/capsules/$capsuleId');
   }
 
   Future<AgentProfile> createAgent({
@@ -224,5 +306,12 @@ class CompanionApi {
       workspaceId: created.workspaceId ?? session.workspaceId,
       conversationId: created.id,
     );
+  }
+
+  String? _dateOnly(DateTime? value) {
+    if (value == null) return null;
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '${value.year}-$month-$day';
   }
 }

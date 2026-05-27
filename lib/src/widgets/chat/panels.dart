@@ -26,9 +26,10 @@ class _ChatPanel extends StatelessWidget {
 }
 
 class _EmojiPanel extends StatelessWidget {
-  const _EmojiPanel({required this.onEmojiTap});
+  const _EmojiPanel({required this.onEmojiTap, this.compact = false});
 
   final ValueChanged<String> onEmojiTap;
+  final bool compact;
 
   static const _emojis = [
     '😊',
@@ -59,9 +60,38 @@ class _EmojiPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Widget emojiTile(String emoji) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => onEmojiTap(emoji),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.surfaceMuted,
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Center(
+            child: Text(emoji, style: const TextStyle(fontSize: 21)),
+          ),
+        ),
+      );
+    }
+
+    final grid = GridView.builder(
+      padding: EdgeInsets.zero,
+      primary: false,
+      physics: const BouncingScrollPhysics(),
+      itemCount: _emojis.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 8,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+      ),
+      itemBuilder: (context, index) => emojiTile(_emojis[index]),
+    );
+
     return Padding(
       key: const ValueKey('emoji'),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+      padding: EdgeInsets.fromLTRB(16, compact ? 6 : 14, 16, compact ? 10 : 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -69,34 +99,27 @@ class _EmojiPanel extends StatelessWidget {
             '常用表情',
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
           ),
-          const SizedBox(height: 14),
-          Expanded(
-            child: GridView.builder(
-              physics: const BouncingScrollPhysics(),
-              itemCount: _emojis.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 8,
-                mainAxisSpacing: 9,
-                crossAxisSpacing: 9,
-              ),
-              itemBuilder: (context, index) {
-                final emoji = _emojis[index];
-                return InkWell(
-                  borderRadius: BorderRadius.circular(13),
-                  onTap: () => onEmojiTap(emoji),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceMuted,
-                      borderRadius: BorderRadius.circular(13),
-                    ),
-                    child: Center(
-                      child: Text(emoji, style: const TextStyle(fontSize: 21)),
-                    ),
-                  ),
+          SizedBox(height: compact ? 12 : 14),
+          if (compact)
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final tileSize = (constraints.maxWidth - 56) / 8;
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final emoji in _emojis)
+                      SizedBox(
+                        width: tileSize,
+                        height: tileSize,
+                        child: emojiTile(emoji),
+                      ),
+                  ],
                 );
               },
-            ),
-          ),
+            )
+          else
+            Expanded(child: grid),
         ],
       ),
     );

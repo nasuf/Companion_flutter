@@ -15,6 +15,7 @@ class AuthSession {
     this.agentName,
     this.agentAvatarKey,
     this.agentAvatarUrl,
+    this.agentCity,
     this.workspaceId,
     this.conversationId,
   });
@@ -28,6 +29,7 @@ class AuthSession {
   final String? agentName;
   final String? agentAvatarKey;
   final String? agentAvatarUrl;
+  final String? agentCity;
   final String? workspaceId;
   final String? conversationId;
 
@@ -42,6 +44,7 @@ class AuthSession {
       agentName: json['agent_name'] as String?,
       agentAvatarKey: json['agent_avatar_key'] as String?,
       agentAvatarUrl: json['agent_avatar_url'] as String?,
+      agentCity: json['agent_city'] as String?,
       workspaceId: json['workspace_id'] as String?,
       conversationId: json['conversation_id'] as String?,
     );
@@ -58,6 +61,7 @@ class AuthSession {
       agentName: agentName,
       agentAvatarKey: agentAvatarKey,
       agentAvatarUrl: agentAvatarUrl,
+      agentCity: agentCity,
       workspaceId: workspaceId ?? this.workspaceId,
       conversationId: conversationId ?? this.conversationId,
     );
@@ -71,6 +75,7 @@ class AgentProfile {
     required this.userId,
     this.workspaceId,
     this.gender,
+    this.city,
     this.avatarKey,
     this.avatarUrl,
   });
@@ -80,6 +85,7 @@ class AgentProfile {
   final String userId;
   final String? workspaceId;
   final String? gender;
+  final String? city;
   final String? avatarKey;
   final String? avatarUrl;
 
@@ -90,6 +96,7 @@ class AgentProfile {
       userId: json['user_id'] as String? ?? '',
       workspaceId: json['workspace_id'] as String?,
       gender: json['gender'] as String?,
+      city: json['city'] as String?,
       avatarKey: json['avatar_key'] as String?,
       avatarUrl: json['avatar_url'] as String?,
     );
@@ -146,6 +153,10 @@ class ChatMessage {
   bool get isMine => role == 'user';
   bool get isDraft => id.startsWith('draft-');
   String? get clientId => metadata?['client_id'] as String?;
+  ChatComponentCard? get componentCard {
+    final raw = metadata?['component_card'];
+    return raw is Map ? ChatComponentCard.fromJson(raw) : null;
+  }
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     return ChatMessage(
@@ -167,6 +178,7 @@ class ChatMessage {
     required String role,
     required String content,
     String? clientId,
+    Map<String, dynamic>? metadata,
   }) {
     final id =
         clientId ??
@@ -177,7 +189,7 @@ class ChatMessage {
       role: role,
       content: content,
       createdAt: DateTime.now(),
-      metadata: clientId != null ? {'client_id': clientId} : null,
+      metadata: {...?metadata, if (clientId != null) 'client_id': clientId},
       pending: true,
       read: false,
     );
@@ -200,6 +212,146 @@ class ChatMessage {
       read: read ?? this.read,
     );
   }
+}
+
+class ChatComponentCard {
+  const ChatComponentCard({
+    required this.type,
+    required this.title,
+    required this.subtitle,
+    required this.body,
+    required this.footer,
+    this.accent = '#7C3CFF',
+    this.payload = const {},
+    this.version = 1,
+  });
+
+  final int version;
+  final String type;
+  final String title;
+  final String subtitle;
+  final String body;
+  final String footer;
+  final String accent;
+  final Map<String, dynamic> payload;
+
+  factory ChatComponentCard.fromJson(Map<dynamic, dynamic> json) {
+    return ChatComponentCard(
+      version: (json['version'] as num?)?.round() ?? 1,
+      type: json['type']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      subtitle: json['subtitle']?.toString() ?? '',
+      body: json['body']?.toString() ?? '',
+      footer: json['footer']?.toString() ?? '',
+      accent: json['accent']?.toString() ?? '#7C3CFF',
+      payload: json['payload'] is Map
+          ? Map<String, dynamic>.from(json['payload'] as Map)
+          : const {},
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'version': version,
+      'type': type,
+      'title': title,
+      'subtitle': subtitle,
+      'body': body,
+      'footer': footer,
+      'accent': accent,
+      'payload': payload,
+    };
+  }
+}
+
+class TimeCapsule {
+  const TimeCapsule({
+    required this.id,
+    required this.userId,
+    required this.agentId,
+    required this.content,
+    required this.status,
+    required this.state,
+    required this.createdAt,
+    required this.updatedAt,
+    this.media,
+    this.skin = 'paper',
+    this.workspaceId,
+    this.title,
+    this.openDate,
+    this.sealedAt,
+  });
+
+  final String id;
+  final String userId;
+  final String agentId;
+  final String? workspaceId;
+  final String? title;
+  final String content;
+  final Map<String, dynamic>? media;
+  final String skin;
+  final DateTime? openDate;
+  final String status;
+  final String state;
+  final DateTime? sealedAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  bool get isDraft => state == 'draft';
+  bool get isPending => state == 'pending';
+  bool get isOpened => state == 'opened';
+
+  String get displayTitle {
+    final trimmed = title?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) return trimmed;
+    final line = content
+        .split('\n')
+        .map((item) => item.trim())
+        .firstWhere((item) => item.isNotEmpty, orElse: () => '未命名胶囊');
+    return line.length > 18 ? '${line.substring(0, 18)}...' : line;
+  }
+
+  String get preview {
+    final compact = content.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (compact.isEmpty) return '还没有写下内容。';
+    return compact.length > 38 ? '${compact.substring(0, 38)}...' : compact;
+  }
+
+  factory TimeCapsule.fromJson(Map<String, dynamic> json) {
+    return TimeCapsule(
+      id: json['id'] as String? ?? '',
+      userId: json['user_id'] as String? ?? '',
+      agentId: json['agent_id'] as String? ?? '',
+      workspaceId: json['workspace_id'] as String?,
+      title: json['title'] as String?,
+      content: json['content'] as String? ?? '',
+      media: json['media'] is Map
+          ? Map<String, dynamic>.from(json['media'] as Map)
+          : null,
+      skin: json['skin'] as String? ?? 'paper',
+      openDate: _parseDateOnly(json['open_date'] as String?),
+      status: json['status'] as String? ?? 'draft',
+      state: json['state'] as String? ?? 'draft',
+      sealedAt: DateTime.tryParse(json['sealed_at'] as String? ?? ''),
+      createdAt:
+          DateTime.tryParse(json['created_at'] as String? ?? '') ??
+          DateTime.now(),
+      updatedAt:
+          DateTime.tryParse(json['updated_at'] as String? ?? '') ??
+          DateTime.now(),
+    );
+  }
+}
+
+DateTime? _parseDateOnly(String? value) {
+  if (value == null || value.isEmpty) return null;
+  final parts = value.split('-');
+  if (parts.length < 3) return DateTime.tryParse(value);
+  final year = int.tryParse(parts[0]);
+  final month = int.tryParse(parts[1]);
+  final day = int.tryParse(parts[2]);
+  if (year == null || month == null || day == null) return null;
+  return DateTime(year, month, day);
 }
 
 class WsEnvelope {

@@ -6,7 +6,12 @@ import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:fluwx/fluwx.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 import 'chat_socket.dart';
 import 'companion_api.dart';
@@ -16,8 +21,10 @@ part 'src/app/auth_gate.dart';
 part 'src/auth/wechat_login_service.dart';
 part 'src/screens/agent_create_page.dart';
 part 'src/screens/chat/chat_page.dart';
+part 'src/screens/capsule_page.dart';
 part 'src/screens/login_page.dart';
 part 'src/screens/main_shell.dart';
+part 'src/screens/movie_page.dart';
 part 'src/screens/offline_interaction_page.dart';
 part 'src/screens/online_interaction_page.dart';
 part 'src/screens/placeholder_page.dart';
@@ -32,6 +39,7 @@ part 'src/widgets/chat/message_widgets.dart';
 part 'src/widgets/chat/panels.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const CompanionApp());
 }
 

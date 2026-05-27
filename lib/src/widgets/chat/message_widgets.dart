@@ -101,52 +101,58 @@ class _Bubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final componentCard = message.componentCard;
     return Flexible(
       child: Column(
         crossAxisAlignment: message.isMine
             ? CrossAxisAlignment.end
             : CrossAxisAlignment.start,
         children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 270),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: message.isMine ? AppColors.accent : AppColors.surface,
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(message.isMine ? 17 : 3),
-                  topRight: Radius.circular(message.isMine ? 3 : 17),
-                  bottomLeft: const Radius.circular(17),
-                  bottomRight: const Radius.circular(17),
-                ),
-                border: Border.all(
-                  color: message.isMine ? AppColors.accent : AppColors.hairline,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: message.isMine
-                        ? AppColors.accent.withValues(alpha: 0.18)
-                        : const Color(0xFF24344A).withValues(alpha: 0.08),
-                    blurRadius: message.isMine ? 18 : 20,
-                    offset: const Offset(0, 8),
+          if (componentCard != null)
+            _ComponentCardBubble(card: componentCard, isMine: message.isMine)
+          else
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 270),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: message.isMine ? AppColors.accent : AppColors.surface,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(message.isMine ? 17 : 3),
+                    topRight: Radius.circular(message.isMine ? 3 : 17),
+                    bottomLeft: const Radius.circular(17),
+                    bottomRight: const Radius.circular(17),
                   ),
-                ],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 9,
+                  border: Border.all(
+                    color: message.isMine
+                        ? AppColors.accent
+                        : AppColors.hairline,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: message.isMine
+                          ? AppColors.accent.withValues(alpha: 0.18)
+                          : const Color(0xFF24344A).withValues(alpha: 0.08),
+                      blurRadius: message.isMine ? 18 : 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
                 ),
-                child: Text(
-                  message.content,
-                  style: TextStyle(
-                    color: message.isMine ? Colors.white : AppColors.text,
-                    fontSize: 15,
-                    height: 1.42,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 9,
+                  ),
+                  child: Text(
+                    message.content,
+                    style: TextStyle(
+                      color: message.isMine ? Colors.white : AppColors.text,
+                      fontSize: 15,
+                      height: 1.42,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
           const SizedBox(height: 3),
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -167,6 +173,157 @@ class _Bubble extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _ComponentCardBubble extends StatelessWidget {
+  const _ComponentCardBubble({required this.card, required this.isMine});
+
+  final ChatComponentCard card;
+  final bool isMine;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _parseColor(card.accent);
+    final icon = switch (card.type) {
+      'time_capsule' => CupertinoIcons.capsule_fill,
+      'weather' => CupertinoIcons.cloud_sun_fill,
+      _ => CupertinoIcons.square_grid_2x2_fill,
+    };
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 292),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(isMine ? 20 : 5),
+            topRight: Radius.circular(isMine ? 5 : 20),
+            bottomLeft: const Radius.circular(20),
+            bottomRight: const Radius.circular(20),
+          ),
+          border: Border.all(color: accent.withValues(alpha: 0.24)),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: 0.14),
+              blurRadius: 22,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(isMine ? 20 : 5),
+            topRight: Radius.circular(isMine ? 5 : 20),
+            bottomLeft: const Radius.circular(20),
+            bottomRight: const Radius.circular(20),
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                right: -26,
+                top: -26,
+                child: Container(
+                  width: 102,
+                  height: 102,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: accent.withValues(alpha: 0.12),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(15, 14, 15, 13),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(icon, color: accent, size: 19),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                card.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppColors.text,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                  height: 1.15,
+                                ),
+                              ),
+                              if (card.subtitle.isNotEmpty)
+                                Text(
+                                  card.subtitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: AppColors.muted,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 11,
+                                    height: 1.35,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (card.body.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        card.body,
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.text,
+                          fontSize: 14,
+                          height: 1.42,
+                        ),
+                      ),
+                    ],
+                    if (card.footer.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        card.footer,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: accent,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _parseColor(String value) {
+    final hex = value.replaceFirst('#', '').trim();
+    if (hex.length != 6) return const Color(0xFF7C3CFF);
+    final intValue = int.tryParse(hex, radix: 16);
+    if (intValue == null) return const Color(0xFF7C3CFF);
+    return Color(0xFF000000 | intValue);
   }
 }
 

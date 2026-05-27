@@ -2,7 +2,7 @@ part of 'package:companion_flutter/main.dart';
 
 enum _SidebarDestination {
   weather('天气', CupertinoIcons.cloud_sun_fill, Color(0xFF0A84FF)),
-  link('连接', CupertinoIcons.link, Color(0xFF12C7C1)),
+  capsule('胶囊', CupertinoIcons.capsule_fill, Color(0xFF7C3CFF)),
   mail('信箱', CupertinoIcons.envelope_fill, Color(0xFF7C3CFF)),
   task('任务', CupertinoIcons.checkmark_seal_fill, Color(0xFFFF6B34)),
   list('清单', CupertinoIcons.checkmark_rectangle_fill, Color(0xFF08C767)),
@@ -70,7 +70,7 @@ class _SidebarRail extends StatelessWidget {
 
   static const _grouped = [
     _SidebarDestination.weather,
-    _SidebarDestination.link,
+    _SidebarDestination.capsule,
     _SidebarDestination.mail,
     _SidebarDestination.task,
     _SidebarDestination.list,
@@ -206,7 +206,7 @@ class _SidebarButton extends StatelessWidget {
   Color _badgeColor(_SidebarDestination destination) {
     return switch (destination) {
       _SidebarDestination.weather => AppColors.accentCyan,
-      _SidebarDestination.link => AppColors.accentCyan,
+      _SidebarDestination.capsule => const Color(0xFFB491FF),
       _SidebarDestination.mail => AppColors.accent,
       _SidebarDestination.task => const Color(0xFFFFC23A),
       _SidebarDestination.list => const Color(0xFFFFC23A),
@@ -216,14 +216,28 @@ class _SidebarButton extends StatelessWidget {
 }
 
 class _SidebarDestinationPage extends StatelessWidget {
-  const _SidebarDestinationPage({required this.destination});
+  const _SidebarDestinationPage({
+    required this.destination,
+    required this.api,
+    required this.session,
+  });
 
   final _SidebarDestination destination;
+  final CompanionApi api;
+  final AuthSession session;
 
   @override
   Widget build(BuildContext context) {
     if (destination == _SidebarDestination.weather) {
-      return const WeatherPage();
+      return WeatherPage(
+        api: api,
+        agentId: session.agentId,
+        agentName: session.agentName ?? '小芜',
+        initialCity: session.agentCity,
+      );
+    }
+    if (destination == _SidebarDestination.capsule) {
+      return CapsulePage(api: api, session: session);
     }
 
     return Scaffold(

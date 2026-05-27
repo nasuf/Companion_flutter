@@ -1,7 +1,18 @@
 part of 'package:companion_flutter/main.dart';
 
 class WeatherPage extends StatefulWidget {
-  const WeatherPage({super.key});
+  const WeatherPage({
+    super.key,
+    required this.api,
+    required this.agentName,
+    this.agentId,
+    this.initialCity,
+  });
+
+  final CompanionApi api;
+  final String? agentId;
+  final String agentName;
+  final String? initialCity;
 
   @override
   State<WeatherPage> createState() => _WeatherPageState();
@@ -20,7 +31,7 @@ class _WeatherPageState extends State<WeatherPage>
       vsync: this,
       duration: const Duration(milliseconds: 8200),
     )..repeat(reverse: true);
-    _forecast = _WeatherService.fetchHangzhou();
+    _forecast = _loadForecast();
   }
 
   @override
@@ -31,8 +42,22 @@ class _WeatherPageState extends State<WeatherPage>
 
   void _reload() {
     setState(() {
-      _forecast = _WeatherService.fetchHangzhou();
+      _forecast = _loadForecast();
     });
+  }
+
+  Future<_WeatherForecast> _loadForecast() async {
+    var city = widget.initialCity;
+    final agentId = widget.agentId;
+    if (agentId != null && agentId.isNotEmpty) {
+      try {
+        final agent = await widget.api.getAgent(agentId);
+        city = agent.city ?? city;
+      } catch (_) {
+        // 登录态里的城市足够作为天气兜底；失败时不阻塞天气页呈现。
+      }
+    }
+    return _WeatherService.fetchForCity(city);
   }
 
   @override
@@ -74,6 +99,8 @@ class _WeatherPageState extends State<WeatherPage>
                         _WeatherHeroCard(
                           day: day,
                           current: forecast.current,
+                          location: forecast.location,
+                          agentName: widget.agentName,
                           progress: progress,
                         ),
                         const SizedBox(height: 18),
@@ -113,35 +140,6 @@ class _WeatherTopBar extends StatelessWidget {
       children: [
         _WeatherCircleButton(icon: CupertinoIcons.chevron_left, onTap: onBack),
         const Spacer(),
-        CupertinoButton(
-          padding: EdgeInsets.zero,
-          onPressed: () {},
-          child: Container(
-            height: 56,
-            padding: const EdgeInsets.symmetric(horizontal: 25),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: const Color(0xFF111922),
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF26364C).withValues(alpha: 0.16),
-                  blurRadius: 24,
-                  offset: const Offset(0, 12),
-                ),
-              ],
-            ),
-            child: const Text(
-              '发聊天',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0,
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -271,11 +269,15 @@ class _WeatherHeroCard extends StatelessWidget {
   const _WeatherHeroCard({
     required this.day,
     required this.current,
+    required this.location,
+    required this.agentName,
     required this.progress,
   });
 
   final _WeatherDay day;
   final _WeatherSnapshot? current;
+  final _WeatherLocation location;
+  final String agentName;
   final double progress;
 
   @override
@@ -358,7 +360,7 @@ class _WeatherHeroCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(right: 108),
                 child: Text(
-                  '小芜所在地 · 杭州。全天 $min° - $max°，风力 $windLevel 级。',
+                  '$agentName所在地 · ${location.displayName}。全天 $min° - $max°，风力 $windLevel 级。',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -1310,16 +1312,16 @@ class _WeatherCurvePainter extends CustomPainter {
 class _WeatherService {
   const _WeatherService._();
 
-  static const _latitude = '30.2741';
-  static const _longitude = '120.1551';
-  static const _timezone = 'Asia/Shanghai';
+  static const _fallbackCity = '杭州';
+  static const _fallbackTimezone = 'Asia/Shanghai';
   static const _forecastDays = 10;
 
-  static Future<_WeatherForecast> fetchHangzhou() async {
+  static Future<_WeatherForecast> fetchForCity(String? city) async {
+    final location = await _resolveLocation(city);
     final forecastUri = Uri.https('api.open-meteo.com', '/v1/forecast', {
-      'latitude': _latitude,
-      'longitude': _longitude,
-      'timezone': _timezone,
+      'latitude': location.latitude.toString(),
+      'longitude': location.longitude.toString(),
+      'timezone': location.timezone,
       'forecast_days': _forecastDays.toString(),
       'current':
           'temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,apparent_temperature,precipitation',
@@ -1330,15 +1332,130 @@ class _WeatherService {
     });
 
     final weather = await _getJson(forecastUri);
-    final aqi = await _fetchAqiByHour();
-    return _parseForecast(weather, aqi);
+    final aqi = await _fetchAqiByHour(location);
+    return _parseForecast(weather, aqi, location);
   }
 
-  static Future<Map<String, double>> _fetchAqiByHour() async {
+  static Future<_WeatherLocation> _resolveLocation(String? city) async {
+    final candidates = <String>[
+      _normalizeCityName(city),
+      _fallbackCity,
+    ].where((value) => value.isNotEmpty).toSet();
+
+    for (final candidate in candidates) {
+      try {
+        final uri = Uri.https('geocoding-api.open-meteo.com', '/v1/search', {
+          'name': candidate,
+          'count': '5',
+          'language': 'zh',
+          'format': 'json',
+          'countryCode': 'CN',
+        });
+        final json = await _getJson(uri);
+        final results = json['results'];
+        if (results is! List || results.isEmpty) continue;
+        final selected = results.whereType<Map<String, dynamic>>().firstWhere(
+          (item) => item['country_code'] == 'CN',
+          orElse: () => results.whereType<Map<String, dynamic>>().first,
+        );
+        final latitude = _asDouble(selected['latitude']);
+        final longitude = _asDouble(selected['longitude']);
+        if (latitude == 0 && longitude == 0) continue;
+        final name = (selected['name'] as String?)?.trim();
+        final timezone = (selected['timezone'] as String?)?.trim();
+        return _WeatherLocation(
+          displayName: name == null || name.isEmpty ? candidate : name,
+          latitude: latitude,
+          longitude: longitude,
+          timezone: timezone == null || timezone.isEmpty
+              ? _fallbackTimezone
+              : timezone,
+        );
+      } catch (_) {
+        continue;
+      }
+    }
+
+    return const _WeatherLocation(
+      displayName: _fallbackCity,
+      latitude: 30.29365,
+      longitude: 120.16142,
+      timezone: _fallbackTimezone,
+    );
+  }
+
+  static String _normalizeCityName(String? value) {
+    final raw = value?.trim() ?? '';
+    if (raw.isEmpty) return '';
+    final parts = raw
+        .split(RegExp(r'[\s,，、/]+'))
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+    if (parts.length >= 2) {
+      final second = _stripAdministrativeTail(parts[1]);
+      if (second.isNotEmpty) return second;
+    }
+
+    final compact = raw.replaceAll(RegExp(r'[\s,，、/]+'), '');
+    final cityIndex = compact.indexOf('市');
+    if (cityIndex > 0) {
+      final beforeCity = compact.substring(0, cityIndex);
+      final boundaryEnd = _lastProvinceBoundaryEnd(beforeCity);
+      final city = beforeCity.substring(boundaryEnd + 1);
+      final normalized = _stripAdministrativeTail(city);
+      if (normalized.isNotEmpty) return normalized;
+    }
+
+    for (final suffix in const ['自治州', '地区', '盟']) {
+      final index = compact.indexOf(suffix);
+      if (index > 0) {
+        final before = compact.substring(0, index);
+        final boundaryEnd = _lastProvinceBoundaryEnd(before);
+        final city = before.substring(boundaryEnd + 1);
+        if (city.isNotEmpty) return city;
+      }
+    }
+
+    final boundaryEnd = _lastProvinceBoundaryEnd(compact);
+    if (boundaryEnd >= 0 && boundaryEnd < compact.length - 1) {
+      final city = _stripAdministrativeTail(compact.substring(boundaryEnd + 1));
+      if (city.isNotEmpty) return city;
+    }
+
+    return _stripAdministrativeTail(compact);
+  }
+
+  static int _lastProvinceBoundaryEnd(String value) {
+    var result = -1;
+    for (final marker in const ['特别行政区', '自治区', '省']) {
+      final index = value.lastIndexOf(marker);
+      if (index >= 0) result = math.max(result, index + marker.length - 1);
+    }
+    return result;
+  }
+
+  static String _stripAdministrativeTail(String value) {
+    var result = value.trim();
+    for (final suffix in const ['市', '地区', '盟', '自治州']) {
+      if (result.endsWith(suffix) && result.length > suffix.length) {
+        result = result.substring(0, result.length - suffix.length);
+      }
+    }
+    for (final marker in const ['区', '县', '街道', '镇', '乡']) {
+      final index = result.indexOf(marker);
+      if (index > 1) return result.substring(0, index);
+    }
+    return result;
+  }
+
+  static Future<Map<String, double>> _fetchAqiByHour(
+    _WeatherLocation location,
+  ) async {
     final uri = Uri.https('air-quality-api.open-meteo.com', '/v1/air-quality', {
-      'latitude': _latitude,
-      'longitude': _longitude,
-      'timezone': _timezone,
+      'latitude': location.latitude.toString(),
+      'longitude': location.longitude.toString(),
+      'timezone': location.timezone,
       'forecast_days': _forecastDays.toString(),
       'hourly': 'us_aqi',
     });
@@ -1385,6 +1502,7 @@ class _WeatherService {
   static _WeatherForecast _parseForecast(
     Map<String, dynamic> json,
     Map<String, double> aqiByHour,
+    _WeatherLocation location,
   ) {
     final currentJson = json['current'] as Map<String, dynamic>?;
     final current = currentJson == null
@@ -1466,7 +1584,7 @@ class _WeatherService {
     }
 
     if (days.isEmpty) throw const FormatException('Weather forecast is empty');
-    return _WeatherForecast(days: days, current: current);
+    return _WeatherForecast(days: days, current: current, location: location);
   }
 
   static List<String> _stringList(Object? value) {
@@ -1508,11 +1626,30 @@ class _WeatherService {
   }
 }
 
+class _WeatherLocation {
+  const _WeatherLocation({
+    required this.displayName,
+    required this.latitude,
+    required this.longitude,
+    required this.timezone,
+  });
+
+  final String displayName;
+  final double latitude;
+  final double longitude;
+  final String timezone;
+}
+
 class _WeatherForecast {
-  const _WeatherForecast({required this.days, required this.current});
+  const _WeatherForecast({
+    required this.days,
+    required this.current,
+    required this.location,
+  });
 
   final List<_WeatherDay> days;
   final _WeatherSnapshot? current;
+  final _WeatherLocation location;
 }
 
 class _WeatherDay {
