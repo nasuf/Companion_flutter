@@ -18,7 +18,7 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
-class _ChatPageState extends State<ChatPage> {
+class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const _animationDuration = Duration(milliseconds: 260);
   static const _animationCurve = Curves.easeOutCubic;
   static const _composerHeight = 68.0;
@@ -39,6 +39,8 @@ class _ChatPageState extends State<ChatPage> {
   ComposerPanel _panel = ComposerPanel.none;
   ComposerPanel _heldPanel = ComposerPanel.none;
   Timer? _panelHoldTimer;
+  Timer? _capsuleScanTimer;
+  TimeCapsule? _readyCapsule;
   bool _loadingInitial = true;
   bool _loadingOlder = false;
   bool _hasOlderMessages = false;
@@ -59,6 +61,7 @@ class _ChatPageState extends State<ChatPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_handleScroll);
     _bootstrapChat();
   }
@@ -74,6 +77,7 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     _inputController.dispose();
@@ -82,7 +86,15 @@ class _ChatPageState extends State<ChatPage> {
     _stateSub?.cancel();
     _socket?.close();
     _panelHoldTimer?.cancel();
+    _capsuleScanTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    unawaited(_scanReadyCapsules());
+    _scheduleNextCapsuleScan();
   }
 
   double _panelHeightFor(ComposerPanel panel) {
@@ -98,6 +110,7 @@ class _ChatPageState extends State<ChatPage> {
     await _stateSub?.cancel();
     await _socket?.close();
     _panelHoldTimer?.cancel();
+    _capsuleScanTimer?.cancel();
     if (!mounted) return;
     setState(() {
       _messages.clear();
@@ -111,8 +124,11 @@ class _ChatPageState extends State<ChatPage> {
       _connecting = true;
       _typingHint = '连接中...';
       _pendingSend = null;
+      _readyCapsule = null;
     });
     await _loadLatestMessages(showLoading: true);
+    unawaited(_scanReadyCapsules());
+    _scheduleNextCapsuleScan();
     _connectSocket();
   }
 
@@ -266,6 +282,119 @@ class _ChatPageState extends State<ChatPage> {
       if (mounted) setState(() => _historyError = _asMessage(error));
     } finally {
       if (mounted) setState(() => _loadingOlder = false);
+    }
+  }
+
+  Future<void> _openComponentCard(ChatComponentCard card) async {
+    if (card.type != 'time_capsule') return;
+    final capsuleId = card.payload['capsule_id']?.toString();
+    if (capsuleId == null || capsuleId.isEmpty) return;
+    try {
+      final capsule = await widget.api.getTimeCapsule(capsuleId);
+      if (!mounted) return;
+      final draft = await Navigator.of(context).push<CapsuleChatDraft>(
+        CupertinoPageRoute<CapsuleChatDraft>(
+          fullscreenDialog: true,
+          builder: (_) => CapsuleEditorPage(
+            api: widget.api,
+            session: widget.session,
+            draft: capsule,
+            readOnly: true,
+          ),
+        ),
+      );
+      if (!mounted || draft == null) return;
+      sendComponentMessage(draft.agentText, draft.card);
+    } catch (error) {
+      if (mounted) setState(() => _historyError = _asMessage(error));
+    }
+  }
+
+  Future<void> _scanReadyCapsules() async {
+    final agentId = widget.session.agentId;
+    if (agentId == null || agentId.isEmpty) return;
+    try {
+      final ready = await widget.api.listTimeCapsules(
+        agentId: agentId,
+        workspaceId: widget.session.workspaceId,
+        state: 'ready',
+      );
+      if (!mounted) return;
+      setState(() => _readyCapsule = ready.isEmpty ? null : ready.first);
+    } catch (error) {
+      debugPrint('[capsule.ready] scan failed: $error');
+    }
+  }
+
+  void refreshReadyCapsules() {
+    unawaited(_scanReadyCapsules());
+    _scheduleNextCapsuleScan();
+  }
+
+  void _scheduleNextCapsuleScan() {
+    _capsuleScanTimer?.cancel();
+    final next = _nextUtc8Eight();
+    final delay = next.difference(DateTime.now());
+    _capsuleScanTimer = Timer(
+      delay.isNegative ? const Duration(seconds: 1) : delay,
+      () {
+        unawaited(_scanReadyCapsules());
+        _scheduleNextCapsuleScan();
+      },
+    );
+  }
+
+  DateTime _nextUtc8Eight() {
+    final utc8Now = DateTime.now().toUtc().add(const Duration(hours: 8));
+    var targetUtc8 = DateTime.utc(utc8Now.year, utc8Now.month, utc8Now.day, 8);
+    if (!targetUtc8.isAfter(utc8Now)) {
+      targetUtc8 = targetUtc8.add(const Duration(days: 1));
+    }
+    return targetUtc8.subtract(const Duration(hours: 8)).toLocal();
+  }
+
+  Future<void> _openReadyCapsuleNotice() async {
+    final capsule = _readyCapsule;
+    if (capsule == null) return;
+    _dismissInputSurfaces();
+    final shouldOpen = await showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'capsule-ready',
+      transitionDuration: const Duration(milliseconds: 420),
+      pageBuilder: (_, __, ___) => _CapsuleReadyOverlay(capsule: capsule),
+      transitionBuilder: (_, animation, __, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        return FadeTransition(opacity: curved, child: child);
+      },
+    );
+    if (!mounted || shouldOpen != true) return;
+    try {
+      final opened = await widget.api.openTimeCapsule(capsule.id);
+      if (!mounted) return;
+      setState(() => _readyCapsule = null);
+      final draft = await Navigator.of(context).push<CapsuleChatDraft>(
+        CupertinoPageRoute<CapsuleChatDraft>(
+          fullscreenDialog: true,
+          builder: (_) => CapsuleEditorPage(
+            api: widget.api,
+            session: widget.session,
+            draft: opened,
+            readOnly: true,
+          ),
+        ),
+      );
+      if (!mounted) return;
+      if (draft != null) {
+        sendComponentMessage(draft.agentText, draft.card);
+      } else {
+        unawaited(_scanReadyCapsules());
+      }
+    } catch (error) {
+      if (mounted) setState(() => _historyError = _asMessage(error));
     }
   }
 
@@ -599,6 +728,7 @@ class _ChatPageState extends State<ChatPage> {
                           messages: _messages,
                           isLoadingOlder: _loadingOlder,
                           bottomPadding: listBottomPadding,
+                          onComponentCardTap: _openComponentCard,
                           agentAvatarUrl: widget.session.agentAvatarUrl,
                         ),
                 ),
@@ -649,7 +779,127 @@ class _ChatPageState extends State<ChatPage> {
               child: _ChatPanel(panel: visiblePanel, onEmojiTap: _appendEmoji),
             ),
           ),
+          Positioned(
+            top: 74,
+            left: 18,
+            right: 18,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: _readyCapsule == null
+                  ? const SizedBox.shrink()
+                  : _ReadyCapsuleBanner(
+                      key: ValueKey(_readyCapsule!.id),
+                      capsule: _readyCapsule!,
+                      onTap: _openReadyCapsuleNotice,
+                    ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _ReadyCapsuleBanner extends StatelessWidget {
+  const _ReadyCapsuleBanner({
+    super.key,
+    required this.capsule,
+    required this.onTap,
+  });
+
+  final TimeCapsule capsule;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final date = capsule.openDate;
+    final dateText = date == null ? '今天' : _formatCapsuleShortDate(date);
+    return Align(
+      alignment: Alignment.topCenter,
+      child: CupertinoButton(
+        minimumSize: Size.zero,
+        padding: EdgeInsets.zero,
+        onPressed: onTap,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+            child: Container(
+              height: 54,
+              padding: const EdgeInsets.fromLTRB(12, 8, 14, 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.88),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF7C3CFF).withValues(alpha: 0.16),
+                    blurRadius: 22,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF7C3CFF),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Center(
+                      child: CustomPaint(
+                        size: Size(22, 22),
+                        painter: _CapsuleSidebarIconPainter(
+                          accent: Color(0xFF7C3CFF),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '有一个新胶囊待开启',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: AppColors.text,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                        Text(
+                          '$dateText 开启，点一下看看',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(
+                    CupertinoIcons.chevron_down,
+                    color: Color(0xFF7C3CFF),
+                    size: 18,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

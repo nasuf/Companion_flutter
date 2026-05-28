@@ -125,7 +125,9 @@ class _CapsulePageState extends State<CapsulePage> {
               snapshot.data ?? _cachedCapsules ?? const <TimeCapsule>[];
           final hasCachedItems = _cachedCapsules != null;
           final drafts = items.where((item) => item.isDraft).toList();
-          final pending = items.where((item) => item.isPending).toList();
+          final pending = items
+              .where((item) => item.isPending || item.isReady)
+              .toList();
           final opened = items.where((item) => item.isOpened).toList();
           return Stack(
             children: [
@@ -2444,46 +2446,37 @@ class _CapsuleListTile extends StatelessWidget {
               ),
               SizedBox(width: compact ? 14 : 15),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      locked ? '待开启胶囊' : capsule.displayTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: AppColors.text,
-                        fontSize: compact ? 16 : 17,
-                        fontWeight: compact ? FontWeight.w900 : FontWeight.w800,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                    SizedBox(height: compact ? 2 : 4),
-                    Text(
-                      locked
-                          ? '${_formatCapsuleCreatedStamp(capsule.createdAt)}创建'
-                          : capsule.preview,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Color(0xFF6F7775),
-                        fontSize: compact ? 13 : 14,
-                        fontWeight: FontWeight.w500,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  locked
+                      ? '待开启胶囊\n${_formatCapsuleCreatedStamp(capsule.createdAt)}创建'
+                      : capsule.preview,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: locked ? const Color(0xFF6F7775) : AppColors.text,
+                    fontSize: compact ? 15 : 16,
+                    height: 1.34,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
               ),
               SizedBox(width: compact ? 10 : 12),
-              Text(
-                locked ? '$openDateLabel开启' : openDateLabel,
-                style: TextStyle(
-                  color: Color(0xFF9AA19E),
-                  fontSize: locked ? (compact ? 14 : 16) : (compact ? 16 : 15),
-                  fontWeight: compact ? FontWeight.w900 : FontWeight.w800,
-                  decoration: TextDecoration.none,
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: compact ? 72 : 78),
+                child: Text(
+                  locked ? '$openDateLabel开启' : openDateLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    color: Color(0xFF9AA19E),
+                    fontSize: locked
+                        ? (compact ? 13 : 15)
+                        : (compact ? 16 : 15),
+                    fontWeight: compact ? FontWeight.w900 : FontWeight.w800,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
               ),
             ],
@@ -2798,6 +2791,319 @@ class _SealedTicket extends StatelessWidget {
   }
 }
 
+class _CapsuleReadyOverlay extends StatefulWidget {
+  const _CapsuleReadyOverlay({required this.capsule});
+
+  final TimeCapsule capsule;
+
+  @override
+  State<_CapsuleReadyOverlay> createState() => _CapsuleReadyOverlayState();
+}
+
+class _CapsuleReadyOverlayState extends State<_CapsuleReadyOverlay>
+    with TickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final AnimationController _closeController;
+  late final Animation<double> _drop;
+  late final Animation<double> _fade;
+  late final Animation<double> _lamp;
+  late final Animation<double> _button;
+  late final Animation<double> _close;
+  bool _closing = false;
+  double? _closingCardTop;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1050),
+    )..forward();
+    _closeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 260),
+    );
+    _drop = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0, 0.70, curve: Curves.easeOutBack),
+    );
+    _fade = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0, 0.32, curve: Curves.easeOut),
+    );
+    _lamp = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.18, 0.86, curve: Curves.easeInOutCubic),
+    );
+    _button = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.58, 1, curve: Curves.easeOutBack),
+    );
+    _close = CurvedAnimation(
+      parent: _closeController,
+      curve: Curves.easeInCubic,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _closeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _closeWithoutOpening() async {
+    if (_closing) return;
+    setState(() {
+      _closing = true;
+      _closingCardTop = lerpDouble(-230, 94, _drop.value)!;
+    });
+    _controller.stop();
+    await _closeController.forward();
+    if (mounted) Navigator.of(context).pop(false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.74),
+      child: SafeArea(
+        child: AnimatedBuilder(
+          animation: Listenable.merge([_controller, _closeController]),
+          builder: (context, _) {
+            final openCardTop = lerpDouble(-230, 94, _drop.value)!;
+            final cardTop = _closing
+                ? lerpDouble(
+                    _closingCardTop ?? openCardTop,
+                    -360,
+                    _close.value,
+                  )!
+                : openCardTop;
+            final closeOpacity = _closing ? 1 - _close.value : 1.0;
+            final glowOpacity = (1 - _lamp.value) * 0.30 + 0.08;
+            final rotation = math.sin(_lamp.value * math.pi) * -0.012;
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: _fade.value * closeOpacity,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          center: const Alignment(0, -0.42),
+                          radius: 0.78,
+                          colors: [
+                            const Color(
+                              0xFFFFE59B,
+                            ).withValues(alpha: glowOpacity),
+                            const Color(0xFF7C3CFF).withValues(alpha: 0.06),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 38,
+                  left: 0,
+                  right: 0,
+                  child: Opacity(
+                    opacity: closeOpacity,
+                    child: Center(
+                      child: Container(
+                        width: 2,
+                        height: math.max(0, cardTop - 18),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.86),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: cardTop,
+                  left: 0,
+                  right: 0,
+                  child: Transform.rotate(
+                    angle: rotation,
+                    child: Center(
+                      child: _ReadyTicket(
+                        capsule: widget.capsule,
+                        onClose: _closeWithoutOpening,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 40,
+                  right: 40,
+                  bottom: 54,
+                  child: Transform.scale(
+                    scale: (_button.value * closeOpacity).clamp(0.0, 1.0),
+                    child: Opacity(
+                      opacity: (_button.value * closeOpacity).clamp(0.0, 1.0),
+                      child: CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: () => Navigator.of(context).pop(true),
+                        child: Container(
+                          height: 58,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(29),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(
+                                  0xFF7C3CFF,
+                                ).withValues(alpha: 0.28),
+                                blurRadius: 28,
+                                offset: const Offset(0, 13),
+                              ),
+                            ],
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text(
+                            '开启',
+                            style: TextStyle(
+                              color: Color(0xFF151719),
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ReadyTicket extends StatelessWidget {
+  const _ReadyTicket({required this.capsule, required this.onClose});
+
+  final TimeCapsule capsule;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final date = capsule.openDate;
+    final dateLabel = date == null ? '今天' : _formatCapsuleDate(date);
+    return Container(
+      width: 292,
+      padding: const EdgeInsets.fromLTRB(24, 26, 24, 26),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFC944),
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.30),
+            blurRadius: 34,
+            offset: const Offset(0, 20),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -8,
+            top: -8,
+            child: CupertinoButton(
+              minimumSize: Size.zero,
+              padding: EdgeInsets.zero,
+              onPressed: onClose,
+              child: Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                child: const Icon(
+                  CupertinoIcons.xmark,
+                  color: Colors.white,
+                  size: 21,
+                  shadows: [
+                    Shadow(
+                      color: Color(0x33000000),
+                      blurRadius: 8,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            right: -24,
+            bottom: -28,
+            child: Transform.rotate(
+              angle: -0.45,
+              child: Container(
+                width: 110,
+                height: 110,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.22),
+                  borderRadius: BorderRadius.circular(34),
+                ),
+              ),
+            ),
+          ),
+          Column(
+            children: [
+              Container(
+                width: 82,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.10),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                alignment: Alignment.center,
+                child: const CustomPaint(
+                  size: Size(32, 32),
+                  painter: _CapsuleSidebarIconPainter(
+                    accent: Color(0xFFFFB526),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                '灯亮了',
+                style: TextStyle(
+                  color: Color(0xFF151719),
+                  fontSize: 27,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '你有一个新胶囊今天待开启。\n它约定在$dateLabel等你。',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF2B2A25),
+                  fontSize: 17,
+                  height: 1.48,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CapsuleActionButton extends StatelessWidget {
   const _CapsuleActionButton({
     required this.label,
@@ -3097,7 +3403,7 @@ CapsuleChatDraft _draftForCapsule(TimeCapsule capsule) {
   final text = '我于$created埋下了时间胶囊，于$open开启，胶囊内容是：${capsule.content}';
   final card = ChatComponentCard(
     type: 'time_capsule',
-    title: capsule.displayTitle,
+    title: '时间胶囊',
     subtitle: '$open开启',
     body: capsule.content,
     footer: '时间胶囊 · 已开启',

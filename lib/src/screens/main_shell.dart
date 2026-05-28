@@ -39,7 +39,9 @@ class _MainShellState extends State<MainShell> {
         ),
       ),
     );
-    if (!mounted || result == null) return;
+    if (!mounted) return;
+    _chatPageKey.currentState?.refreshReadyCapsules();
+    if (result == null) return;
     setState(() => _index = 0);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _chatPageKey.currentState?.sendComponentMessage(

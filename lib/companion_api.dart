@@ -225,6 +225,17 @@ class CompanionApi {
     return TimeCapsule.fromJson(json);
   }
 
+  Future<TimeCapsule> openTimeCapsule(String capsuleId) async {
+    final json =
+        await _request(
+              'POST',
+              '/capsules/$capsuleId/open',
+              debugLabel: 'capsule.open',
+            )
+            as Map<String, dynamic>;
+    return TimeCapsule.fromJson(json);
+  }
+
   Future<Map<String, dynamic>> uploadTimeCapsuleMedia({
     required String kind,
     required String name,

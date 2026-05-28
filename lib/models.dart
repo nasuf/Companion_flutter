@@ -280,6 +280,7 @@ class TimeCapsule {
     this.title,
     this.openDate,
     this.sealedAt,
+    this.openedAt,
   });
 
   final String id;
@@ -294,11 +295,13 @@ class TimeCapsule {
   final String status;
   final String state;
   final DateTime? sealedAt;
+  final DateTime? openedAt;
   final DateTime createdAt;
   final DateTime updatedAt;
 
   bool get isDraft => state == 'draft';
   bool get isPending => state == 'pending';
+  bool get isReady => state == 'ready';
   bool get isOpened => state == 'opened';
 
   String get displayTitle {
@@ -314,7 +317,7 @@ class TimeCapsule {
   String get preview {
     final compact = content.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (compact.isEmpty) return '还没有写下内容。';
-    return compact.length > 38 ? '${compact.substring(0, 38)}...' : compact;
+    return compact;
   }
 
   factory TimeCapsule.fromJson(Map<String, dynamic> json) {
@@ -333,6 +336,7 @@ class TimeCapsule {
       status: json['status'] as String? ?? 'draft',
       state: json['state'] as String? ?? 'draft',
       sealedAt: DateTime.tryParse(json['sealed_at'] as String? ?? ''),
+      openedAt: DateTime.tryParse(json['opened_at'] as String? ?? ''),
       createdAt:
           DateTime.tryParse(json['created_at'] as String? ?? '') ??
           DateTime.now(),
