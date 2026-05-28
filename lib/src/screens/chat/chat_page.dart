@@ -208,12 +208,32 @@ class _ChatPageState extends State<ChatPage> {
       final clientId = item.clientId ?? item.id;
       return !serverIds.contains(item.id) &&
           !serverClientIds.contains(clientId);
-    });
+    }).toList();
+    final transientAssistantReplies = _messages.where((item) {
+      if (item.isMine || !item.isDraft) return false;
+      return !_hasMatchingServerAssistant(item, serverMessages);
+    }).toList();
     _messages
       ..clear()
       ..addAll(serverMessages)
-      ..addAll(unsyncedUserDrafts);
+      ..addAll(unsyncedUserDrafts)
+      ..addAll(transientAssistantReplies);
     _messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  }
+
+  bool _hasMatchingServerAssistant(
+    ChatMessage localReply,
+    List<ChatMessage> serverMessages,
+  ) {
+    return serverMessages.any((serverMessage) {
+      if (serverMessage.isMine || serverMessage.content != localReply.content) {
+        return false;
+      }
+      final delta = serverMessage.createdAt
+          .difference(localReply.createdAt)
+          .abs();
+      return delta <= const Duration(minutes: 5);
+    });
   }
 
   Future<void> _loadOlderMessages() async {

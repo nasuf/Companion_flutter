@@ -154,7 +154,7 @@ class ChatMessage {
   bool get isDraft => id.startsWith('draft-');
   String? get clientId => metadata?['client_id'] as String?;
   ChatComponentCard? get componentCard {
-    final raw = metadata?['component_card'];
+    final raw = metadata?['component_card'] ?? metadata?['componentCard'];
     return raw is Map ? ChatComponentCard.fromJson(raw) : null;
   }
 

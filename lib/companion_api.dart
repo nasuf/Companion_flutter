@@ -185,7 +185,7 @@ class CompanionApi {
     final json =
         await _request(
               'GET',
-              '/conversations/$conversationId/messages?limit=$limit&offset=$offset',
+              '/conversations/$conversationId/messages?limit=$limit&offset=$offset&include_metadata=true',
             )
             as List;
     return json
