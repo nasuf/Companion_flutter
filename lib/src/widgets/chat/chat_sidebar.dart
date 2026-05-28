@@ -180,7 +180,7 @@ class _SidebarButton extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: Icon(destination.icon, color: Colors.white, size: 30),
+                  child: _SidebarIcon(destination: destination),
                 ),
               ),
               Positioned(
@@ -212,6 +212,94 @@ class _SidebarButton extends StatelessWidget {
       _SidebarDestination.list => const Color(0xFFFFC23A),
       _SidebarDestination.note => const Color(0xFFFFC23A),
     };
+  }
+}
+
+class _SidebarIcon extends StatelessWidget {
+  const _SidebarIcon({required this.destination});
+
+  final _SidebarDestination destination;
+
+  @override
+  Widget build(BuildContext context) {
+    if (destination == _SidebarDestination.capsule) {
+      return Center(
+        child: CustomPaint(
+          size: const Size(36, 36),
+          painter: _CapsuleSidebarIconPainter(accent: destination.color),
+        ),
+      );
+    }
+    return Icon(destination.icon, color: Colors.white, size: 30);
+  }
+}
+
+class _CapsuleSidebarIconPainter extends CustomPainter {
+  const _CapsuleSidebarIconPainter({required this.accent});
+
+  final Color accent;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final capsuleRect = Rect.fromCenter(
+      center: Offset.zero,
+      width: size.width * 0.92,
+      height: size.height * 0.46,
+    );
+    final radius = Radius.circular(capsuleRect.height / 2);
+    final capsule = RRect.fromRectAndRadius(capsuleRect, radius);
+
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(-math.pi / 4);
+
+    final shadowPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.10)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
+    canvas.drawRRect(capsule.shift(const Offset(0, 1.4)), shadowPaint);
+
+    canvas.save();
+    canvas.clipRRect(capsule);
+    canvas.drawRect(
+      Rect.fromLTRB(capsuleRect.left, capsuleRect.top, 0, capsuleRect.bottom),
+      Paint()..color = Colors.white,
+    );
+    canvas.drawRect(
+      Rect.fromLTRB(0, capsuleRect.top, capsuleRect.right, capsuleRect.bottom),
+      Paint()..color = Colors.white.withValues(alpha: 0.72),
+    );
+    canvas.restore();
+
+    canvas.drawLine(
+      Offset(0, capsuleRect.top + 2.2),
+      Offset(0, capsuleRect.bottom - 2.2),
+      Paint()
+        ..color = accent.withValues(alpha: 0.70)
+        ..strokeWidth = 2.2
+        ..strokeCap = StrokeCap.round,
+    );
+
+    canvas.drawRRect(
+      capsule,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.90)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.7,
+    );
+
+    canvas.drawCircle(
+      Offset(capsuleRect.right - 8, capsuleRect.top + 5),
+      2.2,
+      Paint()..color = Colors.white.withValues(alpha: 0.92),
+    );
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _CapsuleSidebarIconPainter oldDelegate) {
+    return oldDelegate.accent != accent;
   }
 }
 

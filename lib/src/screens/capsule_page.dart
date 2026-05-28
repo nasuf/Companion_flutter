@@ -27,11 +27,12 @@ class CapsulePage extends StatefulWidget {
 
 class _CapsulePageState extends State<CapsulePage> {
   late Future<List<TimeCapsule>> _capsules;
+  List<TimeCapsule>? _cachedCapsules;
 
   @override
   void initState() {
     super.initState();
-    _capsules = _load();
+    _capsules = _loadAndCache();
   }
 
   Future<List<TimeCapsule>> _load() {
@@ -43,12 +44,18 @@ class _CapsulePageState extends State<CapsulePage> {
     );
   }
 
+  Future<List<TimeCapsule>> _loadAndCache() async {
+    final items = await _load();
+    if (mounted) _cachedCapsules = items;
+    return items;
+  }
+
   void _refresh() {
-    setState(() => _capsules = _load());
+    setState(() => _capsules = _loadAndCache());
   }
 
   Future<void> _reloadLatestCapsules() async {
-    final future = _load();
+    final future = _loadAndCache();
     setState(() {
       _capsules = future;
     });
@@ -56,6 +63,7 @@ class _CapsulePageState extends State<CapsulePage> {
       final items = await future;
       if (!mounted) return;
       setState(() {
+        _cachedCapsules = items;
         _capsules = Future.value(items);
       });
     } catch (_) {
@@ -105,21 +113,6 @@ class _CapsulePageState extends State<CapsulePage> {
     }
   }
 
-  Future<void> _shareOpened(List<TimeCapsule> opened) async {
-    if (opened.isEmpty) return;
-    final selected = await showCupertinoModalPopup<TimeCapsule>(
-      context: context,
-      builder: (_) =>
-          _CapsulePickerSheet(title: '选择要发给聊天的胶囊', capsules: opened),
-    );
-    if (!mounted) return;
-    if (selected == null) {
-      await _reloadLatestCapsules();
-      return;
-    }
-    Navigator.of(context).pop(_draftForCapsule(selected));
-  }
-
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
@@ -128,7 +121,9 @@ class _CapsulePageState extends State<CapsulePage> {
       body: FutureBuilder<List<TimeCapsule>>(
         future: _capsules,
         builder: (context, snapshot) {
-          final items = snapshot.data ?? const <TimeCapsule>[];
+          final items =
+              snapshot.data ?? _cachedCapsules ?? const <TimeCapsule>[];
+          final hasCachedItems = _cachedCapsules != null;
           final drafts = items.where((item) => item.isDraft).toList();
           final pending = items.where((item) => item.isPending).toList();
           final opened = items.where((item) => item.isOpened).toList();
@@ -144,17 +139,16 @@ class _CapsulePageState extends State<CapsulePage> {
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
                         child: _CapsuleTopBar(
-                          canShare: opened.isNotEmpty,
                           onBack: () => Navigator.of(context).maybePop(),
-                          onShare: () => _shareOpened(opened),
                         ),
                       ),
                     ),
-                    if (snapshot.connectionState == ConnectionState.waiting)
+                    if (snapshot.connectionState == ConnectionState.waiting &&
+                        !hasCachedItems)
                       const SliverFillRemaining(
                         child: Center(child: CircularProgressIndicator()),
                       )
-                    else if (snapshot.hasError)
+                    else if (snapshot.hasError && !hasCachedItems)
                       SliverFillRemaining(
                         child: _CapsuleError(onRetry: _refresh),
                       )
@@ -201,9 +195,7 @@ class _CapsulePageState extends State<CapsulePage> {
                                 index: index + 1,
                                 capsule: opened[index],
                                 enabled: true,
-                                onTap: () => Navigator.of(
-                                  context,
-                                ).pop(_draftForCapsule(opened[index])),
+                                onTap: () => _openDetail(opened[index]),
                               );
                             },
                           ),
@@ -237,7 +229,24 @@ class _CapsulePageState extends State<CapsulePage> {
     await _openEditor(draft: selected);
   }
 
+  Future<void> _openDetail(TimeCapsule capsule) async {
+    final draft = await Navigator.of(context).push<CapsuleChatDraft>(
+      CupertinoPageRoute<CapsuleChatDraft>(
+        fullscreenDialog: true,
+        builder: (_) => CapsuleEditorPage(
+          api: widget.api,
+          session: widget.session,
+          draft: capsule,
+          readOnly: true,
+        ),
+      ),
+    );
+    if (!mounted || draft == null) return;
+    Navigator.of(context).pop(draft);
+  }
+
   Future<void> _openPending(List<TimeCapsule> pending) async {
+    if (pending.isEmpty) return;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -258,11 +267,13 @@ class CapsuleEditorPage extends StatefulWidget {
     required this.api,
     required this.session,
     this.draft,
+    this.readOnly = false,
   });
 
   final CompanionApi api;
   final AuthSession session;
   final TimeCapsule? draft;
+  final bool readOnly;
 
   @override
   State<CapsuleEditorPage> createState() => _CapsuleEditorPageState();
@@ -883,8 +894,8 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
                         : () => Navigator.of(context).maybePop(),
                   ),
                   const Spacer(),
-                  const Text(
-                    '写新胶囊',
+                  Text(
+                    widget.readOnly ? '胶囊详情' : '写新胶囊',
                     style: TextStyle(
                       color: AppColors.text,
                       fontSize: 18,
@@ -892,8 +903,14 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
                     ),
                   ),
                   const Spacer(),
-                  if (widget.draft == null)
-                    const SizedBox(width: 54)
+                  if (widget.draft == null || widget.readOnly)
+                    widget.readOnly && widget.draft != null
+                        ? _CapsuleSendChatButton(
+                            onTap: () => Navigator.of(
+                              context,
+                            ).pop(_draftForCapsule(widget.draft!)),
+                          )
+                        : const SizedBox(width: 54)
                   else
                     _CapsuleCircleButton(
                       icon: CupertinoIcons.delete,
@@ -911,6 +928,7 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
                   skin: skin,
                   controller: _controller,
                   senderName: widget.session.username,
+                  readOnly: widget.readOnly,
                 ),
               ),
             ),
@@ -927,11 +945,11 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
                         builder: (_) => _CapsuleImageViewer(image: _image!),
                       ),
                     ),
-              onRemoveImage: _saving
+              onRemoveImage: _saving || widget.readOnly
                   ? null
                   : () => setState(() => _image = null),
               onToggleVoice: _saving ? null : _toggleVoicePlayback,
-              onRemoveVoice: _saving
+              onRemoveVoice: _saving || widget.readOnly
                   ? null
                   : () async {
                       await _audioPlayer?.stop();
@@ -954,63 +972,65 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
               ),
             Padding(
               padding: EdgeInsets.fromLTRB(22, 12, 22, bottom + 18),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 9,
-                        child: _CapsuleEditorToolbar(
-                          recording: _recording,
-                          recordSeconds: _recordSeconds,
-                          onPickImage: _saving ? null : _pickImage,
-                          onToggleRecord: _saving ? null : _toggleRecord,
-                          onPickSkin: _saving ? null : _openSkinSheet,
-                          onEmoji: _saving ? null : _openEmojiSheet,
+              child: widget.readOnly
+                  ? _CapsuleDatePill(openDate: _openDate, onTap: null)
+                  : Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 9,
+                              child: _CapsuleEditorToolbar(
+                                recording: _recording,
+                                recordSeconds: _recordSeconds,
+                                onPickImage: _saving ? null : _pickImage,
+                                onToggleRecord: _saving ? null : _toggleRecord,
+                                onPickSkin: _saving ? null : _openSkinSheet,
+                                onEmoji: _saving ? null : _openEmojiSheet,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 7,
+                              child: _CapsuleDatePill(
+                                openDate: _openDate,
+                                onTap: _saving ? null : _pickDate,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 7,
-                        child: _CapsuleDatePill(
-                          openDate: _openDate,
-                          onTap: _saving ? null : _pickDate,
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _CapsuleActionButton(
+                                label: '存草稿',
+                                filled: false,
+                                enabled: !_saving,
+                                loading: _savingStatus == 'draft',
+                                loadingLabel: _savingStatus == 'draft'
+                                    ? _savingMessage
+                                    : null,
+                                onTap: () => _save('draft'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _CapsuleActionButton(
+                                label: '封存',
+                                filled: true,
+                                enabled: !_saving,
+                                loading: _savingStatus == 'sealed',
+                                loadingLabel: _savingStatus == 'sealed'
+                                    ? _savingMessage
+                                    : null,
+                                onTap: () => _save('sealed'),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _CapsuleActionButton(
-                          label: '存草稿',
-                          filled: false,
-                          enabled: !_saving,
-                          loading: _savingStatus == 'draft',
-                          loadingLabel: _savingStatus == 'draft'
-                              ? _savingMessage
-                              : null,
-                          onTap: () => _save('draft'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _CapsuleActionButton(
-                          label: '封存',
-                          filled: true,
-                          enabled: !_saving,
-                          loading: _savingStatus == 'sealed',
-                          loadingLabel: _savingStatus == 'sealed'
-                              ? _savingMessage
-                              : null,
-                          onTap: () => _save('sealed'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                      ],
+                    ),
             ),
           ],
         ),
@@ -1221,11 +1241,13 @@ class _CapsuleLetterPaper extends StatelessWidget {
     required this.skin,
     required this.controller,
     required this.senderName,
+    this.readOnly = false,
   });
 
   final _CapsuleSkin skin;
   final TextEditingController controller;
   final String senderName;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -1266,6 +1288,8 @@ class _CapsuleLetterPaper extends StatelessWidget {
                         children: [
                           TextField(
                             controller: controller,
+                            readOnly: readOnly,
+                            showCursor: !readOnly,
                             minLines: 8,
                             maxLines: null,
                             keyboardType: TextInputType.multiline,
@@ -2058,55 +2082,55 @@ class _CapsuleSkinSheet extends StatelessWidget {
 }
 
 class _CapsuleTopBar extends StatelessWidget {
-  const _CapsuleTopBar({
-    required this.canShare,
-    required this.onBack,
-    required this.onShare,
-  });
+  const _CapsuleTopBar({required this.onBack});
 
-  final bool canShare;
   final VoidCallback onBack;
-  final VoidCallback onShare;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
         _CapsuleCircleButton(icon: CupertinoIcons.chevron_left, onTap: onBack),
-        const Spacer(),
-        CupertinoButton(
-          padding: EdgeInsets.zero,
-          onPressed: canShare ? onShare : null,
-          child: AnimatedOpacity(
-            duration: const Duration(milliseconds: 180),
-            opacity: canShare ? 1 : 0.38,
-            child: Container(
-              height: 54,
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              decoration: BoxDecoration(
-                color: const Color(0xFF101922),
-                borderRadius: BorderRadius.circular(27),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF101922).withValues(alpha: 0.18),
-                    blurRadius: 18,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              alignment: Alignment.center,
-              child: const Text(
-                '发聊天',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
+      ],
+    );
+  }
+}
+
+class _CapsuleSendChatButton extends StatelessWidget {
+  const _CapsuleSendChatButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      onPressed: onTap,
+      child: Container(
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        decoration: BoxDecoration(
+          color: const Color(0xFF101922),
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF101922).withValues(alpha: 0.16),
+              blurRadius: 14,
+              offset: const Offset(0, 8),
             ),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: const Text(
+          '发聊天',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            decoration: TextDecoration.none,
           ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -2237,12 +2261,14 @@ class _CapsuleHeroCardState extends State<_CapsuleHeroCard>
                         const SizedBox(width: 10),
                         _CapsuleChip(
                           label: '草稿 ${widget.draftCount}',
-                          onTap: widget.onDrafts,
+                          onTap: widget.draftCount > 0 ? widget.onDrafts : null,
                         ),
                         const SizedBox(width: 10),
                         _CapsuleChip(
                           label: '待开启 ${widget.pendingCount}',
-                          onTap: widget.onPending,
+                          onTap: widget.pendingCount > 0
+                              ? widget.onPending
+                              : null,
                         ),
                       ],
                     ),
@@ -2292,41 +2318,46 @@ class _CapsuleChip extends StatelessWidget {
   });
 
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool primary;
 
   @override
   Widget build(BuildContext context) {
+    final enabled = onTap != null;
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
       onPressed: onTap,
-      child: Container(
-        height: 44,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: primary ? const Color(0xFF7C3CFF) : Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: primary ? 0 : 0.76),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: (primary ? const Color(0xFF7C3CFF) : Colors.black)
-                  .withValues(alpha: primary ? 0.20 : 0.045),
-              blurRadius: primary ? 14 : 12,
-              offset: const Offset(0, 7),
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 180),
+        opacity: enabled ? 1 : 0.42,
+        child: Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: primary ? const Color(0xFF7C3CFF) : Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: primary ? 0 : 0.76),
             ),
-          ],
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          maxLines: 1,
-          style: TextStyle(
-            color: primary ? Colors.white : AppColors.text,
-            fontWeight: primary ? FontWeight.w900 : FontWeight.w700,
-            fontSize: 14,
+            boxShadow: [
+              BoxShadow(
+                color: (primary ? const Color(0xFF7C3CFF) : Colors.black)
+                    .withValues(alpha: primary ? 0.20 : 0.045),
+                blurRadius: primary ? 14 : 12,
+                offset: const Offset(0, 7),
+              ),
+            ],
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            maxLines: 1,
+            style: TextStyle(
+              color: primary ? Colors.white : AppColors.text,
+              fontWeight: primary ? FontWeight.w900 : FontWeight.w700,
+              fontSize: 14,
+            ),
           ),
         ),
       ),
@@ -2363,34 +2394,36 @@ class _CapsuleListTile extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         opacity: enabled ? 1 : 0.74,
         child: Container(
-          constraints: BoxConstraints(minHeight: compact ? 76 : 96),
+          constraints: BoxConstraints(minHeight: compact ? 76 : 86),
           padding: EdgeInsets.fromLTRB(
-            compact ? 14 : 18,
-            compact ? 12 : 16,
-            compact ? 14 : 18,
-            compact ? 12 : 16,
+            compact ? 14 : 16,
+            compact ? 12 : 14,
+            compact ? 14 : 16,
+            compact ? 12 : 14,
           ),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.96),
-            borderRadius: BorderRadius.circular(compact ? 22 : 28),
+            color: Colors.white.withValues(alpha: compact ? 0.96 : 0.90),
+            borderRadius: BorderRadius.circular(compact ? 22 : 24),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF4A5568).withValues(alpha: 0.07),
-                blurRadius: compact ? 18 : 24,
-                offset: Offset(0, compact ? 9 : 14),
+                color: const Color(
+                  0xFF4A5568,
+                ).withValues(alpha: compact ? 0.07 : 0.045),
+                blurRadius: compact ? 18 : 18,
+                offset: Offset(0, compact ? 9 : 10),
               ),
             ],
           ),
           child: Row(
             children: [
               Container(
-                width: compact ? 48 : 58,
-                height: compact ? 48 : 58,
+                width: compact ? 48 : 50,
+                height: compact ? 48 : 50,
                 decoration: BoxDecoration(
                   color: locked
                       ? const Color(0xFFEFEFF4)
-                      : const Color(0xFFE7D9FF),
-                  borderRadius: BorderRadius.circular(compact ? 15 : 18),
+                      : const Color(0xFFE9DCFF),
+                  borderRadius: BorderRadius.circular(compact ? 15 : 16),
                 ),
                 alignment: Alignment.center,
                 child: locked
@@ -2403,13 +2436,13 @@ class _CapsuleListTile extends StatelessWidget {
                         '$index',
                         style: TextStyle(
                           color: Color(0xFF7C3CFF),
-                          fontSize: compact ? 20 : 25,
-                          fontWeight: FontWeight.w900,
+                          fontSize: compact ? 20 : 22,
+                          fontWeight: FontWeight.w800,
                           decoration: TextDecoration.none,
                         ),
                       ),
               ),
-              SizedBox(width: compact ? 14 : 17),
+              SizedBox(width: compact ? 14 : 15),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2421,8 +2454,8 @@ class _CapsuleListTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: AppColors.text,
-                        fontSize: compact ? 16 : 19,
-                        fontWeight: FontWeight.w900,
+                        fontSize: compact ? 16 : 17,
+                        fontWeight: compact ? FontWeight.w900 : FontWeight.w800,
                         decoration: TextDecoration.none,
                       ),
                     ),
@@ -2436,7 +2469,7 @@ class _CapsuleListTile extends StatelessWidget {
                       style: TextStyle(
                         color: Color(0xFF6F7775),
                         fontSize: compact ? 13 : 14,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w500,
                         decoration: TextDecoration.none,
                       ),
                     ),
@@ -2448,8 +2481,8 @@ class _CapsuleListTile extends StatelessWidget {
                 locked ? '$openDateLabel开启' : openDateLabel,
                 style: TextStyle(
                   color: Color(0xFF9AA19E),
-                  fontSize: locked ? (compact ? 14 : 16) : (compact ? 16 : 18),
-                  fontWeight: FontWeight.w900,
+                  fontSize: locked ? (compact ? 14 : 16) : (compact ? 16 : 15),
+                  fontWeight: compact ? FontWeight.w900 : FontWeight.w800,
                   decoration: TextDecoration.none,
                 ),
               ),
