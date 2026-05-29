@@ -197,6 +197,8 @@ class _CapsulePageState extends State<CapsulePage> {
                                 index: index + 1,
                                 capsule: opened[index],
                                 enabled: true,
+                                onDelete: () =>
+                                    _deleteOpenedCapsule(opened[index]),
                                 onTap: () => _openDetail(opened[index]),
                               );
                             },
@@ -232,8 +234,8 @@ class _CapsulePageState extends State<CapsulePage> {
   }
 
   Future<void> _openDetail(TimeCapsule capsule) async {
-    final draft = await Navigator.of(context).push<CapsuleChatDraft>(
-      CupertinoPageRoute<CapsuleChatDraft>(
+    final result = await Navigator.of(context).push<Object?>(
+      CupertinoPageRoute<Object?>(
         fullscreenDialog: true,
         builder: (_) => CapsuleEditorPage(
           api: widget.api,
@@ -243,8 +245,42 @@ class _CapsulePageState extends State<CapsulePage> {
         ),
       ),
     );
-    if (!mounted || draft == null) return;
-    Navigator.of(context).pop(draft);
+    if (!mounted || result == null) return;
+    if (result is CapsuleChatDraft) {
+      Navigator.of(context).pop(result);
+      return;
+    }
+    if (result is _CapsuleEditorResult && result.deleted) {
+      await _reloadLatestCapsules();
+    }
+  }
+
+  Future<bool> _deleteOpenedCapsule(TimeCapsule capsule) async {
+    final confirmed = await _confirmDeleteCapsule(context);
+    if (confirmed != true || !mounted) return false;
+    try {
+      await widget.api.deleteTimeCapsule(capsule.id);
+      if (!mounted) return true;
+      await _reloadLatestCapsules();
+      return true;
+    } catch (error) {
+      if (mounted) {
+        await showCupertinoDialog<void>(
+          context: context,
+          builder: (context) => CupertinoAlertDialog(
+            title: const Text('删除失败'),
+            content: Text(_asMessage(error)),
+            actions: [
+              CupertinoDialogAction(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('知道了'),
+              ),
+            ],
+          ),
+        );
+      }
+      return false;
+    }
   }
 
   Future<void> _openPending(List<TimeCapsule> pending) async {
@@ -549,24 +585,7 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
   Future<void> _deleteCapsule() async {
     final draft = widget.draft;
     if (draft == null || _saving) return;
-    final confirmed = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('删除这个胶囊？'),
-        content: const Text('删除后，里面的文字、图片和语音都会被彻底删除，无法恢复。'),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
+    final confirmed = await _confirmDeleteCapsule(context);
     if (confirmed != true || !mounted) return;
     setState(() {
       _saving = true;
@@ -879,6 +898,7 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
     final skin = _CapsuleSkin.byId(_skin);
+    final isReadOnly = widget.readOnly && widget.draft != null;
     return Scaffold(
       backgroundColor: skin.page,
       body: SafeArea(
@@ -895,24 +915,28 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
                         ? null
                         : () => Navigator.of(context).maybePop(),
                   ),
-                  const Spacer(),
-                  Text(
-                    widget.readOnly ? '胶囊详情' : '写新胶囊',
-                    style: TextStyle(
-                      color: AppColors.text,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
+                  Expanded(
+                    child: Text(
+                      widget.readOnly ? '胶囊详情' : '写新胶囊',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AppColors.text,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                  const Spacer(),
-                  if (widget.draft == null || widget.readOnly)
-                    widget.readOnly && widget.draft != null
-                        ? _CapsuleSendChatButton(
-                            onTap: () => Navigator.of(
-                              context,
-                            ).pop(_draftForCapsule(widget.draft!)),
-                          )
-                        : const SizedBox(width: 54)
+                  if (isReadOnly)
+                    _ReadOnlyCapsuleActions(
+                      deleting: _savingStatus == 'delete',
+                      enabled: !_saving,
+                      onDelete: _deleteCapsule,
+                      onSend: () => Navigator.of(
+                        context,
+                      ).pop(_draftForCapsule(widget.draft!)),
+                    )
+                  else if (widget.draft == null)
+                    const SizedBox(width: 54)
                   else
                     _CapsuleCircleButton(
                       icon: CupertinoIcons.delete,
@@ -2101,7 +2125,7 @@ class _CapsuleTopBar extends StatelessWidget {
 class _CapsuleSendChatButton extends StatelessWidget {
   const _CapsuleSendChatButton({required this.onTap});
 
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -2123,14 +2147,108 @@ class _CapsuleSendChatButton extends StatelessWidget {
           ],
         ),
         alignment: Alignment.center,
-        child: const Text(
-          '发聊天',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-            decoration: TextDecoration.none,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 160),
+          opacity: onTap == null ? 0.58 : 1,
+          child: const Text(
+            '发聊天',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              decoration: TextDecoration.none,
+            ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReadOnlyCapsuleActions extends StatelessWidget {
+  const _ReadOnlyCapsuleActions({
+    required this.enabled,
+    required this.deleting,
+    required this.onDelete,
+    required this.onSend,
+  });
+
+  final bool enabled;
+  final bool deleting;
+  final VoidCallback onDelete;
+  final VoidCallback onSend;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _CapsuleMiniActionButton(
+          icon: CupertinoIcons.delete,
+          danger: true,
+          loading: deleting,
+          onTap: enabled ? onDelete : null,
+        ),
+        const SizedBox(width: 8),
+        _CapsuleSendChatButton(onTap: enabled ? onSend : null),
+      ],
+    );
+  }
+}
+
+class _CapsuleMiniActionButton extends StatelessWidget {
+  const _CapsuleMiniActionButton({
+    required this.icon,
+    required this.onTap,
+    this.danger = false,
+    this.loading = false,
+  });
+
+  final IconData icon;
+  final VoidCallback? onTap;
+  final bool danger;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoButton(
+      minimumSize: Size.zero,
+      padding: EdgeInsets.zero,
+      onPressed: onTap,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 160),
+        opacity: onTap == null && !loading ? 0.5 : 1,
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.88),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF315B88).withValues(alpha: 0.10),
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          alignment: Alignment.center,
+          child: loading
+              ? const SizedBox(
+                  width: 17,
+                  height: 17,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Color(0xFFE05555),
+                    ),
+                  ),
+                )
+              : Icon(
+                  icon,
+                  color: danger ? const Color(0xFFE05555) : AppColors.text,
+                  size: 21,
+                ),
         ),
       ),
     );
@@ -2374,6 +2492,7 @@ class _CapsuleListTile extends StatelessWidget {
     required this.enabled,
     this.compact = false,
     this.locked = false,
+    this.onDelete,
     this.onTap,
   });
 
@@ -2382,6 +2501,7 @@ class _CapsuleListTile extends StatelessWidget {
   final bool enabled;
   final bool compact;
   final bool locked;
+  final Future<bool> Function()? onDelete;
   final VoidCallback? onTap;
 
   @override
@@ -2389,7 +2509,7 @@ class _CapsuleListTile extends StatelessWidget {
     final openDateLabel = capsule.openDate == null
         ? '--/--'
         : _formatCapsuleShortDate(capsule.openDate!);
-    return CupertinoButton(
+    final tile = CupertinoButton(
       padding: EdgeInsets.zero,
       onPressed: enabled ? onTap : null,
       child: AnimatedOpacity(
@@ -2477,6 +2597,60 @@ class _CapsuleListTile extends StatelessWidget {
                     fontWeight: compact ? FontWeight.w900 : FontWeight.w800,
                     decoration: TextDecoration.none,
                   ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (onDelete == null || compact || locked) return tile;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: Dismissible(
+        key: ValueKey('opened-capsule-${capsule.id}'),
+        direction: DismissDirection.endToStart,
+        confirmDismiss: (_) => onDelete!(),
+        background: const _CapsuleDeleteSwipeBackground(),
+        child: tile,
+      ),
+    );
+  }
+}
+
+class _CapsuleDeleteSwipeBackground extends StatelessWidget {
+  const _CapsuleDeleteSwipeBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFFE95656),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFE95656).withValues(alpha: 0.22),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(CupertinoIcons.delete_solid, color: Colors.white, size: 24),
+              SizedBox(height: 4),
+              Text(
+                '删除',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  decoration: TextDecoration.none,
                 ),
               ),
             ],
@@ -3424,6 +3598,27 @@ String _openedSectionTitle(List<TimeCapsule> opened) {
   final first = opened.first.openDate;
   if (first == null) return '已开启胶囊';
   return '${first.year} 年 ${first.month} 月开启';
+}
+
+Future<bool?> _confirmDeleteCapsule(BuildContext context) {
+  return showCupertinoDialog<bool>(
+    context: context,
+    builder: (context) => CupertinoAlertDialog(
+      title: const Text('删除这个胶囊？'),
+      content: const Text('删除后，里面的文字、图片和语音都会被彻底删除，无法恢复。'),
+      actions: [
+        CupertinoDialogAction(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('取消'),
+        ),
+        CupertinoDialogAction(
+          isDestructiveAction: true,
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('删除'),
+        ),
+      ],
+    ),
+  );
 }
 
 String _formatCapsuleDate(DateTime value) {

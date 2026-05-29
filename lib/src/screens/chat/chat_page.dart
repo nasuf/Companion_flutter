@@ -292,8 +292,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     try {
       final capsule = await widget.api.getTimeCapsule(capsuleId);
       if (!mounted) return;
-      final draft = await Navigator.of(context).push<CapsuleChatDraft>(
-        CupertinoPageRoute<CapsuleChatDraft>(
+      final result = await Navigator.of(context).push<Object?>(
+        CupertinoPageRoute<Object?>(
           fullscreenDialog: true,
           builder: (_) => CapsuleEditorPage(
             api: widget.api,
@@ -303,8 +303,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           ),
         ),
       );
-      if (!mounted || draft == null) return;
-      sendComponentMessage(draft.agentText, draft.card);
+      if (!mounted || result == null) return;
+      if (result is CapsuleChatDraft) {
+        sendComponentMessage(result.agentText, result.card);
+      }
     } catch (error) {
       if (mounted) setState(() => _historyError = _asMessage(error));
     }
