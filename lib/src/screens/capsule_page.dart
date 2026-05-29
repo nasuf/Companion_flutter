@@ -171,9 +171,7 @@ class _CapsulePageState extends State<CapsulePage> {
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(26, 28, 26, 10),
                           child: Text(
-                            opened.isEmpty
-                                ? '已开启胶囊'
-                                : _openedSectionTitle(opened),
+                            '已开启胶囊',
                             style: const TextStyle(
                               color: Color(0xFF9BA4A1),
                               fontSize: 18,
@@ -2610,7 +2608,10 @@ class _CapsuleListTile extends StatelessWidget {
       child: Dismissible(
         key: ValueKey('opened-capsule-${capsule.id}'),
         direction: DismissDirection.endToStart,
-        confirmDismiss: (_) => onDelete!(),
+        confirmDismiss: (_) async {
+          await onDelete!();
+          return false;
+        },
         background: const _CapsuleDeleteSwipeBackground(),
         child: tile,
       ),
@@ -3592,12 +3593,6 @@ CapsuleChatDraft _draftForCapsule(TimeCapsule capsule) {
     },
   );
   return CapsuleChatDraft(agentText: text, card: card);
-}
-
-String _openedSectionTitle(List<TimeCapsule> opened) {
-  final first = opened.first.openDate;
-  if (first == null) return '已开启胶囊';
-  return '${first.year} 年 ${first.month} 月开启';
 }
 
 Future<bool?> _confirmDeleteCapsule(BuildContext context) {
