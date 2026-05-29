@@ -347,6 +347,111 @@ class TimeCapsule {
   }
 }
 
+class LastWillContact {
+  const LastWillContact({required this.name, this.email, this.phone});
+
+  final String name;
+  final String? email;
+  final String? phone;
+
+  bool get hasChannel =>
+      (email != null && email!.trim().isNotEmpty) ||
+      (phone != null && phone!.trim().isNotEmpty);
+
+  factory LastWillContact.fromJson(Map<String, dynamic> json) {
+    return LastWillContact(
+      name: json['name']?.toString() ?? '',
+      email: json['email']?.toString(),
+      phone: json['phone']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name.trim(),
+      if (email != null && email!.trim().isNotEmpty) 'email': email!.trim(),
+      if (phone != null && phone!.trim().isNotEmpty) 'phone': phone!.trim(),
+    };
+  }
+}
+
+class LastWill {
+  const LastWill({
+    required this.id,
+    required this.userId,
+    required this.agentId,
+    required this.content,
+    required this.inactivityDays,
+    required this.contacts,
+    required this.status,
+    required this.createdAt,
+    required this.updatedAt,
+    this.workspaceId,
+    this.lastSeenAt,
+    this.startedAt,
+    this.triggeredAt,
+    this.deliveredAt,
+  });
+
+  final String id;
+  final String userId;
+  final String agentId;
+  final String? workspaceId;
+  final String content;
+  final int inactivityDays;
+  final List<LastWillContact> contacts;
+  final String status;
+  final DateTime? lastSeenAt;
+  final DateTime? startedAt;
+  final DateTime? triggeredAt;
+  final DateTime? deliveredAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  bool get isActive => status == 'active';
+  bool get isTriggered => status == 'triggered';
+  bool get hasContent => content.trim().isNotEmpty;
+
+  String get preview {
+    final compact = content.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (compact.isEmpty) return '还没有写下内容。';
+    return compact.length > 42 ? '${compact.substring(0, 42)}...' : compact;
+  }
+
+  factory LastWill.fromJson(Map<String, dynamic> json) {
+    final rawContacts = json['contacts'];
+    final contacts = rawContacts is List
+        ? rawContacts
+              .whereType<Map>()
+              .map(
+                (item) =>
+                    LastWillContact.fromJson(Map<String, dynamic>.from(item)),
+              )
+              .toList()
+        : <LastWillContact>[];
+    return LastWill(
+      id: json['id'] as String? ?? '',
+      userId: json['user_id'] as String? ?? '',
+      agentId: json['agent_id'] as String? ?? '',
+      workspaceId: json['workspace_id'] as String?,
+      content: json['content'] as String? ?? '',
+      inactivityDays: (json['inactivity_days'] as num?)?.round() ?? 30,
+      contacts: contacts,
+      status: json['status'] as String? ?? 'draft',
+      lastSeenAt: DateTime.tryParse(json['last_seen_at'] as String? ?? ''),
+      startedAt: DateTime.tryParse(json['started_at'] as String? ?? ''),
+      triggeredAt: DateTime.tryParse(json['triggered_at'] as String? ?? ''),
+      deliveredAt: DateTime.tryParse(json['delivered_at'] as String? ?? ''),
+      createdAt:
+          DateTime.tryParse(json['created_at'] as String? ?? '') ??
+          DateTime.now(),
+      updatedAt:
+          DateTime.tryParse(json['updated_at'] as String? ?? '') ??
+          DateTime.now(),
+    );
+  }
+}
+
 DateTime? _parseDateOnly(String? value) {
   if (value == null || value.isEmpty) return null;
   final parts = value.split('-');

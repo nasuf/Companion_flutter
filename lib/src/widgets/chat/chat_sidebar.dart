@@ -3,6 +3,7 @@ part of 'package:companion_flutter/main.dart';
 enum _SidebarDestination {
   weather('天气', Color(0xFF0A84FF)),
   capsule('胶囊', Color(0xFF7C3CFF)),
+  legacy('遗言', Color(0xFF151820)),
   mail('信箱', Color(0xFF7C3CFF)),
   task('任务', Color(0xFFFF6B34)),
   list('清单', Color(0xFF08C767)),
@@ -70,7 +71,7 @@ class _SidebarRail extends StatelessWidget {
   static const _grouped = [
     _SidebarDestination.weather,
     _SidebarDestination.capsule,
-    _SidebarDestination.mail,
+    _SidebarDestination.legacy,
     _SidebarDestination.task,
     _SidebarDestination.list,
   ];
@@ -220,6 +221,7 @@ class _SidebarButton extends StatelessWidget {
     return switch (destination) {
       _SidebarDestination.weather => AppColors.accentCyan,
       _SidebarDestination.capsule => const Color(0xFFB491FF),
+      _SidebarDestination.legacy => const Color(0xFF9EA4AA),
       _SidebarDestination.mail => AppColors.accent,
       _SidebarDestination.task => const Color(0xFFFFC23A),
       _SidebarDestination.list => const Color(0xFFFFC23A),
@@ -258,6 +260,8 @@ class _GlossSidebarIconPainter extends CustomPainter {
         _CapsuleSidebarIconPainter(
           accent: destination.color,
         ).paint(canvas, size);
+      case _SidebarDestination.legacy:
+        _paintNote(canvas, size);
       case _SidebarDestination.mail:
         _paintMail(canvas, size);
       case _SidebarDestination.task:
@@ -583,6 +587,9 @@ class _SidebarDestinationPage extends StatelessWidget {
     }
     if (destination == _SidebarDestination.capsule) {
       return CapsulePage(api: api, session: session);
+    }
+    if (destination == _SidebarDestination.legacy) {
+      return LastWillPage(api: api, session: session);
     }
 
     return Scaffold(

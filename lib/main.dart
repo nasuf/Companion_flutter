@@ -23,6 +23,7 @@ part 'src/auth/wechat_login_service.dart';
 part 'src/screens/agent_create_page.dart';
 part 'src/screens/chat/chat_page.dart';
 part 'src/screens/capsule_page.dart';
+part 'src/screens/last_will_page.dart';
 part 'src/screens/login_page.dart';
 part 'src/screens/main_shell.dart';
 part 'src/screens/movie_page.dart';

@@ -325,6 +325,103 @@ class CompanionApi {
     await _request('DELETE', '/capsules/$capsuleId');
   }
 
+  Future<List<LastWill>> listLastWills({
+    required String agentId,
+    String? workspaceId,
+  }) async {
+    final params = <String, String>{'agent_id': agentId};
+    if (workspaceId != null && workspaceId.isNotEmpty) {
+      params['workspace_id'] = workspaceId;
+    }
+    final query = Uri(queryParameters: params).query;
+    final json =
+        await _request(
+              'GET',
+              '/last-wills?$query',
+              debugLabel: 'last_will.list',
+            )
+            as List;
+    return json
+        .map((item) => LastWill.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<LastWill> createLastWill({
+    required String agentId,
+    required String content,
+    required int inactivityDays,
+    required List<LastWillContact> contacts,
+    required String status,
+    String? workspaceId,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/last-wills',
+              body: {
+                'agent_id': agentId,
+                'workspace_id': workspaceId,
+                'content': content,
+                'inactivity_days': inactivityDays,
+                'contacts': contacts.map((item) => item.toJson()).toList(),
+                'status': status,
+              },
+              debugLabel: 'last_will.create',
+            )
+            as Map<String, dynamic>;
+    return LastWill.fromJson(json);
+  }
+
+  Future<LastWill> updateLastWill(
+    String willId, {
+    String? content,
+    int? inactivityDays,
+    List<LastWillContact>? contacts,
+    String? status,
+  }) async {
+    final json =
+        await _request(
+              'PATCH',
+              '/last-wills/$willId',
+              body: {
+                if (content != null) 'content': content,
+                if (inactivityDays != null) 'inactivity_days': inactivityDays,
+                if (contacts != null)
+                  'contacts': contacts.map((item) => item.toJson()).toList(),
+                if (status != null) 'status': status,
+              },
+              debugLabel: 'last_will.update',
+            )
+            as Map<String, dynamic>;
+    return LastWill.fromJson(json);
+  }
+
+  Future<LastWill> startLastWill(String willId) async {
+    final json =
+        await _request(
+              'POST',
+              '/last-wills/$willId/start',
+              debugLabel: 'last_will.start',
+            )
+            as Map<String, dynamic>;
+    return LastWill.fromJson(json);
+  }
+
+  Future<LastWill> pauseLastWill(String willId) async {
+    final json =
+        await _request(
+              'POST',
+              '/last-wills/$willId/pause',
+              debugLabel: 'last_will.pause',
+            )
+            as Map<String, dynamic>;
+    return LastWill.fromJson(json);
+  }
+
+  Future<void> deleteLastWill(String willId) async {
+    await _request('DELETE', '/last-wills/$willId');
+  }
+
   Future<AgentProfile> createAgent({
     required String userId,
     required String name,
