@@ -1087,7 +1087,7 @@ class _TimingFooter extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              '已从$date开始计时，连续 $days 天未登录后进入触发流程。',
+              '$date起，连续$days日未登录，我们将替你把未曾说出口的心意，代为转告挂念之人。',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 14,
@@ -1163,7 +1163,7 @@ class _DaysSheetState extends State<_DaysSheet> {
             children: [
               const _LastWillSheetGrabber(),
               const Text(
-                '选择失联天数',
+                '请选择连续未登录天数',
                 style: TextStyle(
                   color: AppColors.text,
                   fontSize: 18,
@@ -1173,7 +1173,7 @@ class _DaysSheetState extends State<_DaysSheet> {
               ),
               const SizedBox(height: 6),
               const Text(
-                '连续未登录达到约定天数后，系统会进入触发流程。',
+                '系统将按约定，把你未说出口的话，悄悄送达',
                 style: TextStyle(
                   color: AppColors.muted,
                   fontSize: 14,
