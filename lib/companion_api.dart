@@ -418,7 +418,7 @@ class CompanionApi {
     return LastWill.fromJson(json);
   }
 
-  Future<void> deleteLastWill(String willId) async {
+  Future<void> clearLastWillContent(String willId) async {
     await _request('DELETE', '/last-wills/$willId');
   }
 

@@ -1364,6 +1364,7 @@ class _ContactsSheetState extends State<_ContactsSheet> {
     for (final item in widget.initial) _ContactDraft.fromContact(item),
     if (widget.initial.isEmpty) _ContactDraft(),
   ];
+  String? _error;
 
   @override
   void dispose() {
@@ -1421,7 +1422,10 @@ class _ContactsSheetState extends State<_ContactsSheet> {
             if (_drafts.length < 3)
               CupertinoButton(
                 padding: EdgeInsets.zero,
-                onPressed: () => setState(() => _drafts.add(_ContactDraft())),
+                onPressed: () => setState(() {
+                  _error = null;
+                  _drafts.add(_ContactDraft());
+                }),
                 child: Container(
                   height: 48,
                   decoration: BoxDecoration(
@@ -1438,6 +1442,17 @@ class _ContactsSheetState extends State<_ContactsSheet> {
                   ),
                 ),
               ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: const TextStyle(
+                  color: Color(0xFFE95656),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
             const SizedBox(height: 18),
             CupertinoButton(
               padding: EdgeInsets.zero,
@@ -1467,11 +1482,18 @@ class _ContactsSheetState extends State<_ContactsSheet> {
 
   void _save() {
     final contacts = <LastWillContact>[];
-    for (final draft in _drafts) {
+    for (var i = 0; i < _drafts.length; i += 1) {
+      final draft = _drafts[i];
+      final error = draft.validationError(index: i);
+      if (error != null) {
+        setState(() => _error = error);
+        return;
+      }
       final contact = draft.toContact();
       if (contact == null) continue;
       contacts.add(contact);
     }
+    setState(() => _error = null);
     Navigator.of(context).pop(contacts.take(3).toList());
   }
 }
@@ -1741,7 +1763,10 @@ class _ContactEditor extends StatelessWidget {
                 CupertinoButton(
                   padding: EdgeInsets.zero,
                   minimumSize: Size.zero,
-                  onPressed: onRemove,
+                  onPressed: () {
+                    FocusScope.of(context).unfocus();
+                    onRemove?.call();
+                  },
                   child: const Icon(CupertinoIcons.xmark_circle_fill, size: 22),
                 ),
             ],
@@ -1799,12 +1824,28 @@ class _ContactDraft {
     final e = email.text.trim();
     final p = phone.text.trim();
     if (n.isEmpty && e.isEmpty && p.isEmpty) return null;
-    if (n.isEmpty || (e.isEmpty && p.isEmpty)) return null;
     return LastWillContact(
       name: n,
       email: e.isEmpty ? null : e,
       phone: p.isEmpty ? null : p,
     );
+  }
+
+  String? validationError({required int index}) {
+    final n = name.text.trim();
+    final e = email.text.trim();
+    final p = phone.text.trim();
+    if (n.isEmpty && e.isEmpty && p.isEmpty) return null;
+    final label = '联系人 ${index + 1}';
+    if (n.isEmpty) return '$label 请填写名字';
+    if (e.isEmpty && p.isEmpty) return '$label 请填写邮箱或电话';
+    if (e.isNotEmpty && !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(e)) {
+      return '$label 邮箱格式不正确';
+    }
+    if (p.isNotEmpty && !RegExp(r'^[0-9+()\-\s]{5,40}$').hasMatch(p)) {
+      return '$label 电话格式不正确';
+    }
+    return null;
   }
 
   void dispose() {
