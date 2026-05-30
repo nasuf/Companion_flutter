@@ -210,6 +210,8 @@ class _ComponentCardBubble extends StatelessWidget {
     final timeCapsuleContent = _timeCapsuleContent(card);
     final icon = switch (card.type) {
       'weather' => CupertinoIcons.cloud_sun_fill,
+      'checkin_reminder' ||
+      'checkin_habit' => CupertinoIcons.check_mark_circled_solid,
       _ => CupertinoIcons.square_grid_2x2_fill,
     };
 

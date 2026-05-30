@@ -22,6 +22,25 @@ class _MainShellState extends State<MainShell> {
   int _index = 0;
   bool _chatSidebarOpen = false;
   final _chatPageKey = GlobalKey<_ChatPageState>();
+  StreamSubscription<CheckinNotificationPayload>? _notificationSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _notificationSub = CheckinNotificationService.instance.payloads.listen(
+      _openCheckinFromNotification,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final payload = CheckinNotificationService.instance.takePendingPayload();
+      if (payload != null && mounted) _openCheckinFromNotification(payload);
+    });
+  }
+
+  @override
+  void dispose() {
+    _notificationSub?.cancel();
+    super.dispose();
+  }
 
   void _setChatSidebarOpen(bool value) {
     if (_chatSidebarOpen == value) return;
@@ -42,6 +61,33 @@ class _MainShellState extends State<MainShell> {
     if (!mounted) return;
     _chatPageKey.currentState?.refreshReadyCapsules();
     if (result == null) return;
+    setState(() => _index = 0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chatPageKey.currentState?.sendComponentMessage(
+        result.agentText,
+        result.card,
+      );
+    });
+  }
+
+  Future<void> _openCheckinFromNotification(
+    CheckinNotificationPayload payload,
+  ) async {
+    if (!mounted) return;
+    _setChatSidebarOpen(false);
+    final result = await Navigator.of(context).push<CapsuleChatDraft>(
+      CupertinoPageRoute<CapsuleChatDraft>(
+        builder: (_) => CheckinPage(
+          api: widget.api,
+          session: widget.session,
+          initialReminderId:
+              payload.memoryId != null && payload.memoryId!.isNotEmpty
+              ? payload.memoryId
+              : payload.triggerId,
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
     setState(() => _index = 0);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _chatPageKey.currentState?.sendComponentMessage(

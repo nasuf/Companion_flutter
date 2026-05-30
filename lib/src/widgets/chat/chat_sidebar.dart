@@ -5,7 +5,7 @@ enum _SidebarDestination {
   capsule('胶囊', Color(0xFF7C3CFF)),
   legacy('遗言', Color(0xFF151820)),
   mail('信箱', Color(0xFF7C3CFF)),
-  task('任务', Color(0xFFFF6B34)),
+  task('打卡', Color(0xFF22C66B)),
   list('清单', Color(0xFF08C767)),
   note('记录', Color(0xFFFF8B26));
 
@@ -590,6 +590,9 @@ class _SidebarDestinationPage extends StatelessWidget {
     }
     if (destination == _SidebarDestination.legacy) {
       return LastWillPage(api: api, session: session);
+    }
+    if (destination == _SidebarDestination.task) {
+      return CheckinPage(api: api, session: session);
     }
 
     return Scaffold(

@@ -264,6 +264,103 @@ class ChatComponentCard {
   }
 }
 
+class ReminderItem {
+  const ReminderItem({
+    required this.id,
+    required this.summary,
+    required this.triggerTime,
+    required this.recurrence,
+    required this.status,
+    required this.agentId,
+    required this.createdAt,
+    this.memoryId,
+    this.lastFired,
+    this.completedAt,
+    this.retryCount = 0,
+    this.pinned = false,
+    this.habitWeekdays = const <int>[],
+    this.completedDates = const <String>[],
+    this.sentToAi = false,
+  });
+
+  final String id;
+  final String? memoryId;
+  final String summary;
+  final DateTime triggerTime;
+  final DateTime? lastFired;
+  final DateTime? completedAt;
+  final String recurrence;
+  final String status;
+  final int retryCount;
+  final bool pinned;
+  final List<int> habitWeekdays;
+  final List<String> completedDates;
+  final bool sentToAi;
+  final String agentId;
+  final DateTime createdAt;
+
+  bool get isHabit => recurrence != 'once';
+
+  factory ReminderItem.fromJson(Map<String, dynamic> json) {
+    return ReminderItem(
+      id: json['id'] as String? ?? '',
+      memoryId: json['memory_id'] as String?,
+      summary: json['summary'] as String? ?? '',
+      triggerTime:
+          DateTime.tryParse(json['trigger_time'] as String? ?? '') ??
+          DateTime.now(),
+      lastFired: DateTime.tryParse(json['last_fired'] as String? ?? ''),
+      completedAt: DateTime.tryParse(json['completed_at'] as String? ?? ''),
+      recurrence: json['recurrence'] as String? ?? 'once',
+      status: json['status'] as String? ?? 'active',
+      retryCount: (json['retry_count'] as num?)?.round() ?? 0,
+      pinned: json['pinned'] as bool? ?? false,
+      habitWeekdays: (json['habit_weekdays'] as List? ?? const [])
+          .whereType<num>()
+          .map((value) => value.round())
+          .where((value) => value >= 1 && value <= 7)
+          .toList(),
+      completedDates: (json['completed_dates'] as List? ?? const [])
+          .whereType<String>()
+          .toList(),
+      sentToAi: json['sent_to_ai'] as bool? ?? false,
+      agentId: json['agent_id'] as String? ?? '',
+      createdAt:
+          DateTime.tryParse(json['created_at'] as String? ?? '') ??
+          DateTime.now(),
+    );
+  }
+}
+
+class RemindersResponse {
+  const RemindersResponse({
+    required this.items,
+    required this.total,
+    required this.dlqCount,
+  });
+
+  final List<ReminderItem> items;
+  final int total;
+  final int dlqCount;
+
+  factory RemindersResponse.fromJson(Map<String, dynamic> json) {
+    final rawItems = json['items'];
+    return RemindersResponse(
+      items: rawItems is List
+          ? rawItems
+                .whereType<Map>()
+                .map(
+                  (item) =>
+                      ReminderItem.fromJson(Map<String, dynamic>.from(item)),
+                )
+                .toList()
+          : const [],
+      total: (json['total'] as num?)?.round() ?? 0,
+      dlqCount: (json['dlq_count'] as num?)?.round() ?? 0,
+    );
+  }
+}
+
 class TimeCapsule {
   const TimeCapsule({
     required this.id,

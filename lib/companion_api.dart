@@ -193,6 +193,122 @@ class CompanionApi {
         .toList();
   }
 
+  Future<RemindersResponse> listReminders({
+    required String userId,
+    String? agentId,
+    String status = 'active',
+    int limit = 200,
+    int offset = 0,
+  }) async {
+    final params = <String, String>{
+      'user_id': userId,
+      'status': status,
+      'limit': '$limit',
+      'offset': '$offset',
+    };
+    if (agentId != null && agentId.isNotEmpty) {
+      params['agent_id'] = agentId;
+    }
+    final query = Uri(queryParameters: params).query;
+    final json =
+        await _request('GET', '/reminders?$query', debugLabel: 'reminder.list')
+            as Map<String, dynamic>;
+    return RemindersResponse.fromJson(json);
+  }
+
+  Future<ReminderItem> createReminder({
+    required String agentId,
+    required String summary,
+    required DateTime triggerTime,
+    String recurrence = 'once',
+    List<int>? habitWeekdays,
+    bool sentToAi = false,
+    String? workspaceId,
+    String? conversationId,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/reminders',
+              body: {
+                'agent_id': agentId,
+                'workspace_id': workspaceId,
+                'summary': summary,
+                'trigger_time': triggerTime.toUtc().toIso8601String(),
+                'recurrence': recurrence,
+                if (habitWeekdays != null) 'habit_weekdays': habitWeekdays,
+                'sent_to_ai': sentToAi,
+                'conversation_id': conversationId,
+              },
+              debugLabel: 'reminder.create',
+            )
+            as Map<String, dynamic>;
+    return ReminderItem.fromJson(json);
+  }
+
+  Future<ReminderItem> updateReminder(
+    String triggerId, {
+    String? summary,
+    DateTime? triggerTime,
+    String? recurrence,
+    List<int>? habitWeekdays,
+    bool? pinned,
+    bool? sentToAi,
+    String? conversationId,
+  }) async {
+    final json =
+        await _request(
+              'PATCH',
+              '/reminders/$triggerId',
+              body: {
+                if (summary != null) 'summary': summary,
+                if (triggerTime != null)
+                  'trigger_time': triggerTime.toUtc().toIso8601String(),
+                if (recurrence != null) 'recurrence': recurrence,
+                if (habitWeekdays != null) 'habit_weekdays': habitWeekdays,
+                if (pinned != null) 'pinned': pinned,
+                if (sentToAi != null) 'sent_to_ai': sentToAi,
+                'conversation_id': conversationId,
+              },
+              debugLabel: 'reminder.update',
+            )
+            as Map<String, dynamic>;
+    return ReminderItem.fromJson(json);
+  }
+
+  Future<ReminderItem> completeReminder(
+    String triggerId, {
+    String? conversationId,
+    DateTime? occurrenceDate,
+  }) async {
+    final params = <String, String>{
+      if (conversationId != null && conversationId.isNotEmpty)
+        'conversation_id': conversationId,
+      if (occurrenceDate != null) 'occurrence_date': _dateOnly(occurrenceDate)!,
+    };
+    final query = params.isEmpty
+        ? ''
+        : '?${Uri(queryParameters: params).query}';
+    final json =
+        await _request(
+              'POST',
+              '/reminders/$triggerId/complete$query',
+              debugLabel: 'reminder.complete',
+            )
+            as Map<String, dynamic>;
+    return ReminderItem.fromJson(json);
+  }
+
+  Future<void> deleteReminder(
+    String triggerId, {
+    String? conversationId,
+  }) async {
+    final query = conversationId == null || conversationId.isEmpty
+        ? ''
+        : '?${Uri(queryParameters: {'conversation_id': conversationId}).query}';
+    await _request('DELETE', '/reminders/$triggerId$query');
+  }
+
   Future<List<TimeCapsule>> listTimeCapsules({
     required String agentId,
     String? workspaceId,

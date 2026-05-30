@@ -6,13 +6,18 @@ import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:fluwx/fluwx.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 
 import 'chat_socket.dart';
 import 'companion_api.dart';
@@ -22,6 +27,7 @@ part 'src/app/auth_gate.dart';
 part 'src/auth/wechat_login_service.dart';
 part 'src/screens/agent_create_page.dart';
 part 'src/screens/chat/chat_page.dart';
+part 'src/screens/checkin_page.dart';
 part 'src/screens/capsule_page.dart';
 part 'src/screens/last_will_page.dart';
 part 'src/screens/login_page.dart';
@@ -31,6 +37,7 @@ part 'src/screens/offline_interaction_page.dart';
 part 'src/screens/online_interaction_page.dart';
 part 'src/screens/placeholder_page.dart';
 part 'src/screens/weather_page.dart';
+part 'src/services/checkin_notification_service.dart';
 part 'src/theme/app_colors.dart';
 part 'src/utils/formatting.dart';
 part 'src/widgets/chat/chat_header.dart';
@@ -40,8 +47,11 @@ part 'src/widgets/chat/inline_banner.dart';
 part 'src/widgets/chat/message_widgets.dart';
 part 'src/widgets/chat/panels.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  tzdata.initializeTimeZones();
+  tz.setLocalLocation(tz.getLocation('Asia/Shanghai'));
+  await CheckinNotificationService.instance.initialize();
   runApp(const CompanionApp());
 }
 
@@ -61,6 +71,12 @@ class CompanionApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: '伴生',
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
       theme: ThemeData(
         useMaterial3: true,
         scaffoldBackgroundColor: AppColors.page,

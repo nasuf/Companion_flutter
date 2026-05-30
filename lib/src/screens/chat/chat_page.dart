@@ -286,6 +286,25 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _openComponentCard(ChatComponentCard card) async {
+    if (card.type == 'checkin_reminder' || card.type == 'checkin_habit') {
+      final reminderId =
+          card.payload['trigger_id']?.toString() ??
+          card.payload['reminder_id']?.toString() ??
+          card.payload['habit_id']?.toString();
+      final result = await Navigator.of(context).push<CapsuleChatDraft>(
+        CupertinoPageRoute<CapsuleChatDraft>(
+          fullscreenDialog: true,
+          builder: (_) => CheckinPage(
+            api: widget.api,
+            session: widget.session,
+            initialReminderId: reminderId,
+          ),
+        ),
+      );
+      if (!mounted || result == null) return;
+      sendComponentMessage(result.agentText, result.card);
+      return;
+    }
     if (card.type != 'time_capsule') return;
     final capsuleId = card.payload['capsule_id']?.toString();
     if (capsuleId == null || capsuleId.isEmpty) return;
