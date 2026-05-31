@@ -13,11 +13,17 @@ PODS:
     - WechatOpenSDK-XCFramework (~> 2.0.5)
   - image_picker_ios (0.0.1):
     - Flutter
+  - MJExtension (3.4.2)
   - path_provider_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
   - record_ios (1.2.1):
     - Flutter
+  - sud_gip_plugin (0.0.3):
+    - Flutter
+    - MJExtension (~> 3.4.1)
+    - SudGIP (~> 1.6.5)
+  - SudGIP (1.6.7)
   - WechatOpenSDK-XCFramework (2.0.5)
 
 DEPENDENCIES:
@@ -28,9 +34,12 @@ DEPENDENCIES:
   - image_picker_ios (from `.symlinks/plugins/image_picker_ios/ios`)
   - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
   - record_ios (from `.symlinks/plugins/record_ios/ios`)
+  - sud_gip_plugin (from `.symlinks/plugins/sud_gip_plugin/ios`)
 
 SPEC REPOS:
   trunk:
+    - MJExtension
+    - SudGIP
     - WechatOpenSDK-XCFramework
 
 EXTERNAL SOURCES:
@@ -48,6 +57,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/path_provider_foundation/darwin"
   record_ios:
     :path: ".symlinks/plugins/record_ios/ios"
+  sud_gip_plugin:
+    :path: ".symlinks/plugins/sud_gip_plugin/ios"
 
 SPEC CHECKSUMS:
   audioplayers_darwin: f15e209a3e856d1a7edcf98dc029f484fead2242
@@ -55,10 +66,13 @@ SPEC CHECKSUMS:
   flutter_local_notifications: ff50f8405aaa0ccdc7dcfb9022ca192e8ad9688f
   fluwx: 95a2274c23418c1098940bd00dcfe7c975bb0550
   image_picker_ios: c560581cceedb403a6ff17f2f816d7fea1421fc1
+  MJExtension: e97d164cb411aa9795cf576093a1fa208b4a8dd8
   path_provider_foundation: 2b6b4c569c0fb62ec74538f866245ac84301af46
   record_ios: 3b171007ae5de51221a3a76d2b379a7105ca98b5
+  sud_gip_plugin: 9974d7b280cf3acc91f577105f76fa7b2b50fa93
+  SudGIP: 0f05fc0f132034dbc542cfbe02168b92a17780fa
   WechatOpenSDK-XCFramework: ff342ae616bb86df3d236aca38059dfd4bc4a949
 
-PODFILE CHECKSUM: 8fb3a174f1cba505e5fb593f6967763047db4159
+PODFILE CHECKSUM: 6617c6b94cc50475da51dab4d6bc80ce00da8791
 
 COCOAPODS: 1.16.2

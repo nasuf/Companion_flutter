@@ -43,6 +43,7 @@ dependencies:
   audioplayers: ^6.5.1
   flutter_local_notifications: ^20.1.0
   timezone: ^0.10.1
+  sud_gip_plugin: ^0.0.3
 
 dev_dependencies:
   flutter_test:
@@ -75,6 +76,7 @@ flutter:
     - assets/prototype/movie-project-hail-mary.jpg
     - assets/prototype/game-pieces.jpg
     - assets/prototype/vinyl-record.jpg
+    - assets/prototype/games/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -1,7 +1,14 @@
 part of 'package:companion_flutter/main.dart';
 
 class OnlineInteractionPage extends StatefulWidget {
-  const OnlineInteractionPage({super.key});
+  const OnlineInteractionPage({
+    super.key,
+    required this.api,
+    required this.session,
+  });
+
+  final CompanionApi api;
+  final AuthSession session;
 
   @override
   State<OnlineInteractionPage> createState() => _OnlineInteractionPageState();
@@ -29,9 +36,13 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
   void _openPortal(_OnlinePortal portal) {
     Navigator.of(context).push(
       CupertinoPageRoute<void>(
-        builder: (_) => portal.id == 'movie'
-            ? const MoviePage()
-            : _OnlinePortalDetailPage(portal: portal),
+        builder: (_) {
+          if (portal.id == 'movie') return const MoviePage();
+          if (portal.id == 'game') {
+            return GamePage(api: widget.api, session: widget.session);
+          }
+          return _OnlinePortalDetailPage(portal: portal);
+        },
       ),
     );
   }

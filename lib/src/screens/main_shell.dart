@@ -114,7 +114,7 @@ class _MainShellState extends State<MainShell> {
           );
     final pages = [
       chatPage,
-      const OnlineInteractionPage(),
+      OnlineInteractionPage(api: widget.api, session: widget.session),
       OfflineInteractionPage(agentName: widget.session.agentName ?? '伴生'),
       PlaceholderPage(
         title: '我的',

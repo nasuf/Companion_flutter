@@ -264,6 +264,236 @@ class ChatComponentCard {
   }
 }
 
+enum SudGameDifficulty {
+  newbie('新手陪玩', 'AI 会放慢节奏，适合测试陪伴感'),
+  normal('普通对战', 'AI 正常博弈，保留轻松交流'),
+  hard('认真对战', 'AI 提高策略强度，尽量争胜');
+
+  const SudGameDifficulty(this.title, this.subtitle);
+
+  final String title;
+  final String subtitle;
+}
+
+enum SudGamePlayMode {
+  versus('1V1 对战'),
+  cooperate('合作闯关');
+
+  const SudGamePlayMode(this.title);
+
+  final String title;
+}
+
+class SudConfigResponse {
+  const SudConfigResponse({
+    required this.provider,
+    required this.sdkEnabled,
+    required this.sdkPackage,
+    required this.appId,
+    required this.appKey,
+    required this.bundleId,
+    required this.isTestEnv,
+    required this.defaultMgId,
+    required this.missingConfig,
+    required this.callbacks,
+  });
+
+  final String provider;
+  final bool sdkEnabled;
+  final String sdkPackage;
+  final String appId;
+  final String appKey;
+  final String bundleId;
+  final bool isTestEnv;
+  final String defaultMgId;
+  final List<String> missingConfig;
+  final Map<String, String> callbacks;
+
+  factory SudConfigResponse.fromJson(Map<String, dynamic> json) {
+    return SudConfigResponse(
+      provider: json['provider'] as String? ?? 'sud',
+      sdkEnabled: json['sdk_enabled'] as bool? ?? false,
+      sdkPackage: json['sdk_package'] as String? ?? 'sud_gip_plugin',
+      appId: json['app_id'] as String? ?? '',
+      appKey: json['app_key'] as String? ?? '',
+      bundleId: json['bundle_id'] as String? ?? '',
+      isTestEnv: json['is_test_env'] as bool? ?? true,
+      defaultMgId: json['default_mg_id'] as String? ?? '',
+      missingConfig: (json['missing_config'] as List? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      callbacks: (json['callbacks'] as Map? ?? const {}).map(
+        (key, value) => MapEntry(key.toString(), value.toString()),
+      ),
+    );
+  }
+}
+
+class SudPlayerInfo {
+  const SudPlayerInfo({
+    required this.uid,
+    required this.nickName,
+    required this.avatarUrl,
+    required this.gender,
+    required this.isAi,
+    required this.aiLevel,
+  });
+
+  final String uid;
+  final String nickName;
+  final String avatarUrl;
+  final String gender;
+  final int isAi;
+  final int aiLevel;
+
+  factory SudPlayerInfo.fromJson(Map<String, dynamic> json) {
+    return SudPlayerInfo(
+      uid: json['uid'] as String? ?? '',
+      nickName: json['nick_name'] as String? ?? '',
+      avatarUrl: json['avatar_url'] as String? ?? '',
+      gender: json['gender'] as String? ?? '',
+      isAi: (json['is_ai'] as num?)?.round() ?? 0,
+      aiLevel: (json['ai_level'] as num?)?.round() ?? 0,
+    );
+  }
+}
+
+class SudSession {
+  const SudSession({
+    required this.id,
+    required this.provider,
+    required this.status,
+    required this.sdkEnabled,
+    required this.userId,
+    required this.agentId,
+    required this.appId,
+    required this.appKey,
+    required this.bundleId,
+    required this.isTestEnv,
+    required this.mgId,
+    required this.roomId,
+    required this.code,
+    required this.codeExpiresAt,
+    required this.playMode,
+    required this.difficulty,
+    required this.aiLevel,
+    required this.userPlayer,
+    required this.aiPlayer,
+    this.workspaceId,
+    this.conversationId,
+    this.companionReply,
+    this.result,
+    this.startedAt,
+    this.endedAt,
+    this.createdAt,
+  });
+
+  final String id;
+  final String provider;
+  final String status;
+  final bool sdkEnabled;
+  final String userId;
+  final String agentId;
+  final String? workspaceId;
+  final String? conversationId;
+  final String appId;
+  final String appKey;
+  final String bundleId;
+  final bool isTestEnv;
+  final String mgId;
+  final String roomId;
+  final String code;
+  final DateTime codeExpiresAt;
+  final SudGamePlayMode playMode;
+  final SudGameDifficulty difficulty;
+  final int aiLevel;
+  final SudPlayerInfo userPlayer;
+  final SudPlayerInfo aiPlayer;
+  final String? companionReply;
+  final Map<String, dynamic>? result;
+  final DateTime? startedAt;
+  final DateTime? endedAt;
+  final DateTime? createdAt;
+
+  bool get canLoadNativeGame =>
+      sdkEnabled && appId.isNotEmpty && appKey.isNotEmpty && code.isNotEmpty;
+
+  factory SudSession.fromJson(Map<String, dynamic> json) {
+    return SudSession(
+      id: json['id'] as String? ?? '',
+      provider: json['provider'] as String? ?? 'sud',
+      status: json['status'] as String? ?? 'created',
+      sdkEnabled: json['sdk_enabled'] as bool? ?? false,
+      userId: json['user_id'] as String? ?? '',
+      agentId: json['agent_id'] as String? ?? '',
+      workspaceId: json['workspace_id'] as String?,
+      conversationId: json['conversation_id'] as String?,
+      appId: json['app_id'] as String? ?? '',
+      appKey: json['app_key'] as String? ?? '',
+      bundleId: json['bundle_id'] as String? ?? '',
+      isTestEnv: json['is_test_env'] as bool? ?? true,
+      mgId: json['mg_id'] as String? ?? '',
+      roomId: json['room_id'] as String? ?? '',
+      code: json['code'] as String? ?? '',
+      codeExpiresAt:
+          DateTime.tryParse(json['code_expires_at'] as String? ?? '') ??
+          DateTime.now(),
+      playMode: _parsePlayMode(json['play_mode'] as String?),
+      difficulty: _parseDifficulty(json['difficulty'] as String?),
+      aiLevel: (json['ai_level'] as num?)?.round() ?? 0,
+      userPlayer: SudPlayerInfo.fromJson(
+        (json['user_player'] as Map?)?.cast<String, dynamic>() ?? const {},
+      ),
+      aiPlayer: SudPlayerInfo.fromJson(
+        (json['ai_player'] as Map?)?.cast<String, dynamic>() ?? const {},
+      ),
+      companionReply: json['companion_reply'] as String?,
+      result: json['result'] is Map
+          ? Map<String, dynamic>.from(json['result'] as Map)
+          : null,
+      startedAt: DateTime.tryParse(json['started_at'] as String? ?? ''),
+      endedAt: DateTime.tryParse(json['ended_at'] as String? ?? ''),
+      createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
+    );
+  }
+
+  static SudGamePlayMode _parsePlayMode(String? value) {
+    return SudGamePlayMode.values.firstWhere(
+      (mode) => mode.name == value,
+      orElse: () => SudGamePlayMode.versus,
+    );
+  }
+
+  static SudGameDifficulty _parseDifficulty(String? value) {
+    return SudGameDifficulty.values.firstWhere(
+      (difficulty) => difficulty.name == value,
+      orElse: () => SudGameDifficulty.newbie,
+    );
+  }
+}
+
+class SudGameEventResponse {
+  const SudGameEventResponse({
+    required this.session,
+    this.companionReply,
+    this.persistedEventId,
+  });
+
+  final SudSession session;
+  final String? companionReply;
+  final String? persistedEventId;
+
+  factory SudGameEventResponse.fromJson(Map<String, dynamic> json) {
+    return SudGameEventResponse(
+      session: SudSession.fromJson(
+        (json['session'] as Map?)?.cast<String, dynamic>() ?? const {},
+      ),
+      companionReply: json['companion_reply'] as String?,
+      persistedEventId: json['persisted_event_id'] as String?,
+    );
+  }
+}
+
 class ReminderItem {
   const ReminderItem({
     required this.id,
