@@ -36,12 +36,7 @@ class _CapsulePageState extends State<CapsulePage> {
   }
 
   Future<List<TimeCapsule>> _load() {
-    final agentId = widget.session.agentId;
-    if (agentId == null || agentId.isEmpty) return Future.value(const []);
-    return widget.api.listTimeCapsules(
-      agentId: agentId,
-      workspaceId: widget.session.workspaceId,
-    );
+    return widget.api.listTimeCapsules();
   }
 
   Future<List<TimeCapsule>> _loadAndCache() async {
@@ -476,10 +471,6 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
       if (_openDate == null) return;
     }
     final agentId = widget.session.agentId;
-    if (agentId == null || agentId.isEmpty) {
-      setState(() => _error = '还没有可用的 AI 伴侣。');
-      return;
-    }
     setState(() {
       _saving = true;
       _savingStatus = status;

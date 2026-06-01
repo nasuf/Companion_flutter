@@ -351,14 +351,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _scanReadyCapsules() async {
-    final agentId = widget.session.agentId;
-    if (agentId == null || agentId.isEmpty) return;
     try {
-      final ready = await widget.api.listTimeCapsules(
-        agentId: agentId,
-        workspaceId: widget.session.workspaceId,
-        state: 'ready',
-      );
+      final ready = await widget.api.listTimeCapsules(state: 'ready');
       if (!mounted) return;
       setState(() => _readyCapsule = ready.isEmpty ? null : ready.first);
     } catch (error) {

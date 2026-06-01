@@ -406,11 +406,14 @@ class CompanionApi {
   }
 
   Future<List<TimeCapsule>> listTimeCapsules({
-    required String agentId,
+    String? agentId,
     String? workspaceId,
     String? state,
   }) async {
-    final params = <String, String>{'agent_id': agentId};
+    final params = <String, String>{};
+    if (agentId != null && agentId.isNotEmpty) {
+      params['agent_id'] = agentId;
+    }
     if (workspaceId != null && workspaceId.isNotEmpty) {
       params['workspace_id'] = workspaceId;
     }
@@ -475,7 +478,7 @@ class CompanionApi {
   }
 
   Future<TimeCapsule> createTimeCapsule({
-    required String agentId,
+    String? agentId,
     required String content,
     required String status,
     String? workspaceId,
@@ -489,7 +492,7 @@ class CompanionApi {
               'POST',
               '/capsules',
               body: {
-                'agent_id': agentId,
+                if (agentId != null && agentId.isNotEmpty) 'agent_id': agentId,
                 'workspace_id': workspaceId,
                 'title': title,
                 'content': content,
