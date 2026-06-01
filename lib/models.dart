@@ -345,6 +345,73 @@ class ChatComponentCard {
   }
 }
 
+class AchievementItem {
+  const AchievementItem({
+    required this.id,
+    required this.category,
+    required this.name,
+    required this.popupText,
+    required this.conditionText,
+    required this.ruleText,
+    required this.levelName,
+    required this.score,
+    required this.unlocked,
+    this.unlockedAt,
+  });
+
+  final int id;
+  final String category;
+  final String name;
+  final String popupText;
+  final String conditionText;
+  final String ruleText;
+  final String levelName;
+  final int score;
+  final bool unlocked;
+  final DateTime? unlockedAt;
+
+  factory AchievementItem.fromJson(Map<dynamic, dynamic> json) {
+    final rawId = json['achievement_id'] ?? json['id'];
+    return AchievementItem(
+      id: (rawId as num?)?.round() ?? 0,
+      category: json['category']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      popupText: json['popup_text']?.toString() ?? '',
+      conditionText: json['condition_text']?.toString() ?? '',
+      ruleText: json['rule_text']?.toString() ?? '',
+      levelName: json['level_name']?.toString() ?? '',
+      score: (json['score'] as num?)?.round() ?? 0,
+      unlocked: json['unlocked'] as bool? ?? false,
+      unlockedAt: DateTime.tryParse(json['unlocked_at']?.toString() ?? ''),
+    );
+  }
+}
+
+class AchievementsResponse {
+  const AchievementsResponse({
+    required this.total,
+    required this.unlocked,
+    required this.score,
+    required this.items,
+  });
+
+  final int total;
+  final int unlocked;
+  final int score;
+  final List<AchievementItem> items;
+
+  factory AchievementsResponse.fromJson(Map<String, dynamic> json) {
+    return AchievementsResponse(
+      total: (json['total'] as num?)?.round() ?? 0,
+      unlocked: (json['unlocked'] as num?)?.round() ?? 0,
+      score: (json['score'] as num?)?.round() ?? 0,
+      items: (json['items'] as List? ?? const [])
+          .map((item) => AchievementItem.fromJson(item as Map))
+          .toList(),
+    );
+  }
+}
+
 enum SudGameDifficulty {
   newbie('新手陪玩', 'AI 会放慢节奏，适合测试陪伴感'),
   normal('普通对战', 'AI 正常博弈，保留轻松交流'),

@@ -5,12 +5,14 @@ class _ChatHeader extends StatelessWidget {
     required this.agentName,
     required this.subtitle,
     this.avatarUrl,
+    required this.onAvatarDoubleTap,
     required this.onOpenSidebar,
   });
 
   final String agentName;
   final String subtitle;
   final String? avatarUrl;
+  final VoidCallback onAvatarDoubleTap;
   final VoidCallback onOpenSidebar;
 
   @override
@@ -24,11 +26,15 @@ class _ChatHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _Avatar(
-            size: 44,
-            label: '伴',
-            imageUrl: avatarUrl,
-            gradient: [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onDoubleTap: onAvatarDoubleTap,
+            child: _Avatar(
+              size: 44,
+              label: '伴',
+              imageUrl: avatarUrl,
+              gradient: [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(

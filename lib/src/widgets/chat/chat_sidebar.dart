@@ -6,7 +6,7 @@ enum _SidebarDestination {
   legacy('遗言', Color(0xFF151820)),
   mail('信箱', Color(0xFF7C3CFF)),
   task('打卡', Color(0xFF22C66B)),
-  list('清单', Color(0xFF08C767)),
+  achievement('成就', Color(0xFF96556A)),
   note('记录', Color(0xFFFF8B26));
 
   const _SidebarDestination(this.label, this.color);
@@ -73,7 +73,7 @@ class _SidebarRail extends StatelessWidget {
     _SidebarDestination.capsule,
     _SidebarDestination.legacy,
     _SidebarDestination.task,
-    _SidebarDestination.list,
+    _SidebarDestination.achievement,
   ];
 
   @override
@@ -224,7 +224,7 @@ class _SidebarButton extends StatelessWidget {
       _SidebarDestination.legacy => const Color(0xFF9EA4AA),
       _SidebarDestination.mail => AppColors.accent,
       _SidebarDestination.task => const Color(0xFFFFC23A),
-      _SidebarDestination.list => const Color(0xFFFFC23A),
+      _SidebarDestination.achievement => const Color(0xFFFFC23A),
       _SidebarDestination.note => const Color(0xFFFFC23A),
     };
   }
@@ -266,11 +266,48 @@ class _GlossSidebarIconPainter extends CustomPainter {
         _paintMail(canvas, size);
       case _SidebarDestination.task:
         _paintTask(canvas, size);
-      case _SidebarDestination.list:
-        _paintList(canvas, size);
+      case _SidebarDestination.achievement:
+        _paintAchievement(canvas, size);
       case _SidebarDestination.note:
         _paintNote(canvas, size);
     }
+  }
+
+  void _paintAchievement(Canvas canvas, Size size) {
+    final paint = Paint()..color = Colors.white;
+    final rect = Rect.fromLTWH(8, 7, 20, 22);
+    final ribbon = Path()
+      ..moveTo(13, 25)
+      ..lineTo(12, 34)
+      ..lineTo(18, 30)
+      ..lineTo(24, 34)
+      ..lineTo(23, 25)
+      ..close();
+    canvas.drawPath(
+      ribbon,
+      paint..color = Colors.white.withValues(alpha: 0.72),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(10)),
+      paint..color = Colors.white,
+    );
+    final star = Path();
+    const center = Offset(18, 18);
+    for (var i = 0; i < 10; i += 1) {
+      final radius = i.isEven ? 7.0 : 3.2;
+      final angle = -math.pi / 2 + i * math.pi / 5;
+      final point = Offset(
+        center.dx + math.cos(angle) * radius,
+        center.dy + math.sin(angle) * radius,
+      );
+      if (i == 0) {
+        star.moveTo(point.dx, point.dy);
+      } else {
+        star.lineTo(point.dx, point.dy);
+      }
+    }
+    star.close();
+    canvas.drawPath(star, Paint()..color = destination.color);
   }
 
   void _paintWeather(Canvas canvas, Size size) {
@@ -383,37 +420,6 @@ class _GlossSidebarIconPainter extends CustomPainter {
       ..moveTo(12.4, 18.2)
       ..lineTo(16.3, 22.1)
       ..lineTo(24.3, 13.9);
-    canvas.drawPath(
-      check,
-      Paint()
-        ..color = destination.color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round,
-    );
-  }
-
-  void _paintList(Canvas canvas, Size size) {
-    final rect = RRect.fromRectAndRadius(
-      const Rect.fromLTWH(9, 8.2, 18, 21.6),
-      const Radius.circular(3.4),
-    );
-    final body = Path()..addRRect(rect);
-    _drawPathShadow(canvas, body, const Offset(0, 1.5));
-    canvas.drawRRect(rect, Paint()..color = Colors.white);
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        const Rect.fromLTWH(11, 10.1, 14, 4.4),
-        const Radius.circular(2.2),
-      ),
-      Paint()..color = Colors.white.withValues(alpha: 0.20),
-    );
-    final check = Path()
-      ..moveTo(12.8, 18.2)
-      ..lineTo(16.2, 21.7)
-      ..lineTo(23.5, 14.2);
     canvas.drawPath(
       check,
       Paint()
@@ -593,6 +599,9 @@ class _SidebarDestinationPage extends StatelessWidget {
     }
     if (destination == _SidebarDestination.task) {
       return CheckinPage(api: api, session: session);
+    }
+    if (destination == _SidebarDestination.achievement) {
+      return AchievementPage(api: api, session: session);
     }
 
     return Scaffold(

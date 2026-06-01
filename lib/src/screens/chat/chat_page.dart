@@ -2,6 +2,16 @@ part of 'package:companion_flutter/main.dart';
 
 enum ComposerPanel { none, emoji, more }
 
+class _AchievementToastEntry {
+  _AchievementToastEntry({required this.id, required this.item});
+
+  final String id;
+  final AchievementItem item;
+  Timer? timer;
+  bool entered = false;
+  bool closing = false;
+}
+
 class ChatPage extends StatefulWidget {
   const ChatPage({
     super.key,
@@ -41,6 +51,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Timer? _panelHoldTimer;
   Timer? _capsuleScanTimer;
   TimeCapsule? _readyCapsule;
+  final List<_AchievementToastEntry> _achievementNotices = [];
   bool _loadingInitial = true;
   bool _loadingOlder = false;
   bool _hasOlderMessages = false;
@@ -55,6 +66,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _wasNearBottomBeforePaddingChange = true;
   ({String text, String clientId, ChatComponentCard? componentCard})?
   _pendingSend;
+  int _achievementDemoIndex = 0;
 
   String get _conversationId => widget.session.conversationId!;
 
@@ -87,6 +99,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _socket?.close();
     _panelHoldTimer?.cancel();
     _capsuleScanTimer?.cancel();
+    for (final entry in _achievementNotices) {
+      entry.timer?.cancel();
+    }
     super.dispose();
   }
 
@@ -125,6 +140,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _typingHint = '连接中...';
       _pendingSend = null;
       _readyCapsule = null;
+      for (final entry in _achievementNotices) {
+        entry.timer?.cancel();
+      }
+      _achievementNotices.clear();
     });
     await _loadLatestMessages(showLoading: true);
     unawaited(_scanReadyCapsules());
@@ -519,9 +538,71 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       case 'reminder_changed':
       case 'trace_ready':
         break;
+      case 'achievement_unlocked':
+        _showAchievementNotice(AchievementItem.fromJson(payload));
+        break;
       default:
         break;
     }
+  }
+
+  void _showAchievementNotice(AchievementItem item) {
+    final entry = _AchievementToastEntry(
+      id: '${item.id}-${DateTime.now().microsecondsSinceEpoch}',
+      item: item,
+    );
+    setState(() => _achievementNotices.add(entry));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final index = _achievementNotices.indexWhere(
+        (item) => item.id == entry.id,
+      );
+      if (index == -1) return;
+      setState(() => _achievementNotices[index].entered = true);
+    });
+    entry.timer = Timer(const Duration(seconds: 5), () {
+      _dismissAchievementNotice(entry.id);
+    });
+  }
+
+  void _dismissAchievementNotice(String entryId) {
+    final index = _achievementNotices.indexWhere(
+      (entry) => entry.id == entryId,
+    );
+    if (index == -1 || _achievementNotices[index].closing) return;
+    _achievementNotices[index].timer?.cancel();
+    setState(() => _achievementNotices[index].closing = true);
+    Timer(const Duration(milliseconds: 260), () {
+      if (!mounted) return;
+      setState(
+        () => _achievementNotices.removeWhere((entry) => entry.id == entryId),
+      );
+    });
+  }
+
+  void _showDemoAchievementNotice() {
+    const samples = [
+      ('初次开口', '哇哦！成功打破沉默，冷场彻底退退退！', '微光痕迹', 1),
+      ('轻声开场', '三个字轻松开场，简短但存在感超强！', '微光痕迹', 3),
+      ('双向奔赴', '你回应了TA的主动，故事开始了～', '微光痕迹', 25),
+      ('畅聊艺术家', '今日聊天量爆表，灵感像瀑布一样落下来！', '星河痕迹', 60),
+    ];
+    final sample = samples[_achievementDemoIndex % samples.length];
+    _achievementDemoIndex += 1;
+    _showAchievementNotice(
+      AchievementItem(
+        id: sample.$4,
+        category: '测试触发',
+        name: sample.$1,
+        popupText: sample.$2,
+        conditionText: '双击头像触发的测试提示',
+        ruleText: '仅用于预览聊天内成就达成弹框',
+        levelName: sample.$3,
+        score: 10,
+        unlocked: true,
+        unlockedAt: DateTime.now(),
+      ),
+    );
   }
 
   void sendComponentMessage(String text, ChatComponentCard componentCard) {
@@ -731,6 +812,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 agentName: widget.session.agentName ?? 'Companion',
                 subtitle: _connecting || _sending ? _typingHint : '在线',
                 avatarUrl: widget.session.agentAvatarUrl,
+                onAvatarDoubleTap: _showDemoAchievementNotice,
                 onOpenSidebar: widget.onOpenSidebar,
               ),
               if (_historyError != null)
@@ -813,6 +895,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       capsule: _readyCapsule!,
                       onTap: _openReadyCapsuleNotice,
                     ),
+            ),
+          ),
+          Positioned.fill(
+            child: _AchievementBackdrop(
+              visible: _achievementNotices.isNotEmpty,
+            ),
+          ),
+          Positioned(
+            top: 136,
+            right: 0,
+            left: 58,
+            child: _AchievementToastStack(
+              entries: _achievementNotices,
+              onDismiss: _dismissAchievementNotice,
             ),
           ),
         ],

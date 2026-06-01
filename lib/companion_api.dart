@@ -275,6 +275,20 @@ class CompanionApi {
     return SudGameEventResponse.fromJson(json);
   }
 
+  Future<AchievementsResponse> listAchievements({
+    required String agentId,
+  }) async {
+    final query = Uri(queryParameters: {'agent_id': agentId}).query;
+    final json =
+        await _request(
+              'GET',
+              '/achievements?$query',
+              debugLabel: 'achievements',
+            )
+            as Map<String, dynamic>;
+    return AchievementsResponse.fromJson(json);
+  }
+
   Future<RemindersResponse> listReminders({
     required String userId,
     String? agentId,
