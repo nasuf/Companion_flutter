@@ -854,13 +854,13 @@ class LastWill {
   const LastWill({
     required this.id,
     required this.userId,
-    required this.agentId,
     required this.content,
     required this.inactivityDays,
     required this.contacts,
     required this.status,
     required this.createdAt,
     required this.updatedAt,
+    this.agentId,
     this.workspaceId,
     this.lastSeenAt,
     this.startedAt,
@@ -870,7 +870,7 @@ class LastWill {
 
   final String id;
   final String userId;
-  final String agentId;
+  final String? agentId;
   final String? workspaceId;
   final String content;
   final int inactivityDays;
@@ -907,7 +907,7 @@ class LastWill {
     return LastWill(
       id: json['id'] as String? ?? '',
       userId: json['user_id'] as String? ?? '',
-      agentId: json['agent_id'] as String? ?? '',
+      agentId: json['agent_id'] as String?,
       workspaceId: json['workspace_id'] as String?,
       content: json['content'] as String? ?? '',
       inactivityDays: (json['inactivity_days'] as num?)?.round() ?? 30,

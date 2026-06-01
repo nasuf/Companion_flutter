@@ -541,18 +541,22 @@ class CompanionApi {
   }
 
   Future<List<LastWill>> listLastWills({
-    required String agentId,
+    String? agentId,
     String? workspaceId,
   }) async {
-    final params = <String, String>{'agent_id': agentId};
+    final params = <String, String>{};
+    if (agentId != null && agentId.isNotEmpty) {
+      params['agent_id'] = agentId;
+    }
     if (workspaceId != null && workspaceId.isNotEmpty) {
       params['workspace_id'] = workspaceId;
     }
     final query = Uri(queryParameters: params).query;
+    final path = query.isEmpty ? '/last-wills' : '/last-wills?$query';
     final json =
         await _request(
               'GET',
-              '/last-wills?$query',
+              path,
               debugLabel: 'last_will.list',
             )
             as List;
@@ -562,7 +566,7 @@ class CompanionApi {
   }
 
   Future<LastWill> createLastWill({
-    required String agentId,
+    String? agentId,
     required String content,
     required int inactivityDays,
     required List<LastWillContact> contacts,
@@ -574,8 +578,9 @@ class CompanionApi {
               'POST',
               '/last-wills',
               body: {
-                'agent_id': agentId,
-                'workspace_id': workspaceId,
+                if (agentId != null && agentId.isNotEmpty) 'agent_id': agentId,
+                if (workspaceId != null && workspaceId.isNotEmpty)
+                  'workspace_id': workspaceId,
                 'content': content,
                 'inactivity_days': inactivityDays,
                 'contacts': contacts.map((item) => item.toJson()).toList(),

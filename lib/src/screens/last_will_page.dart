@@ -36,12 +36,7 @@ class _LastWillPageState extends State<LastWillPage>
   }
 
   Future<List<LastWill>> _load() async {
-    final agentId = widget.session.agentId;
-    if (agentId == null || agentId.isEmpty) return const [];
-    final items = await widget.api.listLastWills(
-      agentId: agentId,
-      workspaceId: widget.session.workspaceId,
-    );
+    final items = await widget.api.listLastWills();
     if (mounted) {
       setState(() {
         _current = items.isEmpty ? null : items.first;
@@ -251,8 +246,6 @@ class _LastWillPageState extends State<LastWillPage>
     if (start && !await _ensureContactsForTrigger()) {
       return;
     }
-    final agentId = widget.session.agentId;
-    if (agentId == null || agentId.isEmpty) return;
     setState(() => _busy = true);
     try {
       final currentStatus = _current?.status;
@@ -267,8 +260,6 @@ class _LastWillPageState extends State<LastWillPage>
           : 'draft';
       final saved = _current == null
           ? await widget.api.createLastWill(
-              agentId: agentId,
-              workspaceId: widget.session.workspaceId,
               content: content,
               inactivityDays: _days,
               contacts: _contacts,
@@ -342,8 +333,6 @@ class _LastWillPageState extends State<LastWillPage>
     int? inactivityDays,
     List<LastWillContact>? contacts,
   }) async {
-    final agentId = widget.session.agentId;
-    if (agentId == null || agentId.isEmpty) return null;
     final nextDays = inactivityDays ?? _days;
     final nextContacts = contacts ?? _contacts;
     if (_current == null && nextDays == 30 && nextContacts.isEmpty) {
@@ -354,8 +343,6 @@ class _LastWillPageState extends State<LastWillPage>
       final current = _current;
       final saved = current == null
           ? await widget.api.createLastWill(
-              agentId: agentId,
-              workspaceId: widget.session.workspaceId,
               content: '',
               inactivityDays: nextDays,
               contacts: nextContacts,
