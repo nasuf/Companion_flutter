@@ -464,9 +464,11 @@ class _Avatar extends StatelessWidget {
       child: _hasImage
           ? Image.network(
               imageUrl!,
+              key: ValueKey(imageUrl),
               width: size,
               height: size,
               fit: BoxFit.cover,
+              gaplessPlayback: true,
               errorBuilder: (_, __, ___) => _fallback,
               loadingBuilder: (context, child, loadingProgress) {
                 if (loadingProgress == null) return child;

@@ -50,7 +50,14 @@ class AuthSession {
     );
   }
 
-  AuthSession copyWith({String? workspaceId, String? conversationId}) {
+  AuthSession copyWith({
+    String? agentName,
+    String? agentAvatarKey,
+    String? agentAvatarUrl,
+    String? agentCity,
+    String? workspaceId,
+    String? conversationId,
+  }) {
     return AuthSession(
       token: token,
       userId: userId,
@@ -58,10 +65,10 @@ class AuthSession {
       role: role,
       hasAgent: hasAgent,
       agentId: agentId,
-      agentName: agentName,
-      agentAvatarKey: agentAvatarKey,
-      agentAvatarUrl: agentAvatarUrl,
-      agentCity: agentCity,
+      agentName: agentName ?? this.agentName,
+      agentAvatarKey: agentAvatarKey ?? this.agentAvatarKey,
+      agentAvatarUrl: agentAvatarUrl ?? this.agentAvatarUrl,
+      agentCity: agentCity ?? this.agentCity,
       workspaceId: workspaceId ?? this.workspaceId,
       conversationId: conversationId ?? this.conversationId,
     );
@@ -99,6 +106,80 @@ class AgentProfile {
       city: json['city'] as String?,
       avatarKey: json['avatar_key'] as String?,
       avatarUrl: json['avatar_url'] as String?,
+    );
+  }
+}
+
+class AgentProvisionStatus {
+  const AgentProvisionStatus({
+    required this.agentId,
+    required this.status,
+    required this.stage,
+    required this.percent,
+    required this.message,
+    this.current,
+    this.total,
+  });
+
+  final String agentId;
+  final String status;
+  final String stage;
+  final int percent;
+  final String message;
+  final int? current;
+  final int? total;
+
+  bool get isComplete => stage == 'complete' || percent >= 100;
+  bool get isFailed => stage == 'failed';
+
+  factory AgentProvisionStatus.fromJson(Map<String, dynamic> json) {
+    return AgentProvisionStatus(
+      agentId: json['agent_id'] as String? ?? '',
+      status: json['status'] as String? ?? '',
+      stage: json['stage'] as String? ?? 'initializing',
+      percent: (json['percent'] as num?)?.round() ?? 0,
+      message: json['message'] as String? ?? '正在初始化...',
+      current: (json['current'] as num?)?.round(),
+      total: (json['total'] as num?)?.round(),
+    );
+  }
+
+  AgentProvisionStatus copyWith({
+    String? status,
+    String? stage,
+    int? percent,
+    String? message,
+    int? current,
+    int? total,
+  }) {
+    return AgentProvisionStatus(
+      agentId: agentId,
+      status: status ?? this.status,
+      stage: stage ?? this.stage,
+      percent: percent ?? this.percent,
+      message: message ?? this.message,
+      current: current ?? this.current,
+      total: total ?? this.total,
+    );
+  }
+}
+
+class AgentDeleteResult {
+  const AgentDeleteResult({required this.ok, required this.stats});
+
+  final bool ok;
+  final Map<String, int> stats;
+
+  factory AgentDeleteResult.fromJson(Map<String, dynamic> json) {
+    final rawStats = json['stats'];
+    return AgentDeleteResult(
+      ok: json['ok'] as bool? ?? false,
+      stats: rawStats is Map
+          ? rawStats.map(
+              (key, value) =>
+                  MapEntry(key.toString(), (value as num?)?.round() ?? 0),
+            )
+          : const {},
     );
   }
 }

@@ -18,6 +18,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('后端地址'), findsOneWidget);
+    expect(find.text('登录'), findsWidgets);
+    expect(find.text('注册'), findsOneWidget);
     expect(find.text('账号'), findsOneWidget);
     expect(find.text('密码'), findsOneWidget);
   });

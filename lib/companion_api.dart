@@ -106,6 +106,19 @@ class CompanionApi {
     return session;
   }
 
+  Future<AuthSession> register(String username, String password) async {
+    final json =
+        await _request(
+              'POST',
+              '/auth/register',
+              body: {'username': username, 'password': password},
+            )
+            as Map<String, dynamic>;
+    final session = AuthSession.fromJson(json);
+    authToken = session.token;
+    return session;
+  }
+
   Future<AuthSession> wechatMobileLogin(
     String code, {
     required String platform,
@@ -626,6 +639,19 @@ class CompanionApi {
             )
             as Map<String, dynamic>;
     return AgentProfile.fromJson(json);
+  }
+
+  Future<AgentProvisionStatus> getAgentProvisionStatus(String agentId) async {
+    final json =
+        await _request('GET', '/agents/$agentId/provision-status')
+            as Map<String, dynamic>;
+    return AgentProvisionStatus.fromJson(json);
+  }
+
+  Future<AgentDeleteResult> deleteAgent(String agentId) async {
+    final json =
+        await _request('DELETE', '/agents/$agentId') as Map<String, dynamic>;
+    return AgentDeleteResult.fromJson(json);
   }
 
   Future<AuthSession> ensureConversation(AuthSession session) async {

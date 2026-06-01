@@ -1,5 +1,17 @@
 part of 'package:companion_flutter/main.dart';
 
+const _llmEstimatedSeconds = 45.0;
+const _llmPercentBase = 15.0;
+const _llmPercentRange = 55.0;
+const _llmMessageRotationSeconds = 6;
+const _llmRotatingMessages = [
+  '正在塑造身份基础...',
+  '正在编织生活经历...',
+  '正在唤醒情绪记忆...',
+  '正在确立价值观与思维...',
+  '正在校对一致性...',
+];
+
 class AgentCreatePage extends StatefulWidget {
   const AgentCreatePage({super.key, this.api, this.session, this.onCreated});
 
@@ -19,7 +31,12 @@ class _AgentCreatePageState extends State<AgentCreatePage>
   var _gender = _AgentGender.female;
   late List<_TraitDraft> _traits;
   List<int>? _previousTraitValues;
+  Timer? _provisionPollTimer;
+  Timer? _llmTickerTimer;
+  DateTime? _llmStartedAt;
+  AgentProvisionStatus? _provisionStatus;
   bool _submitting = false;
+  bool _finishingProvision = false;
   String? _error;
 
   @override
@@ -49,6 +66,8 @@ class _AgentCreatePageState extends State<AgentCreatePage>
 
   @override
   void dispose() {
+    _provisionPollTimer?.cancel();
+    _llmTickerTimer?.cancel();
     _breathController.dispose();
     _traitMoveController.dispose();
     _nameController.dispose();
@@ -120,26 +139,204 @@ class _AgentCreatePageState extends State<AgentCreatePage>
           'humor': _traitValue('幽默度'),
         },
       );
+      _setProvisionStatus(
+        AgentProvisionStatus(
+          agentId: agent.id,
+          status: 'provisioning',
+          stage: 'initializing',
+          percent: 0,
+          message: '正在初始化...',
+        ),
+      );
+      _startProvisionPolling(api, session, agent);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = _asMessage(error);
+          _submitting = false;
+        });
+      }
+    }
+  }
+
+  void _startProvisionPolling(
+    CompanionApi api,
+    AuthSession session,
+    AgentProfile agent,
+  ) {
+    _provisionPollTimer?.cancel();
+
+    Future<void> poll() async {
+      if (!mounted || _finishingProvision) return;
+      try {
+        final status = await api.getAgentProvisionStatus(agent.id);
+        if (!mounted || _finishingProvision) return;
+        _setProvisionStatus(status);
+        if (status.isComplete) {
+          await _finishProvision(api, session, agent);
+        } else if (status.isFailed) {
+          _provisionPollTimer?.cancel();
+          _stopLlmTicker();
+          if (mounted) {
+            setState(() => _submitting = false);
+          }
+        }
+      } catch (error) {
+        debugPrint('[agent-provision-poll] $error');
+      }
+    }
+
+    unawaited(poll());
+    _provisionPollTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => unawaited(poll()),
+    );
+  }
+
+  void _setProvisionStatus(AgentProvisionStatus status) {
+    final previous = _provisionStatus;
+    final continuingLlm =
+        previous?.stage == 'llm_generating' && status.stage == 'llm_generating';
+    final incomingPercent = status.isComplete
+        ? 100
+        : math.min(status.percent, 99);
+    final nextPercent = status.stage == 'failed'
+        ? status.percent
+        : math.max(previous?.percent ?? 0, incomingPercent).toInt();
+    final nextMessage = continuingLlm ? previous!.message : status.message;
+    setState(() {
+      _provisionStatus = status.copyWith(
+        percent: nextPercent,
+        message: nextMessage,
+      );
+      _error = null;
+    });
+
+    if (status.stage == 'llm_generating') {
+      _llmStartedAt ??= DateTime.now();
+      _startLlmTicker();
+    } else {
+      _llmStartedAt = null;
+      _stopLlmTicker();
+    }
+  }
+
+  void _startLlmTicker() {
+    if (_llmTickerTimer != null) return;
+    final startedAt = _llmStartedAt ?? DateTime.now();
+    var tick = 0;
+    _llmTickerTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      final status = _provisionStatus;
+      if (!mounted || status == null || status.stage != 'llm_generating') {
+        _stopLlmTicker();
+        return;
+      }
+      tick += 1;
+      final elapsedSeconds =
+          DateTime.now().difference(startedAt).inMilliseconds / 1000;
+      final localPercent =
+          _llmPercentBase +
+          math.min(
+            _llmPercentRange,
+            (elapsedSeconds / _llmEstimatedSeconds) * _llmPercentRange,
+          );
+      final messageIndex =
+          (tick / _llmMessageRotationSeconds).floor() %
+          _llmRotatingMessages.length;
+      final nextMessage = _llmRotatingMessages[messageIndex];
+      setState(() {
+        _provisionStatus = status.copyWith(
+          percent: math.max(status.percent, localPercent.round()),
+          message: nextMessage,
+        );
+      });
+    });
+  }
+
+  void _stopLlmTicker() {
+    _llmTickerTimer?.cancel();
+    _llmTickerTimer = null;
+  }
+
+  Future<void> _finishProvision(
+    CompanionApi api,
+    AuthSession session,
+    AgentProfile agent,
+  ) async {
+    if (_finishingProvision) return;
+    _finishingProvision = true;
+    _provisionPollTimer?.cancel();
+    _stopLlmTicker();
+    if (mounted) {
+      setState(() {
+        _provisionStatus =
+            (_provisionStatus ??
+                    AgentProvisionStatus(
+                      agentId: agent.id,
+                      status: 'active',
+                      stage: 'complete',
+                      percent: 100,
+                      message: '初始化完成',
+                    ))
+                .copyWith(
+                  status: 'active',
+                  stage: 'complete',
+                  percent: 100,
+                  message: '创建完成，即将进入聊天...',
+                );
+      });
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    if (!mounted) return;
+    try {
+      AgentProfile latestAgent = agent;
+      try {
+        latestAgent = await api.getAgent(agent.id);
+      } catch (error) {
+        debugPrint('[agent-provision-agent-refresh] $error');
+      }
+      if (!mounted) return;
+      await _precacheAgentAvatar(latestAgent.avatarUrl);
+      if (!mounted) return;
       final createdSession = AuthSession(
         token: session.token,
         userId: session.userId,
         username: session.username,
         role: session.role,
         hasAgent: true,
-        agentId: agent.id,
-        agentName: agent.name,
-        agentAvatarKey: agent.avatarKey,
-        agentAvatarUrl: agent.avatarUrl,
-        workspaceId: agent.workspaceId,
+        agentId: latestAgent.id,
+        agentName: latestAgent.name,
+        agentAvatarKey: latestAgent.avatarKey,
+        agentAvatarUrl: latestAgent.avatarUrl,
+        agentCity: latestAgent.city,
+        workspaceId: latestAgent.workspaceId ?? agent.workspaceId,
       );
       final readySession = await api.ensureConversation(createdSession);
       if (!mounted) return;
-      onCreated(readySession);
+      widget.onCreated!(readySession);
       Navigator.of(context).pop();
     } catch (error) {
-      if (mounted) setState(() => _error = _asMessage(error));
+      _finishingProvision = false;
+      if (mounted) {
+        setState(() {
+          _error = _asMessage(error);
+          _submitting = false;
+        });
+      }
     } finally {
-      if (mounted) setState(() => _submitting = false);
+      if (mounted && !_finishingProvision) {
+        setState(() => _submitting = false);
+      }
+    }
+  }
+
+  Future<void> _precacheAgentAvatar(String? avatarUrl) async {
+    final url = avatarUrl?.trim();
+    if (url == null || url.isEmpty) return;
+    try {
+      await precacheImage(NetworkImage(url), context);
+    } catch (error) {
+      debugPrint('[agent-avatar-precache] $error');
     }
   }
 
@@ -258,6 +455,30 @@ class _AgentCreatePageState extends State<AgentCreatePage>
                   ),
                 ),
               ),
+              if (_provisionStatus != null) ...[
+                Positioned.fill(
+                  child: AbsorbPointer(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                      child: ColoredBox(
+                        color: const Color(0xFFEAF4FF).withValues(alpha: 0.36),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned.fill(
+                  child: SafeArea(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 42),
+                        child: _ProvisionProgressOverlay(
+                          status: _provisionStatus!,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           );
         },
@@ -1234,6 +1455,212 @@ class _FullWidthSliderTrackShape extends RoundedRectSliderTrackShape {
       trackTop,
       parentBox.size.width,
       trackHeight,
+    );
+  }
+}
+
+class _ProvisionProgressOverlay extends StatelessWidget {
+  const _ProvisionProgressOverlay({required this.status});
+
+  final AgentProvisionStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final failed = status.isFailed;
+    final percent = status.percent.clamp(0, 100).toInt();
+    final color = failed ? const Color(0xFFD95B5B) : AppColors.accent;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: percent / 100),
+      duration: const Duration(milliseconds: 360),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, _) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ProvisionBreathingIcon(failed: failed, color: color),
+            const SizedBox(height: 22),
+            Text(
+              failed ? '创建遇到问题' : '正在创建你的 AI 伙伴',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.text,
+                fontSize: 21,
+                height: 1.15,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      minHeight: 7,
+                      value: failed ? null : value,
+                      backgroundColor: Colors.white.withValues(alpha: 0.58),
+                      valueColor: AlwaysStoppedAnimation<Color>(color),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Text(
+                  failed ? '--' : '$percent%',
+                  style: TextStyle(
+                    color: failed
+                        ? const Color(0xFFD95B5B)
+                        : AppColors.accentDeep,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              status.message.isEmpty ? '正在初始化...' : status.message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0x9A181F26),
+                fontSize: 14,
+                height: 1.4,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ProvisionBreathingIcon extends StatefulWidget {
+  const _ProvisionBreathingIcon({required this.failed, required this.color});
+
+  final bool failed;
+  final Color color;
+
+  @override
+  State<_ProvisionBreathingIcon> createState() =>
+      _ProvisionBreathingIconState();
+}
+
+class _ProvisionBreathingIconState extends State<_ProvisionBreathingIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: SizedBox(
+        width: 108,
+        height: 108,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            final t = _controller.value;
+            final first = Curves.easeOutCubic.transform(t);
+            final second = Curves.easeOutCubic.transform((t + 0.48) % 1);
+            final centerPulse =
+                0.5 + 0.5 * math.sin((t * math.pi * 2) - math.pi / 2);
+            final centerScale = 0.94 + 0.12 * centerPulse;
+            return Stack(
+              alignment: Alignment.center,
+              children: [
+                _ProvisionHalo(
+                  color: widget.color,
+                  progress: first,
+                  maxSize: 104,
+                ),
+                _ProvisionHalo(
+                  color: widget.color,
+                  progress: second,
+                  maxSize: 92,
+                ),
+                Transform.scale(
+                  scale: centerScale,
+                  child: Container(
+                    width: 66,
+                    height: 66,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        center: const Alignment(-0.25, -0.30),
+                        radius: 0.92,
+                        colors: [
+                          Colors.white.withValues(alpha: 0.76),
+                          widget.color.withValues(alpha: 0.13),
+                          Colors.white.withValues(alpha: 0.34),
+                        ],
+                        stops: const [0, 0.62, 1],
+                      ),
+                    ),
+                    child: Icon(
+                      widget.failed
+                          ? CupertinoIcons.exclamationmark_triangle_fill
+                          : CupertinoIcons.sparkles,
+                      color: widget.color,
+                      size: 31,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ProvisionHalo extends StatelessWidget {
+  const _ProvisionHalo({
+    required this.color,
+    required this.progress,
+    required this.maxSize,
+  });
+
+  final Color color;
+  final double progress;
+  final double maxSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = 58 + (maxSize - 58) * progress;
+    final opacity = (1 - progress).clamp(0.0, 1.0);
+    return Opacity(
+      opacity: 0.30 * opacity,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [
+              color.withValues(alpha: 0.40),
+              color.withValues(alpha: 0.12),
+              Colors.transparent,
+            ],
+            stops: const [0, 0.58, 1],
+          ),
+        ),
+      ),
     );
   }
 }

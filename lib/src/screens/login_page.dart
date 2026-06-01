@@ -660,6 +660,106 @@ class _PrivacyLine extends StatelessWidget {
   }
 }
 
+enum _BackendAuthMode { login, register }
+
+class _AuthModeSwitch extends StatelessWidget {
+  const _AuthModeSwitch({required this.mode, required this.onChanged});
+
+  final _BackendAuthMode mode;
+  final ValueChanged<_BackendAuthMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 42,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.hairline),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final segmentWidth = constraints.maxWidth / 2;
+          return Stack(
+            children: [
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                left: mode == _BackendAuthMode.login ? 0 : segmentWidth,
+                top: 0,
+                bottom: 0,
+                width: segmentWidth,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF315B88).withValues(alpha: 0.10),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  _AuthModeButton(
+                    label: '登录',
+                    selected: mode == _BackendAuthMode.login,
+                    onTap: () => onChanged(_BackendAuthMode.login),
+                  ),
+                  _AuthModeButton(
+                    label: '注册',
+                    selected: mode == _BackendAuthMode.register,
+                    onTap: () => onChanged(_BackendAuthMode.register),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AuthModeButton extends StatelessWidget {
+  const _AuthModeButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: CupertinoButton(
+        padding: EdgeInsets.zero,
+        minimumSize: Size.zero,
+        borderRadius: BorderRadius.circular(999),
+        onPressed: onTap,
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? AppColors.text : AppColors.muted,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _BackendLoginSheet extends StatefulWidget {
   const _BackendLoginSheet({
     required this.apiBaseController,
@@ -679,13 +779,18 @@ class _BackendLoginSheet extends StatefulWidget {
 
 class _BackendLoginSheetState extends State<_BackendLoginSheet> {
   final _passwordFocus = FocusNode();
+  final _confirmPasswordController = TextEditingController();
+  final _confirmPasswordFocus = FocusNode();
+  var _mode = _BackendAuthMode.login;
   bool _obscure = true;
   bool _submitting = false;
   String? _error;
 
   @override
   void dispose() {
+    _confirmPasswordController.dispose();
     _passwordFocus.dispose();
+    _confirmPasswordFocus.dispose();
     super.dispose();
   }
 
@@ -697,7 +802,22 @@ class _BackendLoginSheetState extends State<_BackendLoginSheet> {
     );
     final account = widget.accountController.text.trim();
     final password = widget.passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
     if (baseUrl.isEmpty || account.isEmpty || password.isEmpty) return;
+    if (_mode == _BackendAuthMode.register) {
+      if (account.length < 2 || account.length > 30) {
+        setState(() => _error = '账号需为 2-30 个字符。');
+        return;
+      }
+      if (password.length < 6) {
+        setState(() => _error = '密码至少需要 6 个字符。');
+        return;
+      }
+      if (password != confirmPassword) {
+        setState(() => _error = '两次输入的密码不一致。');
+        return;
+      }
+    }
 
     setState(() {
       _submitting = true;
@@ -705,7 +825,9 @@ class _BackendLoginSheetState extends State<_BackendLoginSheet> {
     });
     try {
       final api = CompanionApi(baseUrl: baseUrl);
-      final loggedIn = await api.login(account, password);
+      final loggedIn = _mode == _BackendAuthMode.register
+          ? await api.register(account, password)
+          : await api.login(account, password);
       final session = await api.ensureConversation(loggedIn);
       if (!mounted) return;
       final onAuthenticated = widget.onAuthenticated;
@@ -757,6 +879,17 @@ class _BackendLoginSheetState extends State<_BackendLoginSheet> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  _AuthModeSwitch(
+                    mode: _mode,
+                    onChanged: (mode) {
+                      if (_submitting || mode == _mode) return;
+                      setState(() {
+                        _mode = mode;
+                        _error = null;
+                      });
+                    },
+                  ),
                   const SizedBox(height: 16),
                   _LoginField(
                     controller: widget.apiBaseController,
@@ -779,8 +912,16 @@ class _BackendLoginSheetState extends State<_BackendLoginSheet> {
                     icon: CupertinoIcons.lock,
                     label: '密码',
                     obscureText: _obscure,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) => _submit(),
+                    textInputAction: _mode == _BackendAuthMode.register
+                        ? TextInputAction.next
+                        : TextInputAction.done,
+                    onSubmitted: (_) {
+                      if (_mode == _BackendAuthMode.register) {
+                        _confirmPasswordFocus.requestFocus();
+                      } else {
+                        _submit();
+                      }
+                    },
                     trailing: IconButton(
                       tooltip: _obscure ? '显示密码' : '隐藏密码',
                       onPressed: () => setState(() => _obscure = !_obscure),
@@ -792,6 +933,18 @@ class _BackendLoginSheetState extends State<_BackendLoginSheet> {
                       ),
                     ),
                   ),
+                  if (_mode == _BackendAuthMode.register) ...[
+                    const SizedBox(height: 12),
+                    _LoginField(
+                      controller: _confirmPasswordController,
+                      focusNode: _confirmPasswordFocus,
+                      icon: CupertinoIcons.checkmark_shield,
+                      label: '确认密码',
+                      obscureText: _obscure,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _submit(),
+                    ),
+                  ],
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 180),
                     child: _error == null
@@ -822,7 +975,13 @@ class _BackendLoginSheetState extends State<_BackendLoginSheet> {
                       ),
                     ),
                     child: Text(
-                      _submitting ? '登录中...' : '登录',
+                      _submitting
+                          ? (_mode == _BackendAuthMode.register
+                                ? '注册中...'
+                                : '登录中...')
+                          : (_mode == _BackendAuthMode.register
+                                ? '注册并继续'
+                                : '登录'),
                       style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
