@@ -21,6 +21,7 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
   bool _chatSidebarOpen = false;
+  AchievementItem? _activeAchievement;
   final _chatPageKey = GlobalKey<_ChatPageState>();
   StreamSubscription<CheckinNotificationPayload>? _notificationSub;
 
@@ -45,6 +46,20 @@ class _MainShellState extends State<MainShell> {
   void _setChatSidebarOpen(bool value) {
     if (_chatSidebarOpen == value) return;
     setState(() => _chatSidebarOpen = value);
+  }
+
+  void _setAchievementOverlayOpen(bool value) {
+    if (value || _activeAchievement == null) return;
+    setState(() => _activeAchievement = null);
+  }
+
+  void _openAchievementOverlay(AchievementItem item) {
+    setState(() => _activeAchievement = item);
+  }
+
+  void _closeAchievementOverlay() {
+    if (_activeAchievement == null) return;
+    setState(() => _activeAchievement = null);
   }
 
   Future<void> _openSidebarDestination(_SidebarDestination destination) async {
@@ -117,6 +132,8 @@ class _MainShellState extends State<MainShell> {
             api: widget.api,
             session: widget.session,
             onOpenSidebar: () => _setChatSidebarOpen(true),
+            onAchievementDetailRequested: _openAchievementOverlay,
+            onAchievementOverlayChanged: _setAchievementOverlayOpen,
           );
     final pages = [
       chatPage,
@@ -146,19 +163,37 @@ class _MainShellState extends State<MainShell> {
               child: Stack(
                 children: [
                   IndexedStack(index: _index, children: pages),
-                  Positioned(
+                  AnimatedPositioned(
                     left: 28,
                     right: 28,
-                    bottom: math.max(10, safeBottom - 2),
-                    child: _FloatingTabBar(
-                      selectedIndex: _index,
-                      onSelected: (value) => setState(() => _index = value),
+                    bottom: _activeAchievement != null
+                        ? -92
+                        : math.max(10, safeBottom - 2),
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
+                    child: IgnorePointer(
+                      ignoring: _activeAchievement != null,
+                      child: AnimatedOpacity(
+                        opacity: _activeAchievement != null ? 0 : 1,
+                        duration: const Duration(milliseconds: 180),
+                        child: _FloatingTabBar(
+                          selectedIndex: _index,
+                          onSelected: (value) => setState(() => _index = value),
+                        ),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
           ),
+          if (_activeAchievement != null)
+            Positioned.fill(
+              child: _AchievementDetailOverlay(
+                item: _activeAchievement!,
+                onDismiss: _closeAchievementOverlay,
+              ),
+            ),
           _ChatSidebarOverlay(
             visible: _chatSidebarOpen,
             onDismiss: () => _setChatSidebarOpen(false),

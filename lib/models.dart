@@ -232,8 +232,16 @@ class ChatMessage {
   final bool read;
 
   bool get isMine => role == 'user';
+  bool get isAchievement => role == 'achievement';
+  bool get isChatMessage => role == 'user' || role == 'assistant';
   bool get isDraft => id.startsWith('draft-');
   String? get clientId => metadata?['client_id'] as String?;
+  AchievementItem? get achievementItem {
+    final raw = metadata?['achievement'];
+    if (raw is Map) return AchievementItem.fromJson(raw);
+    return null;
+  }
+
   ChatComponentCard? get componentCard {
     final raw = metadata?['component_card'] ?? metadata?['componentCard'];
     return raw is Map ? ChatComponentCard.fromJson(raw) : null;
@@ -273,6 +281,25 @@ class ChatMessage {
       metadata: {...?metadata, if (clientId != null) 'client_id': clientId},
       pending: true,
       read: false,
+    );
+  }
+
+  factory ChatMessage.achievement({
+    required String conversationId,
+    required AchievementItem item,
+    String? id,
+    DateTime? createdAt,
+  }) {
+    final unlockedAt = createdAt ?? item.unlockedAt ?? DateTime.now();
+    return ChatMessage(
+      id: id ?? 'achievement-${item.id}-${unlockedAt.microsecondsSinceEpoch}',
+      conversationId: conversationId,
+      role: 'achievement',
+      content: item.name,
+      createdAt: unlockedAt,
+      metadata: {'achievement': item.toJson()},
+      pending: false,
+      read: true,
     );
   }
 
@@ -384,6 +411,21 @@ class AchievementItem {
       unlocked: json['unlocked'] as bool? ?? false,
       unlockedAt: DateTime.tryParse(json['unlocked_at']?.toString() ?? ''),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'achievement_id': id,
+      'category': category,
+      'name': name,
+      'popup_text': popupText,
+      'condition_text': conditionText,
+      'rule_text': ruleText,
+      'level_name': levelName,
+      'score': score,
+      'unlocked': unlocked,
+      'unlocked_at': unlockedAt?.toIso8601String(),
+    };
   }
 }
 

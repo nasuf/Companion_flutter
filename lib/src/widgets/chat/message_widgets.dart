@@ -7,6 +7,7 @@ class _MessageList extends StatelessWidget {
     required this.isLoadingOlder,
     required this.bottomPadding,
     required this.onComponentCardTap,
+    required this.onAchievementTap,
     this.agentAvatarUrl,
   });
 
@@ -15,6 +16,7 @@ class _MessageList extends StatelessWidget {
   final bool isLoadingOlder;
   final double bottomPadding;
   final ValueChanged<ChatComponentCard> onComponentCardTap;
+  final ValueChanged<AchievementItem> onAchievementTap;
   final String? agentAvatarUrl;
 
   @override
@@ -58,6 +60,7 @@ class _MessageList extends StatelessWidget {
           message: message,
           agentAvatarUrl: agentAvatarUrl,
           onComponentCardTap: onComponentCardTap,
+          onAchievementTap: onAchievementTap,
         );
       },
     );
@@ -68,17 +71,28 @@ class _MessageRow extends StatelessWidget {
   const _MessageRow({
     required this.message,
     required this.onComponentCardTap,
+    required this.onAchievementTap,
     this.agentAvatarUrl,
   });
 
   final ChatMessage message;
   final ValueChanged<ChatComponentCard> onComponentCardTap;
+  final ValueChanged<AchievementItem> onAchievementTap;
   final String? agentAvatarUrl;
   static const _avatarSize = 40.0;
   static const _avatarGap = 10.0;
 
   @override
   Widget build(BuildContext context) {
+    if (message.isAchievement) {
+      final item = message.achievementItem;
+      if (item == null) return const SizedBox.shrink();
+      return _AchievementTimelineRow(
+        item: item,
+        onTap: () => onAchievementTap(item),
+      );
+    }
+
     final avatar = _Avatar(
       size: _avatarSize,
       label: message.isMine ? '我' : '伴',

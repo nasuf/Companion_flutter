@@ -2,27 +2,21 @@ part of 'package:companion_flutter/main.dart';
 
 enum ComposerPanel { none, emoji, more }
 
-class _AchievementToastEntry {
-  _AchievementToastEntry({required this.id, required this.item});
-
-  final String id;
-  final AchievementItem item;
-  Timer? timer;
-  bool entered = false;
-  bool closing = false;
-}
-
 class ChatPage extends StatefulWidget {
   const ChatPage({
     super.key,
     required this.api,
     required this.session,
     required this.onOpenSidebar,
+    this.onAchievementDetailRequested,
+    this.onAchievementOverlayChanged,
   });
 
   final CompanionApi api;
   final AuthSession session;
   final VoidCallback onOpenSidebar;
+  final ValueChanged<AchievementItem>? onAchievementDetailRequested;
+  final ValueChanged<bool>? onAchievementOverlayChanged;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -51,7 +45,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Timer? _panelHoldTimer;
   Timer? _capsuleScanTimer;
   TimeCapsule? _readyCapsule;
-  final List<_AchievementToastEntry> _achievementNotices = [];
   bool _loadingInitial = true;
   bool _loadingOlder = false;
   bool _hasOlderMessages = false;
@@ -99,9 +92,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _socket?.close();
     _panelHoldTimer?.cancel();
     _capsuleScanTimer?.cancel();
-    for (final entry in _achievementNotices) {
-      entry.timer?.cancel();
-    }
     super.dispose();
   }
 
@@ -140,11 +130,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _typingHint = '连接中...';
       _pendingSend = null;
       _readyCapsule = null;
-      for (final entry in _achievementNotices) {
-        entry.timer?.cancel();
-      }
-      _achievementNotices.clear();
     });
+    widget.onAchievementOverlayChanged?.call(false);
     await _loadLatestMessages(showLoading: true);
     unawaited(_scanReadyCapsules());
     _scheduleNextCapsuleScan();
@@ -217,7 +204,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       final chronological = newestFirst.reversed.toList();
       setState(() {
         _replaceWithServerMessages(chronological);
-        _hasOlderMessages = newestFirst.length == _messagePageSize;
+        _hasOlderMessages =
+            _countServerMessages(newestFirst) == _messagePageSize;
         _loadedServerMessages = _countServerMessages(_messages);
         _historyError = null;
       });
@@ -260,8 +248,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     ChatMessage localReply,
     List<ChatMessage> serverMessages,
   ) {
+    if (!localReply.isChatMessage) return false;
     return serverMessages.any((serverMessage) {
-      if (serverMessage.isMine || serverMessage.content != localReply.content) {
+      if (!serverMessage.isChatMessage ||
+          serverMessage.isMine ||
+          serverMessage.content != localReply.content) {
         return false;
       }
       final delta = serverMessage.createdAt
@@ -289,7 +280,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       final chronological = newestFirst.reversed.toList();
       setState(() {
         _prependServerMessages(chronological);
-        _hasOlderMessages = newestFirst.length == _messagePageSize;
+        _hasOlderMessages =
+            _countServerMessages(newestFirst) == _messagePageSize;
         _loadedServerMessages = _countServerMessages(_messages);
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -440,7 +432,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   int _countServerMessages(List<ChatMessage> messages) {
-    return messages.where((item) => !item.pending && !item.isDraft).length;
+    return messages
+        .where((item) => item.isChatMessage && !item.pending && !item.isDraft)
+        .length;
   }
 
   void _handleScroll() {
@@ -541,57 +535,57 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _showAchievementNotice(AchievementItem item) {
-    final entry = _AchievementToastEntry(
-      id: '${item.id}-${DateTime.now().microsecondsSinceEpoch}',
+    final message = ChatMessage.achievement(
+      conversationId: _conversationId,
       item: item,
     );
-    setState(() => _achievementNotices.add(entry));
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final index = _achievementNotices.indexWhere(
-        (item) => item.id == entry.id,
-      );
-      if (index == -1) return;
-      setState(() => _achievementNotices[index].entered = true);
+    setState(() {
+      _messages.add(message);
+      _messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     });
-    entry.timer = Timer(const Duration(seconds: 5), () {
-      _dismissAchievementNotice(entry.id);
-    });
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _scrollToBottom(animated: true),
+    );
   }
 
-  void _dismissAchievementNotice(String entryId) {
-    final index = _achievementNotices.indexWhere(
-      (entry) => entry.id == entryId,
-    );
-    if (index == -1 || _achievementNotices[index].closing) return;
-    _achievementNotices[index].timer?.cancel();
-    setState(() => _achievementNotices[index].closing = true);
-    Timer(const Duration(milliseconds: 260), () {
-      if (!mounted) return;
-      setState(
-        () => _achievementNotices.removeWhere((entry) => entry.id == entryId),
-      );
-    });
+  void _openAchievementDetail(AchievementItem item) {
+    _dismissInputSurfaces();
+    widget.onAchievementDetailRequested?.call(item);
+    widget.onAchievementOverlayChanged?.call(true);
   }
 
   void _showDemoAchievementNotice() {
     const samples = [
-      ('初次开口', '哇哦！成功打破沉默，冷场彻底退退退！', '微光痕迹', 1),
-      ('轻声开场', '三个字轻松开场，简短但存在感超强！', '微光痕迹', 3),
-      ('双向奔赴', '你回应了TA的主动，故事开始了～', '微光痕迹', 25),
-      ('畅聊艺术家', '今日聊天量爆表，灵感像瀑布一样落下来！', '星河痕迹', 60),
+      ('初次开口', '哇哦！成功打破沉默，冷场彻底退退退！', '第一次给TA发消息', '用户累计给ai发送1条信息', '微光痕迹', 1),
+      ('轻声开场', '三个字轻松开场，简短但存在感超强！', '今天第一句话超级短', '当日首条消息≤3个字', '微光痕迹', 3),
+      (
+        '双向奔赴',
+        '你回应了TA的主动，故事开始了～',
+        '24小时内回复TA的主动消息',
+        '用户24小时内回复AI主动消息',
+        '心澜痕迹',
+        25,
+      ),
+      (
+        '畅聊艺术家',
+        '今日聊天量爆表，灵感像瀑布一样落下来！',
+        '一天内聊到10000字',
+        '24小时内聊天>=10000字',
+        '清响痕迹',
+        60,
+      ),
     ];
     final sample = samples[_achievementDemoIndex % samples.length];
     _achievementDemoIndex += 1;
     _showAchievementNotice(
       AchievementItem(
-        id: sample.$4,
+        id: sample.$6,
         category: '测试触发',
         name: sample.$1,
         popupText: sample.$2,
-        conditionText: '双击头像触发的测试提示',
-        ruleText: '仅用于预览聊天内成就达成弹框',
-        levelName: sample.$3,
+        conditionText: sample.$3,
+        ruleText: sample.$4,
+        levelName: sample.$5,
         score: 10,
         unlocked: true,
         unlockedAt: DateTime.now(),
@@ -826,6 +820,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           isLoadingOlder: _loadingOlder,
                           bottomPadding: listBottomPadding,
                           onComponentCardTap: _openComponentCard,
+                          onAchievementTap: _openAchievementDetail,
                           agentAvatarUrl: widget.session.agentAvatarUrl,
                         ),
                 ),
@@ -889,20 +884,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       capsule: _readyCapsule!,
                       onTap: _openReadyCapsuleNotice,
                     ),
-            ),
-          ),
-          Positioned.fill(
-            child: _AchievementBackdrop(
-              visible: _achievementNotices.isNotEmpty,
-            ),
-          ),
-          Positioned(
-            top: 136,
-            right: 0,
-            left: 58,
-            child: _AchievementToastStack(
-              entries: _achievementNotices,
-              onDismiss: _dismissAchievementNotice,
             ),
           ),
         ],
