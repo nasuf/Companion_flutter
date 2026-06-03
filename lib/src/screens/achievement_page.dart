@@ -12,12 +12,21 @@ class AchievementPage extends StatefulWidget {
 
 class _AchievementPageState extends State<AchievementPage> {
   late Future<AchievementsResponse> _future;
+  final ScrollController _scrollController = ScrollController();
   final Set<int> _flipped = <int>{};
+  _AchievementLevelTab _selectedLevel = _achievementLevelTabs.first;
+  int _tabSlideDirection = 1;
 
   @override
   void initState() {
     super.initState();
     _future = _load();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<AchievementsResponse> _load() {
@@ -30,6 +39,31 @@ class _AchievementPageState extends State<AchievementPage> {
 
   void _retry() {
     setState(() => _future = _load());
+  }
+
+  void _selectLevel(_AchievementLevelTab value) {
+    if (value == _selectedLevel) return;
+    final previousOffset = _scrollController.hasClients
+        ? _scrollController.offset
+        : null;
+    final oldIndex = _achievementLevelTabs.indexOf(_selectedLevel);
+    final newIndex = _achievementLevelTabs.indexOf(value);
+    setState(() {
+      _tabSlideDirection = newIndex >= oldIndex ? 1 : -1;
+      _selectedLevel = value;
+    });
+    if (previousOffset == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      final target = previousOffset.clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      if ((_scrollController.offset - target).abs() > 0.5) {
+        _scrollController.jumpTo(target);
+      }
+    });
   }
 
   @override
@@ -54,12 +88,25 @@ class _AchievementPageState extends State<AchievementPage> {
           }
           final data = snapshot.data!;
           final unlocked = _unlockedAchievements(data.items);
+          final visible = _achievementsForLevel(unlocked, _selectedLevel);
+          final maxLevelCount = _maxAchievementLevelCount(unlocked);
+          final visibleContentHeight = _achievementLevelContentHeight(
+            context: context,
+            itemCount: visible.length,
+            safeBottom: safeBottom,
+          );
+          final maxContentHeight = _achievementLevelContentHeight(
+            context: context,
+            itemCount: maxLevelCount,
+            safeBottom: safeBottom,
+          );
           return Stack(
             children: [
               const Positioned.fill(child: _AchievementPageBackground()),
               SafeArea(
                 bottom: false,
                 child: CustomScrollView(
+                  controller: _scrollController,
                   physics: const BouncingScrollPhysics(),
                   slivers: [
                     SliverToBoxAdapter(
@@ -68,56 +115,91 @@ class _AchievementPageState extends State<AchievementPage> {
                         score: _achievementUnlockedScore(unlocked),
                       ),
                     ),
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
-                        child: Text(
-                          unlocked.isEmpty ? '等待被点亮' : '已获得成就',
-                          style: const TextStyle(
-                            color: Color(0xFF9BA4A1),
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _AchievementLevelTabsHeaderDelegate(
+                        selected: _selectedLevel,
+                        onSelected: _selectLevel,
                       ),
                     ),
                     if (unlocked.isEmpty)
-                      const SliverToBoxAdapter(child: _AchievementEmptyState())
-                    else
-                      SliverPadding(
-                        padding: EdgeInsets.fromLTRB(
-                          20,
-                          0,
-                          20,
-                          safeBottom + 34,
+                      const SliverToBoxAdapter(
+                        child: _AchievementEmptyState(
+                          message: '还没有被点亮的里程碑。继续自然地聊天，惊喜会在某个时刻出现。',
                         ),
-                        sliver: SliverGrid(
-                          delegate: SliverChildBuilderDelegate((
-                            context,
-                            index,
-                          ) {
-                            final item = unlocked[index];
-                            return _AchievementCard(
-                              item: item,
-                              flipped: _flipped.contains(item.id),
-                              onTap: () {
-                                setState(() {
-                                  if (!_flipped.add(item.id)) {
-                                    _flipped.remove(item.id);
-                                  }
-                                });
-                              },
-                            );
-                          }, childCount: unlocked.length),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 2,
-                                mainAxisSpacing: 14,
-                                crossAxisSpacing: 14,
-                                childAspectRatio: 0.88,
+                      )
+                    else if (visible.isEmpty)
+                      SliverToBoxAdapter(
+                        child: _AchievementLevelContentReserve(
+                          minHeight: maxContentHeight,
+                          child: const _AchievementEmptyState(
+                            message: '这一类还没有被点亮的里程碑。继续自然聊天，未来会在这里亮起。',
+                          ),
+                        ),
+                      )
+                    else
+                      SliverToBoxAdapter(
+                        child: _AchievementLevelContentReserve(
+                          minHeight: maxContentHeight,
+                          child: SizedBox(
+                            height: visibleContentHeight,
+                            child: Padding(
+                              padding: EdgeInsets.fromLTRB(
+                                20,
+                                0,
+                                20,
+                                safeBottom + 34,
                               ),
+                              child: GridView.builder(
+                                padding: EdgeInsets.zero,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: visible.length,
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 2,
+                                      mainAxisSpacing: 14,
+                                      crossAxisSpacing: 14,
+                                      childAspectRatio: 0.88,
+                                    ),
+                                itemBuilder: (context, index) {
+                                  final item = visible[index];
+                                  return TweenAnimationBuilder<double>(
+                                    key: ValueKey(
+                                      '${_selectedLevel.keyword}-$index',
+                                    ),
+                                    tween: Tween(begin: 0, end: 1),
+                                    duration: const Duration(milliseconds: 260),
+                                    curve: Curves.easeOutCubic,
+                                    builder: (context, value, child) {
+                                      return Opacity(
+                                        opacity: value,
+                                        child: Transform.translate(
+                                          offset: Offset(
+                                            (1 - value) *
+                                                16 *
+                                                _tabSlideDirection,
+                                            0,
+                                          ),
+                                          child: child,
+                                        ),
+                                      );
+                                    },
+                                    child: _AchievementCard(
+                                      item: item,
+                                      flipped: _flipped.contains(item.id),
+                                      onTap: () {
+                                        setState(() {
+                                          if (!_flipped.add(item.id)) {
+                                            _flipped.remove(item.id);
+                                          }
+                                        });
+                                      },
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                   ],
@@ -129,6 +211,56 @@ class _AchievementPageState extends State<AchievementPage> {
       ),
     );
   }
+}
+
+int _maxAchievementLevelCount(List<AchievementItem> items) {
+  var maxCount = 0;
+  for (final tab in _achievementLevelTabs) {
+    final count = _achievementsForLevel(items, tab).length;
+    if (count > maxCount) maxCount = count;
+  }
+  return maxCount;
+}
+
+double _achievementLevelContentHeight({
+  required BuildContext context,
+  required int itemCount,
+  required double safeBottom,
+}) {
+  if (itemCount <= 0) {
+    return 142 + safeBottom + 34;
+  }
+  final width = MediaQuery.sizeOf(context).width;
+  const horizontalPadding = 40.0;
+  const crossAxisSpacing = 14.0;
+  const mainAxisSpacing = 14.0;
+  const childAspectRatio = 0.88;
+  final tileWidth = (width - horizontalPadding - crossAxisSpacing) / 2;
+  final tileHeight = tileWidth / childAspectRatio;
+  final rows = (itemCount + 1) ~/ 2;
+  return rows * tileHeight + (rows - 1) * mainAxisSpacing + safeBottom + 34;
+}
+
+class _AchievementLevelTab {
+  const _AchievementLevelTab({required this.label, required this.keyword});
+
+  final String label;
+  final String keyword;
+}
+
+const List<_AchievementLevelTab> _achievementLevelTabs = [
+  _AchievementLevelTab(label: '微光', keyword: '微光'),
+  _AchievementLevelTab(label: '清响', keyword: '清响'),
+  _AchievementLevelTab(label: '深潜', keyword: '深潜'),
+  _AchievementLevelTab(label: '心澜', keyword: '心澜'),
+  _AchievementLevelTab(label: '魂刻', keyword: '魂刻'),
+];
+
+List<AchievementItem> _achievementsForLevel(
+  List<AchievementItem> items,
+  _AchievementLevelTab tab,
+) {
+  return items.where((item) => item.levelName.contains(tab.keyword)).toList();
 }
 
 List<AchievementItem> _unlockedAchievements(List<AchievementItem> items) {
@@ -166,8 +298,191 @@ class _AchievementPageBackground extends StatelessWidget {
   }
 }
 
+class _AchievementLevelContentReserve extends StatelessWidget {
+  const _AchievementLevelContentReserve({
+    required this.minHeight,
+    required this.child,
+  });
+
+  final double minHeight;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: minHeight),
+      child: child,
+    );
+  }
+}
+
+class _AchievementLevelTabsHeaderDelegate
+    extends SliverPersistentHeaderDelegate {
+  const _AchievementLevelTabsHeaderDelegate({
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final _AchievementLevelTab selected;
+  final ValueChanged<_AchievementLevelTab> onSelected;
+
+  @override
+  double get minExtent => 58;
+
+  @override
+  double get maxExtent => 58;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return _AchievementLevelTabsBar(
+      selected: selected,
+      onSelected: onSelected,
+      elevated: overlapsContent || shrinkOffset > 0,
+    );
+  }
+
+  @override
+  bool shouldRebuild(
+    covariant _AchievementLevelTabsHeaderDelegate oldDelegate,
+  ) {
+    return selected != oldDelegate.selected ||
+        onSelected != oldDelegate.onSelected;
+  }
+}
+
+class _AchievementLevelTabsBar extends StatelessWidget {
+  const _AchievementLevelTabsBar({
+    required this.selected,
+    required this.onSelected,
+    required this.elevated,
+  });
+
+  final _AchievementLevelTab selected;
+  final ValueChanged<_AchievementLevelTab> onSelected;
+  final bool elevated;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedIndex = _achievementLevelTabs.indexOf(selected);
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xFFF6F8F5).withValues(alpha: 0.82),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(
+                  0xFF20242A,
+                ).withValues(alpha: elevated ? 0.08 : 0),
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final tabWidth =
+                    constraints.maxWidth / _achievementLevelTabs.length;
+                const indicatorInset = 3.0;
+                return Container(
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.58),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: const Color(0xFFF1C75F).withValues(alpha: 0.30),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFE0AF28).withValues(alpha: 0.14),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Stack(
+                    children: [
+                      AnimatedPositioned(
+                        duration: const Duration(milliseconds: 280),
+                        curve: Curves.easeOutCubic,
+                        left: tabWidth * selectedIndex + indicatorInset,
+                        top: indicatorInset,
+                        bottom: indicatorInset,
+                        width: tabWidth - indicatorInset * 2,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.96),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: const Color(
+                                0xFFE6B440,
+                              ).withValues(alpha: 0.46),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(
+                                  0xFFE7B83D,
+                                ).withValues(alpha: 0.24),
+                                blurRadius: 14,
+                                offset: const Offset(0, 5),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          for (final tab in _achievementLevelTabs)
+                            Expanded(
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => onSelected(tab),
+                                child: Center(
+                                  child: AnimatedDefaultTextStyle(
+                                    duration: const Duration(milliseconds: 180),
+                                    curve: Curves.easeOutCubic,
+                                    style: TextStyle(
+                                      color: tab == selected
+                                          ? const Color(0xFF11181D)
+                                          : const Color(0xFF59625F),
+                                      fontSize: 13,
+                                      fontWeight: tab == selected
+                                          ? FontWeight.w900
+                                          : FontWeight.w700,
+                                      letterSpacing: 0,
+                                      decoration: TextDecoration.none,
+                                    ),
+                                    child: Text(tab.label),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _AchievementEmptyState extends StatelessWidget {
-  const _AchievementEmptyState();
+  const _AchievementEmptyState({required this.message});
+
+  final String message;
 
   @override
   Widget build(BuildContext context) {
@@ -187,10 +502,10 @@ class _AchievementEmptyState extends StatelessWidget {
             ),
           ],
         ),
-        child: const Text(
-          '还没有被点亮的里程碑。继续自然地聊天，惊喜会在某个时刻出现。',
+        child: Text(
+          message,
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: const TextStyle(
             color: Color(0xFF7C8582),
             fontSize: 14,
             height: 1.48,
