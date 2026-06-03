@@ -13,16 +13,18 @@ class _AchievementCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _achievementColor(item.id);
+    final color = _achievementLevelColor(item);
     return GestureDetector(
       onTap: onTap,
       child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 240),
+        duration: const Duration(milliseconds: 260),
         transitionBuilder: (child, animation) {
-          final rotate = Tween<double>(begin: 0.88, end: 1).animate(animation);
+          final scale = Tween<double>(begin: 0.94, end: 1).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          );
           return FadeTransition(
             opacity: animation,
-            child: ScaleTransition(scale: rotate, child: child),
+            child: ScaleTransition(scale: scale, child: child),
           );
         },
         child: flipped
@@ -54,67 +56,79 @@ class _AchievementCardFront extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _AchievementShell(
-      item: item,
       color: color,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _AchievementIcon(
-                color: color,
-                label: item.name.isEmpty ? '?' : item.name.substring(0, 1),
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  item.levelName,
-                  maxLines: 1,
+          Positioned(
+            right: -28,
+            top: -26,
+            child: _AchievementCardWash(color: color),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 13),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _AchievementCardIcon(item: item, color: color),
+                    const Spacer(),
+                    _AchievementScorePill(score: item.score, color: color),
+                  ],
+                ),
+                const Spacer(),
+                Text(
+                  item.name,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 11,
+                  style: const TextStyle(
+                    color: Color(0xFF151719),
+                    fontSize: 20,
+                    height: 1.13,
                     fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
                     decoration: TextDecoration.none,
                   ),
                 ),
-              ),
-              Icon(
-                item.unlocked
-                    ? CupertinoIcons.checkmark_seal_fill
-                    : CupertinoIcons.lock_fill,
-                size: 16,
-                color: item.unlocked
-                    ? color
-                    : AppColors.muted.withValues(alpha: 0.58),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Text(
-            item.name,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.text,
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-              decoration: TextDecoration.none,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            item.conditionText,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.muted,
-              fontSize: 11,
-              height: 1.18,
-              fontWeight: FontWeight.w800,
-              decoration: TextDecoration.none,
+                const SizedBox(height: 8),
+                Text(
+                  item.popupText.isEmpty ? item.conditionText : item.popupText,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF747C82),
+                    fontSize: 12,
+                    height: 1.34,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Text(
+                      _achievementCardTrail(item),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF9BA4A1),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      CupertinoIcons.chevron_right,
+                      size: 14,
+                      color: const Color(0xFF9BA4A1).withValues(alpha: 0.78),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
@@ -135,46 +149,81 @@ class _AchievementCardBack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final condition = item.conditionText.isEmpty
+        ? item.ruleText
+        : item.conditionText;
     return _AchievementShell(
-      item: item,
       color: color,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          Text(
-            item.category,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-              decoration: TextDecoration.none,
-            ),
+          Positioned(
+            left: -34,
+            bottom: -28,
+            child: _AchievementCardWash(color: color, compact: true),
           ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: Text(
-              item.conditionText,
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.text,
-                fontSize: 14,
-                height: 1.28,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ),
-          Text(
-            '${item.score} 分',
-            style: const TextStyle(
-              color: AppColors.muted,
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              decoration: TextDecoration.none,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 16, 14, 13),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.levelName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      condition,
+                      maxLines: 5,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFF5F6765),
+                        fontSize: 15,
+                        height: 1.42,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Text(
+                      '+${item.score} 积分',
+                      style: const TextStyle(
+                        color: Color(0xFF9BA4A1),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    const Spacer(),
+                    const Text(
+                      '点击返回',
+                      style: TextStyle(
+                        color: Color(0xFFB1B7B5),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
@@ -184,81 +233,122 @@ class _AchievementCardBack extends StatelessWidget {
 }
 
 class _AchievementShell extends StatelessWidget {
-  const _AchievementShell({
-    required this.item,
-    required this.color,
-    required this.child,
-  });
+  const _AchievementShell({required this.color, required this.child});
 
-  final AchievementItem item;
   final Color color;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return Opacity(
-      opacity: item.unlocked ? 1 : 0.58,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.92),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: item.unlocked ? color.withValues(alpha: 0.28) : Colors.white,
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.86)),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.13),
+            blurRadius: 28,
+            offset: const Offset(0, 18),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: item.unlocked ? 0.16 : 0.06),
-              blurRadius: 20,
-              offset: const Offset(0, 12),
-            ),
-          ],
-        ),
-        child: child,
+          BoxShadow(
+            color: const Color(0xFF20242A).withValues(alpha: 0.08),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
+      child: child,
     );
   }
 }
 
-class _AchievementIcon extends StatelessWidget {
-  const _AchievementIcon({required this.color, required this.label});
+class _AchievementCardIcon extends StatelessWidget {
+  const _AchievementCardIcon({required this.item, required this.color});
 
+  final AchievementItem item;
   final Color color;
-  final String label;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 38,
-      height: 38,
+      width: 52,
+      height: 52,
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Center(
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            decoration: TextDecoration.none,
+        color: color.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.18),
+            blurRadius: 22,
+            offset: const Offset(0, 14),
           ),
+        ],
+      ),
+      child: Image.asset(_achievementLevelAsset(item), fit: BoxFit.contain),
+    );
+  }
+}
+
+class _AchievementScorePill extends StatelessWidget {
+  const _AchievementScorePill({required this.score, required this.color});
+
+  final int score;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
+      ),
+      child: Text(
+        '+$score',
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0,
+          decoration: TextDecoration.none,
         ),
       ),
     );
   }
 }
 
-Color _achievementColor(int id) {
-  const colors = [
-    Color(0xFF0A84FF),
-    Color(0xFFFF6A3D),
-    Color(0xFF22C66B),
-    Color(0xFF7C3CFF),
-    Color(0xFFFFB22E),
-    Color(0xFF18A0A8),
-    Color(0xFF96556A),
-  ];
-  return colors[id % colors.length];
+class _AchievementCardWash extends StatelessWidget {
+  const _AchievementCardWash({required this.color, this.compact = false});
+
+  final Color color;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return ImageFiltered(
+      imageFilter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+      child: Container(
+        width: compact ? 110 : 130,
+        height: compact ? 110 : 130,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(42),
+        ),
+      ),
+    );
+  }
+}
+
+String _achievementCardTrail(AchievementItem item) {
+  final unlockedAt = item.unlockedAt?.toLocal();
+  if (unlockedAt == null) {
+    return item.levelName.isEmpty ? '里程碑' : item.levelName;
+  }
+  final month = unlockedAt.month.toString().padLeft(2, '0');
+  final day = unlockedAt.day.toString().padLeft(2, '0');
+  return '$month/$day 点亮';
 }

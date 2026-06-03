@@ -13,7 +13,6 @@ class AchievementPage extends StatefulWidget {
 class _AchievementPageState extends State<AchievementPage> {
   late Future<AchievementsResponse> _future;
   final Set<int> _flipped = <int>{};
-  _AchievementFilter _filter = _AchievementFilter.all;
 
   @override
   void initState() {
@@ -35,79 +34,172 @@ class _AchievementPageState extends State<AchievementPage> {
 
   @override
   Widget build(BuildContext context) {
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
-      backgroundColor: AppColors.page,
-      body: SafeArea(
-        bottom: false,
-        child: FutureBuilder<AchievementsResponse>(
-          future: _future,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return _AchievementError(
+      backgroundColor: const Color(0xFFF6F8F5),
+      body: FutureBuilder<AchievementsResponse>(
+        future: _future,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return SafeArea(
+              bottom: false,
+              child: _AchievementError(
                 message: '${snapshot.error}',
                 onRetry: _retry,
-              );
-            }
-            final data = snapshot.data!;
-            final items = _filteredAchievements(data.items, _filter);
-            return CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(child: _AchievementHeader(data: data)),
-                SliverToBoxAdapter(
-                  child: _AchievementFilterBar(
-                    value: _filter,
-                    data: data,
-                    onChanged: (value) => setState(() => _filter = value),
-                  ),
-                ),
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(18, 10, 18, 32),
-                  sliver: SliverGrid(
-                    delegate: SliverChildBuilderDelegate((context, index) {
-                      final item = items[index];
-                      return _AchievementCard(
-                        item: item,
-                        flipped: _flipped.contains(item.id),
-                        onTap: () {
-                          setState(() {
-                            if (!_flipped.add(item.id)) {
-                              _flipped.remove(item.id);
-                            }
-                          });
-                        },
-                      );
-                    }, childCount: items.length),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                          childAspectRatio: 1.04,
-                        ),
-                  ),
-                ),
-              ],
+              ),
             );
-          },
+          }
+          final data = snapshot.data!;
+          final unlocked = _unlockedAchievements(data.items);
+          return Stack(
+            children: [
+              const Positioned.fill(child: _AchievementPageBackground()),
+              SafeArea(
+                bottom: false,
+                child: CustomScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: _AchievementHeader(
+                        items: unlocked,
+                        score: _achievementUnlockedScore(unlocked),
+                      ),
+                    ),
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+                        child: Text(
+                          unlocked.isEmpty ? '等待被点亮' : '已获得成就',
+                          style: const TextStyle(
+                            color: Color(0xFF9BA4A1),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (unlocked.isEmpty)
+                      const SliverToBoxAdapter(child: _AchievementEmptyState())
+                    else
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(
+                          20,
+                          0,
+                          20,
+                          safeBottom + 34,
+                        ),
+                        sliver: SliverGrid(
+                          delegate: SliverChildBuilderDelegate((
+                            context,
+                            index,
+                          ) {
+                            final item = unlocked[index];
+                            return _AchievementCard(
+                              item: item,
+                              flipped: _flipped.contains(item.id),
+                              onTap: () {
+                                setState(() {
+                                  if (!_flipped.add(item.id)) {
+                                    _flipped.remove(item.id);
+                                  }
+                                });
+                              },
+                            );
+                          }, childCount: unlocked.length),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                mainAxisSpacing: 14,
+                                crossAxisSpacing: 14,
+                                childAspectRatio: 0.88,
+                              ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+List<AchievementItem> _unlockedAchievements(List<AchievementItem> items) {
+  final unlocked = items.where((item) => item.unlocked).toList();
+  unlocked.sort((a, b) {
+    final left = a.unlockedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final right = b.unlockedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final byTime = right.compareTo(left);
+    return byTime == 0 ? a.id.compareTo(b.id) : byTime;
+  });
+  return unlocked;
+}
+
+int _achievementUnlockedScore(List<AchievementItem> items) {
+  return items.fold<int>(0, (sum, item) => sum + item.score);
+}
+
+class _AchievementPageBackground extends StatelessWidget {
+  const _AchievementPageBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: const Alignment(0.72, -0.34),
+          radius: 0.92,
+          colors: [
+            const Color(0xFFFFF0C8).withValues(alpha: 0.46),
+            const Color(0xFFF6F8F5),
+          ],
         ),
       ),
     );
   }
 }
 
-enum _AchievementFilter { all, unlocked, locked }
+class _AchievementEmptyState extends StatelessWidget {
+  const _AchievementEmptyState();
 
-List<AchievementItem> _filteredAchievements(
-  List<AchievementItem> items,
-  _AchievementFilter filter,
-) {
-  return switch (filter) {
-    _AchievementFilter.unlocked =>
-      items.where((item) => item.unlocked).toList(),
-    _AchievementFilter.locked => items.where((item) => !item.unlocked).toList(),
-    _AchievementFilter.all => items,
-  };
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(22, 24, 22, 24),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.84),
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.86)),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF20242A).withValues(alpha: 0.08),
+              blurRadius: 28,
+              offset: const Offset(0, 18),
+            ),
+          ],
+        ),
+        child: const Text(
+          '还没有被点亮的里程碑。继续自然地聊天，惊喜会在某个时刻出现。',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Color(0xFF7C8582),
+            fontSize: 14,
+            height: 1.48,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0,
+            decoration: TextDecoration.none,
+          ),
+        ),
+      ),
+    );
+  }
 }
