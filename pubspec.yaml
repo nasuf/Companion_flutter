@@ -76,6 +76,7 @@ flutter:
     - assets/prototype/movie-project-hail-mary.jpg
     - assets/prototype/game-pieces.jpg
     - assets/prototype/vinyl-record.jpg
+    - assets/prototype/music/
     - assets/prototype/games/
     - assets/achievements/
 

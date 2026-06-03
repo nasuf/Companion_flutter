@@ -275,6 +275,121 @@ class CompanionApi {
     return SudGameEventResponse.fromJson(json);
   }
 
+  Future<MusicTracksResponse> listMusicTracks({
+    required String agentId,
+    String? workspaceId,
+    String? library,
+    int limit = 1,
+    bool refresh = false,
+  }) async {
+    final params = <String, String>{'agent_id': agentId, 'limit': '$limit'};
+    if (workspaceId != null && workspaceId.isNotEmpty) {
+      params['workspace_id'] = workspaceId;
+    }
+    if (library != null && library.isNotEmpty) {
+      params['library'] = library;
+    }
+    if (refresh) {
+      params['refresh'] = 'true';
+    }
+    final query = Uri(queryParameters: params).query;
+    final json =
+        await _request('GET', '/music/tracks?$query', debugLabel: 'music.list')
+            as Map<String, dynamic>;
+    return MusicTracksResponse.fromJson(json);
+  }
+
+  Future<MusicLibrariesResponse> listMusicLibraries() async {
+    final json =
+        await _request('GET', '/music/libraries', debugLabel: 'music.libs')
+            as Map<String, dynamic>;
+    return MusicLibrariesResponse.fromJson(json);
+  }
+
+  Future<MusicTracksResponse> listMusicFavorites({
+    required String agentId,
+  }) async {
+    final query = Uri(queryParameters: {'agent_id': agentId}).query;
+    final json =
+        await _request(
+              'GET',
+              '/music/favorites?$query',
+              debugLabel: 'music.favorites',
+            )
+            as Map<String, dynamic>;
+    return MusicTracksResponse.fromJson(json);
+  }
+
+  Future<MusicTrack> addMusicFavorite({
+    required String agentId,
+    String? workspaceId,
+    required MusicTrack track,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/music/favorites',
+              body: {
+                'agent_id': agentId,
+                'workspace_id': workspaceId,
+                'track': track.toJson(),
+              },
+              debugLabel: 'music.favorite.add',
+            )
+            as Map<String, dynamic>;
+    return MusicTrack.fromJson(
+      Map<String, dynamic>.from(json['track'] as Map? ?? const {}),
+    );
+  }
+
+  Future<void> removeMusicFavorite({
+    required String agentId,
+    required String trackId,
+  }) async {
+    final query = Uri(queryParameters: {'agent_id': agentId}).query;
+    await _request(
+      'DELETE',
+      '/music/favorites/$trackId?$query',
+      debugLabel: 'music.favorite.remove',
+    );
+  }
+
+  Future<MusicPlayback> getMusicNowPlaying({required String agentId}) async {
+    final query = Uri(queryParameters: {'agent_id': agentId}).query;
+    final json =
+        await _request(
+              'GET',
+              '/music/now-playing?$query',
+              debugLabel: 'music.now',
+            )
+            as Map<String, dynamic>;
+    return MusicPlayback.fromJson(json);
+  }
+
+  Future<MusicPlayback> updateMusicNowPlaying({
+    required String agentId,
+    String? workspaceId,
+    required MusicTrack track,
+    required int positionSeconds,
+    required bool isPlaying,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/music/now-playing',
+              body: {
+                'agent_id': agentId,
+                'workspace_id': workspaceId,
+                'track': track.toJson(),
+                'position_seconds': positionSeconds,
+                'is_playing': isPlaying,
+              },
+              debugLabel: 'music.now.update',
+            )
+            as Map<String, dynamic>;
+    return MusicPlayback.fromJson(json);
+  }
+
   Future<AchievementsResponse> listAchievements({
     required String agentId,
   }) async {
@@ -554,12 +669,7 @@ class CompanionApi {
     final query = Uri(queryParameters: params).query;
     final path = query.isEmpty ? '/last-wills' : '/last-wills?$query';
     final json =
-        await _request(
-              'GET',
-              path,
-              debugLabel: 'last_will.list',
-            )
-            as List;
+        await _request('GET', path, debugLabel: 'last_will.list') as List;
     return json
         .map((item) => LastWill.fromJson(item as Map<String, dynamic>))
         .toList();

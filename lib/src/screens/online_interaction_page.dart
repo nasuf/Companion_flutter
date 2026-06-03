@@ -37,6 +37,9 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
     Navigator.of(context).push(
       CupertinoPageRoute<void>(
         builder: (_) {
+          if (portal.id == 'music') {
+            return MusicPage(api: widget.api, session: widget.session);
+          }
           if (portal.id == 'movie') return const MoviePage();
           if (portal.id == 'game') {
             return GamePage(api: widget.api, session: widget.session);

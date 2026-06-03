@@ -41,6 +41,7 @@ part 'src/screens/game_page.dart';
 part 'src/screens/last_will_page.dart';
 part 'src/screens/login_page.dart';
 part 'src/screens/main_shell.dart';
+part 'src/screens/music_page.dart';
 part 'src/screens/movie_page.dart';
 part 'src/screens/offline_interaction_page.dart';
 part 'src/screens/online_interaction_page.dart';

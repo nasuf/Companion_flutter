@@ -995,3 +995,220 @@ class WsEnvelope {
     );
   }
 }
+
+class MusicTrack {
+  const MusicTrack({
+    required this.id,
+    required this.title,
+    required this.artist,
+    required this.album,
+    required this.library,
+    required this.url,
+    required this.durationSec,
+    required this.coverKey,
+    required this.accentA,
+    required this.accentB,
+    required this.source,
+    required this.isFavorite,
+    required this.playedByAgent,
+    this.metadata = const {},
+  });
+
+  final String id;
+  final String title;
+  final String artist;
+  final String album;
+  final String library;
+  final String url;
+  final int durationSec;
+  final String coverKey;
+  final String accentA;
+  final String accentB;
+  final String source;
+  final bool isFavorite;
+  final bool playedByAgent;
+  final Map<String, dynamic> metadata;
+
+  String get coverAsset => 'assets/prototype/music/$visualCoverKey';
+  String get visualCoverKey {
+    final cleanCover = coverKey.trim();
+    final generatedSource = source == 'audiolib' || source == 'mock';
+    if (!generatedSource &&
+        cleanCover.isNotEmpty &&
+        cleanCover != 'music-cover-01.jpg') {
+      return cleanCover;
+    }
+    final seed = '$id|$title|$url|$library';
+    var hash = 17;
+    for (final unit in seed.codeUnits) {
+      hash = (hash * 31 + unit) & 0x7fffffff;
+    }
+    final index = (hash % 11) + 1;
+    return 'music-cover-${index.toString().padLeft(2, '0')}.jpg';
+  }
+
+  String get durationLabel {
+    if (durationSec <= 0) return '--:--';
+    final minutes = durationSec ~/ 60;
+    final seconds = durationSec % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  factory MusicTrack.fromJson(Map<String, dynamic> json) {
+    return MusicTrack(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? 'Untitled Audio',
+      artist: json['artist'] as String? ?? 'AudioLib',
+      album: json['album'] as String? ?? 'Curated Library',
+      library: json['library'] as String? ?? 'audio.focus',
+      url: json['url'] as String? ?? '',
+      durationSec: (json['duration_sec'] as num?)?.round() ?? 0,
+      coverKey: json['cover_key'] as String? ?? 'music-cover-01.jpg',
+      accentA: json['accent_a'] as String? ?? '#1f6fff',
+      accentB: json['accent_b'] as String? ?? '#18c6c0',
+      source: json['source'] as String? ?? 'audiolib',
+      isFavorite: json['is_favorite'] as bool? ?? false,
+      playedByAgent: json['played_by_agent'] as bool? ?? false,
+      metadata: json['metadata'] is Map
+          ? Map<String, dynamic>.from(json['metadata'] as Map)
+          : const {},
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'artist': artist,
+      'album': album,
+      'library': library,
+      'url': url,
+      'duration_sec': durationSec,
+      'cover_key': visualCoverKey,
+      'accent_a': accentA,
+      'accent_b': accentB,
+      'source': source,
+      'metadata': metadata,
+    };
+  }
+
+  MusicTrack copyWith({bool? isFavorite, bool? playedByAgent}) {
+    return MusicTrack(
+      id: id,
+      title: title,
+      artist: artist,
+      album: album,
+      library: library,
+      url: url,
+      durationSec: durationSec,
+      coverKey: coverKey,
+      accentA: accentA,
+      accentB: accentB,
+      source: source,
+      isFavorite: isFavorite ?? this.isFavorite,
+      playedByAgent: playedByAgent ?? this.playedByAgent,
+      metadata: metadata,
+    );
+  }
+}
+
+class MusicTracksResponse {
+  const MusicTracksResponse({
+    required this.tracks,
+    required this.apiEnabled,
+    this.library,
+  });
+
+  final List<MusicTrack> tracks;
+  final bool apiEnabled;
+  final String? library;
+
+  factory MusicTracksResponse.fromJson(Map<String, dynamic> json) {
+    final rawTracks = json['tracks'];
+    return MusicTracksResponse(
+      tracks: rawTracks is List
+          ? rawTracks
+                .whereType<Map>()
+                .map(
+                  (item) =>
+                      MusicTrack.fromJson(Map<String, dynamic>.from(item)),
+                )
+                .toList()
+          : const [],
+      apiEnabled: json['api_enabled'] as bool? ?? false,
+      library: json['library'] as String?,
+    );
+  }
+}
+
+class MusicLibrary {
+  const MusicLibrary({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String id;
+  final String title;
+  final String subtitle;
+
+  factory MusicLibrary.fromJson(Map<String, dynamic> json) {
+    return MusicLibrary(
+      id: json['id'] as String? ?? 'audio.focus',
+      title: json['title'] as String? ?? '专注',
+      subtitle: json['subtitle'] as String? ?? '',
+    );
+  }
+}
+
+class MusicLibrariesResponse {
+  const MusicLibrariesResponse({
+    required this.libraries,
+    required this.defaultLibrary,
+  });
+
+  final List<MusicLibrary> libraries;
+  final String defaultLibrary;
+
+  factory MusicLibrariesResponse.fromJson(Map<String, dynamic> json) {
+    final rawLibraries = json['libraries'];
+    return MusicLibrariesResponse(
+      libraries: rawLibraries is List
+          ? rawLibraries
+                .whereType<Map>()
+                .map(
+                  (item) =>
+                      MusicLibrary.fromJson(Map<String, dynamic>.from(item)),
+                )
+                .toList()
+          : const [],
+      defaultLibrary: json['default_library'] as String? ?? 'audio.focus',
+    );
+  }
+}
+
+class MusicPlayback {
+  const MusicPlayback({
+    required this.track,
+    required this.positionSeconds,
+    required this.isPlaying,
+    this.updatedAt,
+  });
+
+  final MusicTrack? track;
+  final int positionSeconds;
+  final bool isPlaying;
+  final DateTime? updatedAt;
+
+  factory MusicPlayback.fromJson(Map<String, dynamic> json) {
+    final rawTrack = json['track'];
+    return MusicPlayback(
+      track: rawTrack is Map
+          ? MusicTrack.fromJson(Map<String, dynamic>.from(rawTrack))
+          : null,
+      positionSeconds: (json['position_seconds'] as num?)?.round() ?? 0,
+      isPlaying: json['is_playing'] as bool? ?? false,
+      updatedAt: DateTime.tryParse(json['updated_at'] as String? ?? ''),
+    );
+  }
+}
