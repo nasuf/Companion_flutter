@@ -1130,31 +1130,10 @@ class _MusicPlayerPanel extends StatelessWidget {
         final compact = constraints.maxHeight < 580;
         final contentPadding = compact ? 14.0 : 18.0;
         final bottomPadding = compact ? 14.0 : 18.0;
-        final transportHeight = compact ? 116.0 : 132.0;
         final sectionGap = compact ? 8.0 : 12.0;
         final discGap = compact ? 8.0 : 14.0;
         final waveGap = compact ? 10.0 : 16.0;
         final titleHeight = compact ? 30.0 : 32.0;
-        final topAreaHeight = math.max(
-          0.0,
-          constraints.maxHeight -
-              contentPadding -
-              bottomPadding -
-              transportHeight -
-              sectionGap,
-        );
-        final mediaHeight = math.max(
-          0.0,
-          topAreaHeight - titleHeight - discGap - waveGap,
-        );
-        final discHeight = math.min(
-          compact ? 220.0 : 286.0,
-          mediaHeight * 0.64,
-        );
-        final waveHeight = math.min(
-          compact ? 92.0 : 132.0,
-          math.max(0.0, mediaHeight - discHeight),
-        );
         return Container(
           padding: EdgeInsets.fromLTRB(
             contentPadding,
@@ -1194,45 +1173,66 @@ class _MusicPlayerPanel extends StatelessWidget {
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: onToggleDisplay,
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 260),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
-                        child: lyricsMode
-                            ? _MusicLyricsStage(
-                                key: const ValueKey('lyrics'),
-                                lyrics: lyrics,
-                                isPlaying: isPlaying,
-                                animation: waveAnimation,
-                              )
-                            : Column(
-                                key: const ValueKey('disc-wave'),
-                                children: [
-                                  SizedBox(
-                                    height: discHeight,
-                                    child: _MusicDiscStage(
-                                      track: current,
-                                      loading: loading,
-                                      isPlaying: isPlaying,
-                                      animation: discAnimation,
-                                    ),
+                      child: LayoutBuilder(
+                        builder: (context, displayConstraints) {
+                          final mediaHeight = math.max(
+                            0.0,
+                            displayConstraints.maxHeight -
+                                titleHeight -
+                                discGap -
+                                waveGap,
+                          );
+                          final discHeight = math.min(
+                            compact ? 206.0 : 286.0,
+                            mediaHeight * 0.60,
+                          );
+                          final waveHeight = math.min(
+                            compact ? 82.0 : 132.0,
+                            math.max(0.0, mediaHeight - discHeight),
+                          );
+                          return AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 260),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            child: lyricsMode
+                                ? _MusicLyricsStage(
+                                    key: const ValueKey('lyrics'),
+                                    lyrics: lyrics,
+                                    isPlaying: isPlaying,
+                                    animation: waveAnimation,
+                                  )
+                                : Column(
+                                    key: const ValueKey('disc-wave'),
+                                    children: [
+                                      SizedBox(
+                                        height: discHeight,
+                                        child: _MusicDiscStage(
+                                          track: current,
+                                          loading: loading,
+                                          isPlaying: isPlaying,
+                                          animation: discAnimation,
+                                        ),
+                                      ),
+                                      SizedBox(height: discGap),
+                                      SizedBox(
+                                        height: titleHeight,
+                                        child: Center(
+                                          child: _MusicTrackInfo(
+                                            track: current,
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(height: waveGap),
+                                      SizedBox(
+                                        height: waveHeight,
+                                        child: _MusicWaveStage(
+                                          animation: waveAnimation,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  SizedBox(height: discGap),
-                                  SizedBox(
-                                    height: titleHeight,
-                                    child: Center(
-                                      child: _MusicTrackInfo(track: current),
-                                    ),
-                                  ),
-                                  SizedBox(height: waveGap),
-                                  SizedBox(
-                                    height: waveHeight,
-                                    child: _MusicWaveStage(
-                                      animation: waveAnimation,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -1803,10 +1803,10 @@ class _MusicInstrumentalStage extends StatelessWidget {
         return LayoutBuilder(
           builder: (context, constraints) {
             final compact = constraints.maxHeight < 380;
-            final orbSize = compact ? 98.0 : 128.0;
-            return Padding(
-              padding: EdgeInsets.only(top: compact ? 14 : 22),
+            final orbSize = compact ? 148.0 : 184.0;
+            return Center(
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     'INSTRUMENTAL',
@@ -1817,23 +1817,23 @@ class _MusicInstrumentalStage extends StatelessWidget {
                       letterSpacing: 2.4,
                     ),
                   ),
-                  SizedBox(height: compact ? 16 : 24),
+                  SizedBox(height: compact ? 18 : 24),
                   SizedBox(
                     width: orbSize,
                     height: orbSize,
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        for (var i = 0; i < 3; i += 1)
+                        for (var i = 0; i < 4; i += 1)
                           Transform.scale(
-                            scale: 0.82 + i * 0.16 + pulse * 0.08,
+                            scale: 0.68 + i * 0.13 + pulse * 0.10,
                             child: Container(
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 border: Border.all(
                                   color: const Color(
                                     0xFF5ED8FF,
-                                  ).withValues(alpha: 0.16 - i * 0.03),
+                                  ).withValues(alpha: 0.18 - i * 0.03),
                                   width: 1,
                                 ),
                               ),
@@ -1867,13 +1867,13 @@ class _MusicInstrumentalStage extends StatelessWidget {
                           child: const Icon(
                             CupertinoIcons.music_note_2,
                             color: Colors.white,
-                            size: 34,
+                            size: 52,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  SizedBox(height: compact ? 16 : 24),
+                  SizedBox(height: compact ? 22 : 28),
                   Text(
                     '纯音乐片段',
                     style: TextStyle(
@@ -1895,45 +1895,6 @@ class _MusicInstrumentalStage extends StatelessWidget {
                       letterSpacing: 0,
                     ),
                   ),
-                  SizedBox(height: compact ? 16 : 24),
-                  SizedBox(
-                    width: math.min(constraints.maxWidth * 0.64, 230),
-                    height: 38,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        for (var i = 0; i < 13; i += 1)
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 2.4,
-                              ),
-                              child: FractionallySizedBox(
-                                heightFactor: _ambientHeight(i),
-                                alignment: Alignment.center,
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(99),
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: [
-                                        const Color(
-                                          0xFFA9F5FF,
-                                        ).withValues(alpha: 0.92),
-                                        const Color(
-                                          0xFF2178FF,
-                                        ).withValues(alpha: 0.78),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
                 ],
               ),
             );
@@ -1941,11 +1902,6 @@ class _MusicInstrumentalStage extends StatelessWidget {
         );
       },
     );
-  }
-
-  double _ambientHeight(int index) {
-    final phase = (animation.value + index * 0.11) * math.pi * 2;
-    return (0.34 + 0.46 * (0.5 + math.sin(phase) * 0.5)).clamp(0.28, 0.88);
   }
 }
 
