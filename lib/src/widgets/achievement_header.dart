@@ -1,10 +1,15 @@
 part of 'package:companion_flutter/main.dart';
 
 class _AchievementHeader extends StatefulWidget {
-  const _AchievementHeader({required this.items, required this.score});
+  const _AchievementHeader({
+    required this.items,
+    required this.score,
+    required this.tint,
+  });
 
   final List<AchievementItem> items;
   final int score;
+  final Color tint;
 
   @override
   State<_AchievementHeader> createState() => _AchievementHeaderState();
@@ -32,34 +37,47 @@ class _AchievementHeaderState extends State<_AchievementHeader>
   @override
   Widget build(BuildContext context) {
     final weeklyNew = _achievementWeeklyNewCount(widget.items);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _AchievementTopBar(onBack: () => Navigator.of(context).maybePop()),
-          const SizedBox(height: 28),
-          AnimatedBuilder(
-            animation: _controller,
-            builder: (context, _) {
-              final breath = Curves.easeInOut.transform(_controller.value);
-              return _AchievementHeroCard(
-                breath: breath,
-                unlocked: widget.items.length,
-                weeklyNew: weeklyNew,
-                score: widget.score,
-              );
-            },
+    return TweenAnimationBuilder<Color?>(
+      tween: ColorTween(end: widget.tint),
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, _) {
+        final tint = value ?? widget.tint;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _AchievementTopBar(
+                tint: tint,
+                onBack: () => Navigator.of(context).maybePop(),
+              ),
+              const SizedBox(height: 28),
+              AnimatedBuilder(
+                animation: _controller,
+                builder: (context, _) {
+                  final breath = Curves.easeInOut.transform(_controller.value);
+                  return _AchievementHeroCard(
+                    breath: breath,
+                    tint: tint,
+                    unlocked: widget.items.length,
+                    weeklyNew: weeklyNew,
+                    score: widget.score,
+                  );
+                },
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
 class _AchievementTopBar extends StatelessWidget {
-  const _AchievementTopBar({required this.onBack});
+  const _AchievementTopBar({required this.tint, required this.onBack});
 
+  final Color tint;
   final VoidCallback onBack;
 
   @override
@@ -68,6 +86,7 @@ class _AchievementTopBar extends StatelessWidget {
       children: [
         _AchievementCircleButton(
           icon: CupertinoIcons.chevron_left,
+          tint: tint,
           onTap: onBack,
         ),
         const SizedBox(width: 14),
@@ -87,9 +106,14 @@ class _AchievementTopBar extends StatelessWidget {
 }
 
 class _AchievementCircleButton extends StatelessWidget {
-  const _AchievementCircleButton({required this.icon, required this.onTap});
+  const _AchievementCircleButton({
+    required this.icon,
+    required this.tint,
+    required this.onTap,
+  });
 
   final IconData icon;
+  final Color tint;
   final VoidCallback onTap;
 
   @override
@@ -107,7 +131,7 @@ class _AchievementCircleButton extends StatelessWidget {
           border: Border.all(color: Colors.white.withValues(alpha: 0.92)),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF20242A).withValues(alpha: 0.08),
+              color: tint.withValues(alpha: 0.10),
               blurRadius: 24,
               offset: const Offset(0, 14),
             ),
@@ -122,12 +146,14 @@ class _AchievementCircleButton extends StatelessWidget {
 class _AchievementHeroCard extends StatelessWidget {
   const _AchievementHeroCard({
     required this.breath,
+    required this.tint,
     required this.unlocked,
     required this.weeklyNew,
     required this.score,
   });
 
   final double breath;
+  final Color tint;
   final int unlocked;
   final int weeklyNew;
   final int score;
@@ -153,7 +179,7 @@ class _AchievementHeroCard extends StatelessWidget {
             offset: const Offset(0, 22),
           ),
           BoxShadow(
-            color: const Color(0xFFFFC936).withValues(alpha: 0.15),
+            color: tint.withValues(alpha: 0.16),
             blurRadius: 32,
             offset: const Offset(16, 24),
           ),
@@ -164,7 +190,10 @@ class _AchievementHeroCard extends StatelessWidget {
         children: [
           Positioned.fill(
             child: CustomPaint(
-              painter: _AchievementHeroLightPainter(progress: breath),
+              painter: _AchievementHeroLightPainter(
+                progress: breath,
+                tint: tint,
+              ),
             ),
           ),
           Positioned(
@@ -174,7 +203,7 @@ class _AchievementHeroCard extends StatelessWidget {
               angle: -0.17 + breath * 0.09,
               child: Transform.scale(
                 scale: 0.96 + breath * 0.06,
-                child: const _AchievementFloatingBlock(),
+                child: _AchievementFloatingBlock(tint: tint),
               ),
             ),
           ),
@@ -183,10 +212,10 @@ class _AchievementHeroCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'ACHIEVEMENT',
                   style: TextStyle(
-                    color: Color(0xFFC29A22),
+                    color: tint,
                     fontSize: 13,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 1.2,
@@ -232,6 +261,7 @@ class _AchievementHeroCard extends StatelessWidget {
                         child: _AchievementMetric(
                           value: '$unlocked',
                           label: '已解锁',
+                          tint: tint,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -239,11 +269,16 @@ class _AchievementHeroCard extends StatelessWidget {
                         child: _AchievementMetric(
                           value: '$weeklyNew',
                           label: '本周新增',
+                          tint: tint,
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: _AchievementMetric(value: '$score', label: '积分'),
+                        child: _AchievementMetric(
+                          value: '$score',
+                          label: '积分',
+                          tint: tint,
+                        ),
                       ),
                     ],
                   ),
@@ -258,7 +293,9 @@ class _AchievementHeroCard extends StatelessWidget {
 }
 
 class _AchievementFloatingBlock extends StatelessWidget {
-  const _AchievementFloatingBlock();
+  const _AchievementFloatingBlock({required this.tint});
+
+  final Color tint;
 
   @override
   Widget build(BuildContext context) {
@@ -274,7 +311,7 @@ class _AchievementFloatingBlock extends StatelessWidget {
                 borderRadius: BorderRadius.circular(28),
                 boxShadow: [
                   BoxShadow(
-                    color: Color(0xFFE0A51D).withValues(alpha: 0.24),
+                    color: tint.withValues(alpha: 0.24),
                     blurRadius: 28,
                     offset: const Offset(0, 16),
                   ),
@@ -282,12 +319,15 @@ class _AchievementFloatingBlock extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(28),
-                child: const DecoratedBox(
+                child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [Color(0xFFFFD658), Color(0xFFE0A51D)],
+                      colors: [
+                        Color.lerp(tint, Colors.white, 0.34)!,
+                        Color.lerp(tint, Colors.black, 0.08)!,
+                      ],
                     ),
                   ),
                 ),
@@ -329,9 +369,13 @@ class _AchievementFloatingBlock extends StatelessWidget {
 }
 
 class _AchievementHeroLightPainter extends CustomPainter {
-  const _AchievementHeroLightPainter({required this.progress});
+  const _AchievementHeroLightPainter({
+    required this.progress,
+    required this.tint,
+  });
 
   final double progress;
+  final Color tint;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -344,7 +388,7 @@ class _AchievementHeroLightPainter extends CustomPainter {
           end: Alignment.bottomCenter,
           colors: [
             Colors.white.withValues(alpha: 0.86),
-            const Color(0xFFFFFBF0).withValues(alpha: 0.76),
+            Color.lerp(Colors.white, tint, 0.08)!.withValues(alpha: 0.76),
           ],
         ).createShader(rect),
     );
@@ -375,13 +419,13 @@ class _AchievementHeroLightPainter extends CustomPainter {
 
     drawGlow(
       Alignment(0.72 + progress * 0.05, -0.72 + progress * 0.04),
-      const Color(0xFFFFC936),
+      tint,
       0.26 + progress * 0.08,
       size.width * 0.74,
     );
     drawGlow(
       Alignment(-1.08 + progress * 0.05, 0.82 - progress * 0.04),
-      const Color(0xFFCDB9FF),
+      Color.lerp(tint, const Color(0xFFFFFFFF), 0.36)!,
       0.12,
       size.width * 0.62,
     );
@@ -389,15 +433,20 @@ class _AchievementHeroLightPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_AchievementHeroLightPainter oldDelegate) {
-    return oldDelegate.progress != progress;
+    return oldDelegate.progress != progress || oldDelegate.tint != tint;
   }
 }
 
 class _AchievementMetric extends StatelessWidget {
-  const _AchievementMetric({required this.value, required this.label});
+  const _AchievementMetric({
+    required this.value,
+    required this.label,
+    required this.tint,
+  });
 
   final String value;
   final String label;
+  final Color tint;
 
   @override
   Widget build(BuildContext context) {
@@ -407,12 +456,12 @@ class _AchievementMetric extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.58),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
+        border: Border.all(color: tint.withValues(alpha: 0.10)),
         boxShadow: [
           BoxShadow(
-            color: Colors.white.withValues(alpha: 0.62),
-            blurRadius: 1,
-            offset: const Offset(0, -1),
+            color: tint.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
