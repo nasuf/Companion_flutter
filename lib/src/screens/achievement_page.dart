@@ -427,15 +427,19 @@ class _AchievementLevelTabsBar extends StatelessWidget {
                     final tabWidth =
                         constraints.maxWidth / _achievementLevelTabs.length;
                     const indicatorInset = 3.0;
+                    const tabBarHeight = 40.0;
+                    final isLastTab =
+                        selectedIndex == _achievementLevelTabs.length - 1;
                     return Container(
-                      height: 40,
-                      decoration: BoxDecoration(
+                      height: tabBarHeight,
+                      decoration: ShapeDecoration(
                         color: Colors.white.withValues(alpha: 0.58),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: color.withValues(alpha: 0.30),
+                        shape: StadiumBorder(
+                          side: BorderSide(
+                            color: color.withValues(alpha: 0.30),
+                          ),
                         ),
-                        boxShadow: [
+                        shadows: [
                           BoxShadow(
                             color: color.withValues(alpha: 0.14),
                             blurRadius: 18,
@@ -449,18 +453,22 @@ class _AchievementLevelTabsBar extends StatelessWidget {
                           AnimatedPositioned(
                             duration: const Duration(milliseconds: 280),
                             curve: Curves.easeOutCubic,
-                            left: tabWidth * selectedIndex + indicatorInset,
+                            left: isLastTab
+                                ? null
+                                : tabWidth * selectedIndex + indicatorInset,
+                            right: isLastTab ? indicatorInset : null,
                             top: indicatorInset,
                             bottom: indicatorInset,
                             width: tabWidth - indicatorInset * 2,
-                            child: Container(
-                              decoration: BoxDecoration(
+                            child: DecoratedBox(
+                              decoration: ShapeDecoration(
                                 color: Colors.white.withValues(alpha: 0.96),
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(
-                                  color: color.withValues(alpha: 0.48),
+                                shape: StadiumBorder(
+                                  side: BorderSide(
+                                    color: color.withValues(alpha: 0.48),
+                                  ),
                                 ),
-                                boxShadow: [
+                                shadows: [
                                   BoxShadow(
                                     color: color.withValues(alpha: 0.24),
                                     blurRadius: 14,
