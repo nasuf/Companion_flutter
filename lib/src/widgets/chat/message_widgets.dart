@@ -6,9 +6,22 @@ class _MessageList extends StatelessWidget {
     required this.messages,
     required this.isLoadingOlder,
     required this.bottomPadding,
+    required this.topPadding,
     required this.onComponentCardTap,
     required this.onAchievementTap,
     required this.onResolveMusicTrack,
+    required this.onMusicCardActivated,
+    required this.onMusicPrevious,
+    required this.onMusicNext,
+    required this.onMusicFavorite,
+    required this.activeMusicMessageId,
+    required this.musicCardPositions,
+    required this.favoriteMusicTrackIds,
+    required this.busyMusicFavoriteIds,
+    required this.canGoMusicPrevious,
+    required this.isMusicBusy,
+    this.stationMessageId,
+    this.stationMessageKey,
     this.agentAvatarUrl,
   });
 
@@ -16,9 +29,23 @@ class _MessageList extends StatelessWidget {
   final List<ChatMessage> messages;
   final bool isLoadingOlder;
   final double bottomPadding;
+  final double topPadding;
   final ValueChanged<ChatComponentCard> onComponentCardTap;
   final ValueChanged<AchievementItem> onAchievementTap;
   final Future<MusicTrack?> Function(MusicTrack track) onResolveMusicTrack;
+  final void Function(ChatComponentCard card, String messageId)
+  onMusicCardActivated;
+  final VoidCallback onMusicPrevious;
+  final VoidCallback onMusicNext;
+  final ValueChanged<MusicTrack> onMusicFavorite;
+  final String? activeMusicMessageId;
+  final Map<String, Duration> musicCardPositions;
+  final Set<String> favoriteMusicTrackIds;
+  final Set<String> busyMusicFavoriteIds;
+  final bool canGoMusicPrevious;
+  final bool isMusicBusy;
+  final String? stationMessageId;
+  final GlobalKey? stationMessageKey;
   final String? agentAvatarUrl;
 
   @override
@@ -33,7 +60,7 @@ class _MessageList extends StatelessWidget {
     }
     return ListView.builder(
       controller: controller,
-      padding: EdgeInsets.fromLTRB(12, 10, 12, bottomPadding),
+      padding: EdgeInsets.fromLTRB(12, topPadding, 12, bottomPadding),
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
       ),
@@ -58,13 +85,27 @@ class _MessageList extends StatelessWidget {
           );
         }
         final message = messages[index - 1];
-        return _MessageRow(
+        final row = _MessageRow(
           message: message,
           agentAvatarUrl: agentAvatarUrl,
           onComponentCardTap: onComponentCardTap,
           onAchievementTap: onAchievementTap,
           onResolveMusicTrack: onResolveMusicTrack,
+          onMusicCardActivated: onMusicCardActivated,
+          onMusicPrevious: onMusicPrevious,
+          onMusicNext: onMusicNext,
+          onMusicFavorite: onMusicFavorite,
+          activeMusicMessageId: activeMusicMessageId,
+          musicCardPositions: musicCardPositions,
+          favoriteMusicTrackIds: favoriteMusicTrackIds,
+          busyMusicFavoriteIds: busyMusicFavoriteIds,
+          canGoMusicPrevious: canGoMusicPrevious,
+          isMusicBusy: isMusicBusy,
         );
+        if (message.id == stationMessageId && stationMessageKey != null) {
+          return KeyedSubtree(key: stationMessageKey, child: row);
+        }
+        return row;
       },
     );
   }
@@ -76,6 +117,16 @@ class _MessageRow extends StatelessWidget {
     required this.onComponentCardTap,
     required this.onAchievementTap,
     required this.onResolveMusicTrack,
+    required this.onMusicCardActivated,
+    required this.onMusicPrevious,
+    required this.onMusicNext,
+    required this.onMusicFavorite,
+    required this.activeMusicMessageId,
+    required this.musicCardPositions,
+    required this.favoriteMusicTrackIds,
+    required this.busyMusicFavoriteIds,
+    required this.canGoMusicPrevious,
+    required this.isMusicBusy,
     this.agentAvatarUrl,
   });
 
@@ -83,6 +134,17 @@ class _MessageRow extends StatelessWidget {
   final ValueChanged<ChatComponentCard> onComponentCardTap;
   final ValueChanged<AchievementItem> onAchievementTap;
   final Future<MusicTrack?> Function(MusicTrack track) onResolveMusicTrack;
+  final void Function(ChatComponentCard card, String messageId)
+  onMusicCardActivated;
+  final VoidCallback onMusicPrevious;
+  final VoidCallback onMusicNext;
+  final ValueChanged<MusicTrack> onMusicFavorite;
+  final String? activeMusicMessageId;
+  final Map<String, Duration> musicCardPositions;
+  final Set<String> favoriteMusicTrackIds;
+  final Set<String> busyMusicFavoriteIds;
+  final bool canGoMusicPrevious;
+  final bool isMusicBusy;
   final String? agentAvatarUrl;
   static const _avatarSize = 40.0;
   static const _avatarGap = 10.0;
@@ -123,6 +185,16 @@ class _MessageRow extends StatelessWidget {
             message: message,
             onComponentCardTap: onComponentCardTap,
             onResolveMusicTrack: onResolveMusicTrack,
+            onMusicCardActivated: onMusicCardActivated,
+            onMusicPrevious: onMusicPrevious,
+            onMusicNext: onMusicNext,
+            onMusicFavorite: onMusicFavorite,
+            activeMusicMessageId: activeMusicMessageId,
+            musicCardPositions: musicCardPositions,
+            favoriteMusicTrackIds: favoriteMusicTrackIds,
+            busyMusicFavoriteIds: busyMusicFavoriteIds,
+            canGoMusicPrevious: canGoMusicPrevious,
+            isMusicBusy: isMusicBusy,
           ),
           if (message.isMine) ...[const SizedBox(width: _avatarGap), avatar],
         ],
@@ -138,111 +210,82 @@ class _MusicStatusTimelineRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = message.metadata?['music_track_title']?.toString().trim();
-    final hasTitle = title != null && title.isNotEmpty;
+    final status = message.metadata?['music_status']?.toString().trim();
+    final isEnded = status == 'ended';
+    final label = isEnded ? '已退出共听' : '已进入共听';
+    final accent = isEnded ? const Color(0xFF64748B) : const Color(0xFF149249);
+    final fill = isEnded ? const Color(0xFFF1F5F9) : const Color(0xFFEAF8EF);
+    final border = isEnded ? const Color(0xFFD5DEE9) : const Color(0xFFBDEBCB);
+    final iconFill = isEnded
+        ? const Color(0xFFE2E8F0)
+        : const Color(0xFFD9F5E4);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 7),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 318),
+          constraints: const BoxConstraints(maxWidth: 190),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF8EF),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFBDEBCB)),
+              color: fill,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: border),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF28C36A).withValues(alpha: 0.08),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
+                  color: accent.withValues(alpha: 0.06),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              padding: const EdgeInsets.fromLTRB(12, 7, 12, 6),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFD9F5E4),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      CupertinoIcons.music_note_2,
-                      size: 16,
-                      color: Color(0xFF159A4D),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                '你们开始一起听',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Color(0xFF149249),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1.15,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.62),
-                                borderRadius: BorderRadius.circular(999),
-                                border: Border.all(
-                                  color: const Color(
-                                    0xFFBDEBCB,
-                                  ).withValues(alpha: 0.72),
-                                ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 7,
-                                  vertical: 2,
-                                ),
-                                child: Text(
-                                  _formatTime(message.createdAt),
-                                  style: TextStyle(
-                                    color: const Color(
-                                      0xFF149249,
-                                    ).withValues(alpha: 0.62),
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    height: 1.1,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          color: iconFill,
+                          shape: BoxShape.circle,
                         ),
-                        const SizedBox(height: 3),
-                        Text(
-                          hasTitle ? '《$title》' : message.content,
-                          maxLines: 2,
+                        child: Icon(
+                          isEnded
+                              ? CupertinoIcons.music_note_list
+                              : CupertinoIcons.music_note_2,
+                          size: 12,
+                          color: accent,
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      Flexible(
+                        child: Text(
+                          label,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: const Color(
-                              0xFF149249,
-                            ).withValues(alpha: 0.82),
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            height: 1.25,
+                            color: accent,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            height: 1.08,
                           ),
                         ),
-                      ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _formatTime(message.createdAt),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: accent.withValues(alpha: 0.56),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      height: 1.0,
                     ),
                   ),
                 ],
@@ -260,11 +303,32 @@ class _Bubble extends StatelessWidget {
     required this.message,
     required this.onComponentCardTap,
     required this.onResolveMusicTrack,
+    required this.onMusicCardActivated,
+    required this.onMusicPrevious,
+    required this.onMusicNext,
+    required this.onMusicFavorite,
+    required this.activeMusicMessageId,
+    required this.musicCardPositions,
+    required this.favoriteMusicTrackIds,
+    required this.busyMusicFavoriteIds,
+    required this.canGoMusicPrevious,
+    required this.isMusicBusy,
   });
 
   final ChatMessage message;
   final ValueChanged<ChatComponentCard> onComponentCardTap;
   final Future<MusicTrack?> Function(MusicTrack track) onResolveMusicTrack;
+  final void Function(ChatComponentCard card, String messageId)
+  onMusicCardActivated;
+  final VoidCallback onMusicPrevious;
+  final VoidCallback onMusicNext;
+  final ValueChanged<MusicTrack> onMusicFavorite;
+  final String? activeMusicMessageId;
+  final Map<String, Duration> musicCardPositions;
+  final Set<String> favoriteMusicTrackIds;
+  final Set<String> busyMusicFavoriteIds;
+  final bool canGoMusicPrevious;
+  final bool isMusicBusy;
 
   @override
   Widget build(BuildContext context) {
@@ -286,8 +350,32 @@ class _Bubble extends StatelessWidget {
             _ComponentCardBubble(
               card: componentCard,
               isMine: message.isMine,
-              onTap: () => onComponentCardTap(componentCard),
+              onTap: () {
+                if (componentCard.type == 'music_track') {
+                  onMusicCardActivated(componentCard, message.id);
+                }
+                onComponentCardTap(componentCard);
+              },
               onResolveMusicTrack: onResolveMusicTrack,
+              onMusicCardActivated: () =>
+                  onMusicCardActivated(componentCard, message.id),
+              onMusicPrevious: () {
+                onMusicCardActivated(componentCard, message.id);
+                onMusicPrevious();
+              },
+              onMusicNext: () {
+                onMusicCardActivated(componentCard, message.id);
+                onMusicNext();
+              },
+              onMusicFavorite: onMusicFavorite,
+              isActiveMusicCard: activeMusicMessageId == message.id,
+              initialMusicPosition:
+                  musicCardPositions[message.id] ?? Duration.zero,
+              favoriteMusicTrackIds: favoriteMusicTrackIds,
+              busyMusicFavoriteIds: busyMusicFavoriteIds,
+              canGoMusicPrevious:
+                  activeMusicMessageId == message.id && canGoMusicPrevious,
+              isMusicBusy: isMusicBusy,
             )
           else
             _MessageTextBubble(message: message),
@@ -367,12 +455,32 @@ class _ComponentCardBubble extends StatelessWidget {
     required this.isMine,
     required this.onTap,
     required this.onResolveMusicTrack,
+    required this.onMusicCardActivated,
+    required this.onMusicPrevious,
+    required this.onMusicNext,
+    required this.onMusicFavorite,
+    required this.isActiveMusicCard,
+    required this.initialMusicPosition,
+    required this.favoriteMusicTrackIds,
+    required this.busyMusicFavoriteIds,
+    required this.canGoMusicPrevious,
+    required this.isMusicBusy,
   });
 
   final ChatComponentCard card;
   final bool isMine;
   final VoidCallback onTap;
   final Future<MusicTrack?> Function(MusicTrack track) onResolveMusicTrack;
+  final VoidCallback onMusicCardActivated;
+  final VoidCallback onMusicPrevious;
+  final VoidCallback onMusicNext;
+  final ValueChanged<MusicTrack> onMusicFavorite;
+  final bool isActiveMusicCard;
+  final Duration initialMusicPosition;
+  final Set<String> favoriteMusicTrackIds;
+  final Set<String> busyMusicFavoriteIds;
+  final bool canGoMusicPrevious;
+  final bool isMusicBusy;
 
   @override
   Widget build(BuildContext context) {
@@ -384,6 +492,16 @@ class _ComponentCardBubble extends StatelessWidget {
         accent: accent,
         onTap: onTap,
         onResolveTrack: onResolveMusicTrack,
+        onPlaybackActivated: onMusicCardActivated,
+        onPrevious: onMusicPrevious,
+        onNext: onMusicNext,
+        onFavorite: onMusicFavorite,
+        isActiveCard: isActiveMusicCard,
+        initialPosition: initialMusicPosition,
+        favoriteMusicTrackIds: favoriteMusicTrackIds,
+        busyMusicFavoriteIds: busyMusicFavoriteIds,
+        canGoPrevious: canGoMusicPrevious,
+        isBusy: isMusicBusy,
       );
     }
     final isTimeCapsule = card.type == 'time_capsule';
@@ -566,6 +684,16 @@ class _MusicComponentCard extends StatefulWidget {
     required this.accent,
     required this.onTap,
     required this.onResolveTrack,
+    required this.onPlaybackActivated,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onFavorite,
+    required this.isActiveCard,
+    required this.initialPosition,
+    required this.favoriteMusicTrackIds,
+    required this.busyMusicFavoriteIds,
+    required this.canGoPrevious,
+    required this.isBusy,
   });
 
   final ChatComponentCard card;
@@ -573,6 +701,16 @@ class _MusicComponentCard extends StatefulWidget {
   final Color accent;
   final VoidCallback onTap;
   final Future<MusicTrack?> Function(MusicTrack track) onResolveTrack;
+  final VoidCallback onPlaybackActivated;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final ValueChanged<MusicTrack> onFavorite;
+  final bool isActiveCard;
+  final Duration initialPosition;
+  final Set<String> favoriteMusicTrackIds;
+  final Set<String> busyMusicFavoriteIds;
+  final bool canGoPrevious;
+  final bool isBusy;
 
   @override
   State<_MusicComponentCard> createState() => _MusicComponentCardState();
@@ -615,7 +753,9 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
 
   void _syncDiscAnimation() {
     if (!mounted) return;
-    if (!_playback.isCurrentTrack(_currentCardTrack) || !_playback.isPlaying) {
+    if (!widget.isActiveCard ||
+        !_playback.isCurrentTrack(_displayTrack) ||
+        !_playback.isPlaying) {
       if (_discController.isAnimating) {
         _discController.stop(canceled: false);
       }
@@ -627,42 +767,63 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
   Future<void> _toggleCardPlayback(MusicTrack? track) async {
     if (track == null) return;
     try {
-      if (_playback.isCurrentTrack(track)) {
+      if (widget.isActiveCard && _playback.isCurrentTrack(track)) {
         if (_playback.isPlaying) {
-          await _playback.toggle(track);
+          final toggled = await _playback.toggle(track);
+          if (toggled) widget.onPlaybackActivated();
           return;
         }
         final resumed = await _playback.toggle(track);
-        if (resumed) return;
+        if (resumed) {
+          widget.onPlaybackActivated();
+          return;
+        }
         final resolved = await widget.onResolveTrack(track);
         if (!mounted) return;
         final playable = resolved ?? track;
         setState(() => _resolvedTrack = playable);
-        await _playback.playTrack(playable, position: _playback.position);
+        final played = await _playback.playTrack(
+          playable,
+          position: _playback.position,
+        );
+        if (played) widget.onPlaybackActivated();
         return;
       }
       final resolved = await widget.onResolveTrack(track);
       if (!mounted) return;
       final playable = resolved ?? track;
       setState(() => _resolvedTrack = playable);
-      await _playback.toggle(playable);
+      final played = await _playback.playTrack(
+        playable,
+        position: widget.initialPosition,
+      );
+      if (played) widget.onPlaybackActivated();
     } catch (_) {
       // Chat card controls should stay silent; the player page can show errors.
     }
   }
 
+  void _toggleFavorite(MusicTrack? track) {
+    if (track == null || widget.busyMusicFavoriteIds.contains(track.id)) return;
+    widget.onFavorite(track);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cardTrack = _currentCardTrack;
-    final track = _resolvedTrack?.id == cardTrack?.id
+    final displayTrack = _displayTrack;
+    final track = _resolvedTrack?.id == displayTrack?.id
         ? _resolvedTrack
-        : cardTrack;
+        : displayTrack;
     final title = track?.title ?? widget.card.title;
     final artist = track?.artist ?? widget.card.subtitle;
     final duration = track?.durationLabel ?? '';
     final library = widget.card.body.isNotEmpty ? widget.card.body : '音乐频道';
-    final isCurrent = _playback.isCurrentTrack(track);
+    final isCurrent = widget.isActiveCard && _playback.isCurrentTrack(track);
     final isPlaying = isCurrent && _playback.isPlaying;
+    final isFavorite =
+        track != null && widget.favoriteMusicTrackIds.contains(track.id);
+    final isFavoriteBusy =
+        track != null && widget.busyMusicFavoriteIds.contains(track.id);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: widget.onTap,
@@ -723,7 +884,7 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
                       Row(
                         children: [
                           Icon(
@@ -744,24 +905,42 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
                               ),
                             ),
                           ),
+                          const SizedBox(width: 6),
+                          _MusicCardIconButton(
+                            icon: isFavorite
+                                ? CupertinoIcons.heart_fill
+                                : CupertinoIcons.heart,
+                            enabled: track != null && !isFavoriteBusy,
+                            color: isFavorite
+                                ? const Color(0xFFFF5C8A)
+                                : Colors.white.withValues(alpha: 0.70),
+                            onPressed: () => _toggleFavorite(track),
+                          ),
+                          _MusicCardIconButton(
+                            icon: CupertinoIcons.backward_fill,
+                            enabled: widget.canGoPrevious && !widget.isBusy,
+                            color: Colors.white.withValues(alpha: 0.70),
+                            onPressed: widget.onPrevious,
+                          ),
+                          _MusicCardIconButton(
+                            icon: isPlaying
+                                ? CupertinoIcons.pause_fill
+                                : CupertinoIcons.play_fill,
+                            emphasized: true,
+                            enabled: track != null && !widget.isBusy,
+                            color: widget.accent,
+                            onPressed: () =>
+                                unawaited(_toggleCardPlayback(track)),
+                          ),
+                          _MusicCardIconButton(
+                            icon: CupertinoIcons.forward_fill,
+                            enabled: !widget.isBusy,
+                            color: Colors.white.withValues(alpha: 0.70),
+                            onPressed: widget.onNext,
+                          ),
                         ],
                       ),
                     ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                CupertinoButton(
-                  minimumSize: Size.zero,
-                  padding: EdgeInsets.zero,
-                  onPressed: track == null
-                      ? null
-                      : () => unawaited(_toggleCardPlayback(track)),
-                  child: Icon(
-                    isPlaying
-                        ? CupertinoIcons.pause_circle_fill
-                        : CupertinoIcons.play_circle_fill,
-                    color: widget.accent,
-                    size: 32,
                   ),
                 ),
               ],
@@ -777,6 +956,77 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
     return rawTrack is Map
         ? MusicTrack.fromJson(Map<String, dynamic>.from(rawTrack))
         : null;
+  }
+
+  MusicTrack? get _displayTrack {
+    final library = _stationLibrary;
+    final liveTrack = _playback.track;
+    if (widget.isActiveCard &&
+        library != null &&
+        liveTrack != null &&
+        liveTrack.library == library) {
+      return liveTrack;
+    }
+    return _currentCardTrack;
+  }
+
+  String? get _stationLibrary {
+    final payloadLibrary = widget.card.payload['library']?.toString().trim();
+    if (payloadLibrary != null && payloadLibrary.isNotEmpty) {
+      return payloadLibrary;
+    }
+    final cardLibrary = _currentCardTrack?.library.trim();
+    return cardLibrary == null || cardLibrary.isEmpty ? null : cardLibrary;
+  }
+}
+
+class _MusicCardIconButton extends StatelessWidget {
+  const _MusicCardIconButton({
+    required this.icon,
+    required this.enabled,
+    required this.color,
+    required this.onPressed,
+    this.emphasized = false,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final Color color;
+  final VoidCallback onPressed;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = emphasized ? 30.0 : 25.0;
+    return CupertinoButton(
+      minimumSize: Size.zero,
+      padding: EdgeInsets.zero,
+      onPressed: enabled ? onPressed : null,
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: emphasized && enabled ? color : Colors.transparent,
+          ),
+          child: Center(
+            child: Transform.translate(
+              offset: emphasized && icon == CupertinoIcons.play_fill
+                  ? const Offset(1.0, 0)
+                  : Offset.zero,
+              child: Icon(
+                icon,
+                size: emphasized ? 14 : 13,
+                color: enabled
+                    ? (emphasized ? const Color(0xFF071522) : color)
+                    : Colors.white.withValues(alpha: 0.24),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

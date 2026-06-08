@@ -35,11 +35,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _scrollController = ScrollController();
   final _inputController = TextEditingController();
   final _inputFocus = FocusNode();
+  final _playback = MusicPlaybackController.instance;
+  final _stationCardKey = GlobalKey(debugLabel: 'chat-station-card');
   final List<ChatMessage> _messages = [];
 
   ChatSocket? _socket;
   StreamSubscription<WsEnvelope>? _eventSub;
   StreamSubscription<ChatSocketState>? _stateSub;
+  StreamSubscription<void>? _musicCompleteSub;
   ComposerPanel _panel = ComposerPanel.none;
   ComposerPanel _heldPanel = ComposerPanel.none;
   Timer? _panelHoldTimer;
@@ -60,6 +63,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   ({String text, String clientId, ChatComponentCard? componentCard})?
   _pendingSend;
   int _achievementDemoIndex = 0;
+  ChatComponentCard? _stationCard;
+  String? _stationMessageId;
+  String? _stationLibrary;
+  String? _lastStationTrackId;
+  bool? _lastStationPlaying;
+  String? _activeMusicMessageId;
+  bool _stationCardDocked = false;
+  bool _advancingStation = false;
+  bool _openingMusicPage = false;
+  final Map<String, Duration> _musicCardPositions = {};
+  final Set<String> _favoriteMusicTrackIds = {};
+  final Set<String> _busyMusicFavoriteIds = {};
+  List<MusicTrack> _stationHistory = const [];
+  int _stationHistoryIndex = -1;
 
   String get _conversationId => widget.session.conversationId!;
 
@@ -68,6 +85,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_handleScroll);
+    _playback.addListener(_handleStationPlaybackChanged);
+    _musicCompleteSub = _playback.completed.listen((_) {
+      if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? true)) return;
+      final completedTrack = _playback.track;
+      if (_stationLibrary == null ||
+          completedTrack?.library != _stationLibrary) {
+        return;
+      }
+      unawaited(_playNextStationTrack(auto: true));
+    });
     _bootstrapChat();
   }
 
@@ -84,6 +111,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _scrollController.removeListener(_handleScroll);
+    _playback.removeListener(_handleStationPlaybackChanged);
     _scrollController.dispose();
     _inputController.dispose();
     _inputFocus.dispose();
@@ -93,6 +121,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _panelHoldTimer?.cancel();
     _capsuleScanTimer?.cancel();
     _conversationMetaTimer?.cancel();
+    _musicCompleteSub?.cancel();
     super.dispose();
   }
 
@@ -132,11 +161,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _pendingSend = null;
       _readyCapsule = null;
       _conversationMeta = null;
+      _stationCard = null;
+      _stationMessageId = null;
+      _stationLibrary = null;
+      _lastStationTrackId = null;
+      _lastStationPlaying = null;
+      _activeMusicMessageId = null;
+      _stationCardDocked = false;
+      _advancingStation = false;
+      _openingMusicPage = false;
+      _musicCardPositions.clear();
+      _favoriteMusicTrackIds.clear();
+      _busyMusicFavoriteIds.clear();
+      _stationHistory = const [];
+      _stationHistoryIndex = -1;
     });
     widget.onAchievementOverlayChanged?.call(false);
     await Future.wait([
       _loadLatestMessages(showLoading: true),
       _refreshConversationMeta(),
+      _loadMusicFavorites(),
     ]);
     unawaited(_scanReadyCapsules());
     _scheduleNextCapsuleScan();
@@ -216,7 +260,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _loadedServerMessages = _countServerMessages(_messages);
         _historyError = null;
       });
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+      _adoptLatestMusicStationFromMessages();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToBottom();
+        _updateStationCardDocked();
+      });
     } catch (error) {
       if (!mounted) return;
       setState(() => _historyError = _asMessage(error));
@@ -310,20 +358,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           ? MusicTrack.fromJson(Map<String, dynamic>.from(rawTrack))
           : null;
       if (track == null) return;
-      final initialTrack = await _resolveMusicTrack(track) ?? track;
-      if (!mounted) return;
-      final result = await Navigator.of(context).push<CapsuleChatDraft>(
-        CupertinoPageRoute<CapsuleChatDraft>(
-          fullscreenDialog: true,
-          builder: (_) => MusicPage(
-            api: widget.api,
-            session: widget.session,
-            initialTrack: initialTrack,
-          ),
-        ),
-      );
-      if (!mounted || result == null) return;
-      sendComponentMessage(result.agentText, result.card);
+      final cardLibrary = _libraryFromMusicCard(card);
+      final stationTrack = cardLibrary == _stationLibrary
+          ? _stationTrack
+          : null;
+      final targetTrack = stationTrack ?? track;
+      await _pushMusicPage(targetTrack);
       return;
     }
     if (card.type == 'checkin_reminder' || card.type == 'checkin_habit') {
@@ -374,20 +414,35 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Future<void> _openActiveMusic() async {
     final track = _conversationMeta?.musicCoListening?.track;
     if (track == null) return;
-    final initialTrack = await _resolveMusicTrack(track) ?? track;
-    if (!mounted) return;
-    final result = await Navigator.of(context).push<CapsuleChatDraft>(
-      CupertinoPageRoute<CapsuleChatDraft>(
-        fullscreenDialog: true,
-        builder: (_) => MusicPage(
-          api: widget.api,
-          session: widget.session,
-          initialTrack: initialTrack,
+    await _pushMusicPage(track);
+  }
+
+  Future<void> _openStationMusic() async {
+    final track = _stationTrack ?? _conversationMeta?.musicCoListening?.track;
+    if (track == null) return;
+    await _pushMusicPage(track);
+  }
+
+  Future<void> _pushMusicPage(MusicTrack initialTrack) async {
+    if (_openingMusicPage) return;
+    _openingMusicPage = true;
+    try {
+      if (!mounted) return;
+      final result = await Navigator.of(context).push<CapsuleChatDraft>(
+        CupertinoPageRoute<CapsuleChatDraft>(
+          fullscreenDialog: true,
+          builder: (_) => MusicPage(
+            api: widget.api,
+            session: widget.session,
+            initialTrack: initialTrack,
+          ),
         ),
-      ),
-    );
-    if (!mounted || result == null) return;
-    sendComponentMessage(result.agentText, result.card);
+      );
+      if (!mounted || result == null) return;
+      sendComponentMessage(result.agentText, result.card);
+    } finally {
+      _openingMusicPage = false;
+    }
   }
 
   Future<MusicTrack?> _resolveMusicTrack(MusicTrack track) async {
@@ -410,6 +465,22 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
     } catch (_) {
       return track.copyWith(url: '');
+    }
+  }
+
+  Future<void> _loadMusicFavorites() async {
+    final agentId = widget.session.agentId;
+    if (agentId == null || agentId.isEmpty) return;
+    try {
+      final response = await widget.api.listMusicFavorites(agentId: agentId);
+      if (!mounted) return;
+      setState(() {
+        _favoriteMusicTrackIds
+          ..clear()
+          ..addAll(response.tracks.map((item) => item.id));
+      });
+    } catch (_) {
+      // Favorites are decorative in chat; playback should not depend on them.
     }
   }
 
@@ -508,6 +579,324 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         .length;
   }
 
+  bool _isMusicStationCard(ChatComponentCard? card) {
+    return card?.type == 'music_track';
+  }
+
+  MusicTrack? _trackFromMusicCard(ChatComponentCard? card) {
+    if (!_isMusicStationCard(card)) return null;
+    final rawTrack = card!.payload['track'];
+    return rawTrack is Map
+        ? MusicTrack.fromJson(Map<String, dynamic>.from(rawTrack))
+        : null;
+  }
+
+  String? _libraryFromMusicCard(ChatComponentCard? card) {
+    if (!_isMusicStationCard(card)) return null;
+    final payloadLibrary = card!.payload['library']?.toString().trim();
+    if (payloadLibrary != null && payloadLibrary.isNotEmpty) {
+      return payloadLibrary;
+    }
+    final trackLibrary = _trackFromMusicCard(card)?.library.trim();
+    return trackLibrary == null || trackLibrary.isEmpty ? null : trackLibrary;
+  }
+
+  void _adoptLatestMusicStationFromMessages() {
+    for (final message in _messages.reversed) {
+      final card = message.componentCard;
+      if (!_isMusicStationCard(card)) continue;
+      final changed = _adoptMusicStation(card!, message.id);
+      if (changed && mounted) setState(() {});
+      return;
+    }
+  }
+
+  bool _adoptMusicStation(ChatComponentCard card, String messageId) {
+    final library = _libraryFromMusicCard(card);
+    final seedTrack = _trackFromMusicCard(card);
+    if (library == null || seedTrack == null) return false;
+    final changed =
+        _stationCard?.title != card.title ||
+        _stationMessageId != messageId ||
+        _stationLibrary != library;
+    _stationCard = card;
+    _stationMessageId = messageId;
+    _stationLibrary = library;
+    _rememberStationTrack(seedTrack);
+    return changed;
+  }
+
+  void _activateMusicStationCard(ChatComponentCard card, String messageId) {
+    if (!_isMusicStationCard(card)) return;
+    _activeMusicMessageId = messageId;
+    final changed = _adoptMusicStation(card, messageId);
+    if (changed && mounted) {
+      setState(() {});
+    } else if (mounted) {
+      setState(() {});
+    }
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _updateStationCardDocked(),
+    );
+  }
+
+  void _cacheActiveMusicPosition() {
+    final messageId = _activeMusicMessageId;
+    if (messageId == null || _playback.track == null) return;
+    _musicCardPositions[messageId] = _playback.position;
+  }
+
+  void _rememberStationTrack(MusicTrack track) {
+    if (_stationLibrary != null && track.library != _stationLibrary) return;
+    if (_stationHistoryIndex >= 0 &&
+        _stationHistoryIndex < _stationHistory.length &&
+        _stationHistory[_stationHistoryIndex].id == track.id) {
+      _stationHistory = [
+        ..._stationHistory.take(_stationHistoryIndex),
+        track,
+        ..._stationHistory.skip(_stationHistoryIndex + 1),
+      ];
+      return;
+    }
+    final keptHistory = _stationHistoryIndex < 0
+        ? const <MusicTrack>[]
+        : _stationHistory.take(_stationHistoryIndex + 1).toList();
+    final withoutDuplicate = keptHistory
+        .where((item) => item.id != track.id)
+        .toList();
+    _stationHistory = [...withoutDuplicate, track];
+    _stationHistoryIndex = _stationHistory.length - 1;
+  }
+
+  MusicTrack? get _stationTrack {
+    final library = _stationLibrary;
+    final liveTrack = _playback.track;
+    if (library != null && liveTrack != null && liveTrack.library == library) {
+      return liveTrack;
+    }
+    if (_stationHistoryIndex >= 0 &&
+        _stationHistoryIndex < _stationHistory.length) {
+      return _stationHistory[_stationHistoryIndex];
+    }
+    return _trackFromMusicCard(_stationCard);
+  }
+
+  bool get _isStationPlaying {
+    final track = _stationTrack;
+    return track != null &&
+        _playback.isCurrentTrack(track) &&
+        _playback.isPlaying;
+  }
+
+  bool get _canGoStationPrevious => _stationHistoryIndex > 0;
+
+  void _handleStationPlaybackChanged() {
+    _cacheActiveMusicPosition();
+    final track = _stationTrack;
+    if (track != null &&
+        _stationLibrary != null &&
+        track.library == _stationLibrary) {
+      _rememberStationTrack(track);
+    }
+    final trackId = track?.id;
+    final playing = _isStationPlaying;
+    final shouldRebuild =
+        trackId != _lastStationTrackId || playing != _lastStationPlaying;
+    _lastStationTrackId = trackId;
+    _lastStationPlaying = playing;
+    if (shouldRebuild) {
+      if (track != null) unawaited(_syncStationPlayback(track));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _updateStationCardDocked(),
+      );
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _playPreviousStationTrack() async {
+    if (!_canGoStationPrevious || _advancingStation) return;
+    final nextIndex = _stationHistoryIndex - 1;
+    final track = _stationHistory[nextIndex];
+    setState(() => _stationHistoryIndex = nextIndex);
+    await _startStationTrack(track, addToHistory: false);
+  }
+
+  Future<void> _playNextStationTrack({
+    bool auto = false,
+    int retryCount = 0,
+  }) async {
+    final agentId = widget.session.agentId;
+    final library = _stationLibrary;
+    if (agentId == null ||
+        agentId.isEmpty ||
+        library == null ||
+        library.isEmpty ||
+        _advancingStation) {
+      return;
+    }
+    var shouldRetry = false;
+    _advancingStation = true;
+    try {
+      final response = await widget.api.listMusicTracks(
+        agentId: agentId,
+        workspaceId: widget.session.workspaceId,
+        library: library,
+        excludeTrackId: _playback.track?.id ?? _stationTrack?.id,
+        limit: 1,
+        refresh: true,
+      );
+      if (!mounted || response.tracks.isEmpty) return;
+      final didStart = await _startStationTrack(response.tracks.first);
+      shouldRetry = !didStart && retryCount < 2;
+      if (!didStart && !shouldRetry && mounted && !auto) {
+        setState(() => _historyError = '这首歌暂时播放不了，正在换一首。');
+      }
+    } catch (error) {
+      if (mounted && !auto) setState(() => _historyError = _asMessage(error));
+    } finally {
+      _advancingStation = false;
+    }
+    if (mounted && shouldRetry) {
+      await _playNextStationTrack(auto: auto, retryCount: retryCount + 1);
+    }
+  }
+
+  Future<bool> _startStationTrack(
+    MusicTrack track, {
+    bool addToHistory = true,
+    Duration position = Duration.zero,
+  }) async {
+    final resolved = await _resolveMusicTrack(track) ?? track;
+    if (!mounted) return false;
+    final playable = resolved.url.isEmpty ? track : resolved;
+    final didStart = await _playback.playTrack(playable, position: position);
+    if (!mounted) return didStart;
+    if (addToHistory) {
+      setState(() => _rememberStationTrack(playable));
+    }
+    unawaited(_syncStationPlayback(playable));
+    return didStart;
+  }
+
+  Future<void> _toggleStationPlayback() async {
+    var track = _stationTrack;
+    if (track == null) return;
+    try {
+      if (_playback.isCurrentTrack(track)) {
+        if (!_playback.isPlaying && track.url.isEmpty) {
+          track = await _resolveMusicTrack(track) ?? track;
+        }
+        await _playback.toggle(track);
+      } else {
+        await _startStationTrack(track);
+      }
+      final activeTrack = _playback.track ?? track;
+      unawaited(_syncStationPlayback(activeTrack));
+    } catch (_) {
+      if (mounted) setState(() => _historyError = '这首歌暂时播放不了，正在换一首。');
+    }
+  }
+
+  Future<void> _toggleMusicFavorite(MusicTrack track) async {
+    final agentId = widget.session.agentId;
+    if (agentId == null ||
+        agentId.isEmpty ||
+        track.id.isEmpty ||
+        _busyMusicFavoriteIds.contains(track.id)) {
+      return;
+    }
+    final wasFavorite = _favoriteMusicTrackIds.contains(track.id);
+    setState(() {
+      _busyMusicFavoriteIds.add(track.id);
+      if (wasFavorite) {
+        _favoriteMusicTrackIds.remove(track.id);
+      } else {
+        _favoriteMusicTrackIds.add(track.id);
+      }
+    });
+    try {
+      if (wasFavorite) {
+        await widget.api.removeMusicFavorite(
+          agentId: agentId,
+          trackId: track.id,
+        );
+      } else {
+        final saved = await widget.api.addMusicFavorite(
+          agentId: agentId,
+          workspaceId: widget.session.workspaceId,
+          track: track.copyWith(isFavorite: true),
+        );
+        if (mounted && saved.id != track.id) {
+          setState(() {
+            _favoriteMusicTrackIds
+              ..remove(track.id)
+              ..add(saved.id);
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          if (wasFavorite) {
+            _favoriteMusicTrackIds.add(track.id);
+          } else {
+            _favoriteMusicTrackIds.remove(track.id);
+          }
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busyMusicFavoriteIds.remove(track.id));
+      }
+    }
+  }
+
+  Future<void> _syncStationPlayback(MusicTrack track) async {
+    final agentId = widget.session.agentId;
+    if (agentId == null || agentId.isEmpty) return;
+    try {
+      await widget.api.updateMusicNowPlaying(
+        agentId: agentId,
+        workspaceId: widget.session.workspaceId,
+        conversationId: _conversationId,
+        track: track,
+        positionSeconds: _playback.position.inSeconds,
+        isPlaying: _playback.isPlaying,
+      );
+      unawaited(_refreshConversationMeta());
+    } catch (_) {
+      // Playback controls should remain local even when presence sync fails.
+    }
+  }
+
+  void _updateStationCardDocked() {
+    if (!mounted) return;
+    final hasStation = _stationCard != null && _stationTrack != null;
+    if (!hasStation) {
+      if (_stationCardDocked) setState(() => _stationCardDocked = false);
+      return;
+    }
+    final context = _stationCardKey.currentContext;
+    var shouldDock = false;
+    if (context == null) {
+      shouldDock = _messages.any((item) => item.id == _stationMessageId);
+    } else {
+      final renderObject = context.findRenderObject();
+      if (renderObject is RenderBox && renderObject.hasSize) {
+        final topLeft = renderObject.localToGlobal(Offset.zero);
+        final bottom = topLeft.dy + renderObject.size.height;
+        final screenHeight = MediaQuery.sizeOf(this.context).height;
+        final bottomLimit =
+            screenHeight - _composerHeight - _tabBarContentHeight;
+        const dockRevealLine = 144.0;
+        shouldDock = bottom < dockRevealLine || topLeft.dy > bottomLimit;
+      }
+    }
+    if (!_stationCardDocked && shouldDock) {
+      setState(() => _stationCardDocked = true);
+    }
+  }
+
   void _handleScroll() {
     if (!_scrollController.hasClients) return;
     if (_scrollController.position.pixels <= _loadOlderThreshold &&
@@ -515,6 +904,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         !_loadingOlder) {
       unawaited(_loadOlderMessages());
     }
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _updateStationCardDocked(),
+    );
   }
 
   void _handleWsEvent(WsEnvelope envelope) {
@@ -534,6 +926,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 pending: false,
                 metadata: {...?message.metadata, 'client_id': clientId},
               );
+              if (_stationMessageId == clientId && messageId.isNotEmpty) {
+                _stationMessageId = messageId;
+              }
+              if (_activeMusicMessageId == clientId && messageId.isNotEmpty) {
+                _activeMusicMessageId = messageId;
+                final cachedPosition = _musicCardPositions.remove(clientId);
+                if (cachedPosition != null) {
+                  _musicCardPositions[messageId] = cachedPosition;
+                }
+              }
               break;
             }
           }
@@ -555,26 +957,30 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             ? ChatComponentCard.fromJson(rawComponentCard)
             : null;
         setState(() {
-          _messages.add(
-            ChatMessage.draft(
-              conversationId: _conversationId,
-              role: 'assistant',
-              content: text,
-              metadata: componentCard == null
-                  ? null
-                  : {'component_card': componentCard.toJson()},
-            ),
+          final draft = ChatMessage.draft(
+            conversationId: _conversationId,
+            role: 'assistant',
+            content: text,
+            metadata: componentCard == null
+                ? null
+                : {'component_card': componentCard.toJson()},
           );
+          _messages.add(draft);
+          if (_isMusicStationCard(componentCard)) {
+            _adoptMusicStation(componentCard!, draft.id);
+          }
           _sending = false;
         });
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => _scrollToBottom(animated: true),
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scrollToBottom(animated: true);
+          _updateStationCardDocked();
+        });
         break;
       case 'music_status':
         final text = payload['text']?.toString() ?? '';
         if (text.isEmpty) return;
         final messageId = payload['message_id']?.toString();
+        final status = payload['status']?.toString() ?? 'started';
         setState(() {
           _messages.add(
             ChatMessage(
@@ -586,10 +992,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               content: text,
               createdAt: DateTime.now(),
               metadata: {
-                'music_status': payload['status']?.toString() ?? 'started',
+                'music_status': status,
                 'music_track_title': payload['track_title']?.toString() ?? '',
                 'music_track_id': payload['track_id']?.toString() ?? '',
-                'music_co_listening': true,
+                'music_co_listening': status == 'started',
+                if (payload['reason'] != null)
+                  'music_ended_reason': payload['reason']?.toString() ?? '',
               },
               read: true,
             ),
@@ -707,6 +1115,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
     setState(() {
       _messages.add(draft);
+      if (_isMusicStationCard(componentCard)) {
+        _activeMusicMessageId = draft.id;
+        _adoptMusicStation(componentCard!, draft.id);
+      }
       if (componentCard == null) _inputController.clear();
       _panel = ComposerPanel.none;
       _sending = true;
@@ -723,9 +1135,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       unawaited(_socket?.connect());
     }
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _scrollToBottom(animated: true),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottom(animated: true);
+      _updateStationCardDocked();
+    });
   }
 
   void _scrollToBottom({bool animated = false}) {
@@ -863,7 +1276,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         ? math.max(keyboardLift, tabBarLift + panelHeight)
         : tabBarLift + panelHeight;
     final inputSurfaceHeight = _composerHeight + composerBottom;
+    final stationTrack = _stationTrack;
+    final showStationDock = _stationCardDocked && stationTrack != null;
     final listBottomPadding = inputSurfaceHeight + 18;
+    const listTopPadding = 10.0;
     final keyboardTransition = isKeyboardOpen || wasKeyboardOpen;
     final positionDuration = keyboardTransition
         ? Duration.zero
@@ -913,9 +1329,24 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           messages: _messages,
                           isLoadingOlder: _loadingOlder,
                           bottomPadding: listBottomPadding,
+                          topPadding: listTopPadding,
                           onComponentCardTap: _openComponentCard,
                           onAchievementTap: _openAchievementDetail,
                           onResolveMusicTrack: _resolveMusicTrack,
+                          onMusicCardActivated: _activateMusicStationCard,
+                          onMusicPrevious: () =>
+                              unawaited(_playPreviousStationTrack()),
+                          onMusicNext: () => unawaited(_playNextStationTrack()),
+                          onMusicFavorite: (track) =>
+                              unawaited(_toggleMusicFavorite(track)),
+                          activeMusicMessageId: _activeMusicMessageId,
+                          musicCardPositions: _musicCardPositions,
+                          favoriteMusicTrackIds: _favoriteMusicTrackIds,
+                          busyMusicFavoriteIds: _busyMusicFavoriteIds,
+                          canGoMusicPrevious: _canGoStationPrevious,
+                          isMusicBusy: _advancingStation,
+                          stationMessageId: _stationMessageId,
+                          stationMessageKey: _stationCardKey,
                           agentAvatarUrl: widget.session.agentAvatarUrl,
                         ),
                 ),
@@ -968,6 +1399,38 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           ),
           Positioned(
             top: 74,
+            left: 26,
+            right: 24,
+            child: AnimatedSlide(
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeOutCubic,
+              offset: showStationDock ? Offset.zero : const Offset(0, -0.35),
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                opacity: showStationDock ? 1 : 0,
+                child: IgnorePointer(
+                  ignoring: !showStationDock,
+                  child: stationTrack == null
+                      ? const SizedBox.shrink()
+                      : _StickyMusicDock(
+                          track: stationTrack,
+                          isPlaying: _isStationPlaying,
+                          canGoPrevious: _canGoStationPrevious,
+                          isBusy: _advancingStation,
+                          onTap: _openStationMusic,
+                          onPrevious: () =>
+                              unawaited(_playPreviousStationTrack()),
+                          onNext: () => unawaited(_playNextStationTrack()),
+                          onTogglePlay: () =>
+                              unawaited(_toggleStationPlayback()),
+                        ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 74,
             left: 18,
             right: 18,
             child: AnimatedSwitcher(
@@ -985,6 +1448,242 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ),
     );
   }
+}
+
+class _StickyMusicDock extends StatefulWidget {
+  const _StickyMusicDock({
+    required this.track,
+    required this.isPlaying,
+    required this.canGoPrevious,
+    required this.isBusy,
+    required this.onTap,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onTogglePlay,
+  });
+
+  final MusicTrack track;
+  final bool isPlaying;
+  final bool canGoPrevious;
+  final bool isBusy;
+  final VoidCallback onTap;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final VoidCallback onTogglePlay;
+
+  @override
+  State<_StickyMusicDock> createState() => _StickyMusicDockState();
+}
+
+class _StickyMusicDockState extends State<_StickyMusicDock>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _discController;
+
+  @override
+  void initState() {
+    super.initState();
+    _discController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 18000),
+    );
+    _syncDisc();
+  }
+
+  @override
+  void didUpdateWidget(covariant _StickyMusicDock oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isPlaying != widget.isPlaying ||
+        oldWidget.track.id != widget.track.id) {
+      _syncDisc();
+    }
+  }
+
+  void _syncDisc() {
+    if (widget.isPlaying) {
+      if (!_discController.isAnimating) _discController.repeat();
+    } else if (_discController.isAnimating) {
+      _discController.stop(canceled: false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _discController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _parseMusicDockColor(widget.track.accentA);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(32),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            height: 64,
+            padding: const EdgeInsets.fromLTRB(0, 0, 10, 0),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F1A27).withValues(alpha: 0.90),
+              borderRadius: BorderRadius.circular(32),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.13)),
+              boxShadow: [
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.20),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 64,
+                  height: 64,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: accent.withValues(alpha: 0.24),
+                          blurRadius: 18,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                    child: AnimatedBuilder(
+                      animation: _discController,
+                      builder: (context, child) {
+                        return Transform.rotate(
+                          angle: _discController.value * math.pi * 2,
+                          child: child,
+                        );
+                      },
+                      child: _MusicDisc(track: widget.track, size: 64),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _LoopingMarqueeText(
+                        text: widget.track.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          height: 1.12,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '随机频道 · ${widget.track.artist}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.62),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          height: 1.12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                _DockIconButton(
+                  icon: CupertinoIcons.backward_fill,
+                  enabled: widget.canGoPrevious && !widget.isBusy,
+                  accent: accent,
+                  onPressed: widget.onPrevious,
+                ),
+                _DockIconButton(
+                  icon: widget.isPlaying
+                      ? CupertinoIcons.pause_fill
+                      : CupertinoIcons.play_fill,
+                  emphasized: true,
+                  enabled: !widget.isBusy,
+                  accent: accent,
+                  onPressed: widget.onTogglePlay,
+                ),
+                _DockIconButton(
+                  icon: CupertinoIcons.forward_fill,
+                  enabled: !widget.isBusy,
+                  accent: accent,
+                  onPressed: widget.onNext,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DockIconButton extends StatelessWidget {
+  const _DockIconButton({
+    required this.icon,
+    required this.enabled,
+    required this.accent,
+    required this.onPressed,
+    this.emphasized = false,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final Color accent;
+  final bool emphasized;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final boxSize = emphasized ? 40.0 : 32.0;
+    return CupertinoButton(
+      minimumSize: Size.zero,
+      padding: EdgeInsets.zero,
+      onPressed: enabled ? onPressed : null,
+      child: SizedBox(
+        width: boxSize,
+        height: boxSize,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: emphasized && enabled ? accent : null,
+          ),
+          child: Center(
+            child: Transform.translate(
+              offset: emphasized && icon == CupertinoIcons.play_fill
+                  ? const Offset(1.2, 0)
+                  : Offset.zero,
+              child: Icon(
+                icon,
+                color: enabled
+                    ? (emphasized
+                          ? const Color(0xFF071522)
+                          : Colors.white.withValues(alpha: 0.72))
+                    : Colors.white.withValues(alpha: 0.26),
+                size: emphasized ? 18 : 15,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Color _parseMusicDockColor(String value) {
+  final hex = value.replaceFirst('#', '').trim();
+  if (hex.length != 6) return const Color(0xFF1FD7D2);
+  final intValue = int.tryParse(hex, radix: 16);
+  if (intValue == null) return const Color(0xFF1FD7D2);
+  return Color(0xFF000000 | intValue);
 }
 
 class _ReadyCapsuleBanner extends StatelessWidget {

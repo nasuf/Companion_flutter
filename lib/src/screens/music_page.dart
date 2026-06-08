@@ -227,9 +227,11 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
       });
       final initialTrack = widget.initialTrack;
       if (initialTrack != null) {
-        _selectedLibrary = initialTrack.library;
+        final playableInitialTrack = await _resolveInitialTrack(initialTrack);
+        if (!mounted) return;
+        _selectedLibrary = playableInitialTrack.library;
         await _startTrack(
-          initialTrack,
+          playableInitialTrack,
           addToHistory: true,
           preserveIfCurrent: true,
         );
@@ -242,6 +244,31 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
         _error = _formatError(error);
         _loading = false;
       });
+    }
+  }
+
+  Future<MusicTrack> _resolveInitialTrack(MusicTrack track) async {
+    if (_playback.isCurrentTrack(track)) {
+      return _playback.track ?? track;
+    }
+    if (_agentId.isEmpty || track.id.isEmpty) return track;
+    try {
+      final playUrl = await widget.api.getMusicTrackPlayUrl(
+        agentId: _agentId,
+        trackId: track.id,
+      );
+      if (playUrl.url.isEmpty) return track.copyWith(url: '');
+      return track.copyWith(
+        url: playUrl.url,
+        metadata: {
+          ...track.metadata,
+          'play_url_refreshed_at': DateTime.now().toIso8601String(),
+          if (playUrl.expiresAt != null)
+            'play_url_expires_at': playUrl.expiresAt!.toIso8601String(),
+        },
+      );
+    } catch (_) {
+      return track;
     }
   }
 
@@ -522,7 +549,10 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
       accent: track.accentA,
       payload: {
         'intent': 'invite',
+        'mode': 'random_station',
         'source': 'music_page',
+        'library': track.library,
+        'library_title': _libraryTitle(track.library),
         'track': track.toJson(),
       },
     );
