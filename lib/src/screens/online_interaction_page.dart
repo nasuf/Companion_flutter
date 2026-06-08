@@ -5,10 +5,12 @@ class OnlineInteractionPage extends StatefulWidget {
     super.key,
     required this.api,
     required this.session,
+    this.onSendToChat,
   });
 
   final CompanionApi api;
   final AuthSession session;
+  final ValueChanged<CapsuleChatDraft>? onSendToChat;
 
   @override
   State<OnlineInteractionPage> createState() => _OnlineInteractionPageState();
@@ -33,9 +35,9 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
     super.dispose();
   }
 
-  void _openPortal(_OnlinePortal portal) {
-    Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+  Future<void> _openPortal(_OnlinePortal portal) async {
+    final result = await Navigator.of(context).push<CapsuleChatDraft>(
+      CupertinoPageRoute<CapsuleChatDraft>(
         builder: (_) {
           if (portal.id == 'music') {
             return MusicPage(api: widget.api, session: widget.session);
@@ -48,6 +50,8 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
         },
       ),
     );
+    if (!mounted || result == null) return;
+    widget.onSendToChat?.call(result);
   }
 
   @override

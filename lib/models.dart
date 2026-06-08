@@ -191,6 +191,12 @@ class Conversation {
     required this.agentId,
     this.workspaceId,
     this.title,
+    this.createdAt,
+    this.updatedAt,
+    this.interactionDays,
+    this.aiStatus,
+    this.aiStatusLabel,
+    this.aiActivity,
   });
 
   final String id;
@@ -198,6 +204,12 @@ class Conversation {
   final String agentId;
   final String? workspaceId;
   final String? title;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final int? interactionDays;
+  final String? aiStatus;
+  final String? aiStatusLabel;
+  final String? aiActivity;
 
   factory Conversation.fromJson(Map<String, dynamic> json) {
     return Conversation(
@@ -206,6 +218,12 @@ class Conversation {
       agentId: json['agent_id'] as String? ?? '',
       workspaceId: json['workspace_id'] as String?,
       title: json['title'] as String?,
+      createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
+      updatedAt: DateTime.tryParse(json['updated_at'] as String? ?? ''),
+      interactionDays: (json['interaction_days'] as num?)?.round(),
+      aiStatus: json['ai_status'] as String?,
+      aiStatusLabel: json['ai_status_label'] as String?,
+      aiActivity: json['ai_activity'] as String?,
     );
   }
 }
@@ -233,6 +251,7 @@ class ChatMessage {
 
   bool get isMine => role == 'user';
   bool get isAchievement => role == 'achievement';
+  bool get isMusicStatus => metadata?['music_status'] != null;
   bool get isChatMessage => role == 'user' || role == 'assistant';
   bool get isDraft => id.startsWith('draft-');
   String? get clientId => metadata?['client_id'] as String?;
@@ -1029,10 +1048,28 @@ class MusicTrack {
   final bool playedByAgent;
   final Map<String, dynamic> metadata;
 
+  String? get coverImageUrl {
+    final direct =
+        _metadataString(metadata['image']) ??
+        _metadataString(metadata['album_image']) ??
+        _metadataString(metadata['cover_image']) ??
+        _metadataString(metadata['cover_url']);
+    if (direct != null) return direct;
+    final raw = metadata['raw'];
+    if (raw is Map) {
+      return _metadataString(raw['image']) ??
+          _metadataString(raw['album_image']) ??
+          _metadataString(raw['cover_image']) ??
+          _metadataString(raw['cover_url']);
+    }
+    return null;
+  }
+
   String get coverAsset => 'assets/prototype/music/$visualCoverKey';
   String get visualCoverKey {
     final cleanCover = coverKey.trim();
-    final generatedSource = source == 'audiolib' || source == 'mock';
+    final generatedSource =
+        source == 'jamendo' || source == 'audiolib' || source == 'mock';
     if (!generatedSource &&
         cleanCover.isNotEmpty &&
         cleanCover != 'music-cover-01.jpg') {
@@ -1047,6 +1084,15 @@ class MusicTrack {
     return 'music-cover-${index.toString().padLeft(2, '0')}.jpg';
   }
 
+  static String? _metadataString(Object? value) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text == 'null') return null;
+    if (!text.startsWith('http://') && !text.startsWith('https://')) {
+      return null;
+    }
+    return text;
+  }
+
   String get durationLabel {
     if (durationSec <= 0) return '--:--';
     final minutes = durationSec ~/ 60;
@@ -1058,15 +1104,15 @@ class MusicTrack {
     return MusicTrack(
       id: json['id'] as String? ?? '',
       title: json['title'] as String? ?? 'Untitled Audio',
-      artist: json['artist'] as String? ?? 'AudioLib',
-      album: json['album'] as String? ?? 'Curated Library',
-      library: json['library'] as String? ?? 'audio.focus',
+      artist: json['artist'] as String? ?? 'Jamendo',
+      album: json['album'] as String? ?? 'Jamendo Library',
+      library: json['library'] as String? ?? 'focus',
       url: json['url'] as String? ?? '',
       durationSec: (json['duration_sec'] as num?)?.round() ?? 0,
       coverKey: json['cover_key'] as String? ?? 'music-cover-01.jpg',
       accentA: json['accent_a'] as String? ?? '#1f6fff',
       accentB: json['accent_b'] as String? ?? '#18c6c0',
-      source: json['source'] as String? ?? 'audiolib',
+      source: json['source'] as String? ?? 'jamendo',
       isFavorite: json['is_favorite'] as bool? ?? false,
       playedByAgent: json['played_by_agent'] as bool? ?? false,
       metadata: json['metadata'] is Map
@@ -1092,14 +1138,19 @@ class MusicTrack {
     };
   }
 
-  MusicTrack copyWith({bool? isFavorite, bool? playedByAgent}) {
+  MusicTrack copyWith({
+    String? url,
+    bool? isFavorite,
+    bool? playedByAgent,
+    Map<String, dynamic>? metadata,
+  }) {
     return MusicTrack(
       id: id,
       title: title,
       artist: artist,
       album: album,
       library: library,
-      url: url,
+      url: url ?? this.url,
       durationSec: durationSec,
       coverKey: coverKey,
       accentA: accentA,
@@ -1107,7 +1158,30 @@ class MusicTrack {
       source: source,
       isFavorite: isFavorite ?? this.isFavorite,
       playedByAgent: playedByAgent ?? this.playedByAgent,
-      metadata: metadata,
+      metadata: metadata ?? this.metadata,
+    );
+  }
+}
+
+class MusicTrackPlayUrl {
+  const MusicTrackPlayUrl({
+    required this.trackId,
+    required this.url,
+    this.expiresAt,
+  });
+
+  final String trackId;
+  final String url;
+  final DateTime? expiresAt;
+
+  factory MusicTrackPlayUrl.fromJson(Map<String, dynamic> json) {
+    final expiresRaw = json['expires_at'] as String?;
+    return MusicTrackPlayUrl(
+      trackId: json['track_id'] as String? ?? '',
+      url: json['url'] as String? ?? '',
+      expiresAt: expiresRaw == null || expiresRaw.isEmpty
+          ? null
+          : DateTime.tryParse(expiresRaw),
     );
   }
 }
@@ -1154,7 +1228,7 @@ class MusicLibrary {
 
   factory MusicLibrary.fromJson(Map<String, dynamic> json) {
     return MusicLibrary(
-      id: json['id'] as String? ?? 'audio.focus',
+      id: json['id'] as String? ?? 'focus',
       title: json['title'] as String? ?? '专注',
       subtitle: json['subtitle'] as String? ?? '',
     );
@@ -1182,7 +1256,7 @@ class MusicLibrariesResponse {
                 )
                 .toList()
           : const [],
-      defaultLibrary: json['default_library'] as String? ?? 'audio.focus',
+      defaultLibrary: json['default_library'] as String? ?? 'focus',
     );
   }
 }

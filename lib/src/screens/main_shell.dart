@@ -112,6 +112,16 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
+  void _sendDraftToChat(CapsuleChatDraft draft) {
+    setState(() => _index = 0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chatPageKey.currentState?.sendComponentMessage(
+        draft.agentText,
+        draft.card,
+      );
+    });
+  }
+
   void _handleAgentDeleted(AuthSession session) {
     _setChatSidebarOpen(false);
     setState(() => _index = 0);
@@ -137,7 +147,11 @@ class _MainShellState extends State<MainShell> {
           );
     final pages = [
       chatPage,
-      OnlineInteractionPage(api: widget.api, session: widget.session),
+      OnlineInteractionPage(
+        api: widget.api,
+        session: widget.session,
+        onSendToChat: _sendDraftToChat,
+      ),
       OfflineInteractionPage(agentName: widget.session.agentName ?? '伴生'),
       ProfilePage(
         api: widget.api,

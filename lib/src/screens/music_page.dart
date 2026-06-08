@@ -1,10 +1,16 @@
 part of 'package:companion_flutter/main.dart';
 
 class MusicPage extends StatefulWidget {
-  const MusicPage({super.key, required this.api, required this.session});
+  const MusicPage({
+    super.key,
+    required this.api,
+    required this.session,
+    this.initialTrack,
+  });
 
   final CompanionApi api;
   final AuthSession session;
+  final MusicTrack? initialTrack;
 
   @override
   State<MusicPage> createState() => _MusicPageState();
@@ -38,18 +44,15 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
     0.98,
   ];
   static const _fallbackLibraries = [
-    MusicLibrary(id: 'audio.focus', title: '专注', subtitle: '工作和阅读'),
-    MusicLibrary(id: 'audio.relax', title: '放松', subtitle: '慢下来'),
-    MusicLibrary(id: 'audio.sleep', title: '睡眠', subtitle: '夜间陪伴'),
+    MusicLibrary(id: 'focus', title: '专注', subtitle: '工作和阅读'),
+    MusicLibrary(id: 'ambient', title: 'Ambient', subtitle: '随机频道'),
+    MusicLibrary(id: 'sleep', title: '睡眠', subtitle: '夜间陪伴'),
   ];
 
   late final AnimationController _ambientController;
   late final AnimationController _discController;
   late final AnimationController _waveController;
-  late final AudioPlayer _player;
-  StreamSubscription<Duration>? _positionSub;
-  StreamSubscription<Duration>? _durationSub;
-  StreamSubscription<PlayerState>? _stateSub;
+  late final MusicPlaybackController _playback;
   StreamSubscription<void>? _completeSub;
 
   List<MusicLibrary> _libraries = _fallbackLibraries;
@@ -57,7 +60,7 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
   List<MusicTrack> _history = const [];
   int _historyIndex = -1;
   MusicTrack? _currentTrack;
-  String _selectedLibrary = 'audio.focus';
+  String _selectedLibrary = 'focus';
   Duration _position = Duration.zero;
   Duration _duration = const Duration(seconds: 238);
   bool _loading = true;
@@ -153,25 +156,14 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
     _discController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 18000),
-    )..repeat();
+    );
     _waveController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1350),
     );
-    _player = AudioPlayer();
-    _positionSub = _player.onPositionChanged.listen((position) {
-      if (mounted && !_seeking) setState(() => _position = position);
-    });
-    _durationSub = _player.onDurationChanged.listen((duration) {
-      if (mounted && duration.inMilliseconds > 0) {
-        setState(() => _duration = duration);
-      }
-    });
-    _stateSub = _player.onPlayerStateChanged.listen((state) {
-      if (!mounted) return;
-      _setPlayingState(state == PlayerState.playing);
-    });
-    _completeSub = _player.onPlayerComplete.listen((_) {
+    _playback = MusicPlaybackController.instance;
+    _playback.addListener(_handlePlaybackChanged);
+    _completeSub = _playback.completed.listen((_) {
       if (mounted) unawaited(_playRandom(refresh: true));
     });
     _load();
@@ -179,15 +171,27 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _positionSub?.cancel();
-    _durationSub?.cancel();
-    _stateSub?.cancel();
     _completeSub?.cancel();
-    _player.dispose();
+    _playback.removeListener(_handlePlaybackChanged);
     _ambientController.dispose();
     _discController.dispose();
     _waveController.dispose();
     super.dispose();
+  }
+
+  void _handlePlaybackChanged() {
+    if (!mounted) return;
+    final track = _playback.track;
+    setState(() {
+      if (track != null) _currentTrack = _withFavoriteState(track);
+      if (!_seeking) _position = _playback.position;
+      if (_playback.duration.inMilliseconds > 0) {
+        _duration = _playback.duration;
+      }
+      _isPlaying = _playback.isPlaying;
+    });
+    _syncDiscAnimation(_playback.isPlaying);
+    _syncWaveAnimation(_playback.isPlaying);
   }
 
   Future<void> _load() async {
@@ -221,7 +225,17 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
         _favoriteTracks = favorites.tracks;
         _loading = false;
       });
-      await _playRandom(refresh: true);
+      final initialTrack = widget.initialTrack;
+      if (initialTrack != null) {
+        _selectedLibrary = initialTrack.library;
+        await _startTrack(
+          initialTrack,
+          addToHistory: true,
+          preserveIfCurrent: true,
+        );
+      } else {
+        await _playRandom(refresh: true);
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -231,8 +245,9 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> _playRandom({required bool refresh}) async {
+  Future<void> _playRandom({required bool refresh, int retryCount = 0}) async {
     if (_agentId.isEmpty || _loadingTrack) return;
+    final excludeTrackId = refresh ? _currentTrack?.id : null;
     setState(() {
       _loadingTrack = true;
       _error = null;
@@ -242,6 +257,7 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
         agentId: _agentId,
         workspaceId: widget.session.workspaceId,
         library: _selectedLibrary,
+        excludeTrackId: excludeTrackId,
         limit: 1,
         refresh: refresh,
       );
@@ -251,7 +267,11 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
         setState(() => _error = '暂时没有拿到这类音乐，稍后再试一次。');
         return;
       }
-      await _startTrack(track, addToHistory: true);
+      final played = await _startTrack(track, addToHistory: true);
+      if (!played && mounted && retryCount < 2) {
+        setState(() => _loadingTrack = false);
+        await _playRandom(refresh: true, retryCount: retryCount + 1);
+      }
     } catch (error) {
       if (mounted) setState(() => _error = _formatError(error));
     } finally {
@@ -259,20 +279,23 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> _startTrack(
+  Future<bool> _startTrack(
     MusicTrack track, {
     required bool addToHistory,
+    bool preserveIfCurrent = false,
   }) async {
     final selected = _withFavoriteState(track).copyWith(playedByAgent: true);
+    final isPreserving =
+        preserveIfCurrent && _playback.isCurrentTrack(selected);
     final nextDuration = Duration(
       seconds: selected.durationSec > 0 ? selected.durationSec : 238,
     );
     setState(() {
       _seekGeneration += 1;
       _currentTrack = selected;
-      _position = Duration.zero;
+      _position = isPreserving ? _playback.position : Duration.zero;
       _duration = nextDuration;
-      _isPlaying = true;
+      _isPlaying = isPreserving ? _playback.isPlaying : true;
       _lyricsMode = false;
       _seeking = false;
       if (addToHistory) {
@@ -283,26 +306,40 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
         _historyIndex = _history.length - 1;
       }
     });
-    _syncWaveAnimation(true);
+    _syncWaveAnimation(_isPlaying);
+    _syncDiscAnimation(_isPlaying);
+    var didStart = false;
     if (selected.url.isNotEmpty) {
-      try {
-        await _player.stop();
-        await _player.play(UrlSource(selected.url));
-      } catch (error) {
+      didStart = await _playback.playTrack(
+        selected,
+        position: _position,
+        preserveIfCurrent: preserveIfCurrent,
+      );
+      if (!didStart) {
         if (mounted) {
           _setPlayingState(false);
-          setState(() => _error = _formatError(error));
+          setState(() => _error = '这首歌暂时播放不了，正在换一首。');
         }
       }
     }
     unawaited(_syncPlayback(selected));
+    return didStart;
   }
 
   void _setPlayingState(bool isPlaying) {
     if (_isPlaying != isPlaying) {
       setState(() => _isPlaying = isPlaying);
     }
+    _syncDiscAnimation(isPlaying);
     _syncWaveAnimation(isPlaying);
+  }
+
+  void _syncDiscAnimation(bool isPlaying) {
+    if (isPlaying) {
+      if (!_discController.isAnimating) _discController.repeat();
+    } else if (_discController.isAnimating) {
+      _discController.stop(canceled: false);
+    }
   }
 
   void _syncWaveAnimation(bool isPlaying) {
@@ -342,20 +379,8 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
   Future<void> _togglePlay() async {
     final track = _currentTrack;
     if (track == null) return;
-    final nextPlaying = !_isPlaying;
-    _setPlayingState(nextPlaying);
     try {
-      if (track.url.isNotEmpty) {
-        if (nextPlaying) {
-          if (_player.state == PlayerState.paused) {
-            await _player.resume();
-          } else {
-            await _player.play(UrlSource(track.url), position: _position);
-          }
-        } else {
-          await _player.pause();
-        }
-      }
+      await _playback.toggle(track);
       unawaited(_syncPlayback(track.copyWith(playedByAgent: true)));
     } catch (error) {
       if (mounted) setState(() => _error = _formatError(error));
@@ -383,7 +408,7 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
       _seeking = true;
     });
     try {
-      await _player.seek(target);
+      await _playback.seek(target);
       await Future<void>.delayed(const Duration(milliseconds: 120));
       if (!mounted || generation != _seekGeneration) return;
       setState(() {
@@ -471,6 +496,7 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
       await widget.api.updateMusicNowPlaying(
         agentId: _agentId,
         workspaceId: widget.session.workspaceId,
+        conversationId: widget.session.conversationId,
         track: track,
         positionSeconds: _position.inSeconds,
         isPlaying: _isPlaying,
@@ -482,6 +508,44 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
 
   void _toggleDisplay() {
     setState(() => _lyricsMode = !_lyricsMode);
+  }
+
+  void _shareToChat() {
+    final track = _currentTrack;
+    if (track == null) return;
+    final card = ChatComponentCard(
+      type: 'music_track',
+      title: track.title,
+      subtitle: track.artist,
+      body: '${_libraryTitle(track.library)} 频道',
+      footer: '邀请一起听',
+      accent: track.accentA,
+      payload: {
+        'intent': 'invite',
+        'source': 'music_page',
+        'track': track.toJson(),
+      },
+    );
+    Navigator.of(context).pop(CapsuleChatDraft(agentText: '', card: card));
+  }
+
+  Future<void> _endCoListeningAndBack() async {
+    final conversationId = widget.session.conversationId;
+    if (_agentId.isNotEmpty && conversationId != null) {
+      unawaited(_endCoListeningSilently(conversationId));
+    }
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _endCoListeningSilently(String conversationId) async {
+    try {
+      await widget.api.endMusicCoListening(
+        agentId: _agentId,
+        conversationId: conversationId,
+      );
+    } catch (_) {
+      // Leaving the player should not be blocked by co-listening presence sync.
+    }
   }
 
   void _showFavoriteSheet() {
@@ -552,8 +616,8 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
                 child: Column(
                   children: [
                     _MusicActions(
-                      onBack: () => Navigator.of(context).pop(),
-                      onShare: () {},
+                      onBack: () => unawaited(_endCoListeningAndBack()),
+                      onShare: _shareToChat,
                     ),
                     const SizedBox(height: 12),
                     _MusicHeader(agentName: _agentName),
@@ -1197,6 +1261,7 @@ class _MusicPlayerPanel extends StatelessWidget {
                             child: lyricsMode
                                 ? _MusicLyricsStage(
                                     key: const ValueKey('lyrics'),
+                                    track: current,
                                     lyrics: lyrics,
                                     isPlaying: isPlaying,
                                     animation: waveAnimation,
@@ -1321,7 +1386,7 @@ class _MusicDiscStage extends StatelessWidget {
               AnimatedBuilder(
                 animation: animation,
                 builder: (context, child) {
-                  final angle = isPlaying ? animation.value * math.pi * 2 : 0.0;
+                  final angle = animation.value * math.pi * 2;
                   return Transform.rotate(angle: angle, child: child);
                 },
                 child: _MusicDisc(track: track, size: size),
@@ -1356,7 +1421,11 @@ class _MusicDisc extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final coverUrl = track?.coverImageUrl;
     final asset = track?.coverAsset;
+    final coverProvider = coverUrl == null
+        ? (asset == null ? null : AssetImage(asset) as ImageProvider)
+        : NetworkImage(coverUrl) as ImageProvider;
     return Container(
       width: size,
       height: size,
@@ -1424,13 +1493,10 @@ class _MusicDisc extends StatelessWidget {
             height: size * 0.48,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              image: asset == null
+              image: coverProvider == null
                   ? null
-                  : DecorationImage(
-                      image: AssetImage(asset),
-                      fit: BoxFit.cover,
-                    ),
-              gradient: asset == null
+                  : DecorationImage(image: coverProvider, fit: BoxFit.cover),
+              gradient: coverProvider == null
                   ? const LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -1705,11 +1771,13 @@ class _MusicWaveStage extends StatelessWidget {
 class _MusicLyricsStage extends StatelessWidget {
   const _MusicLyricsStage({
     super.key,
+    required this.track,
     required this.lyrics,
     required this.isPlaying,
     required this.animation,
   });
 
+  final MusicTrack? track;
   final List<String> lyrics;
   final bool isPlaying;
   final Animation<double> animation;
@@ -1720,6 +1788,7 @@ class _MusicLyricsStage extends StatelessWidget {
       return _MusicInstrumentalStage(
         animation: animation,
         isPlaying: isPlaying,
+        isInstrumental: _isInstrumentalTrack(track),
       );
     }
     return GestureDetector(
@@ -1782,16 +1851,39 @@ class _MusicLyricsStage extends StatelessWidget {
       ),
     );
   }
+
+  static bool _isInstrumentalTrack(MusicTrack? track) {
+    final metadata = track?.metadata;
+    if (metadata == null || metadata.isEmpty) return false;
+    final direct = _metadataText(metadata['vocalinstrumental']);
+    if (direct != null) return direct == 'instrumental';
+    final raw = metadata['raw'];
+    if (raw is Map) {
+      final musicInfo = raw['musicinfo'];
+      if (musicInfo is Map) {
+        final nested = _metadataText(musicInfo['vocalinstrumental']);
+        if (nested != null) return nested == 'instrumental';
+      }
+    }
+    return false;
+  }
+
+  static String? _metadataText(Object? value) {
+    final text = value?.toString().trim().toLowerCase() ?? '';
+    return text.isEmpty || text == 'null' ? null : text;
+  }
 }
 
 class _MusicInstrumentalStage extends StatelessWidget {
   const _MusicInstrumentalStage({
     required this.animation,
     required this.isPlaying,
+    required this.isInstrumental,
   });
 
   final Animation<double> animation;
   final bool isPlaying;
+  final bool isInstrumental;
 
   @override
   Widget build(BuildContext context) {
@@ -1809,7 +1901,7 @@ class _MusicInstrumentalStage extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'INSTRUMENTAL',
+                    isInstrumental ? 'INSTRUMENTAL' : 'NO LYRICS',
                     style: TextStyle(
                       color: const Color(0xFF7DE7FF).withValues(alpha: 0.92),
                       fontSize: 11,
@@ -1875,7 +1967,7 @@ class _MusicInstrumentalStage extends StatelessWidget {
                   ),
                   SizedBox(height: compact ? 22 : 28),
                   Text(
-                    '纯音乐片段',
+                    isInstrumental ? '纯音乐片段' : '暂未收录歌词',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.92),
                       fontSize: compact ? 22 : 25,
@@ -1886,7 +1978,7 @@ class _MusicInstrumentalStage extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '没有歌词，跟着旋律呼吸就好',
+                    isInstrumental ? '没有歌词，跟着旋律呼吸就好' : '这首歌暂时没有歌词文本',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.48),
                       fontSize: 13,
@@ -2525,6 +2617,10 @@ class _FavoriteDisc extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final coverUrl = track.coverImageUrl;
+    final coverProvider = coverUrl == null
+        ? AssetImage(track.coverAsset) as ImageProvider
+        : NetworkImage(coverUrl) as ImageProvider;
     return Container(
       width: 46,
       height: 46,
@@ -2548,10 +2644,7 @@ class _FavoriteDisc extends StatelessWidget {
           height: 28,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            image: DecorationImage(
-              image: AssetImage(track.coverAsset),
-              fit: BoxFit.cover,
-            ),
+            image: DecorationImage(image: coverProvider, fit: BoxFit.cover),
             border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
           ),
         ),

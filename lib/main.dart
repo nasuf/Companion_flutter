@@ -48,6 +48,7 @@ part 'src/screens/online_interaction_page.dart';
 part 'src/screens/placeholder_page.dart';
 part 'src/screens/weather_page.dart';
 part 'src/services/checkin_notification_service.dart';
+part 'src/services/music_playback_controller.dart';
 part 'src/theme/app_colors.dart';
 part 'src/widgets/achievement_card.dart';
 part 'src/widgets/achievement_feedback.dart';

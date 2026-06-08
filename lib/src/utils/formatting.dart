@@ -7,12 +7,6 @@ String _formatTime(DateTime time) {
   return '$hour:$minute';
 }
 
-String _formatEta(int seconds) {
-  if (seconds < 60) return '$seconds 秒';
-  final minutes = (seconds / 60).ceil();
-  return '$minutes 分钟';
-}
-
 String _asMessage(Object error) {
   if (error is ApiException) return error.message;
   if (error is Exception) {

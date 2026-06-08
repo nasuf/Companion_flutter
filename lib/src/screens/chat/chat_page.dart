@@ -44,13 +44,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   ComposerPanel _heldPanel = ComposerPanel.none;
   Timer? _panelHoldTimer;
   Timer? _capsuleScanTimer;
+  Timer? _conversationMetaTimer;
   TimeCapsule? _readyCapsule;
+  Conversation? _conversationMeta;
   bool _loadingInitial = true;
   bool _loadingOlder = false;
   bool _hasOlderMessages = false;
   bool _sending = false;
-  bool _connecting = true;
-  String _typingHint = '连接中...';
   String? _historyError;
   int _loadedServerMessages = 0;
   double? _lastListBottomPadding;
@@ -92,6 +92,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _socket?.close();
     _panelHoldTimer?.cancel();
     _capsuleScanTimer?.cancel();
+    _conversationMetaTimer?.cancel();
     super.dispose();
   }
 
@@ -99,6 +100,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
     unawaited(_scanReadyCapsules());
+    unawaited(_refreshConversationMeta());
     _scheduleNextCapsuleScan();
   }
 
@@ -116,6 +118,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     await _socket?.close();
     _panelHoldTimer?.cancel();
     _capsuleScanTimer?.cancel();
+    _conversationMetaTimer?.cancel();
     if (!mounted) return;
     setState(() {
       _messages.clear();
@@ -126,16 +129,36 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _hasOlderMessages = false;
       _loadedServerMessages = 0;
       _historyError = null;
-      _connecting = true;
-      _typingHint = '连接中...';
       _pendingSend = null;
       _readyCapsule = null;
+      _conversationMeta = null;
     });
     widget.onAchievementOverlayChanged?.call(false);
-    await _loadLatestMessages(showLoading: true);
+    await Future.wait([
+      _loadLatestMessages(showLoading: true),
+      _refreshConversationMeta(),
+    ]);
     unawaited(_scanReadyCapsules());
     _scheduleNextCapsuleScan();
+    _scheduleConversationMetaRefresh();
     _connectSocket();
+  }
+
+  void _scheduleConversationMetaRefresh() {
+    _conversationMetaTimer?.cancel();
+    _conversationMetaTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      unawaited(_refreshConversationMeta());
+    });
+  }
+
+  Future<void> _refreshConversationMeta() async {
+    try {
+      final conversation = await widget.api.getConversation(_conversationId);
+      if (!mounted) return;
+      setState(() => _conversationMeta = conversation);
+    } catch (_) {
+      // Header metadata is decorative; chat should continue when it fails.
+    }
   }
 
   void _connectSocket() {
@@ -148,15 +171,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (!mounted) return;
       switch (state.status) {
         case ChatSocketStatus.connecting:
-          setState(() {
-            _connecting = true;
-            _typingHint = '连接中...';
-          });
+          break;
         case ChatSocketStatus.open:
-          setState(() {
-            _connecting = false;
-            _typingHint = '在线';
-          });
           final pending = _pendingSend;
           if (pending != null) {
             socket.sendMessage(
@@ -168,20 +184,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           }
           _loadLatestMessages(showLoading: false);
         case ChatSocketStatus.error:
-          setState(() {
-            _connecting = false;
-            _typingHint = '连接异常';
-          });
+          break;
         case ChatSocketStatus.closed:
-          setState(() {
-            _connecting = false;
-            _typingHint = state.code == 1000 ? '已断开' : '重连中';
-          });
+          break;
         case ChatSocketStatus.disconnected:
-          setState(() {
-            _connecting = false;
-            _typingHint = '未连接';
-          });
+          break;
       }
     });
     _eventSub = socket.events.listen(_handleWsEvent);
@@ -297,6 +304,28 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _openComponentCard(ChatComponentCard card) async {
+    if (card.type == 'music_track') {
+      final rawTrack = card.payload['track'];
+      final track = rawTrack is Map
+          ? MusicTrack.fromJson(Map<String, dynamic>.from(rawTrack))
+          : null;
+      if (track == null) return;
+      final initialTrack = await _resolveMusicTrack(track) ?? track;
+      if (!mounted) return;
+      final result = await Navigator.of(context).push<CapsuleChatDraft>(
+        CupertinoPageRoute<CapsuleChatDraft>(
+          fullscreenDialog: true,
+          builder: (_) => MusicPage(
+            api: widget.api,
+            session: widget.session,
+            initialTrack: initialTrack,
+          ),
+        ),
+      );
+      if (!mounted || result == null) return;
+      sendComponentMessage(result.agentText, result.card);
+      return;
+    }
     if (card.type == 'checkin_reminder' || card.type == 'checkin_habit') {
       final reminderId =
           card.payload['trigger_id']?.toString() ??
@@ -339,6 +368,29 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
     } catch (error) {
       if (mounted) setState(() => _historyError = _asMessage(error));
+    }
+  }
+
+  Future<MusicTrack?> _resolveMusicTrack(MusicTrack track) async {
+    final agentId = widget.session.agentId;
+    if (agentId == null || agentId.isEmpty || track.id.isEmpty) return track;
+    try {
+      final playUrl = await widget.api.getMusicTrackPlayUrl(
+        agentId: agentId,
+        trackId: track.id,
+      );
+      if (playUrl.url.isEmpty) return track;
+      return track.copyWith(
+        url: playUrl.url,
+        metadata: {
+          ...track.metadata,
+          'play_url_refreshed_at': DateTime.now().toIso8601String(),
+          if (playUrl.expiresAt != null)
+            'play_url_expires_at': playUrl.expiresAt!.toIso8601String(),
+        },
+      );
+    } catch (_) {
+      return track;
     }
   }
 
@@ -470,49 +522,67 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         });
         break;
       case 'delay':
-        final duration = (payload['duration'] as num?)?.round() ?? 0;
-        setState(() => _typingHint = '预计 ${_formatEta(duration)} 后回复');
         break;
       case 'pending':
-        final status = payload['status']?.toString() ?? 'pending';
-        final delay = (payload['delay'] as num?)?.round() ?? 0;
-        setState(() {
-          _sending = false;
-          if (status == 'aggregating') {
-            _typingHint = '消息已进入聚合';
-          } else if (status == 'queued') {
-            _typingHint = delay > 0
-                ? '已排队，预计 ${_formatEta(delay)} 后回复'
-                : '消息已排队';
-          } else {
-            _typingHint = '消息处理中';
-          }
-        });
+        setState(() => _sending = false);
         break;
       case 'reply':
       case 'proactive':
         final text = payload['text']?.toString() ?? '';
         if (text.isEmpty) return;
+        final rawComponentCard =
+            payload['component_card'] ?? payload['componentCard'];
+        final componentCard = rawComponentCard is Map
+            ? ChatComponentCard.fromJson(rawComponentCard)
+            : null;
         setState(() {
           _messages.add(
             ChatMessage.draft(
               conversationId: _conversationId,
               role: 'assistant',
               content: text,
+              metadata: componentCard == null
+                  ? null
+                  : {'component_card': componentCard.toJson()},
             ),
           );
           _sending = false;
-          _typingHint = '在线';
+        });
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _scrollToBottom(animated: true),
+        );
+        break;
+      case 'music_status':
+        final text = payload['text']?.toString() ?? '';
+        if (text.isEmpty) return;
+        final messageId = payload['message_id']?.toString();
+        setState(() {
+          _messages.add(
+            ChatMessage(
+              id: messageId?.isNotEmpty == true
+                  ? messageId!
+                  : 'music-status-${DateTime.now().microsecondsSinceEpoch}',
+              conversationId: _conversationId,
+              role: 'assistant',
+              content: text,
+              createdAt: DateTime.now(),
+              metadata: {
+                'music_status': payload['status']?.toString() ?? 'started',
+                'music_track_title': payload['track_title']?.toString() ?? '',
+                'music_track_id': payload['track_id']?.toString() ?? '',
+                'music_co_listening': true,
+              },
+              read: true,
+            ),
+          );
+          _sending = false;
         });
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => _scrollToBottom(animated: true),
         );
         break;
       case 'done':
-        setState(() {
-          _sending = false;
-          _typingHint = '在线';
-        });
+        setState(() => _sending = false);
         unawaited(_loadLatestMessages(showLoading: false));
         break;
       case 'error':
@@ -603,9 +673,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _sendText(String text, {ChatComponentCard? componentCard}) {
-    if (text.isEmpty) return;
+    if (text.isEmpty && componentCard == null) return;
     final clientId =
-        'draft-${DateTime.now().microsecondsSinceEpoch}-${text.hashCode}';
+        'draft-${DateTime.now().microsecondsSinceEpoch}-${(text.isEmpty ? componentCard!.title : text).hashCode}';
     final draft = ChatMessage.draft(
       conversationId: _conversationId,
       role: 'user',
@@ -620,7 +690,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (componentCard == null) _inputController.clear();
       _panel = ComposerPanel.none;
       _sending = true;
-      _typingHint = _connecting ? '连接未就绪，正在重连...' : '已发送';
     });
 
     final sent =
@@ -798,7 +867,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             children: [
               _ChatHeader(
                 agentName: widget.session.agentName ?? 'Companion',
-                subtitle: _connecting || _sending ? _typingHint : '在线',
+                interactionDays: _conversationMeta?.interactionDays,
                 avatarUrl: widget.session.agentAvatarUrl,
                 onAvatarDoubleTap: _showDemoAchievementNotice,
                 onOpenSidebar: widget.onOpenSidebar,
@@ -821,6 +890,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           bottomPadding: listBottomPadding,
                           onComponentCardTap: _openComponentCard,
                           onAchievementTap: _openAchievementDetail,
+                          onResolveMusicTrack: _resolveMusicTrack,
                           agentAvatarUrl: widget.session.agentAvatarUrl,
                         ),
                 ),

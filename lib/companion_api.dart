@@ -23,6 +23,39 @@ class CompanionApi {
 
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
 
+  String _absoluteUrl(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty ||
+        trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    if (!trimmed.startsWith('/')) return trimmed;
+    return '$baseUrl$trimmed';
+  }
+
+  MusicTrack _normalizeMusicTrack(MusicTrack track) {
+    return track.copyWith(url: _absoluteUrl(track.url));
+  }
+
+  MusicTracksResponse _normalizeMusicTracksResponse(MusicTracksResponse value) {
+    return MusicTracksResponse(
+      tracks: value.tracks.map(_normalizeMusicTrack).toList(),
+      apiEnabled: value.apiEnabled,
+      library: value.library,
+    );
+  }
+
+  MusicPlayback _normalizeMusicPlayback(MusicPlayback value) {
+    final track = value.track;
+    return MusicPlayback(
+      track: track == null ? null : _normalizeMusicTrack(track),
+      positionSeconds: value.positionSeconds,
+      isPlaying: value.isPlaying,
+      updatedAt: value.updatedAt,
+    );
+  }
+
   Future<dynamic> _request(
     String method,
     String path, {
@@ -279,6 +312,7 @@ class CompanionApi {
     required String agentId,
     String? workspaceId,
     String? library,
+    String? excludeTrackId,
     int limit = 1,
     bool refresh = false,
   }) async {
@@ -289,6 +323,9 @@ class CompanionApi {
     if (library != null && library.isNotEmpty) {
       params['library'] = library;
     }
+    if (excludeTrackId != null && excludeTrackId.isNotEmpty) {
+      params['exclude_track_id'] = excludeTrackId;
+    }
     if (refresh) {
       params['refresh'] = 'true';
     }
@@ -296,7 +333,7 @@ class CompanionApi {
     final json =
         await _request('GET', '/music/tracks?$query', debugLabel: 'music.list')
             as Map<String, dynamic>;
-    return MusicTracksResponse.fromJson(json);
+    return _normalizeMusicTracksResponse(MusicTracksResponse.fromJson(json));
   }
 
   Future<MusicLibrariesResponse> listMusicLibraries() async {
@@ -317,7 +354,28 @@ class CompanionApi {
               debugLabel: 'music.favorites',
             )
             as Map<String, dynamic>;
-    return MusicTracksResponse.fromJson(json);
+    return _normalizeMusicTracksResponse(MusicTracksResponse.fromJson(json));
+  }
+
+  Future<MusicTrackPlayUrl> getMusicTrackPlayUrl({
+    required String agentId,
+    required String trackId,
+  }) async {
+    final query = Uri(queryParameters: {'agent_id': agentId}).query;
+    final encodedTrackId = Uri.encodeComponent(trackId);
+    final json =
+        await _request(
+              'GET',
+              '/music/tracks/$encodedTrackId/play-url?$query',
+              debugLabel: 'music.play-url',
+            )
+            as Map<String, dynamic>;
+    final playUrl = MusicTrackPlayUrl.fromJson(json);
+    return MusicTrackPlayUrl(
+      trackId: playUrl.trackId,
+      url: _absoluteUrl(playUrl.url),
+      expiresAt: playUrl.expiresAt,
+    );
   }
 
   Future<MusicTrack> addMusicFavorite({
@@ -337,8 +395,10 @@ class CompanionApi {
               debugLabel: 'music.favorite.add',
             )
             as Map<String, dynamic>;
-    return MusicTrack.fromJson(
-      Map<String, dynamic>.from(json['track'] as Map? ?? const {}),
+    return _normalizeMusicTrack(
+      MusicTrack.fromJson(
+        Map<String, dynamic>.from(json['track'] as Map? ?? const {}),
+      ),
     );
   }
 
@@ -363,12 +423,13 @@ class CompanionApi {
               debugLabel: 'music.now',
             )
             as Map<String, dynamic>;
-    return MusicPlayback.fromJson(json);
+    return _normalizeMusicPlayback(MusicPlayback.fromJson(json));
   }
 
   Future<MusicPlayback> updateMusicNowPlaying({
     required String agentId,
     String? workspaceId,
+    String? conversationId,
     required MusicTrack track,
     required int positionSeconds,
     required bool isPlaying,
@@ -380,6 +441,7 @@ class CompanionApi {
               body: {
                 'agent_id': agentId,
                 'workspace_id': workspaceId,
+                'conversation_id': conversationId,
                 'track': track.toJson(),
                 'position_seconds': positionSeconds,
                 'is_playing': isPlaying,
@@ -387,7 +449,24 @@ class CompanionApi {
               debugLabel: 'music.now.update',
             )
             as Map<String, dynamic>;
-    return MusicPlayback.fromJson(json);
+    return _normalizeMusicPlayback(MusicPlayback.fromJson(json));
+  }
+
+  Future<void> endMusicCoListening({
+    required String agentId,
+    required String conversationId,
+    String reason = 'user_exit',
+  }) async {
+    await _request(
+      'POST',
+      '/music/co-listening/end',
+      body: {
+        'agent_id': agentId,
+        'conversation_id': conversationId,
+        'reason': reason,
+      },
+      debugLabel: 'music.co.end',
+    );
   }
 
   Future<AchievementsResponse> listAchievements({

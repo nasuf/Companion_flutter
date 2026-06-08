@@ -3,14 +3,14 @@ part of 'package:companion_flutter/main.dart';
 class _ChatHeader extends StatelessWidget {
   const _ChatHeader({
     required this.agentName,
-    required this.subtitle,
+    this.interactionDays,
     this.avatarUrl,
     required this.onAvatarDoubleTap,
     required this.onOpenSidebar,
   });
 
   final String agentName;
-  final String subtitle;
+  final int? interactionDays;
   final String? avatarUrl;
   final VoidCallback onAvatarDoubleTap;
   final VoidCallback onOpenSidebar;
@@ -18,7 +18,7 @@ class _ChatHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 66,
+      height: 70,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: const BoxDecoration(
         color: AppColors.page,
@@ -53,21 +53,13 @@ class _ChatHeader extends StatelessWidget {
                 const SizedBox(height: 2),
                 Row(
                   children: [
-                    const Icon(
-                      CupertinoIcons.flame_fill,
-                      size: 12,
-                      color: Color(0xFFFF8A22),
-                    ),
-                    const SizedBox(width: 3),
-                    Flexible(
-                      child: Text(
-                        subtitle,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 11,
-                        ),
-                      ),
+                    _HeaderPill(
+                      foreground: const Color(0xFFFF8A22),
+                      background: const Color(0xFFFFF1E4),
+                      icon: CupertinoIcons.flame_fill,
+                      label: interactionDays == null
+                          ? '互动中'
+                          : '互动第$interactionDays天',
                     ),
                   ],
                 ),
@@ -78,6 +70,67 @@ class _ChatHeader extends StatelessWidget {
             tooltip: '更多',
             onPressed: onOpenSidebar,
             icon: const Icon(CupertinoIcons.ellipsis, size: 24),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeaderPill extends StatelessWidget {
+  const _HeaderPill({
+    required this.label,
+    required this.foreground,
+    required this.background,
+    this.icon,
+  });
+
+  final String label;
+  final Color foreground;
+  final Color background;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      constraints: const BoxConstraints(minHeight: 21),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: foreground.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 12, color: foreground),
+            const SizedBox(width: 4),
+          ] else ...[
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: foreground,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 5),
+          ],
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: foreground,
+                fontSize: 11,
+                height: 1.1,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
