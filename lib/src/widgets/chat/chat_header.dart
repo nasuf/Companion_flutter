@@ -5,6 +5,9 @@ class _ChatHeader extends StatelessWidget {
     required this.agentName,
     this.interactionDays,
     this.avatarUrl,
+    this.isMusicListening = false,
+    this.isMusicPlaying = false,
+    this.onMusicTap,
     required this.onAvatarDoubleTap,
     required this.onOpenSidebar,
   });
@@ -12,6 +15,9 @@ class _ChatHeader extends StatelessWidget {
   final String agentName;
   final int? interactionDays;
   final String? avatarUrl;
+  final bool isMusicListening;
+  final bool isMusicPlaying;
+  final VoidCallback? onMusicTap;
   final VoidCallback onAvatarDoubleTap;
   final VoidCallback onOpenSidebar;
 
@@ -29,11 +35,26 @@ class _ChatHeader extends StatelessWidget {
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onDoubleTap: onAvatarDoubleTap,
-            child: _Avatar(
-              size: 44,
-              label: '伴',
-              imageUrl: avatarUrl,
-              gradient: [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                _Avatar(
+                  size: 44,
+                  label: '伴',
+                  imageUrl: avatarUrl,
+                  gradient: [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
+                ),
+                if (isMusicListening)
+                  Positioned(
+                    right: -2,
+                    bottom: -2,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onMusicTap,
+                      child: _ListeningBadge(isPlaying: isMusicPlaying),
+                    ),
+                  ),
+              ],
             ),
           ),
           const SizedBox(width: 10),
@@ -72,6 +93,102 @@ class _ChatHeader extends StatelessWidget {
             icon: const Icon(CupertinoIcons.ellipsis, size: 24),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ListeningBadge extends StatefulWidget {
+  const _ListeningBadge({required this.isPlaying});
+
+  final bool isPlaying;
+
+  @override
+  State<_ListeningBadge> createState() => _ListeningBadgeState();
+}
+
+class _ListeningBadgeState extends State<_ListeningBadge>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ListeningBadge oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isPlaying != widget.isPlaying) {
+      _sync();
+    }
+  }
+
+  void _sync() {
+    if (widget.isPlaying) {
+      _controller.repeat(reverse: true);
+    } else {
+      _controller.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final glow = widget.isPlaying ? 0.14 + _controller.value * 0.14 : 0.10;
+        final spread = widget.isPlaying ? 1.0 + _controller.value * 2.0 : 0.4;
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF24D7D3).withValues(alpha: glow),
+                blurRadius: 12,
+                spreadRadius: spread,
+              ),
+            ],
+          ),
+          child: child,
+        );
+      },
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          child: Container(
+            width: 18,
+            height: 18,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF82F5FF), Color(0xFF1F9CFF)],
+              ),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.86),
+                width: 1.4,
+              ),
+            ),
+            child: const Icon(
+              CupertinoIcons.headphones,
+              size: 10,
+              color: Colors.white,
+            ),
+          ),
+        ),
       ),
     );
   }

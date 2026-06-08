@@ -371,6 +371,25 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _openActiveMusic() async {
+    final track = _conversationMeta?.musicCoListening?.track;
+    if (track == null) return;
+    final initialTrack = await _resolveMusicTrack(track) ?? track;
+    if (!mounted) return;
+    final result = await Navigator.of(context).push<CapsuleChatDraft>(
+      CupertinoPageRoute<CapsuleChatDraft>(
+        fullscreenDialog: true,
+        builder: (_) => MusicPage(
+          api: widget.api,
+          session: widget.session,
+          initialTrack: initialTrack,
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
+    sendComponentMessage(result.agentText, result.card);
+  }
+
   Future<MusicTrack?> _resolveMusicTrack(MusicTrack track) async {
     final agentId = widget.session.agentId;
     if (agentId == null || agentId.isEmpty || track.id.isEmpty) return track;
@@ -379,7 +398,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         agentId: agentId,
         trackId: track.id,
       );
-      if (playUrl.url.isEmpty) return track;
+      if (playUrl.url.isEmpty) return track.copyWith(url: '');
       return track.copyWith(
         url: playUrl.url,
         metadata: {
@@ -390,7 +409,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         },
       );
     } catch (_) {
-      return track;
+      return track.copyWith(url: '');
     }
   }
 
@@ -577,6 +596,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           );
           _sending = false;
         });
+        unawaited(_refreshConversationMeta());
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => _scrollToBottom(animated: true),
         );
@@ -869,6 +889,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 agentName: widget.session.agentName ?? 'Companion',
                 interactionDays: _conversationMeta?.interactionDays,
                 avatarUrl: widget.session.agentAvatarUrl,
+                isMusicListening:
+                    _conversationMeta?.musicCoListening?.isActive ?? false,
+                isMusicPlaying:
+                    _conversationMeta?.musicCoListening?.isPlaying ?? false,
+                onMusicTap: _openActiveMusic,
                 onAvatarDoubleTap: _showDemoAchievementNotice,
                 onOpenSidebar: widget.onOpenSidebar,
               ),

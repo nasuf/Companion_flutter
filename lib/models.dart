@@ -197,6 +197,7 @@ class Conversation {
     this.aiStatus,
     this.aiStatusLabel,
     this.aiActivity,
+    this.musicCoListening,
   });
 
   final String id;
@@ -210,6 +211,7 @@ class Conversation {
   final String? aiStatus;
   final String? aiStatusLabel;
   final String? aiActivity;
+  final MusicCoListening? musicCoListening;
 
   factory Conversation.fromJson(Map<String, dynamic> json) {
     return Conversation(
@@ -224,6 +226,11 @@ class Conversation {
       aiStatus: json['ai_status'] as String?,
       aiStatusLabel: json['ai_status_label'] as String?,
       aiActivity: json['ai_activity'] as String?,
+      musicCoListening: json['music_co_listening'] is Map
+          ? MusicCoListening.fromJson(
+              Map<String, dynamic>.from(json['music_co_listening'] as Map),
+            )
+          : null,
     );
   }
 }
@@ -1282,6 +1289,43 @@ class MusicPlayback {
           : null,
       positionSeconds: (json['position_seconds'] as num?)?.round() ?? 0,
       isPlaying: json['is_playing'] as bool? ?? false,
+      updatedAt: DateTime.tryParse(json['updated_at'] as String? ?? ''),
+    );
+  }
+}
+
+class MusicCoListening {
+  const MusicCoListening({
+    required this.status,
+    required this.track,
+    required this.positionSeconds,
+    required this.isPlaying,
+    this.initiatedBy,
+    this.endedReason,
+    this.updatedAt,
+  });
+
+  final String status;
+  final MusicTrack? track;
+  final int positionSeconds;
+  final bool isPlaying;
+  final String? initiatedBy;
+  final String? endedReason;
+  final DateTime? updatedAt;
+
+  bool get isActive => status == 'active' && track != null;
+
+  factory MusicCoListening.fromJson(Map<String, dynamic> json) {
+    final rawTrack = json['track'];
+    return MusicCoListening(
+      status: json['status'] as String? ?? 'ended',
+      track: rawTrack is Map
+          ? MusicTrack.fromJson(Map<String, dynamic>.from(rawTrack))
+          : null,
+      positionSeconds: (json['position_seconds'] as num?)?.round() ?? 0,
+      isPlaying: json['is_playing'] as bool? ?? false,
+      initiatedBy: json['initiated_by'] as String?,
+      endedReason: json['ended_reason'] as String?,
       updatedAt: DateTime.tryParse(json['updated_at'] as String? ?? ''),
     );
   }
