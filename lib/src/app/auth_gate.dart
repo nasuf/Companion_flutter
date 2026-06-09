@@ -23,6 +23,24 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   void _logout() {
+    final api = _api;
+    final session = _session;
+    final agentId = session?.agentId;
+    final conversationId = session?.conversationId;
+    if (api != null &&
+        agentId != null &&
+        agentId.isNotEmpty &&
+        conversationId != null &&
+        conversationId.isNotEmpty) {
+      unawaited(
+        api.endMusicCoListening(
+          agentId: agentId,
+          conversationId: conversationId,
+          reason: 'user_logout',
+        ),
+      );
+    }
+    unawaited(MusicPlaybackController.instance.stop());
     setState(() {
       _api = null;
       _session = null;

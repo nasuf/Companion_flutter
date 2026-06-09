@@ -6,11 +6,13 @@ class MusicPage extends StatefulWidget {
     required this.api,
     required this.session,
     this.initialTrack,
+    this.endCoListeningOnBack = false,
   });
 
   final CompanionApi api;
   final AuthSession session;
   final MusicTrack? initialTrack;
+  final bool endCoListeningOnBack;
 
   @override
   State<MusicPage> createState() => _MusicPageState();
@@ -561,7 +563,9 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
 
   Future<void> _endCoListeningAndBack() async {
     final conversationId = widget.session.conversationId;
-    if (_agentId.isNotEmpty && conversationId != null) {
+    if (widget.endCoListeningOnBack &&
+        _agentId.isNotEmpty &&
+        conversationId != null) {
       unawaited(_endCoListeningSilently(conversationId));
     }
     if (mounted) Navigator.of(context).pop();
@@ -666,7 +670,10 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
                     Expanded(
                       child: _MusicPlayerPanel(
                         track: _currentTrack,
-                        loading: _loading || _loadingTrack,
+                        loading:
+                            _loading ||
+                            _loadingTrack ||
+                            _playback.isLoadingTrack(_currentTrack),
                         position: _position,
                         duration: _duration,
                         isPlaying: _isPlaying,
@@ -2162,7 +2169,7 @@ class _MusicControlDeck extends StatelessWidget {
             child: _PlayerIconButton(
               icon: CupertinoIcons.heart_fill,
               color: isFavorite
-                  ? const Color(0xFFFF6A8A)
+                  ? const Color(0xFF5ED8FF)
                   : Colors.white.withValues(alpha: 0.74),
               onPressed: onToggleFavorite,
             ),
@@ -2492,7 +2499,7 @@ class _MusicFavoritesSheet extends StatelessWidget {
                       children: [
                         const Icon(
                           CupertinoIcons.heart_fill,
-                          color: Color(0xFFFF6A8A),
+                          color: Color(0xFF5ED8FF),
                           size: 23,
                         ),
                         const SizedBox(width: 10),

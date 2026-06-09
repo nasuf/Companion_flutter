@@ -4,6 +4,9 @@ class _ChatHeader extends StatelessWidget {
   const _ChatHeader({
     required this.agentName,
     this.interactionDays,
+    this.aiStatus,
+    this.aiStatusLabel,
+    this.aiActivity,
     this.avatarUrl,
     this.isMusicListening = false,
     this.isMusicPlaying = false,
@@ -14,6 +17,9 @@ class _ChatHeader extends StatelessWidget {
 
   final String agentName;
   final int? interactionDays;
+  final String? aiStatus;
+  final String? aiStatusLabel;
+  final String? aiActivity;
   final String? avatarUrl;
   final bool isMusicListening;
   final bool isMusicPlaying;
@@ -23,6 +29,12 @@ class _ChatHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final statusLabel = _formatAgentStatusLabel(
+      status: aiStatus,
+      label: aiStatusLabel,
+      activity: aiActivity,
+    );
+    final statusColor = _agentStatusColor(aiStatus);
     return Container(
       height: 70,
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -63,13 +75,30 @@ class _ChatHeader extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  agentName,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        agentName,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    if (statusLabel != null) ...[
+                      const SizedBox(width: 7),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 126),
+                        child: _HeaderPill(
+                          foreground: statusColor.foreground,
+                          background: statusColor.background,
+                          label: statusLabel,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 2),
                 Row(
@@ -96,6 +125,59 @@ class _ChatHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+({Color foreground, Color background}) _agentStatusColor(String? status) {
+  return switch (status) {
+    'idle' => (
+      foreground: const Color(0xFF15A66A),
+      background: const Color(0xFFE9FAF2),
+    ),
+    'busy' || 'very_busy' => (
+      foreground: const Color(0xFFE88424),
+      background: const Color(0xFFFFF4E8),
+    ),
+    'sleep' => (
+      foreground: const Color(0xFF6470D8),
+      background: const Color(0xFFEFF1FF),
+    ),
+    _ => (
+      foreground: const Color(0xFF7B8794),
+      background: const Color(0xFFF2F5F8),
+    ),
+  };
+}
+
+String? _formatAgentStatusLabel({
+  required String? status,
+  required String? label,
+  required String? activity,
+}) {
+  final cleanStatus = status?.trim();
+  final statusText = _firstNonEmpty(label, switch (cleanStatus) {
+    'idle' => '空闲',
+    'busy' => '忙碌',
+    'very_busy' => '很忙',
+    'sleep' => '睡眠',
+    _ => cleanStatus,
+  });
+  if (statusText == null) return null;
+
+  final cleanActivity = activity?.trim();
+  if (cleanActivity == null ||
+      cleanActivity.isEmpty ||
+      cleanActivity == statusText) {
+    return statusText;
+  }
+  return '$statusText · $cleanActivity';
+}
+
+String? _firstNonEmpty(String? primary, String? fallback) {
+  final cleanPrimary = primary?.trim();
+  if (cleanPrimary != null && cleanPrimary.isNotEmpty) return cleanPrimary;
+  final cleanFallback = fallback?.trim();
+  if (cleanFallback != null && cleanFallback.isNotEmpty) return cleanFallback;
+  return null;
 }
 
 class _ListeningBadge extends StatefulWidget {

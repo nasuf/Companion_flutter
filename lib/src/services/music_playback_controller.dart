@@ -39,12 +39,15 @@ class MusicPlaybackController extends ChangeNotifier {
   Duration _position = Duration.zero;
   Duration _duration = const Duration(seconds: 238);
   bool _isPlaying = false;
+  bool _isLoading = false;
   bool _seeking = false;
+  String? _loadingTrackId;
 
   MusicTrack? get track => _track;
   Duration get position => _position;
   Duration get duration => _duration;
   bool get isPlaying => _isPlaying;
+  bool get isLoading => _isLoading;
   Stream<void> get completed => _completed.stream;
 
   Source _sourceFor(MusicTrack track) {
@@ -53,6 +56,9 @@ class MusicPlaybackController extends ChangeNotifier {
 
   bool isCurrentTrack(MusicTrack? value) =>
       value != null && _track != null && value.id == _track!.id;
+
+  bool isLoadingTrack(MusicTrack? value) =>
+      value != null && _isLoading && value.id == _loadingTrackId;
 
   void adoptIfCurrent(MusicTrack track) {
     if (!isCurrentTrack(track)) return;
@@ -73,17 +79,23 @@ class MusicPlaybackController extends ChangeNotifier {
     _duration = Duration(
       seconds: track.durationSec > 0 ? track.durationSec : _duration.inSeconds,
     );
-    _isPlaying = track.url.isNotEmpty;
+    _isPlaying = false;
+    _isLoading = track.url.isNotEmpty;
+    _loadingTrackId = _isLoading ? track.id : null;
     notifyListeners();
     if (track.url.isEmpty) return false;
     try {
       await _player.stop();
       await _player.play(_sourceFor(track), position: position);
+      _isPlaying = true;
       return true;
     } catch (_) {
       _isPlaying = false;
-      notifyListeners();
       return false;
+    } finally {
+      _isLoading = false;
+      _loadingTrackId = null;
+      notifyListeners();
     }
   }
 
@@ -97,19 +109,27 @@ class MusicPlaybackController extends ChangeNotifier {
       await _player.pause();
       return true;
     } else {
-      _isPlaying = true;
+      _isLoading = true;
+      _loadingTrackId = track.id;
       notifyListeners();
       try {
         if (_player.state == PlayerState.paused) {
           await _player.resume();
         } else if (track.url.isNotEmpty) {
           await _player.play(_sourceFor(track), position: _position);
+        } else {
+          _isPlaying = false;
+          return false;
         }
+        _isPlaying = true;
         return true;
       } catch (_) {
         _isPlaying = false;
-        notifyListeners();
         return false;
+      } finally {
+        _isLoading = false;
+        _loadingTrackId = null;
+        notifyListeners();
       }
     }
   }
@@ -123,6 +143,16 @@ class MusicPlaybackController extends ChangeNotifier {
     _seeking = false;
     _position = target;
     notifyListeners();
+  }
+
+  Future<void> stop() async {
+    _track = null;
+    _position = Duration.zero;
+    _isPlaying = false;
+    _isLoading = false;
+    _loadingTrackId = null;
+    notifyListeners();
+    await _player.stop();
   }
 
   @override

@@ -68,10 +68,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   String? _stationLibrary;
   String? _lastStationTrackId;
   bool? _lastStationPlaying;
+  bool? _lastStationLoading;
   String? _activeMusicMessageId;
   bool _stationCardDocked = false;
+  bool _stationDockActive = false;
   bool _advancingStation = false;
   bool _openingMusicPage = false;
+  Timer? _stationPauseTimer;
   final Map<String, Duration> _musicCardPositions = {};
   final Set<String> _favoriteMusicTrackIds = {};
   final Set<String> _busyMusicFavoriteIds = {};
@@ -121,6 +124,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _panelHoldTimer?.cancel();
     _capsuleScanTimer?.cancel();
     _conversationMetaTimer?.cancel();
+    _stationPauseTimer?.cancel();
     _musicCompleteSub?.cancel();
     super.dispose();
   }
@@ -166,10 +170,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _stationLibrary = null;
       _lastStationTrackId = null;
       _lastStationPlaying = null;
+      _lastStationLoading = null;
       _activeMusicMessageId = null;
       _stationCardDocked = false;
+      _stationDockActive = false;
       _advancingStation = false;
       _openingMusicPage = false;
+      _stationPauseTimer?.cancel();
+      _stationPauseTimer = null;
       _musicCardPositions.clear();
       _favoriteMusicTrackIds.clear();
       _busyMusicFavoriteIds.clear();
@@ -363,7 +371,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           ? _stationTrack
           : null;
       final targetTrack = stationTrack ?? track;
-      await _pushMusicPage(targetTrack);
+      await _pushMusicPage(
+        targetTrack,
+        endCoListeningOnBack: _isUserCoListening,
+      );
       return;
     }
     if (card.type == 'checkin_reminder' || card.type == 'checkin_habit') {
@@ -414,16 +425,19 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Future<void> _openActiveMusic() async {
     final track = _conversationMeta?.musicCoListening?.track;
     if (track == null) return;
-    await _pushMusicPage(track);
+    await _pushMusicPage(track, endCoListeningOnBack: _isUserCoListening);
   }
 
   Future<void> _openStationMusic() async {
     final track = _stationTrack ?? _conversationMeta?.musicCoListening?.track;
     if (track == null) return;
-    await _pushMusicPage(track);
+    await _pushMusicPage(track, endCoListeningOnBack: _isUserCoListening);
   }
 
-  Future<void> _pushMusicPage(MusicTrack initialTrack) async {
+  Future<void> _pushMusicPage(
+    MusicTrack initialTrack, {
+    bool endCoListeningOnBack = false,
+  }) async {
     if (_openingMusicPage) return;
     _openingMusicPage = true;
     try {
@@ -435,6 +449,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             api: widget.api,
             session: widget.session,
             initialTrack: initialTrack,
+            endCoListeningOnBack: endCoListeningOnBack,
           ),
         ),
       );
@@ -688,7 +703,69 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _playback.isPlaying;
   }
 
+  bool get _isStationLoading {
+    final track = _stationTrack;
+    return track != null && _playback.isLoadingTrack(track);
+  }
+
+  bool get _isUserCoListening {
+    final session = _conversationMeta?.musicCoListening;
+    return session?.isActive == true && session?.initiatedBy != 'agent_auto';
+  }
+
   bool get _canGoStationPrevious => _stationHistoryIndex > 0;
+
+  void _cancelStationPauseTimer() {
+    _stationPauseTimer?.cancel();
+    _stationPauseTimer = null;
+  }
+
+  void _activateStationDock() {
+    _cancelStationPauseTimer();
+    _stationDockActive = true;
+    _stationCardDocked = true;
+  }
+
+  void _clearStationDock() {
+    _cancelStationPauseTimer();
+    _stationDockActive = false;
+    _stationCardDocked = false;
+  }
+
+  void _scheduleStationPauseExit() {
+    if (_stationPauseTimer?.isActive ?? false) return;
+    _stationPauseTimer = Timer(const Duration(minutes: 1), () {
+      if (!mounted) return;
+      if (_isStationPlaying || _isStationLoading || _advancingStation) return;
+      final hadUserCoListening = _isUserCoListening;
+      setState(_clearStationDock);
+      if (!hadUserCoListening) return;
+      final agentId = widget.session.agentId;
+      if (agentId == null || agentId.isEmpty) return;
+      unawaited(
+        widget.api.endMusicCoListening(
+          agentId: agentId,
+          conversationId: _conversationId,
+          reason: 'user_pause_timeout',
+        ),
+      );
+    });
+  }
+
+  void _syncStationDockLifecycle() {
+    final track = _stationTrack;
+    if (track == null) {
+      _clearStationDock();
+      return;
+    }
+    if (_isStationPlaying || _isStationLoading || _advancingStation) {
+      _activateStationDock();
+      return;
+    }
+    if (_stationDockActive) {
+      _scheduleStationPauseExit();
+    }
+  }
 
   void _handleStationPlaybackChanged() {
     _cacheActiveMusicPosition();
@@ -698,12 +775,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         track.library == _stationLibrary) {
       _rememberStationTrack(track);
     }
+    _syncStationDockLifecycle();
     final trackId = track?.id;
     final playing = _isStationPlaying;
+    final loading = _isStationLoading;
     final shouldRebuild =
-        trackId != _lastStationTrackId || playing != _lastStationPlaying;
+        trackId != _lastStationTrackId ||
+        playing != _lastStationPlaying ||
+        loading != _lastStationLoading;
     _lastStationTrackId = trackId;
     _lastStationPlaying = playing;
+    _lastStationLoading = loading;
     if (shouldRebuild) {
       if (track != null) unawaited(_syncStationPlayback(track));
       WidgetsBinding.instance.addPostFrameCallback(
@@ -736,6 +818,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
     var shouldRetry = false;
     _advancingStation = true;
+    if (mounted) setState(() {});
     try {
       final response = await widget.api.listMusicTracks(
         agentId: agentId,
@@ -755,6 +838,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (mounted && !auto) setState(() => _historyError = _asMessage(error));
     } finally {
       _advancingStation = false;
+      _syncStationDockLifecycle();
+      if (mounted) setState(() {});
     }
     if (mounted && shouldRetry) {
       await _playNextStationTrack(auto: auto, retryCount: retryCount + 1);
@@ -771,6 +856,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final playable = resolved.url.isEmpty ? track : resolved;
     final didStart = await _playback.playTrack(playable, position: position);
     if (!mounted) return didStart;
+    if (didStart) {
+      _activateStationDock();
+    }
     if (addToHistory) {
       setState(() => _rememberStationTrack(playable));
     }
@@ -790,6 +878,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       } else {
         await _startStationTrack(track);
       }
+      _syncStationDockLifecycle();
       final activeTrack = _playback.track ?? track;
       unawaited(_syncStationPlayback(activeTrack));
     } catch (_) {
@@ -878,9 +967,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
     final context = _stationCardKey.currentContext;
     var shouldDock = false;
-    if (context == null) {
-      shouldDock = _messages.any((item) => item.id == _stationMessageId);
-    } else {
+    if (context != null) {
       final renderObject = context.findRenderObject();
       if (renderObject is RenderBox && renderObject.hasSize) {
         final topLeft = renderObject.localToGlobal(Offset.zero);
@@ -982,6 +1069,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         final messageId = payload['message_id']?.toString();
         final status = payload['status']?.toString() ?? 'started';
         setState(() {
+          if (status == 'ended') {
+            _clearStationDock();
+          }
           _messages.add(
             ChatMessage(
               id: messageId?.isNotEmpty == true
@@ -1277,7 +1367,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         : tabBarLift + panelHeight;
     final inputSurfaceHeight = _composerHeight + composerBottom;
     final stationTrack = _stationTrack;
-    final showStationDock = _stationCardDocked && stationTrack != null;
+    final showStationDock = stationTrack != null && _stationDockActive;
     final listBottomPadding = inputSurfaceHeight + 18;
     const listTopPadding = 10.0;
     final keyboardTransition = isKeyboardOpen || wasKeyboardOpen;
@@ -1304,9 +1394,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               _ChatHeader(
                 agentName: widget.session.agentName ?? 'Companion',
                 interactionDays: _conversationMeta?.interactionDays,
+                aiStatus: _conversationMeta?.aiStatus,
+                aiStatusLabel: _conversationMeta?.aiStatusLabel,
+                aiActivity: _conversationMeta?.aiActivity,
                 avatarUrl: widget.session.agentAvatarUrl,
-                isMusicListening:
-                    _conversationMeta?.musicCoListening?.isActive ?? false,
+                isMusicListening: _isUserCoListening,
                 isMusicPlaying:
                     _conversationMeta?.musicCoListening?.isPlaying ?? false,
                 onMusicTap: _openActiveMusic,
@@ -1416,6 +1508,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       : _StickyMusicDock(
                           track: stationTrack,
                           isPlaying: _isStationPlaying,
+                          isLoading: _isStationLoading || _advancingStation,
                           canGoPrevious: _canGoStationPrevious,
                           isBusy: _advancingStation,
                           onTap: _openStationMusic,
@@ -1454,6 +1547,7 @@ class _StickyMusicDock extends StatefulWidget {
   const _StickyMusicDock({
     required this.track,
     required this.isPlaying,
+    required this.isLoading,
     required this.canGoPrevious,
     required this.isBusy,
     required this.onTap,
@@ -1464,6 +1558,7 @@ class _StickyMusicDock extends StatefulWidget {
 
   final MusicTrack track;
   final bool isPlaying;
+  final bool isLoading;
   final bool canGoPrevious;
   final bool isBusy;
   final VoidCallback onTap;
@@ -1493,13 +1588,14 @@ class _StickyMusicDockState extends State<_StickyMusicDock>
   void didUpdateWidget(covariant _StickyMusicDock oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.isPlaying != widget.isPlaying ||
+        oldWidget.isLoading != widget.isLoading ||
         oldWidget.track.id != widget.track.id) {
       _syncDisc();
     }
   }
 
   void _syncDisc() {
-    if (widget.isPlaying) {
+    if (widget.isPlaying && !widget.isLoading) {
       if (!_discController.isAnimating) _discController.repeat();
     } else if (_discController.isAnimating) {
       _discController.stop(canceled: false);
@@ -1514,7 +1610,7 @@ class _StickyMusicDockState extends State<_StickyMusicDock>
 
   @override
   Widget build(BuildContext context) {
-    final accent = _parseMusicDockColor(widget.track.accentA);
+    final accent = _musicAccentForTrack(widget.track);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: widget.onTap,
@@ -1524,7 +1620,6 @@ class _StickyMusicDockState extends State<_StickyMusicDock>
           filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
           child: Container(
             height: 64,
-            padding: const EdgeInsets.fromLTRB(0, 0, 10, 0),
             decoration: BoxDecoration(
               color: const Color(0xFF0F1A27).withValues(alpha: 0.90),
               borderRadius: BorderRadius.circular(32),
@@ -1537,87 +1632,118 @@ class _StickyMusicDockState extends State<_StickyMusicDock>
                 ),
               ],
             ),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 64,
-                  height: 64,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: accent.withValues(alpha: 0.24),
-                          blurRadius: 18,
-                          spreadRadius: 1,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 64,
+                    height: 64,
+                    child: RepaintBoundary(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: accent.withValues(alpha: 0.24),
+                              blurRadius: 18,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
+                        child: AnimatedBuilder(
+                          animation: _discController,
+                          builder: (context, child) {
+                            return Transform.rotate(
+                              angle: _discController.value * math.pi * 2,
+                              child: child,
+                            );
+                          },
+                          child: _MusicDisc(track: widget.track, size: 64),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _LoopingMarqueeText(
+                          text: widget.track.title,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            height: 1.12,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                '${_musicLibraryTitle(widget.track.library)} 频道 · ${widget.track.artist}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.62),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.12,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              ' · ',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.48),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                height: 1.12,
+                              ),
+                            ),
+                            _MusicCountdownText(
+                              track: widget.track,
+                              isActiveCard: true,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.66),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                height: 1.12,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    child: AnimatedBuilder(
-                      animation: _discController,
-                      builder: (context, child) {
-                        return Transform.rotate(
-                          angle: _discController.value * math.pi * 2,
-                          child: child,
-                        );
-                      },
-                      child: _MusicDisc(track: widget.track, size: 64),
-                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _LoopingMarqueeText(
-                        text: widget.track.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          height: 1.12,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        '随机频道 · ${widget.track.artist}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.62),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          height: 1.12,
-                        ),
-                      ),
-                    ],
+                  const SizedBox(width: 6),
+                  _DockIconButton(
+                    icon: CupertinoIcons.backward_fill,
+                    enabled: widget.canGoPrevious && !widget.isBusy,
+                    accent: accent,
+                    onPressed: widget.onPrevious,
                   ),
-                ),
-                const SizedBox(width: 6),
-                _DockIconButton(
-                  icon: CupertinoIcons.backward_fill,
-                  enabled: widget.canGoPrevious && !widget.isBusy,
-                  accent: accent,
-                  onPressed: widget.onPrevious,
-                ),
-                _DockIconButton(
-                  icon: widget.isPlaying
-                      ? CupertinoIcons.pause_fill
-                      : CupertinoIcons.play_fill,
-                  emphasized: true,
-                  enabled: !widget.isBusy,
-                  accent: accent,
-                  onPressed: widget.onTogglePlay,
-                ),
-                _DockIconButton(
-                  icon: CupertinoIcons.forward_fill,
-                  enabled: !widget.isBusy,
-                  accent: accent,
-                  onPressed: widget.onNext,
-                ),
-              ],
+                  _DockIconButton(
+                    icon: widget.isPlaying
+                        ? CupertinoIcons.pause_fill
+                        : CupertinoIcons.play_fill,
+                    emphasized: true,
+                    enabled: !widget.isBusy && !widget.isLoading,
+                    loading: widget.isLoading,
+                    accent: accent,
+                    onPressed: widget.onTogglePlay,
+                  ),
+                  _DockIconButton(
+                    icon: CupertinoIcons.forward_fill,
+                    enabled: !widget.isBusy,
+                    accent: accent,
+                    onPressed: widget.onNext,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1633,12 +1759,14 @@ class _DockIconButton extends StatelessWidget {
     required this.accent,
     required this.onPressed,
     this.emphasized = false,
+    this.loading = false,
   });
 
   final IconData icon;
   final bool enabled;
   final Color accent;
   final bool emphasized;
+  final bool loading;
   final VoidCallback onPressed;
 
   @override
@@ -1647,30 +1775,35 @@ class _DockIconButton extends StatelessWidget {
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
-      onPressed: enabled ? onPressed : null,
+      onPressed: enabled && !loading ? onPressed : null,
       child: SizedBox(
         width: boxSize,
         height: boxSize,
         child: DecoratedBox(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: emphasized && enabled ? accent : null,
+            color: emphasized && (enabled || loading) ? accent : null,
           ),
           child: Center(
-            child: Transform.translate(
-              offset: emphasized && icon == CupertinoIcons.play_fill
-                  ? const Offset(1.2, 0)
-                  : Offset.zero,
-              child: Icon(
-                icon,
-                color: enabled
-                    ? (emphasized
-                          ? const Color(0xFF071522)
-                          : Colors.white.withValues(alpha: 0.72))
-                    : Colors.white.withValues(alpha: 0.26),
-                size: emphasized ? 18 : 15,
-              ),
-            ),
+            child: loading
+                ? const CupertinoActivityIndicator(
+                    radius: 8,
+                    color: Colors.white,
+                  )
+                : Transform.translate(
+                    offset: emphasized && icon == CupertinoIcons.play_fill
+                        ? const Offset(1.2, 0)
+                        : Offset.zero,
+                    child: Icon(
+                      icon,
+                      color: enabled
+                          ? (emphasized
+                                ? _musicButtonForeground(accent)
+                                : Colors.white.withValues(alpha: 0.72))
+                          : Colors.white.withValues(alpha: 0.26),
+                      size: emphasized ? 18 : 15,
+                    ),
+                  ),
           ),
         ),
       ),
@@ -1678,11 +1811,83 @@ class _DockIconButton extends StatelessWidget {
   }
 }
 
+Color _musicAccentForTrack(MusicTrack? track) {
+  final primary = _parseMusicAccent(track?.accentA);
+  if (_isReadableMusicAccent(primary)) return primary;
+  final secondary = _parseMusicAccent(track?.accentB);
+  if (_isReadableMusicAccent(secondary)) return secondary;
+  return _fallbackMusicAccent(track);
+}
+
+String _musicLibraryTitle(String? id) {
+  return switch ((id ?? '').trim().toLowerCase()) {
+    'focus' => '专注',
+    'ambient' => 'Ambient',
+    'sleep' => '睡眠',
+    'relax' => '放松',
+    'vocal' => '原声',
+    'default' => '默认',
+    final value when value.isNotEmpty => value,
+    _ => '音乐',
+  };
+}
+
+String _formatMusicClock(Duration value) {
+  final totalSeconds = math.max(value.inSeconds, 0);
+  final minutes = totalSeconds ~/ 60;
+  final seconds = totalSeconds % 60;
+  return '$minutes:${seconds.toString().padLeft(2, '0')}';
+}
+
+Color _parseMusicAccent(String? value) {
+  final raw = value?.trim() ?? '';
+  if (raw.isEmpty) return const Color(0xFF2CD6C9);
+  final normalized = raw.startsWith('#') ? raw : '#$raw';
+  const palette = {
+    '#1F6FFF': Color(0xFF2F80FF),
+    '#18C6C0': Color(0xFF2CD6C9),
+    '#7C3CFF': Color(0xFF7B5CFF),
+    '#FF7A2F': Color(0xFFFF7A2F),
+    '#20C46B': Color(0xFF21D57B),
+  };
+  final key = normalized.toUpperCase();
+  final mapped = palette[key];
+  if (mapped != null) return mapped;
+  return _parseMusicDockColor(normalized);
+}
+
+bool _isReadableMusicAccent(Color color) {
+  return color.computeLuminance() >= 0.10;
+}
+
+Color _musicButtonForeground(Color accent) {
+  return accent.computeLuminance() >= 0.34
+      ? const Color(0xFF071522)
+      : Colors.white;
+}
+
+Color _fallbackMusicAccent(MusicTrack? track) {
+  const palette = [
+    Color(0xFF2F80FF),
+    Color(0xFF2CD6C9),
+    Color(0xFF21D57B),
+    Color(0xFFFF7A2F),
+    Color(0xFF8D6CFF),
+  ];
+  final seed =
+      '${track?.id ?? ''}|${track?.title ?? ''}|${track?.artist ?? ''}|${track?.library ?? ''}';
+  var hash = 17;
+  for (final unit in seed.codeUnits) {
+    hash = (hash * 31 + unit) & 0x7fffffff;
+  }
+  return palette[hash % palette.length];
+}
+
 Color _parseMusicDockColor(String value) {
   final hex = value.replaceFirst('#', '').trim();
-  if (hex.length != 6) return const Color(0xFF1FD7D2);
+  if (hex.length != 6) return const Color(0xFF2CD6C9);
   final intValue = int.tryParse(hex, radix: 16);
-  if (intValue == null) return const Color(0xFF1FD7D2);
+  if (intValue == null) return const Color(0xFF2CD6C9);
   return Color(0xFF000000 | intValue);
 }
 

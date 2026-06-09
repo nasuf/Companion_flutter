@@ -484,12 +484,10 @@ class _ComponentCardBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = _parseColor(card.accent);
     if (card.type == 'music_track') {
       return _MusicComponentCard(
         card: card,
         isMine: isMine,
-        accent: accent,
         onTap: onTap,
         onResolveTrack: onResolveMusicTrack,
         onPlaybackActivated: onMusicCardActivated,
@@ -504,6 +502,7 @@ class _ComponentCardBubble extends StatelessWidget {
         isBusy: isMusicBusy,
       );
     }
+    final accent = _parseColor(card.accent);
     final isTimeCapsule = card.type == 'time_capsule';
     final timeCapsuleContent = _timeCapsuleContent(card);
     final icon = switch (card.type) {
@@ -681,7 +680,6 @@ class _MusicComponentCard extends StatefulWidget {
   const _MusicComponentCard({
     required this.card,
     required this.isMine,
-    required this.accent,
     required this.onTap,
     required this.onResolveTrack,
     required this.onPlaybackActivated,
@@ -698,7 +696,6 @@ class _MusicComponentCard extends StatefulWidget {
 
   final ChatComponentCard card;
   final bool isMine;
-  final Color accent;
   final VoidCallback onTap;
   final Future<MusicTrack?> Function(MusicTrack track) onResolveTrack;
   final VoidCallback onPlaybackActivated;
@@ -721,6 +718,8 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
   late final AnimationController _discController;
   final _playback = MusicPlaybackController.instance;
   MusicTrack? _resolvedTrack;
+  bool _loadingPlayback = false;
+  String? _lastPlaybackSignature;
 
   @override
   void initState() {
@@ -729,6 +728,7 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
       vsync: this,
       duration: const Duration(milliseconds: 18000),
     );
+    _lastPlaybackSignature = _playbackSignature;
     _playback.addListener(_handlePlaybackChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncDiscAnimation());
   }
@@ -736,6 +736,7 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
   @override
   void didUpdateWidget(covariant _MusicComponentCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _lastPlaybackSignature = _playbackSignature;
     _syncDiscAnimation();
   }
 
@@ -747,8 +748,25 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
   }
 
   void _handlePlaybackChanged() {
+    final signature = _playbackSignature;
+    if (signature == _lastPlaybackSignature) return;
+    _lastPlaybackSignature = signature;
     _syncDiscAnimation();
     if (mounted) setState(() {});
+  }
+
+  String get _playbackSignature {
+    final track = _displayTrack;
+    final isCurrent = widget.isActiveCard && _playback.isCurrentTrack(track);
+    final isPlaying = isCurrent && _playback.isPlaying;
+    final isLoading = isCurrent && _playback.isLoadingTrack(track);
+    return [
+      widget.isActiveCard,
+      track?.id ?? '',
+      isCurrent,
+      isPlaying,
+      isLoading,
+    ].join('|');
   }
 
   void _syncDiscAnimation() {
@@ -765,7 +783,8 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
   }
 
   Future<void> _toggleCardPlayback(MusicTrack? track) async {
-    if (track == null) return;
+    if (track == null || _loadingPlayback) return;
+    setState(() => _loadingPlayback = true);
     try {
       if (widget.isActiveCard && _playback.isCurrentTrack(track)) {
         if (_playback.isPlaying) {
@@ -800,6 +819,8 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
       if (played) widget.onPlaybackActivated();
     } catch (_) {
       // Chat card controls should stay silent; the player page can show errors.
+    } finally {
+      if (mounted) setState(() => _loadingPlayback = false);
     }
   }
 
@@ -816,10 +837,12 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
         : displayTrack;
     final title = track?.title ?? widget.card.title;
     final artist = track?.artist ?? widget.card.subtitle;
-    final duration = track?.durationLabel ?? '';
-    final library = widget.card.body.isNotEmpty ? widget.card.body : '音乐频道';
+    final library = _musicLibraryTitle(track?.library ?? _stationLibrary);
+    final accent = _musicAccentForTrack(track);
     final isCurrent = widget.isActiveCard && _playback.isCurrentTrack(track);
     final isPlaying = isCurrent && _playback.isPlaying;
+    final isPlaybackLoading =
+        _loadingPlayback || (isCurrent && _playback.isLoadingTrack(track));
     final isFavorite =
         track != null && widget.favoriteMusicTrackIds.contains(track.id);
     final isFavoriteBusy =
@@ -838,10 +861,10 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
               bottomLeft: const Radius.circular(22),
               bottomRight: const Radius.circular(22),
             ),
-            border: Border.all(color: widget.accent.withValues(alpha: 0.32)),
+            border: Border.all(color: accent.withValues(alpha: 0.32)),
             boxShadow: [
               BoxShadow(
-                color: widget.accent.withValues(alpha: 0.18),
+                color: accent.withValues(alpha: 0.18),
                 blurRadius: 24,
                 offset: const Offset(0, 12),
               ),
@@ -871,25 +894,45 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        [
-                          artist,
-                          duration,
-                        ].where((item) => item.isNotEmpty).join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.68),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              artist,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.68),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            ' · ',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.50),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          _MusicCountdownText(
+                            track: track,
+                            isActiveCard: widget.isActiveCard,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.68),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       Row(
                         children: [
                           Icon(
                             CupertinoIcons.music_note_2,
-                            color: widget.accent,
+                            color: accent,
                             size: 15,
                           ),
                           const SizedBox(width: 5),
@@ -912,7 +955,7 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
                                 : CupertinoIcons.heart,
                             enabled: track != null && !isFavoriteBusy,
                             color: isFavorite
-                                ? const Color(0xFFFF5C8A)
+                                ? const Color(0xFF5ED8FF)
                                 : Colors.white.withValues(alpha: 0.70),
                             onPressed: () => _toggleFavorite(track),
                           ),
@@ -927,8 +970,12 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
                                 ? CupertinoIcons.pause_fill
                                 : CupertinoIcons.play_fill,
                             emphasized: true,
-                            enabled: track != null && !widget.isBusy,
-                            color: widget.accent,
+                            enabled:
+                                track != null &&
+                                !widget.isBusy &&
+                                !isPlaybackLoading,
+                            loading: isPlaybackLoading,
+                            color: accent,
                             onPressed: () =>
                                 unawaited(_toggleCardPlayback(track)),
                           ),
@@ -987,6 +1034,7 @@ class _MusicCardIconButton extends StatelessWidget {
     required this.color,
     required this.onPressed,
     this.emphasized = false,
+    this.loading = false,
   });
 
   final IconData icon;
@@ -994,6 +1042,7 @@ class _MusicCardIconButton extends StatelessWidget {
   final Color color;
   final VoidCallback onPressed;
   final bool emphasized;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -1001,32 +1050,109 @@ class _MusicCardIconButton extends StatelessWidget {
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
-      onPressed: enabled ? onPressed : null,
+      onPressed: enabled && !loading ? onPressed : null,
       child: SizedBox(
         width: size,
         height: size,
         child: DecoratedBox(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: emphasized && enabled ? color : Colors.transparent,
+            color: emphasized && (enabled || loading)
+                ? color
+                : Colors.transparent,
           ),
           child: Center(
-            child: Transform.translate(
-              offset: emphasized && icon == CupertinoIcons.play_fill
-                  ? const Offset(1.0, 0)
-                  : Offset.zero,
-              child: Icon(
-                icon,
-                size: emphasized ? 14 : 13,
-                color: enabled
-                    ? (emphasized ? const Color(0xFF071522) : color)
-                    : Colors.white.withValues(alpha: 0.24),
-              ),
-            ),
+            child: loading
+                ? const CupertinoActivityIndicator(
+                    radius: 6.5,
+                    color: Colors.white,
+                  )
+                : Transform.translate(
+                    offset: emphasized && icon == CupertinoIcons.play_fill
+                        ? const Offset(1.0, 0)
+                        : Offset.zero,
+                    child: Icon(
+                      icon,
+                      size: emphasized ? 14 : 13,
+                      color: enabled
+                          ? (emphasized ? _musicButtonForeground(color) : color)
+                          : Colors.white.withValues(alpha: 0.24),
+                    ),
+                  ),
           ),
         ),
       ),
     );
+  }
+}
+
+class _MusicCountdownText extends StatefulWidget {
+  const _MusicCountdownText({
+    required this.track,
+    required this.isActiveCard,
+    required this.style,
+  });
+
+  final MusicTrack? track;
+  final bool isActiveCard;
+  final TextStyle style;
+
+  @override
+  State<_MusicCountdownText> createState() => _MusicCountdownTextState();
+}
+
+class _MusicCountdownTextState extends State<_MusicCountdownText> {
+  final _playback = MusicPlaybackController.instance;
+  String? _lastLabel;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastLabel = _label;
+    _playback.addListener(_handlePlaybackChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _MusicCountdownText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _lastLabel = _label;
+  }
+
+  @override
+  void dispose() {
+    _playback.removeListener(_handlePlaybackChanged);
+    super.dispose();
+  }
+
+  void _handlePlaybackChanged() {
+    final label = _label;
+    if (label == _lastLabel) return;
+    _lastLabel = label;
+    if (mounted) setState(() {});
+  }
+
+  String get _label {
+    final track = widget.track;
+    if (track == null) return '--:--';
+    final duration = _durationFor(track);
+    if (!widget.isActiveCard || !_playback.isCurrentTrack(track)) {
+      return _formatMusicClock(duration);
+    }
+    final remaining = duration - _playback.position;
+    return _formatMusicClock(remaining.isNegative ? Duration.zero : remaining);
+  }
+
+  Duration _durationFor(MusicTrack track) {
+    final playbackDuration = _playback.duration;
+    if (_playback.isCurrentTrack(track) && playbackDuration.inSeconds > 0) {
+      return playbackDuration;
+    }
+    return Duration(seconds: math.max(track.durationSec, 0));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(_label, maxLines: 1, style: widget.style);
   }
 }
 
@@ -1043,16 +1169,18 @@ class _MusicCardDisc extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 58,
-      height: 58,
-      child: AnimatedBuilder(
-        animation: animation,
-        builder: (context, child) {
-          final angle = animation.value * math.pi * 2;
-          return Transform.rotate(angle: angle, child: child);
-        },
-        child: _MusicDisc(track: track, size: 58),
+    return RepaintBoundary(
+      child: SizedBox(
+        width: 58,
+        height: 58,
+        child: AnimatedBuilder(
+          animation: animation,
+          builder: (context, child) {
+            final angle = animation.value * math.pi * 2;
+            return Transform.rotate(angle: angle, child: child);
+          },
+          child: _MusicDisc(track: track, size: 58),
+        ),
       ),
     );
   }
