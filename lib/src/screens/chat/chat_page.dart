@@ -74,6 +74,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _stationDockActive = false;
   bool _advancingStation = false;
   bool _openingMusicPage = false;
+  bool _localUserCoListeningActive = false;
   Timer? _stationPauseTimer;
   final Map<String, Duration> _musicCardPositions = {};
   final Set<String> _favoriteMusicTrackIds = {};
@@ -176,6 +177,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _stationDockActive = false;
       _advancingStation = false;
       _openingMusicPage = false;
+      _localUserCoListeningActive = false;
       _stationPauseTimer?.cancel();
       _stationPauseTimer = null;
       _musicCardPositions.clear();
@@ -305,6 +307,22 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ..addAll(unsyncedUserDrafts)
       ..addAll(transientAssistantReplies);
     _messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    _localUserCoListeningActive = _userCoListeningActiveFromMessages(_messages);
+  }
+
+  bool _userCoListeningActiveFromMessages(List<ChatMessage> messages) {
+    var active = false;
+    for (final message in messages) {
+      final metadata = message.metadata;
+      if (metadata == null) continue;
+      final status = metadata['music_status']?.toString();
+      if (status == 'started') {
+        active = true;
+      } else if (status == 'ended') {
+        active = false;
+      }
+    }
+    return active;
   }
 
   bool _hasMatchingServerAssistant(
@@ -710,7 +728,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   bool get _isUserCoListening {
     final session = _conversationMeta?.musicCoListening;
-    return session?.isActive == true && session?.initiatedBy != 'agent_auto';
+    return _localUserCoListeningActive ||
+        (session?.isActive == true && session?.initiatedBy != 'agent_auto');
   }
 
   bool get _canGoStationPrevious => _stationHistoryIndex > 0;
@@ -1072,6 +1091,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           if (status == 'ended') {
             _clearStationDock();
           }
+          final actor = payload['actor']?.toString() ?? '';
+          if (status == 'started') {
+            _localUserCoListeningActive = true;
+          } else if (status == 'ended') {
+            _localUserCoListeningActive = false;
+          }
           _messages.add(
             ChatMessage(
               id: messageId?.isNotEmpty == true
@@ -1086,6 +1111,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 'music_track_title': payload['track_title']?.toString() ?? '',
                 'music_track_id': payload['track_id']?.toString() ?? '',
                 'music_co_listening': status == 'started',
+                'music_status_actor': actor,
+                'music_status_actor_name':
+                    payload['actor_name']?.toString() ?? '',
                 if (payload['reason'] != null)
                   'music_ended_reason': payload['reason']?.toString() ?? '',
               },

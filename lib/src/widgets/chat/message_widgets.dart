@@ -212,7 +212,16 @@ class _MusicStatusTimelineRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final status = message.metadata?['music_status']?.toString().trim();
     final isEnded = status == 'ended';
-    final label = isEnded ? '已退出共听' : '已进入共听';
+    final actor = message.metadata?['music_status_actor']?.toString().trim();
+    final actorName = message.metadata?['music_status_actor_name']
+        ?.toString()
+        .trim();
+    final prefix = switch (actor) {
+      'user' => '你',
+      'agent' => (actorName?.isNotEmpty == true ? actorName! : '对方'),
+      _ => '',
+    };
+    final label = '$prefix${isEnded ? '已退出共听' : '已进入共听'}';
     final accent = isEnded ? const Color(0xFF64748B) : const Color(0xFF149249);
     final fill = isEnded ? const Color(0xFFF1F5F9) : const Color(0xFFEAF8EF);
     final border = isEnded ? const Color(0xFFD5DEE9) : const Color(0xFFBDEBCB);
