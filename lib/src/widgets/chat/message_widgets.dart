@@ -221,7 +221,7 @@ class _MusicStatusTimelineRow extends StatelessWidget {
       'agent' => (actorName?.isNotEmpty == true ? actorName! : '对方'),
       _ => '',
     };
-    final label = '$prefix${isEnded ? '已退出共听' : '已进入共听'}';
+    final label = '$prefix${isEnded ? '已退出共听' : '已加入共听'}';
     final accent = isEnded ? const Color(0xFF64748B) : const Color(0xFF149249);
     final fill = isEnded ? const Color(0xFFF1F5F9) : const Color(0xFFEAF8EF);
     final border = isEnded ? const Color(0xFFD5DEE9) : const Color(0xFFBDEBCB);

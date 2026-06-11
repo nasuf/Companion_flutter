@@ -37,6 +37,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _inputFocus = FocusNode();
   final _playback = MusicPlaybackController.instance;
   final _stationCardKey = GlobalKey(debugLabel: 'chat-station-card');
+  final _musicStation = ChatMusicStationState();
   final List<ChatMessage> _messages = [];
 
   ChatSocket? _socket;
@@ -63,24 +64,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   ({String text, String clientId, ChatComponentCard? componentCard})?
   _pendingSend;
   int _achievementDemoIndex = 0;
-  ChatComponentCard? _stationCard;
-  String? _stationMessageId;
-  String? _stationLibrary;
-  String? _lastStationTrackId;
-  bool? _lastStationPlaying;
-  bool? _lastStationLoading;
-  String? _activeMusicMessageId;
   bool _stationCardDocked = false;
   bool _stationDockActive = false;
   bool _advancingStation = false;
   bool _openingMusicPage = false;
   bool _localUserCoListeningActive = false;
   Timer? _stationPauseTimer;
-  final Map<String, Duration> _musicCardPositions = {};
   final Set<String> _favoriteMusicTrackIds = {};
   final Set<String> _busyMusicFavoriteIds = {};
-  List<MusicTrack> _stationHistory = const [];
-  int _stationHistoryIndex = -1;
 
   String get _conversationId => widget.session.conversationId!;
 
@@ -93,8 +84,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _musicCompleteSub = _playback.completed.listen((_) {
       if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? true)) return;
       final completedTrack = _playback.track;
-      if (_stationLibrary == null ||
-          completedTrack?.library != _stationLibrary) {
+      if (_musicStation.library == null ||
+          completedTrack?.library != _musicStation.library) {
         return;
       }
       unawaited(_playNextStationTrack(auto: true));
@@ -166,13 +157,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _pendingSend = null;
       _readyCapsule = null;
       _conversationMeta = null;
-      _stationCard = null;
-      _stationMessageId = null;
-      _stationLibrary = null;
-      _lastStationTrackId = null;
-      _lastStationPlaying = null;
-      _lastStationLoading = null;
-      _activeMusicMessageId = null;
+      _musicStation.reset();
       _stationCardDocked = false;
       _stationDockActive = false;
       _advancingStation = false;
@@ -180,11 +165,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _localUserCoListeningActive = false;
       _stationPauseTimer?.cancel();
       _stationPauseTimer = null;
-      _musicCardPositions.clear();
       _favoriteMusicTrackIds.clear();
       _busyMusicFavoriteIds.clear();
-      _stationHistory = const [];
-      _stationHistoryIndex = -1;
     });
     widget.onAchievementOverlayChanged?.call(false);
     await Future.wait([
@@ -385,7 +367,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           : null;
       if (track == null) return;
       final cardLibrary = _libraryFromMusicCard(card);
-      final stationTrack = cardLibrary == _stationLibrary
+      final stationTrack = cardLibrary == _musicStation.library
           ? _stationTrack
           : null;
       final targetTrack = stationTrack ?? track;
@@ -613,56 +595,32 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   bool _isMusicStationCard(ChatComponentCard? card) {
-    return card?.type == 'music_track';
-  }
-
-  MusicTrack? _trackFromMusicCard(ChatComponentCard? card) {
-    if (!_isMusicStationCard(card)) return null;
-    final rawTrack = card!.payload['track'];
-    return rawTrack is Map
-        ? MusicTrack.fromJson(Map<String, dynamic>.from(rawTrack))
-        : null;
+    return ChatMusicStationState.isMusicCard(card);
   }
 
   String? _libraryFromMusicCard(ChatComponentCard? card) {
-    if (!_isMusicStationCard(card)) return null;
-    final payloadLibrary = card!.payload['library']?.toString().trim();
-    if (payloadLibrary != null && payloadLibrary.isNotEmpty) {
-      return payloadLibrary;
-    }
-    final trackLibrary = _trackFromMusicCard(card)?.library.trim();
-    return trackLibrary == null || trackLibrary.isEmpty ? null : trackLibrary;
+    return ChatMusicStationState.libraryFromCard(card);
   }
 
   void _adoptLatestMusicStationFromMessages() {
-    for (final message in _messages.reversed) {
-      final card = message.componentCard;
-      if (!_isMusicStationCard(card)) continue;
-      final changed = _adoptMusicStation(card!, message.id);
-      if (changed && mounted) setState(() {});
-      return;
-    }
+    final changed = _musicStation.adoptLatestFrom(_messages);
+    if (changed && mounted) setState(() {});
   }
 
   bool _adoptMusicStation(ChatComponentCard card, String messageId) {
-    final library = _libraryFromMusicCard(card);
-    final seedTrack = _trackFromMusicCard(card);
-    if (library == null || seedTrack == null) return false;
-    final changed =
-        _stationCard?.title != card.title ||
-        _stationMessageId != messageId ||
-        _stationLibrary != library;
-    _stationCard = card;
-    _stationMessageId = messageId;
-    _stationLibrary = library;
-    _rememberStationTrack(seedTrack);
-    return changed;
+    return _musicStation.adopt(card, messageId);
   }
 
   void _activateMusicStationCard(ChatComponentCard card, String messageId) {
     if (!_isMusicStationCard(card)) return;
-    _activeMusicMessageId = messageId;
-    final changed = _adoptMusicStation(card, messageId);
+    final beforeMessageId = _musicStation.messageId;
+    final beforeTitle = _musicStation.card?.title;
+    final beforeLibrary = _musicStation.library;
+    _musicStation.activate(card, messageId);
+    final changed =
+        beforeTitle != _musicStation.card?.title ||
+        beforeMessageId != _musicStation.messageId ||
+        beforeLibrary != _musicStation.library;
     if (changed && mounted) {
       setState(() {});
     } else if (mounted) {
@@ -674,44 +632,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _cacheActiveMusicPosition() {
-    final messageId = _activeMusicMessageId;
-    if (messageId == null || _playback.track == null) return;
-    _musicCardPositions[messageId] = _playback.position;
+    _musicStation.cacheActivePosition(_playback.track, _playback.position);
   }
 
   void _rememberStationTrack(MusicTrack track) {
-    if (_stationLibrary != null && track.library != _stationLibrary) return;
-    if (_stationHistoryIndex >= 0 &&
-        _stationHistoryIndex < _stationHistory.length &&
-        _stationHistory[_stationHistoryIndex].id == track.id) {
-      _stationHistory = [
-        ..._stationHistory.take(_stationHistoryIndex),
-        track,
-        ..._stationHistory.skip(_stationHistoryIndex + 1),
-      ];
-      return;
-    }
-    final keptHistory = _stationHistoryIndex < 0
-        ? const <MusicTrack>[]
-        : _stationHistory.take(_stationHistoryIndex + 1).toList();
-    final withoutDuplicate = keptHistory
-        .where((item) => item.id != track.id)
-        .toList();
-    _stationHistory = [...withoutDuplicate, track];
-    _stationHistoryIndex = _stationHistory.length - 1;
+    _musicStation.remember(track);
   }
 
   MusicTrack? get _stationTrack {
-    final library = _stationLibrary;
-    final liveTrack = _playback.track;
-    if (library != null && liveTrack != null && liveTrack.library == library) {
-      return liveTrack;
-    }
-    if (_stationHistoryIndex >= 0 &&
-        _stationHistoryIndex < _stationHistory.length) {
-      return _stationHistory[_stationHistoryIndex];
-    }
-    return _trackFromMusicCard(_stationCard);
+    return _musicStation.currentTrack(_playback.track);
   }
 
   bool get _isStationPlaying {
@@ -732,7 +661,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         (session?.isActive == true && session?.initiatedBy != 'agent_auto');
   }
 
-  bool get _canGoStationPrevious => _stationHistoryIndex > 0;
+  bool get _canGoStationPrevious => _musicStation.canGoPrevious;
 
   void _cancelStationPauseTimer() {
     _stationPauseTimer?.cancel();
@@ -756,9 +685,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _stationPauseTimer = Timer(const Duration(minutes: 1), () {
       if (!mounted) return;
       if (_isStationPlaying || _isStationLoading || _advancingStation) return;
-      final hadUserCoListening = _isUserCoListening;
+      final shouldNotifyCoListeningExit = _isUserCoListening;
       setState(_clearStationDock);
-      if (!hadUserCoListening) return;
+      if (!shouldNotifyCoListeningExit) return;
       final agentId = widget.session.agentId;
       if (agentId == null || agentId.isEmpty) return;
       unawaited(
@@ -790,8 +719,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _cacheActiveMusicPosition();
     final track = _stationTrack;
     if (track != null &&
-        _stationLibrary != null &&
-        track.library == _stationLibrary) {
+        _musicStation.library != null &&
+        track.library == _musicStation.library) {
       _rememberStationTrack(track);
     }
     _syncStationDockLifecycle();
@@ -799,12 +728,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final playing = _isStationPlaying;
     final loading = _isStationLoading;
     final shouldRebuild =
-        trackId != _lastStationTrackId ||
-        playing != _lastStationPlaying ||
-        loading != _lastStationLoading;
-    _lastStationTrackId = trackId;
-    _lastStationPlaying = playing;
-    _lastStationLoading = loading;
+        trackId != _musicStation.lastTrackId ||
+        playing != _musicStation.lastPlaying ||
+        loading != _musicStation.lastLoading;
+    _musicStation.lastTrackId = trackId;
+    _musicStation.lastPlaying = playing;
+    _musicStation.lastLoading = loading;
     if (shouldRebuild) {
       if (track != null) unawaited(_syncStationPlayback(track));
       WidgetsBinding.instance.addPostFrameCallback(
@@ -816,9 +745,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   Future<void> _playPreviousStationTrack() async {
     if (!_canGoStationPrevious || _advancingStation) return;
-    final nextIndex = _stationHistoryIndex - 1;
-    final track = _stationHistory[nextIndex];
-    setState(() => _stationHistoryIndex = nextIndex);
+    final track = _musicStation.movePrevious();
+    if (track == null) return;
+    setState(() {});
     await _startStationTrack(track, addToHistory: false);
   }
 
@@ -827,7 +756,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     int retryCount = 0,
   }) async {
     final agentId = widget.session.agentId;
-    final library = _stationLibrary;
+    final library = _musicStation.library;
     if (agentId == null ||
         agentId.isEmpty ||
         library == null ||
@@ -979,7 +908,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void _updateStationCardDocked() {
     if (!mounted) return;
-    final hasStation = _stationCard != null && _stationTrack != null;
+    final hasStation = _musicStation.card != null && _stationTrack != null;
     if (!hasStation) {
       if (_stationCardDocked) setState(() => _stationCardDocked = false);
       return;
@@ -1032,15 +961,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 pending: false,
                 metadata: {...?message.metadata, 'client_id': clientId},
               );
-              if (_stationMessageId == clientId && messageId.isNotEmpty) {
-                _stationMessageId = messageId;
-              }
-              if (_activeMusicMessageId == clientId && messageId.isNotEmpty) {
-                _activeMusicMessageId = messageId;
-                final cachedPosition = _musicCardPositions.remove(clientId);
-                if (cachedPosition != null) {
-                  _musicCardPositions[messageId] = cachedPosition;
-                }
+              if (messageId.isNotEmpty) {
+                _musicStation.acknowledgeMessageId(clientId, messageId);
               }
               break;
             }
@@ -1234,8 +1156,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     setState(() {
       _messages.add(draft);
       if (_isMusicStationCard(componentCard)) {
-        _activeMusicMessageId = draft.id;
-        _adoptMusicStation(componentCard!, draft.id);
+        _musicStation.activate(componentCard!, draft.id);
       }
       if (componentCard == null) _inputController.clear();
       _panel = ComposerPanel.none;
@@ -1459,13 +1380,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           onMusicNext: () => unawaited(_playNextStationTrack()),
                           onMusicFavorite: (track) =>
                               unawaited(_toggleMusicFavorite(track)),
-                          activeMusicMessageId: _activeMusicMessageId,
-                          musicCardPositions: _musicCardPositions,
+                          activeMusicMessageId: _musicStation.activeMessageId,
+                          musicCardPositions: _musicStation.cardPositions,
                           favoriteMusicTrackIds: _favoriteMusicTrackIds,
                           busyMusicFavoriteIds: _busyMusicFavoriteIds,
                           canGoMusicPrevious: _canGoStationPrevious,
                           isMusicBusy: _advancingStation,
-                          stationMessageId: _stationMessageId,
+                          stationMessageId: _musicStation.messageId,
                           stationMessageKey: _stationCardKey,
                           agentAvatarUrl: widget.session.agentAvatarUrl,
                         ),

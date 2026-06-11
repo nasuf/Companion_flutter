@@ -27,6 +27,7 @@ part 'src/app/auth_gate.dart';
 part 'src/auth/wechat_login_service.dart';
 part 'src/screens/agent_create_page.dart';
 part 'src/screens/achievement_page.dart';
+part 'src/screens/chat/chat_music_station_state.dart';
 part 'src/screens/chat/chat_page.dart';
 part 'src/screens/checkin_page.dart';
 part 'src/screens/checkin/checkin_calendar.dart';
