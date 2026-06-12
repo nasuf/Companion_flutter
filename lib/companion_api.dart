@@ -34,6 +34,44 @@ class CompanionApi {
     return '$baseUrl$trimmed';
   }
 
+  String? _absoluteOptionalUrl(String? url) {
+    final trimmed = url?.trim();
+    if (trimmed == null || trimmed.isEmpty) return trimmed;
+    return _absoluteUrl(trimmed);
+  }
+
+  AuthSession _normalizeAuthSession(AuthSession session) {
+    return AuthSession(
+      token: session.token,
+      userId: session.userId,
+      username: session.username,
+      userDisplayName: session.userDisplayName,
+      userAvatarUrl: _absoluteOptionalUrl(session.userAvatarUrl),
+      role: session.role,
+      hasAgent: session.hasAgent,
+      agentId: session.agentId,
+      agentName: session.agentName,
+      agentAvatarKey: session.agentAvatarKey,
+      agentAvatarUrl: _absoluteOptionalUrl(session.agentAvatarUrl),
+      agentCity: session.agentCity,
+      workspaceId: session.workspaceId,
+      conversationId: session.conversationId,
+    );
+  }
+
+  AgentProfile _normalizeAgentProfile(AgentProfile profile) {
+    return AgentProfile(
+      id: profile.id,
+      name: profile.name,
+      userId: profile.userId,
+      workspaceId: profile.workspaceId,
+      gender: profile.gender,
+      city: profile.city,
+      avatarKey: profile.avatarKey,
+      avatarUrl: _absoluteOptionalUrl(profile.avatarUrl),
+    );
+  }
+
   MusicTrack _normalizeMusicTrack(MusicTrack track) {
     return track.copyWith(url: _absoluteUrl(track.url));
   }
@@ -134,7 +172,7 @@ class CompanionApi {
               body: {'username': username, 'password': password},
             )
             as Map<String, dynamic>;
-    final session = AuthSession.fromJson(json);
+    final session = _normalizeAuthSession(AuthSession.fromJson(json));
     authToken = session.token;
     return session;
   }
@@ -147,7 +185,7 @@ class CompanionApi {
               body: {'username': username, 'password': password},
             )
             as Map<String, dynamic>;
-    final session = AuthSession.fromJson(json);
+    final session = _normalizeAuthSession(AuthSession.fromJson(json));
     authToken = session.token;
     return session;
   }
@@ -163,7 +201,7 @@ class CompanionApi {
               body: {'code': code, 'platform': platform},
             )
             as Map<String, dynamic>;
-    final session = AuthSession.fromJson(json);
+    final session = _normalizeAuthSession(AuthSession.fromJson(json));
     authToken = session.token;
     return session;
   }
@@ -171,7 +209,7 @@ class CompanionApi {
   Future<AuthSession> getMe(String token) async {
     authToken = token;
     final json = await _request('GET', '/auth/me') as Map<String, dynamic>;
-    final session = AuthSession.fromJson(json);
+    final session = _normalizeAuthSession(AuthSession.fromJson(json));
     authToken = session.token;
     return session;
   }
@@ -186,7 +224,7 @@ class CompanionApi {
   Future<AgentProfile> getAgent(String agentId) async {
     final json =
         await _request('GET', '/agents/$agentId') as Map<String, dynamic>;
-    return AgentProfile.fromJson(json);
+    return _normalizeAgentProfile(AgentProfile.fromJson(json));
   }
 
   Future<List<Conversation>> listConversations({
@@ -851,7 +889,7 @@ class CompanionApi {
               },
             )
             as Map<String, dynamic>;
-    return AgentProfile.fromJson(json);
+    return _normalizeAgentProfile(AgentProfile.fromJson(json));
   }
 
   Future<AgentProvisionStatus> getAgentProvisionStatus(String agentId) async {
