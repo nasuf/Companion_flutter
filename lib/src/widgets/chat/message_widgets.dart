@@ -1414,22 +1414,27 @@ class _Avatar extends StatelessWidget {
           ),
         ],
       ),
-      clipBehavior: Clip.antiAlias,
-      child: _hasImage
-          ? Image.network(
-              imageUrl!,
-              key: ValueKey(imageUrl),
-              width: size,
-              height: size,
-              fit: BoxFit.cover,
-              gaplessPlayback: true,
-              errorBuilder: (_, __, ___) => _fallback,
-              loadingBuilder: (context, child, loadingProgress) {
-                if (loadingProgress == null) return child;
-                return _fallback;
-              },
-            )
-          : _fallback,
+      foregroundDecoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.hairline),
+      ),
+      child: ClipOval(
+        child: _hasImage
+            ? Image.network(
+                imageUrl!.trim(),
+                key: ValueKey(imageUrl!.trim()),
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                errorBuilder: (_, __, ___) => _fallback,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return _fallback;
+                },
+              )
+            : _fallback,
+      ),
     );
   }
 
