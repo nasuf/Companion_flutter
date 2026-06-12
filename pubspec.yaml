@@ -43,6 +43,7 @@ dependencies:
   flutter_local_notifications: ^20.1.0
   timezone: ^0.10.1
   sud_gip_plugin: ^0.0.3
+  font_awesome_flutter: ^11.0.0
 
 dev_dependencies:
   flutter_test:

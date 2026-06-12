@@ -632,93 +632,19 @@ class _SocialButton extends StatelessWidget {
                   ),
                 )
               : wechatIcon
-              ? const _WeChatGlyph()
+              ? Semantics(
+                  label: '微信',
+                  child: const FaIcon(
+                    FontAwesomeIcons.weixin,
+                    color: Colors.white,
+                    size: 27,
+                  ),
+                )
               : Icon(icon, color: Colors.white, size: 25),
         ),
       ),
     );
   }
-}
-
-class _WeChatGlyph extends StatelessWidget {
-  const _WeChatGlyph();
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: '微信',
-      child: const SizedBox(
-        width: 32,
-        height: 28,
-        child: CustomPaint(painter: _WeChatGlyphPainter()),
-      ),
-    );
-  }
-}
-
-class _WeChatGlyphPainter extends CustomPainter {
-  const _WeChatGlyphPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.white;
-    final back = Rect.fromLTWH(
-      size.width * 0.36,
-      size.height * 0.28,
-      size.width * 0.50,
-      size.height * 0.50,
-    );
-    final front = Rect.fromLTWH(
-      size.width * 0.05,
-      size.height * 0.05,
-      size.width * 0.62,
-      size.height * 0.58,
-    );
-
-    canvas.drawOval(back, paint);
-    canvas.drawPath(
-      Path()
-        ..moveTo(size.width * 0.68, size.height * 0.68)
-        ..lineTo(size.width * 0.78, size.height * 0.86)
-        ..lineTo(size.width * 0.55, size.height * 0.74)
-        ..close(),
-      paint,
-    );
-    canvas.drawOval(front, paint);
-    canvas.drawPath(
-      Path()
-        ..moveTo(size.width * 0.25, size.height * 0.58)
-        ..lineTo(size.width * 0.12, size.height * 0.84)
-        ..lineTo(size.width * 0.42, size.height * 0.66)
-        ..close(),
-      paint,
-    );
-
-    final eyePaint = Paint()..color = const Color(0xFF14BA1A);
-    canvas.drawCircle(
-      Offset(size.width * 0.27, size.height * 0.30),
-      2.2,
-      eyePaint,
-    );
-    canvas.drawCircle(
-      Offset(size.width * 0.46, size.height * 0.30),
-      2.2,
-      eyePaint,
-    );
-    canvas.drawCircle(
-      Offset(size.width * 0.58, size.height * 0.50),
-      1.8,
-      eyePaint,
-    );
-    canvas.drawCircle(
-      Offset(size.width * 0.73, size.height * 0.50),
-      1.8,
-      eyePaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _WeChatGlyphPainter oldDelegate) => false;
 }
 
 class _PrivacyLine extends StatelessWidget {
