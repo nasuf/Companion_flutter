@@ -4,6 +4,7 @@
 <dict>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
+		<string>applinks:www.banshengcomp.com</string>
 		<string>applinks:banshengcomp.com</string>
 	</array>
 </dict>

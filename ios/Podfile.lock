@@ -1,24 +1,12 @@
 PODS:
-  - audioplayers_darwin (0.0.1):
-    - Flutter
-    - FlutterMacOS
   - Flutter (1.0.0)
-  - flutter_local_notifications (0.0.1):
-    - Flutter
   - fluwx (0.0.1):
     - Flutter
     - fluwx/pay (= 0.0.1)
   - fluwx/pay (0.0.1):
     - Flutter
     - WechatOpenSDK-XCFramework (~> 2.0.5)
-  - image_picker_ios (0.0.1):
-    - Flutter
   - MJExtension (3.4.2)
-  - path_provider_foundation (0.0.1):
-    - Flutter
-    - FlutterMacOS
-  - record_ios (1.2.1):
-    - Flutter
   - sud_gip_plugin (0.0.3):
     - Flutter
     - MJExtension (~> 3.4.1)
@@ -27,13 +15,8 @@ PODS:
   - WechatOpenSDK-XCFramework (2.0.5)
 
 DEPENDENCIES:
-  - audioplayers_darwin (from `.symlinks/plugins/audioplayers_darwin/darwin`)
   - Flutter (from `Flutter`)
-  - flutter_local_notifications (from `.symlinks/plugins/flutter_local_notifications/ios`)
   - fluwx (from `.symlinks/plugins/fluwx/ios`)
-  - image_picker_ios (from `.symlinks/plugins/image_picker_ios/ios`)
-  - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
-  - record_ios (from `.symlinks/plugins/record_ios/ios`)
   - sud_gip_plugin (from `.symlinks/plugins/sud_gip_plugin/ios`)
 
 SPEC REPOS:
@@ -43,33 +26,18 @@ SPEC REPOS:
     - WechatOpenSDK-XCFramework
 
 EXTERNAL SOURCES:
-  audioplayers_darwin:
-    :path: ".symlinks/plugins/audioplayers_darwin/darwin"
   Flutter:
     :path: Flutter
-  flutter_local_notifications:
-    :path: ".symlinks/plugins/flutter_local_notifications/ios"
   fluwx:
     :path: ".symlinks/plugins/fluwx/ios"
-  image_picker_ios:
-    :path: ".symlinks/plugins/image_picker_ios/ios"
-  path_provider_foundation:
-    :path: ".symlinks/plugins/path_provider_foundation/darwin"
-  record_ios:
-    :path: ".symlinks/plugins/record_ios/ios"
   sud_gip_plugin:
     :path: ".symlinks/plugins/sud_gip_plugin/ios"
 
 SPEC CHECKSUMS:
-  audioplayers_darwin: f15e209a3e856d1a7edcf98dc029f484fead2242
-  Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
-  flutter_local_notifications: ff50f8405aaa0ccdc7dcfb9022ca192e8ad9688f
-  fluwx: 95a2274c23418c1098940bd00dcfe7c975bb0550
-  image_picker_ios: c560581cceedb403a6ff17f2f816d7fea1421fc1
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  fluwx: 2ef787502fccb3f3596b380509001a8ea71cbbff
   MJExtension: e97d164cb411aa9795cf576093a1fa208b4a8dd8
-  path_provider_foundation: 2b6b4c569c0fb62ec74538f866245ac84301af46
-  record_ios: 3b171007ae5de51221a3a76d2b379a7105ca98b5
-  sud_gip_plugin: 9974d7b280cf3acc91f577105f76fa7b2b50fa93
+  sud_gip_plugin: 69dc371f0ec9dbcf8d254c9222950eb48644953f
   SudGIP: 0f05fc0f132034dbc542cfbe02168b92a17780fa
   WechatOpenSDK-XCFramework: ff342ae616bb86df3d236aca38059dfd4bc4a949
 

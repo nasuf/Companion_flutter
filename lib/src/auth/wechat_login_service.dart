@@ -2,7 +2,7 @@ part of 'package:companion_flutter/main.dart';
 
 const _wechatUniversalLink = String.fromEnvironment(
   'WECHAT_UNIVERSAL_LINK',
-  defaultValue: 'https://banshengcomp.com/wechat/',
+  defaultValue: 'https://www.banshengcomp.com/wechat/',
 );
 
 const _wechatAppId = String.fromEnvironment(
