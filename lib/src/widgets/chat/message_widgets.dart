@@ -23,6 +23,7 @@ class _MessageList extends StatelessWidget {
     this.stationMessageId,
     this.stationMessageKey,
     this.agentAvatarUrl,
+    this.userAvatarUrl,
   });
 
   final ScrollController controller;
@@ -47,6 +48,7 @@ class _MessageList extends StatelessWidget {
   final String? stationMessageId;
   final GlobalKey? stationMessageKey;
   final String? agentAvatarUrl;
+  final String? userAvatarUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +90,7 @@ class _MessageList extends StatelessWidget {
         final row = _MessageRow(
           message: message,
           agentAvatarUrl: agentAvatarUrl,
+          userAvatarUrl: userAvatarUrl,
           onComponentCardTap: onComponentCardTap,
           onAchievementTap: onAchievementTap,
           onResolveMusicTrack: onResolveMusicTrack,
@@ -128,6 +131,7 @@ class _MessageRow extends StatelessWidget {
     required this.canGoMusicPrevious,
     required this.isMusicBusy,
     this.agentAvatarUrl,
+    this.userAvatarUrl,
   });
 
   final ChatMessage message;
@@ -146,6 +150,7 @@ class _MessageRow extends StatelessWidget {
   final bool canGoMusicPrevious;
   final bool isMusicBusy;
   final String? agentAvatarUrl;
+  final String? userAvatarUrl;
   static const _avatarSize = 40.0;
   static const _avatarGap = 10.0;
 
@@ -166,7 +171,7 @@ class _MessageRow extends StatelessWidget {
     final avatar = _Avatar(
       size: _avatarSize,
       label: message.isMine ? '我' : '伴',
-      imageUrl: message.isMine ? null : agentAvatarUrl,
+      imageUrl: message.isMine ? userAvatarUrl : agentAvatarUrl,
       gradient: message.isMine
           ? const [Color(0xFFE8F3FF), Color(0xFFF8FBFF)]
           : const [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],

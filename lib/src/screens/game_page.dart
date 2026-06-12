@@ -2164,7 +2164,7 @@ class _GameGroupCard extends StatelessWidget {
                     opacity: curved,
                     child: SizeTransition(
                       sizeFactor: curved,
-                      axisAlignment: -1,
+                      alignment: const AlignmentDirectional(-1.0, -1.0),
                       child: child,
                     ),
                   );

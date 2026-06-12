@@ -302,6 +302,8 @@ class _AgentCreatePageState extends State<AgentCreatePage>
         token: session.token,
         userId: session.userId,
         username: session.username,
+        userDisplayName: session.userDisplayName,
+        userAvatarUrl: session.userAvatarUrl,
         role: session.role,
         hasAgent: true,
         agentId: latestAgent.id,

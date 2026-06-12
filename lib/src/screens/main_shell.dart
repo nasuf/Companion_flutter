@@ -527,6 +527,8 @@ class _ProfilePageState extends State<ProfilePage> {
           token: widget.session.token,
           userId: widget.session.userId,
           username: widget.session.username,
+          userDisplayName: widget.session.userDisplayName,
+          userAvatarUrl: widget.session.userAvatarUrl,
           role: widget.session.role,
           hasAgent: false,
         ),
@@ -572,7 +574,9 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 24),
             _ProfileAgentCard(
               agentName: agentName,
-              username: widget.session.username,
+              username:
+                  widget.session.userDisplayName ?? widget.session.username,
+              userAvatarUrl: widget.session.userAvatarUrl,
               hasAgent: hasAgent,
             ),
             const SizedBox(height: 18),
@@ -627,11 +631,13 @@ class _ProfileAgentCard extends StatelessWidget {
     required this.agentName,
     required this.username,
     required this.hasAgent,
+    this.userAvatarUrl,
   });
 
   final String agentName;
   final String username;
   final bool hasAgent;
+  final String? userAvatarUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -652,30 +658,7 @@ class _ProfileAgentCard extends StatelessWidget {
         padding: const EdgeInsets.all(18),
         child: Row(
           children: [
-            Container(
-              width: 54,
-              height: 54,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [AppColors.accentDeep, AppColors.accentCyan],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.accentDeep.withValues(alpha: 0.18),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                CupertinoIcons.person_crop_circle_fill,
-                color: Colors.white,
-                size: 30,
-              ),
-            ),
+            _ProfileAvatar(imageUrl: userAvatarUrl),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -707,6 +690,56 @@ class _ProfileAgentCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ProfileAvatar extends StatelessWidget {
+  const _ProfileAvatar({this.imageUrl});
+
+  final String? imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmed = imageUrl?.trim();
+    final fallback = Container(
+      width: 54,
+      height: 54,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.accentDeep, AppColors.accentCyan],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.accentDeep.withValues(alpha: 0.18),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: const Icon(
+        CupertinoIcons.person_crop_circle_fill,
+        color: Colors.white,
+        size: 30,
+      ),
+    );
+    if (trimmed == null || trimmed.isEmpty) return fallback;
+    return ClipOval(
+      child: Image.network(
+        trimmed,
+        width: 54,
+        height: 54,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        errorBuilder: (_, __, ___) => fallback,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return fallback;
+        },
       ),
     );
   }
@@ -806,7 +839,7 @@ class _DeleteStatChip extends StatelessWidget {
   }
 }
 
-class NoAgentPage extends StatelessWidget {
+class NoAgentPage extends StatefulWidget {
   const NoAgentPage({
     super.key,
     required this.api,
@@ -818,13 +851,30 @@ class NoAgentPage extends StatelessWidget {
   final AuthSession session;
   final ValueChanged<AuthSession> onSessionChanged;
 
+  @override
+  State<NoAgentPage> createState() => _NoAgentPageState();
+}
+
+class _NoAgentPageState extends State<NoAgentPage> {
+  bool _openedCreatePage = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _openedCreatePage || widget.session.hasAgent) return;
+      _openedCreatePage = true;
+      _openCreatePage(context);
+    });
+  }
+
   void _openCreatePage(BuildContext context) {
     Navigator.of(context).push(
       CupertinoPageRoute<void>(
         builder: (_) => AgentCreatePage(
-          api: api,
-          session: session,
-          onCreated: onSessionChanged,
+          api: widget.api,
+          session: widget.session,
+          onCreated: widget.onSessionChanged,
         ),
       ),
     );
@@ -856,7 +906,7 @@ class NoAgentPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    session.hasAgent ? '还没有可用会话' : '创建你的 AI 伙伴',
+                    widget.session.hasAgent ? '还没有可用会话' : '创建你的 AI 伙伴',
                     style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,

@@ -574,23 +574,27 @@ class _SocialButton extends StatelessWidget {
     : color = const Color(0xFF0D1117),
       icon = null,
       text = '\uF8FF',
+      wechatIcon = false,
       loading = false;
 
   const _SocialButton.douyin()
     : color = const Color(0xFF1B2028),
       icon = CupertinoIcons.music_note_2,
       text = null,
+      wechatIcon = false,
       loading = false,
       onTap = null;
 
   const _SocialButton.wechat({required this.onTap, this.loading = false})
     : color = const Color(0xFF14BA1A),
-      icon = CupertinoIcons.chat_bubble_2_fill,
-      text = null;
+      icon = null,
+      text = null,
+      wechatIcon = true;
 
   final Color color;
   final IconData? icon;
   final String? text;
+  final bool wechatIcon;
   final VoidCallback? onTap;
   final bool loading;
 
@@ -627,11 +631,94 @@ class _SocialButton extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 )
+              : wechatIcon
+              ? const _WeChatGlyph()
               : Icon(icon, color: Colors.white, size: 25),
         ),
       ),
     );
   }
+}
+
+class _WeChatGlyph extends StatelessWidget {
+  const _WeChatGlyph();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '微信',
+      child: const SizedBox(
+        width: 32,
+        height: 28,
+        child: CustomPaint(painter: _WeChatGlyphPainter()),
+      ),
+    );
+  }
+}
+
+class _WeChatGlyphPainter extends CustomPainter {
+  const _WeChatGlyphPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = Colors.white;
+    final back = Rect.fromLTWH(
+      size.width * 0.36,
+      size.height * 0.28,
+      size.width * 0.50,
+      size.height * 0.50,
+    );
+    final front = Rect.fromLTWH(
+      size.width * 0.05,
+      size.height * 0.05,
+      size.width * 0.62,
+      size.height * 0.58,
+    );
+
+    canvas.drawOval(back, paint);
+    canvas.drawPath(
+      Path()
+        ..moveTo(size.width * 0.68, size.height * 0.68)
+        ..lineTo(size.width * 0.78, size.height * 0.86)
+        ..lineTo(size.width * 0.55, size.height * 0.74)
+        ..close(),
+      paint,
+    );
+    canvas.drawOval(front, paint);
+    canvas.drawPath(
+      Path()
+        ..moveTo(size.width * 0.25, size.height * 0.58)
+        ..lineTo(size.width * 0.12, size.height * 0.84)
+        ..lineTo(size.width * 0.42, size.height * 0.66)
+        ..close(),
+      paint,
+    );
+
+    final eyePaint = Paint()..color = const Color(0xFF14BA1A);
+    canvas.drawCircle(
+      Offset(size.width * 0.27, size.height * 0.30),
+      2.2,
+      eyePaint,
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.46, size.height * 0.30),
+      2.2,
+      eyePaint,
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.58, size.height * 0.50),
+      1.8,
+      eyePaint,
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.73, size.height * 0.50),
+      1.8,
+      eyePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _WeChatGlyphPainter oldDelegate) => false;
 }
 
 class _PrivacyLine extends StatelessWidget {

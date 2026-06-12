@@ -11,6 +11,8 @@ class AuthSession {
     required this.username,
     required this.role,
     required this.hasAgent,
+    this.userDisplayName,
+    this.userAvatarUrl,
     this.agentId,
     this.agentName,
     this.agentAvatarKey,
@@ -23,6 +25,8 @@ class AuthSession {
   final String token;
   final String userId;
   final String username;
+  final String? userDisplayName;
+  final String? userAvatarUrl;
   final UserRole role;
   final bool hasAgent;
   final String? agentId;
@@ -38,6 +42,8 @@ class AuthSession {
       token: json['token'] as String? ?? '',
       userId: json['user_id'] as String? ?? '',
       username: json['username'] as String? ?? '',
+      userDisplayName: json['user_display_name'] as String?,
+      userAvatarUrl: json['user_avatar_url'] as String?,
       role: parseUserRole(json['role'] as String? ?? 'user'),
       hasAgent: json['has_agent'] as bool? ?? false,
       agentId: json['agent_id'] as String?,
@@ -51,6 +57,8 @@ class AuthSession {
   }
 
   AuthSession copyWith({
+    String? userDisplayName,
+    String? userAvatarUrl,
     String? agentName,
     String? agentAvatarKey,
     String? agentAvatarUrl,
@@ -62,6 +70,8 @@ class AuthSession {
       token: token,
       userId: userId,
       username: username,
+      userDisplayName: userDisplayName ?? this.userDisplayName,
+      userAvatarUrl: userAvatarUrl ?? this.userAvatarUrl,
       role: role,
       hasAgent: hasAgent,
       agentId: agentId,

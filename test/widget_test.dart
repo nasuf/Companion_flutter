@@ -27,6 +27,7 @@ void main() {
   testWidgets('renders wechat login button', (tester) async {
     await tester.pumpWidget(const CompanionApp());
 
-    expect(find.byIcon(CupertinoIcons.chat_bubble_2_fill), findsOneWidget);
+    expect(find.bySemanticsLabel('微信'), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.chat_bubble_2_fill), findsNothing);
   });
 }

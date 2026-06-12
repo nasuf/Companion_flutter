@@ -1401,6 +1401,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           stationMessageId: _musicStation.messageId,
                           stationMessageKey: _stationCardKey,
                           agentAvatarUrl: widget.session.agentAvatarUrl,
+                          userAvatarUrl: widget.session.userAvatarUrl,
                         ),
                 ),
               ),
