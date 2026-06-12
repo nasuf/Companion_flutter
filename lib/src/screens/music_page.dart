@@ -6,13 +6,11 @@ class MusicPage extends StatefulWidget {
     required this.api,
     required this.session,
     this.initialTrack,
-    this.endCoListeningOnBack = false,
   });
 
   final CompanionApi api;
   final AuthSession session;
   final MusicTrack? initialTrack;
-  final bool endCoListeningOnBack;
 
   @override
   State<MusicPage> createState() => _MusicPageState();
@@ -592,25 +590,8 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
     Navigator.of(context).pop(CapsuleChatDraft(agentText: '', card: card));
   }
 
-  Future<void> _endCoListeningAndBack() async {
-    final conversationId = widget.session.conversationId;
-    if (widget.endCoListeningOnBack &&
-        _agentId.isNotEmpty &&
-        conversationId != null) {
-      unawaited(_endCoListeningSilently(conversationId));
-    }
+  void _goBack() {
     if (mounted) Navigator.of(context).pop();
-  }
-
-  Future<void> _endCoListeningSilently(String conversationId) async {
-    try {
-      await widget.api.endMusicCoListening(
-        agentId: _agentId,
-        conversationId: conversationId,
-      );
-    } catch (_) {
-      // Leaving the player should not be blocked by co-listening presence sync.
-    }
   }
 
   void _showFavoriteSheet() {
@@ -681,7 +662,7 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
                 child: Column(
                   children: [
                     _MusicActions(
-                      onBack: () => unawaited(_endCoListeningAndBack()),
+                      onBack: _goBack,
                       onShare: _shareToChat,
                     ),
                     const SizedBox(height: 12),

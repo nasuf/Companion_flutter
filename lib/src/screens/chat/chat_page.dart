@@ -371,10 +371,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           ? _stationTrack
           : null;
       final targetTrack = stationTrack ?? track;
-      await _pushMusicPage(
-        targetTrack,
-        endCoListeningOnBack: _isUserCoListening,
-      );
+      await _pushMusicPage(targetTrack);
       return;
     }
     if (card.type == 'checkin_reminder' || card.type == 'checkin_habit') {
@@ -425,19 +422,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Future<void> _openActiveMusic() async {
     final track = _conversationMeta?.musicCoListening?.track;
     if (track == null) return;
-    await _pushMusicPage(track, endCoListeningOnBack: _isUserCoListening);
+    await _pushMusicPage(track);
   }
 
   Future<void> _openStationMusic() async {
     final track = _stationTrack ?? _conversationMeta?.musicCoListening?.track;
     if (track == null) return;
-    await _pushMusicPage(track, endCoListeningOnBack: _isUserCoListening);
+    await _pushMusicPage(track);
   }
 
-  Future<void> _pushMusicPage(
-    MusicTrack initialTrack, {
-    bool endCoListeningOnBack = false,
-  }) async {
+  Future<void> _pushMusicPage(MusicTrack initialTrack) async {
     if (_openingMusicPage) return;
     _openingMusicPage = true;
     try {
@@ -449,7 +443,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             api: widget.api,
             session: widget.session,
             initialTrack: initialTrack,
-            endCoListeningOnBack: endCoListeningOnBack,
           ),
         ),
       );
