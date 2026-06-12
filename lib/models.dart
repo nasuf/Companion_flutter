@@ -1075,8 +1075,7 @@ class MusicTrack {
   String get coverAsset => 'assets/prototype/music/$visualCoverKey';
   String get visualCoverKey {
     final cleanCover = coverKey.trim();
-    final generatedSource =
-        source == 'jamendo' || source == 'audiolib' || source == 'mock';
+    final generatedSource = source == 'jamendo' || source == 'mock';
     if (!generatedSource &&
         cleanCover.isNotEmpty &&
         cleanCover != 'music-cover-01.jpg') {
