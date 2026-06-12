@@ -433,6 +433,7 @@ class CompanionApi {
     required MusicTrack track,
     required int positionSeconds,
     required bool isPlaying,
+    String changeSource = 'sync',
   }) async {
     final json =
         await _request(
@@ -445,6 +446,7 @@ class CompanionApi {
                 'track': track.toJson(),
                 'position_seconds': positionSeconds,
                 'is_playing': isPlaying,
+                'change_source': changeSource,
               },
               debugLabel: 'music.now.update',
             )

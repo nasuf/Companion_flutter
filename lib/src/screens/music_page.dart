@@ -166,7 +166,9 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
     _playback = MusicPlaybackController.instance;
     _playback.addListener(_handlePlaybackChanged);
     _completeSub = _playback.completed.listen((_) {
-      if (mounted) unawaited(_playRandom(refresh: true));
+      if (mounted) {
+        unawaited(_playRandom(refresh: true, changeSource: 'auto_next'));
+      }
     });
     _load();
   }
@@ -236,9 +238,10 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
           playableInitialTrack,
           addToHistory: true,
           preserveIfCurrent: true,
+          changeSource: 'initial',
         );
       } else {
-        await _playRandom(refresh: true);
+        await _playRandom(refresh: true, changeSource: 'initial');
       }
     } catch (error) {
       if (!mounted) return;
@@ -274,7 +277,11 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> _playRandom({required bool refresh, int retryCount = 0}) async {
+  Future<void> _playRandom({
+    required bool refresh,
+    int retryCount = 0,
+    String changeSource = 'manual_next',
+  }) async {
     if (_agentId.isEmpty || _loadingTrack) return;
     final excludeTrackId = refresh ? _currentTrack?.id : null;
     setState(() {
@@ -296,10 +303,18 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
         setState(() => _error = '暂时没有拿到这类音乐，稍后再试一次。');
         return;
       }
-      final played = await _startTrack(track, addToHistory: true);
+      final played = await _startTrack(
+        track,
+        addToHistory: true,
+        changeSource: changeSource,
+      );
       if (!played && mounted && retryCount < 2) {
         setState(() => _loadingTrack = false);
-        await _playRandom(refresh: true, retryCount: retryCount + 1);
+        await _playRandom(
+          refresh: true,
+          retryCount: retryCount + 1,
+          changeSource: changeSource,
+        );
       }
     } catch (error) {
       if (mounted) setState(() => _error = _formatError(error));
@@ -312,6 +327,7 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
     MusicTrack track, {
     required bool addToHistory,
     bool preserveIfCurrent = false,
+    String changeSource = 'sync',
   }) async {
     final selected = _withFavoriteState(track).copyWith(playedByAgent: true);
     final isPreserving =
@@ -351,7 +367,7 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
         }
       }
     }
-    unawaited(_syncPlayback(selected));
+    unawaited(_syncPlayback(selected, changeSource: changeSource));
     return didStart;
   }
 
@@ -388,7 +404,7 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
   Future<void> _selectLibrary(String library) async {
     if (_selectedLibrary == library || _loadingTrack) return;
     setState(() => _selectedLibrary = library);
-    await _playRandom(refresh: true);
+    await _playRandom(refresh: true, changeSource: 'manual_next');
   }
 
   Future<void> _previousTrack() async {
@@ -396,13 +412,17 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
     final nextIndex = _historyIndex - 1;
     final track = _history[nextIndex];
     setState(() => _historyIndex = nextIndex);
-    await _startTrack(track, addToHistory: false);
+    await _startTrack(
+      track,
+      addToHistory: false,
+      changeSource: 'manual_previous',
+    );
   }
 
   Future<void> _playFavoriteTrack(MusicTrack track) async {
     if (_loadingTrack) return;
     Navigator.of(context).maybePop();
-    await _startTrack(track, addToHistory: true);
+    await _startTrack(track, addToHistory: true, changeSource: 'manual_next');
   }
 
   Future<void> _togglePlay() async {
@@ -410,7 +430,12 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
     if (track == null) return;
     try {
       await _playback.toggle(track);
-      unawaited(_syncPlayback(track.copyWith(playedByAgent: true)));
+      unawaited(
+        _syncPlayback(
+          track.copyWith(playedByAgent: true),
+          changeSource: _playback.isPlaying ? 'resume' : 'pause',
+        ),
+      );
     } catch (error) {
       if (mounted) setState(() => _error = _formatError(error));
     }
@@ -445,7 +470,9 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
         _seeking = false;
       });
       final track = _currentTrack;
-      if (track != null) unawaited(_syncPlayback(track));
+      if (track != null) {
+        unawaited(_syncPlayback(track, changeSource: 'seek'));
+      }
     } catch (error) {
       if (mounted && generation == _seekGeneration) {
         setState(() {
@@ -519,7 +546,10 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> _syncPlayback(MusicTrack track) async {
+  Future<void> _syncPlayback(
+    MusicTrack track, {
+    String changeSource = 'sync',
+  }) async {
     if (_agentId.isEmpty) return;
     try {
       await widget.api.updateMusicNowPlaying(
@@ -529,6 +559,7 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
         track: track,
         positionSeconds: _position.inSeconds,
         isPlaying: _isPlaying,
+        changeSource: changeSource,
       );
     } catch (_) {
       // Playback should stay responsive even if presence sync fails.
@@ -687,7 +718,12 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
                         onSeekChanged: _previewSeek,
                         onSeekEnd: (progress) => unawaited(_seekTo(progress)),
                         onPrevious: () => unawaited(_previousTrack()),
-                        onNext: () => unawaited(_playRandom(refresh: true)),
+                        onNext: () => unawaited(
+                          _playRandom(
+                            refresh: true,
+                            changeSource: 'manual_next',
+                          ),
+                        ),
                         onTogglePlay: _togglePlay,
                         onToggleFavorite: _currentTrack == null
                             ? null

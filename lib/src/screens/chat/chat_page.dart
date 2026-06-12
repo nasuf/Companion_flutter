@@ -748,7 +748,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final track = _musicStation.movePrevious();
     if (track == null) return;
     setState(() {});
-    await _startStationTrack(track, addToHistory: false);
+    await _startStationTrack(
+      track,
+      addToHistory: false,
+      changeSource: 'manual_previous',
+    );
   }
 
   Future<void> _playNextStationTrack({
@@ -777,7 +781,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         refresh: true,
       );
       if (!mounted || response.tracks.isEmpty) return;
-      final didStart = await _startStationTrack(response.tracks.first);
+      final didStart = await _startStationTrack(
+        response.tracks.first,
+        changeSource: auto ? 'auto_next' : 'manual_next',
+      );
       shouldRetry = !didStart && retryCount < 2;
       if (!didStart && !shouldRetry && mounted && !auto) {
         setState(() => _historyError = '这首歌暂时播放不了，正在换一首。');
@@ -798,6 +805,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     MusicTrack track, {
     bool addToHistory = true,
     Duration position = Duration.zero,
+    String changeSource = 'sync',
   }) async {
     final resolved = await _resolveMusicTrack(track) ?? track;
     if (!mounted) return false;
@@ -810,7 +818,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (addToHistory) {
       setState(() => _rememberStationTrack(playable));
     }
-    unawaited(_syncStationPlayback(playable));
+    unawaited(_syncStationPlayback(playable, changeSource: changeSource));
     return didStart;
   }
 
@@ -824,11 +832,18 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         }
         await _playback.toggle(track);
       } else {
-        await _startStationTrack(track);
+        await _startStationTrack(track, changeSource: 'manual_next');
+        _syncStationDockLifecycle();
+        return;
       }
       _syncStationDockLifecycle();
       final activeTrack = _playback.track ?? track;
-      unawaited(_syncStationPlayback(activeTrack));
+      unawaited(
+        _syncStationPlayback(
+          activeTrack,
+          changeSource: _playback.isPlaying ? 'resume' : 'pause',
+        ),
+      );
     } catch (_) {
       if (mounted) setState(() => _historyError = '这首歌暂时播放不了，正在换一首。');
     }
@@ -888,7 +903,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _syncStationPlayback(MusicTrack track) async {
+  Future<void> _syncStationPlayback(
+    MusicTrack track, {
+    String changeSource = 'sync',
+  }) async {
     final agentId = widget.session.agentId;
     if (agentId == null || agentId.isEmpty) return;
     try {
@@ -899,6 +917,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         track: track,
         positionSeconds: _playback.position.inSeconds,
         isPlaying: _playback.isPlaying,
+        changeSource: changeSource,
       );
       unawaited(_refreshConversationMeta());
     } catch (_) {
