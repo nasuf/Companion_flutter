@@ -35,9 +35,9 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  fluwx: 2ef787502fccb3f3596b380509001a8ea71cbbff
+  fluwx: 95a2274c23418c1098940bd00dcfe7c975bb0550
   MJExtension: e97d164cb411aa9795cf576093a1fa208b4a8dd8
-  sud_gip_plugin: 69dc371f0ec9dbcf8d254c9222950eb48644953f
+  sud_gip_plugin: 9974d7b280cf3acc91f577105f76fa7b2b50fa93
   SudGIP: 0f05fc0f132034dbc542cfbe02168b92a17780fa
   WechatOpenSDK-XCFramework: ff342ae616bb86df3d236aca38059dfd4bc4a949
 
