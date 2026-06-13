@@ -44,6 +44,7 @@ dependencies:
   timezone: ^0.10.1
   sud_gip_plugin: ^0.0.3
   font_awesome_flutter: ^11.0.0
+  flutter_secure_storage: ^10.3.1
 
 dev_dependencies:
   flutter_test:

@@ -10,6 +10,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:fluwx/fluwx.dart';
@@ -25,6 +26,7 @@ import 'companion_api.dart';
 import 'models.dart';
 
 part 'src/app/auth_gate.dart';
+part 'src/app/auth_session_store.dart';
 part 'src/auth/wechat_login_service.dart';
 part 'src/screens/agent_create_page.dart';
 part 'src/screens/achievement_page.dart';
