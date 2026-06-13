@@ -7,7 +7,7 @@ enum _SidebarDestination {
   mail('信箱', Color(0xFF7C3CFF)),
   task('打卡', Color(0xFF22C66B)),
   achievement('成就', Color(0xFF96556A)),
-  note('记录', Color(0xFFFF8B26));
+  shop('商城', Color(0xFF0A84FF));
 
   const _SidebarDestination(this.label, this.color);
 
@@ -100,8 +100,8 @@ class _SidebarRail extends StatelessWidget {
         _LiquidRailContainer(
           padding: const EdgeInsets.all(12),
           child: _SidebarButton(
-            destination: _SidebarDestination.note,
-            onTap: () => onSelected(_SidebarDestination.note),
+            destination: _SidebarDestination.shop,
+            onTap: () => onSelected(_SidebarDestination.shop),
           ),
         ),
       ],
@@ -225,7 +225,7 @@ class _SidebarButton extends StatelessWidget {
       _SidebarDestination.mail => AppColors.accent,
       _SidebarDestination.task => const Color(0xFFFFC23A),
       _SidebarDestination.achievement => const Color(0xFFFFC23A),
-      _SidebarDestination.note => const Color(0xFFFFC23A),
+      _SidebarDestination.shop => AppColors.accentCyan,
     };
   }
 }
@@ -268,8 +268,8 @@ class _GlossSidebarIconPainter extends CustomPainter {
         _paintTask(canvas, size);
       case _SidebarDestination.achievement:
         _paintAchievement(canvas, size);
-      case _SidebarDestination.note:
-        _paintNote(canvas, size);
+      case _SidebarDestination.shop:
+        _paintShop(canvas, size);
     }
   }
 
@@ -476,6 +476,58 @@ class _GlossSidebarIconPainter extends CustomPainter {
     canvas.drawLine(const Offset(14, 26), const Offset(21.8, 26), linePaint);
   }
 
+  void _paintShop(Canvas canvas, Size size) {
+    final bag = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(7.4, 12.2, 21.2, 17.4),
+      const Radius.circular(4.4),
+    );
+    final bagPath = Path()..addRRect(bag);
+    _drawPathShadow(canvas, bagPath, const Offset(0, 1.5));
+    canvas.drawRRect(bag, Paint()..color = Colors.white);
+
+    final handlePaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(
+      const Rect.fromLTWH(12, 6.4, 12, 12),
+      math.pi,
+      math.pi,
+      false,
+      handlePaint,
+    );
+    canvas.drawArc(
+      const Rect.fromLTWH(12, 6.4, 12, 12),
+      math.pi,
+      math.pi,
+      false,
+      Paint()
+        ..color = destination.color.withValues(alpha: 0.38)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.3
+        ..strokeCap = StrokeCap.round,
+    );
+
+    final sparkle = Path();
+    const center = Offset(18, 21);
+    for (var i = 0; i < 8; i += 1) {
+      final radius = i.isEven ? 6.6 : 2.4;
+      final angle = -math.pi / 2 + i * math.pi / 4;
+      final point = Offset(
+        center.dx + math.cos(angle) * radius,
+        center.dy + math.sin(angle) * radius,
+      );
+      if (i == 0) {
+        sparkle.moveTo(point.dx, point.dy);
+      } else {
+        sparkle.lineTo(point.dx, point.dy);
+      }
+    }
+    sparkle.close();
+    canvas.drawPath(sparkle, Paint()..color = destination.color);
+  }
+
   void _drawPathShadow(Canvas canvas, Path path, Offset offset) {
     canvas.drawPath(
       path.shift(offset),
@@ -602,6 +654,9 @@ class _SidebarDestinationPage extends StatelessWidget {
     }
     if (destination == _SidebarDestination.achievement) {
       return AchievementPage(api: api, session: session);
+    }
+    if (destination == _SidebarDestination.shop) {
+      return StorePage(api: api, session: session);
     }
 
     return Scaffold(

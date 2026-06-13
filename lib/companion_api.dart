@@ -523,6 +523,38 @@ class CompanionApi {
     return AchievementsResponse.fromJson(json);
   }
 
+  Future<WalletBalance> getWallet({String? agentId}) async {
+    final params = <String, String>{};
+    if (agentId != null && agentId.isNotEmpty) {
+      params['agent_id'] = agentId;
+    }
+    final query = params.isEmpty
+        ? ''
+        : '?${Uri(queryParameters: params).query}';
+    final json =
+        await _request('GET', '/wallet$query', debugLabel: 'wallet.balance')
+            as Map<String, dynamic>;
+    return WalletBalance.fromJson(json);
+  }
+
+  Future<WalletBalance> exchangeTicketsToPoints({
+    required int ticketAmount,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/wallet/exchange',
+              body: {
+                'from_currency': 'ticket',
+                'to_currency': 'point',
+                'ticket_amount': ticketAmount,
+              },
+              debugLabel: 'wallet.exchange',
+            )
+            as Map<String, dynamic>;
+    return WalletBalance.fromJson(json);
+  }
+
   Future<RemindersResponse> listReminders({
     required String userId,
     String? agentId,

@@ -490,6 +490,27 @@ class AchievementsResponse {
   }
 }
 
+class WalletBalance {
+  const WalletBalance({
+    required this.ticketBalance,
+    required this.pointBalance,
+    required this.achievementPointsSynced,
+  });
+
+  final int ticketBalance;
+  final int pointBalance;
+  final int achievementPointsSynced;
+
+  factory WalletBalance.fromJson(Map<String, dynamic> json) {
+    return WalletBalance(
+      ticketBalance: (json['ticket_balance'] as num?)?.round() ?? 0,
+      pointBalance: (json['point_balance'] as num?)?.round() ?? 0,
+      achievementPointsSynced:
+          (json['achievement_points_synced'] as num?)?.round() ?? 0,
+    );
+  }
+}
+
 enum SudGameDifficulty {
   newbie('新手陪玩', 'AI 会放慢节奏，适合测试陪伴感'),
   normal('普通对战', 'AI 正常博弈，保留轻松交流'),
