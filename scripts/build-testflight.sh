@@ -4,6 +4,58 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
+BUILD_STARTED_DIRTY=0
+
+require_clean_git_worktree() {
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return
+  fi
+
+  local dirty_status
+  dirty_status="$(git status --porcelain)"
+  if [[ -z "$dirty_status" ]]; then
+    echo "Git state: clean ($(git rev-parse --abbrev-ref HEAD) $(git rev-parse --short HEAD))"
+    return
+  fi
+
+  if [[ "${ALLOW_DIRTY:-0}" == "1" ]]; then
+    BUILD_STARTED_DIRTY=1
+    echo "WARNING: ALLOW_DIRTY=1, building with uncommitted changes:"
+    echo "$dirty_status"
+    echo
+    return
+  fi
+
+  echo "Refusing to build TestFlight IPA from a dirty working tree." >&2
+  echo "Commit or stash your changes first, or rerun with ALLOW_DIRTY=1 to build the current local state." >&2
+  echo >&2
+  echo "Dirty files:" >&2
+  echo "$dirty_status" >&2
+  exit 1
+}
+
+commit_version_change() {
+  local version="$1"
+
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return
+  fi
+
+  if [[ "$BUILD_STARTED_DIRTY" == "1" ]]; then
+    echo "Skipping automatic version commit because ALLOW_DIRTY=1 was used."
+    return
+  fi
+
+  if git diff --quiet -- pubspec.yaml; then
+    return
+  fi
+
+  git add pubspec.yaml
+  git commit -m "Bump mobile build version to $version"
+}
+
+require_clean_git_worktree
+
 API_BASE_URL="${API_BASE_URL:-https://banshengcomp.com/api}"
 
 version_line="$(grep -E '^version:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+[[:space:]]*$' pubspec.yaml || true)"
@@ -75,6 +127,9 @@ selected_version="$build_name+$build_number"
 echo
 echo "Building TestFlight IPA app version $build_name, build $build_number"
 
+build_started_marker="$(mktemp -t build-testflight-start.XXXXXX)"
+trap 'rm -f "$build_started_marker"' EXIT
+
 flutter clean
 flutter pub get
 
@@ -91,6 +146,28 @@ flutter build ipa --release \
   --dart-define=API_BASE_URL="$API_BASE_URL" \
   "$@"
 
+shopt -s nullglob
+ipa_files=("$ROOT_DIR"/build/ios/ipa/*.ipa)
+shopt -u nullglob
+
+if [[ "${#ipa_files[@]}" -eq 0 ]]; then
+  echo "Could not find an IPA under $ROOT_DIR/build/ios/ipa" >&2
+  exit 1
+fi
+
+ipa_path="${ipa_files[0]}"
+for candidate in "${ipa_files[@]}"; do
+  if [[ "$candidate" -nt "$ipa_path" ]]; then
+    ipa_path="$candidate"
+  fi
+done
+
+if [[ ! "$ipa_path" -nt "$build_started_marker" ]]; then
+  echo "No fresh IPA was produced by this build." >&2
+  echo "Newest IPA found: $ipa_path" >&2
+  exit 1
+fi
+
 if [[ "$selected_version" != "$current" ]]; then
   CURRENT="$current" NEXT="$selected_version" perl -0pi -e \
     's/^version:\s*\Q$ENV{CURRENT}\E\s*$/version: $ENV{NEXT}/m' pubspec.yaml
@@ -99,6 +176,8 @@ if [[ "$selected_version" != "$current" ]]; then
     echo "Could not update pubspec.yaml from $current to $selected_version" >&2
     exit 1
   fi
+
+  commit_version_change "$selected_version"
 fi
 
 echo "IPA output: build/ios/ipa/"
@@ -107,24 +186,9 @@ echo "Built App Store Connect build: $build_number"
 echo "Flutter pubspec app+build version: $selected_version"
 
 if [[ "${OPEN_TRANSPORTER:-1}" != "0" ]]; then
-  shopt -s nullglob
-  ipa_files=("$ROOT_DIR"/build/ios/ipa/*.ipa)
-  shopt -u nullglob
-
-  if [[ "${#ipa_files[@]}" -eq 0 ]]; then
-    echo "Could not find an IPA under $ROOT_DIR/build/ios/ipa" >&2
-  else
-    ipa_path="${ipa_files[0]}"
-    for candidate in "${ipa_files[@]}"; do
-      if [[ "$candidate" -nt "$ipa_path" ]]; then
-        ipa_path="$candidate"
-      fi
-    done
-
-    echo "Opening IPA in Transporter: $ipa_path"
-    if ! open -a Transporter "$ipa_path"; then
-      echo "Transporter is not installed. Install it from the Mac App Store, then open:" >&2
-      echo "$ipa_path" >&2
-    fi
+  echo "Opening IPA in Transporter: $ipa_path"
+  if ! open -a Transporter "$ipa_path"; then
+    echo "Transporter is not installed. Install it from the Mac App Store, then open:" >&2
+    echo "$ipa_path" >&2
   fi
 fi

@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
+BUILD_STARTED_DIRTY=0
+
 require_clean_git_worktree() {
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     return
@@ -17,6 +19,7 @@ require_clean_git_worktree() {
   fi
 
   if [[ "${ALLOW_DIRTY:-0}" == "1" ]]; then
+    BUILD_STARTED_DIRTY=1
     echo "WARNING: ALLOW_DIRTY=1, building with uncommitted changes:"
     echo "$dirty_status"
     echo
@@ -29,6 +32,26 @@ require_clean_git_worktree() {
   echo "Dirty files:" >&2
   echo "$dirty_status" >&2
   exit 1
+}
+
+commit_version_change() {
+  local version="$1"
+
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return
+  fi
+
+  if [[ "$BUILD_STARTED_DIRTY" == "1" ]]; then
+    echo "Skipping automatic version commit because ALLOW_DIRTY=1 was used."
+    return
+  fi
+
+  if git diff --quiet -- pubspec.yaml; then
+    return
+  fi
+
+  git add pubspec.yaml
+  git commit -m "Bump mobile build version to $version"
 }
 
 require_clean_git_worktree
@@ -162,6 +185,8 @@ if [[ "$selected_version" != "$current" ]]; then
     echo "Could not update pubspec.yaml from $current to $selected_version" >&2
     exit 1
   fi
+
+  commit_version_change "$selected_version"
 fi
 
 echo "APK output: $apk_path"
