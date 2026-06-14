@@ -35,7 +35,7 @@ class _Composer extends StatelessWidget {
         border: Border(top: BorderSide(color: AppColors.hairline)),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           _RoundIconButton(
             tooltip: '语音',
@@ -45,10 +45,10 @@ class _Composer extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Container(
-              constraints: const BoxConstraints(minHeight: 42, maxHeight: 86),
+              constraints: const BoxConstraints(minHeight: 38, maxHeight: 86),
               decoration: BoxDecoration(
                 color: AppColors.surface,
-                borderRadius: BorderRadius.circular(21),
+                borderRadius: BorderRadius.circular(19),
                 border: Border.all(color: AppColors.hairline),
               ),
               child: TextField(
@@ -63,7 +63,8 @@ class _Composer extends StatelessWidget {
                   hintText: '发消息...',
                   hintStyle: TextStyle(color: AppColors.muted),
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.fromLTRB(14, 10, 14, 10),
+                  isDense: true,
+                  contentPadding: EdgeInsets.fromLTRB(14, 8, 14, 8),
                 ),
               ),
             ),

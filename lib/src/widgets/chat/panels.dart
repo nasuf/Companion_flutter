@@ -148,17 +148,27 @@ class _EmojiPanelState extends State<_EmojiPanel> {
     }
 
     Widget pageGrid(List<String> emojis) {
-      return GridView.builder(
-        padding: EdgeInsets.zero,
-        primary: false,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: emojis.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: _columns,
-          mainAxisSpacing: 8,
-          crossAxisSpacing: 8,
-        ),
-        itemBuilder: (context, index) => emojiTile(emojis[index]),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final tileWidth =
+              (constraints.maxWidth - (_columns - 1) * 8) / _columns;
+          final tileHeight = (constraints.maxHeight - (_rows - 1) * 8) / _rows;
+          final childAspectRatio =
+              tileWidth / math.max(1.0, math.min(tileWidth, tileHeight));
+          return GridView.builder(
+            padding: EdgeInsets.zero,
+            primary: false,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: emojis.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: _columns,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: childAspectRatio,
+            ),
+            itemBuilder: (context, index) => emojiTile(emojis[index]),
+          );
+        },
       );
     }
 
@@ -250,41 +260,64 @@ class _MorePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       key: const ValueKey('more'),
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
-      child: GridView.builder(
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: _tools.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          mainAxisSpacing: 8,
-          crossAxisSpacing: 16,
-          childAspectRatio: 1.36,
+      padding: const EdgeInsets.symmetric(horizontal: 18),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ToolRow(tools: _tools.take(3).toList()),
+            const SizedBox(height: 26),
+            _ToolRow(tools: _tools.skip(3).take(3).toList()),
+          ],
         ),
-        itemBuilder: (context, index) {
-          final tool = _tools[index];
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: tool.color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Icon(tool.icon, color: tool.color, size: 24),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  tool.label,
-                  style: const TextStyle(color: AppColors.muted, fontSize: 11),
-                ),
-              ],
-            ),
-          );
-        },
       ),
+    );
+  }
+}
+
+class _ToolRow extends StatelessWidget {
+  const _ToolRow({required this.tools});
+
+  final List<_ToolSpec> tools;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (final tool in tools)
+          Expanded(
+            child: Center(child: _ToolButton(tool: tool)),
+          ),
+      ],
+    );
+  }
+}
+
+class _ToolButton extends StatelessWidget {
+  const _ToolButton({required this.tool});
+
+  final _ToolSpec tool;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            color: tool.color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Icon(tool.icon, color: tool.color, size: 24),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          tool.label,
+          style: const TextStyle(color: AppColors.muted, fontSize: 11),
+        ),
+      ],
     );
   }
 }

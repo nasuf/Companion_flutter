@@ -28,8 +28,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const _composerMinHeight = 68.0;
   static const _composerLineHeight = 22.0;
   static const _tabBarContentHeight = 64.0;
-  static const _emojiPanelHeight = 238.0;
-  static const _morePanelHeight = 236.0;
+  static const _composerPanelHeight = 236.0;
   static const _messagePageSize = 100;
   static const _loadOlderThreshold = 80.0;
 
@@ -142,8 +141,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   double _panelHeightFor(ComposerPanel panel) {
     return switch (panel) {
-      ComposerPanel.emoji => _emojiPanelHeight,
-      ComposerPanel.more => _morePanelHeight,
+      ComposerPanel.emoji || ComposerPanel.more => _composerPanelHeight,
       ComposerPanel.none => 0,
     };
   }
