@@ -31,6 +31,7 @@ class _AuthGateState extends State<AuthGate> {
       final loggedIn = await api.getMe(stored.token);
       final session = await api.ensureConversation(loggedIn);
       await _sessionStore.save(baseUrl: api.baseUrl, token: session.token);
+      unawaited(PushNotificationService.instance.configure(api, session));
       if (!mounted) return;
       setState(() {
         _api = api;
@@ -46,6 +47,7 @@ class _AuthGateState extends State<AuthGate> {
 
   void _onAuthenticated(CompanionApi api, AuthSession session) {
     unawaited(_sessionStore.save(baseUrl: api.baseUrl, token: session.token));
+    unawaited(PushNotificationService.instance.configure(api, session));
     setState(() {
       _api = api;
       _session = session;
@@ -56,6 +58,7 @@ class _AuthGateState extends State<AuthGate> {
     final api = _api;
     if (api != null) {
       unawaited(_sessionStore.save(baseUrl: api.baseUrl, token: session.token));
+      unawaited(PushNotificationService.instance.configure(api, session));
     }
     setState(() => _session = session);
   }
@@ -79,6 +82,7 @@ class _AuthGateState extends State<AuthGate> {
       );
     }
     unawaited(MusicPlaybackController.instance.stop());
+    unawaited(PushNotificationService.instance.clear());
     unawaited(_sessionStore.clear());
     setState(() {
       _api = null;

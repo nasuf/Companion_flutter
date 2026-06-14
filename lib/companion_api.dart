@@ -687,6 +687,61 @@ class CompanionApi {
     await _request('DELETE', '/reminders/$triggerId$query');
   }
 
+  Future<void> registerPushDevice({
+    required String token,
+    required String environment,
+    required String deviceId,
+    String? bundleId,
+    String? appVersion,
+  }) async {
+    final body = {
+      'platform': 'ios',
+      'token': token,
+      'environment': environment,
+      'device_id': deviceId,
+    };
+    if (bundleId != null && bundleId.isNotEmpty) {
+      body['bundle_id'] = bundleId;
+    }
+    if (appVersion != null && appVersion.isNotEmpty) {
+      body['app_version'] = appVersion;
+    }
+    await _request(
+      'POST',
+      '/notifications/devices',
+      body: body,
+      debugLabel: 'push.register',
+    );
+  }
+
+  Future<void> disablePushDevice({required String token}) async {
+    await _request(
+      'DELETE',
+      '/notifications/devices',
+      body: {'token': token},
+      debugLabel: 'push.disable',
+    );
+  }
+
+  Future<void> updatePushPresence({
+    required String deviceId,
+    required bool foreground,
+    String? workspaceId,
+    String? conversationId,
+  }) async {
+    await _request(
+      'POST',
+      '/notifications/presence',
+      body: {
+        'device_id': deviceId,
+        'foreground': foreground,
+        'workspace_id': workspaceId,
+        'conversation_id': conversationId,
+      },
+      debugLabel: 'push.presence',
+    );
+  }
+
   Future<List<TimeCapsule>> listTimeCapsules({
     String? agentId,
     String? workspaceId,

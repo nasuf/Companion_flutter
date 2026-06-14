@@ -24,6 +24,7 @@ class _MainShellState extends State<MainShell> {
   AchievementItem? _activeAchievement;
   final _chatPageKey = GlobalKey<_ChatPageState>();
   StreamSubscription<CheckinNotificationPayload>? _notificationSub;
+  StreamSubscription<PushNotificationPayload>? _pushNotificationSub;
 
   @override
   void initState() {
@@ -31,15 +32,30 @@ class _MainShellState extends State<MainShell> {
     _notificationSub = CheckinNotificationService.instance.payloads.listen(
       _openCheckinFromNotification,
     );
+    _pushNotificationSub = PushNotificationService.instance.payloads.listen(
+      _openPushNotification,
+    );
+    PushNotificationService.instance.setRouteContext(widget.session);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final payload = CheckinNotificationService.instance.takePendingPayload();
       if (payload != null && mounted) _openCheckinFromNotification(payload);
+      final pushPayload = PushNotificationService.instance.takePendingPayload();
+      if (pushPayload != null && mounted) _openPushNotification(pushPayload);
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant MainShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.session != widget.session) {
+      PushNotificationService.instance.setRouteContext(widget.session);
+    }
   }
 
   @override
   void dispose() {
     _notificationSub?.cancel();
+    _pushNotificationSub?.cancel();
     super.dispose();
   }
 
@@ -109,6 +125,35 @@ class _MainShellState extends State<MainShell> {
         result.agentText,
         result.card,
       );
+    });
+  }
+
+  void _openPushNotification(PushNotificationPayload payload) {
+    if (!mounted) return;
+    _setChatSidebarOpen(false);
+    final route = payload.route;
+    if (route == 'checkin' || payload.type == 'checkin_reminder') {
+      unawaited(
+        _openCheckinFromNotification(
+          CheckinNotificationPayload(
+            triggerId: payload.triggerId ?? '',
+            memoryId: payload.memoryId,
+          ),
+        ),
+      );
+      return;
+    }
+    if (route == 'capsules' || payload.type == 'capsule_ready') {
+      unawaited(_openSidebarDestination(_SidebarDestination.capsule));
+      return;
+    }
+    if (route == 'achievement' || payload.type == 'achievement_unlocked') {
+      unawaited(_openSidebarDestination(_SidebarDestination.achievement));
+      return;
+    }
+    setState(() => _index = 0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chatPageKey.currentState?.refreshReadyCapsules();
     });
   }
 
