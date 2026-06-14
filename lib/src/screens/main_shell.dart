@@ -18,13 +18,24 @@ class MainShell extends StatefulWidget {
   State<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class _MainShellState extends State<MainShell> with RouteAware {
   int _index = 0;
   bool _chatSidebarOpen = false;
+  bool _routeCovered = false;
   AchievementItem? _activeAchievement;
+  AppNotificationEvent? _activeNotification;
   final _chatPageKey = GlobalKey<_ChatPageState>();
+  PageRoute<dynamic>? _subscribedRoute;
+  OverlayEntry? _notificationOverlay;
+  Timer? _notificationTimer;
   StreamSubscription<CheckinNotificationPayload>? _notificationSub;
-  StreamSubscription<PushNotificationPayload>? _pushNotificationSub;
+  StreamSubscription<AppNotificationEvent>? _appNotificationSub;
+
+  bool get _chatContentActive =>
+      _index == 0 &&
+      !_chatSidebarOpen &&
+      !_routeCovered &&
+      _activeAchievement == null;
 
   @override
   void initState() {
@@ -32,15 +43,15 @@ class _MainShellState extends State<MainShell> {
     _notificationSub = CheckinNotificationService.instance.payloads.listen(
       _openCheckinFromNotification,
     );
-    _pushNotificationSub = PushNotificationService.instance.payloads.listen(
-      _openPushNotification,
+    _appNotificationSub = AppNotificationService.instance.events.listen(
+      _handleAppNotification,
     );
     PushNotificationService.instance.setRouteContext(widget.session);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final payload = CheckinNotificationService.instance.takePendingPayload();
       if (payload != null && mounted) _openCheckinFromNotification(payload);
-      final pushPayload = PushNotificationService.instance.takePendingPayload();
-      if (pushPayload != null && mounted) _openPushNotification(pushPayload);
+      final notification = AppNotificationService.instance.takePendingEvent();
+      if (notification != null && mounted) _handleAppNotification(notification);
     });
   }
 
@@ -53,10 +64,38 @@ class _MainShellState extends State<MainShell> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is! PageRoute<dynamic> || route == _subscribedRoute) return;
+    appRouteObserver.unsubscribe(this);
+    _subscribedRoute = route;
+    appRouteObserver.subscribe(this, route);
+  }
+
+  @override
+  void didPushNext() {
+    _setRouteCovered(true);
+  }
+
+  @override
+  void didPopNext() {
+    _setRouteCovered(false);
+  }
+
+  @override
   void dispose() {
+    _notificationTimer?.cancel();
+    _removeNotificationOverlay();
+    appRouteObserver.unsubscribe(this);
     _notificationSub?.cancel();
-    _pushNotificationSub?.cancel();
+    _appNotificationSub?.cancel();
     super.dispose();
+  }
+
+  void _setRouteCovered(bool value) {
+    if (_routeCovered == value) return;
+    setState(() => _routeCovered = value);
   }
 
   void _setChatSidebarOpen(bool value) {
@@ -128,33 +167,78 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
-  void _openPushNotification(PushNotificationPayload payload) {
+  void _handleAppNotification(AppNotificationEvent event) {
     if (!mounted) return;
+    if (event.isRemotePush) {
+      _openAppNotification(event);
+      return;
+    }
+    if (event.isChat && !_chatContentActive) {
+      _showInAppNotification(event);
+    }
+  }
+
+  void _showInAppNotification(AppNotificationEvent event) {
+    _notificationTimer?.cancel();
+    _removeNotificationOverlay();
+    _activeNotification = event;
+    _notificationOverlay = OverlayEntry(
+      builder: (context) => Positioned(
+        top: MediaQuery.paddingOf(context).top + 10,
+        left: 18,
+        right: 18,
+        child: _InAppNotificationBanner(
+          event: event,
+          onTap: () => _openAppNotification(event),
+          onDismiss: _dismissInAppNotification,
+        ),
+      ),
+    );
+    Overlay.of(context, rootOverlay: true).insert(_notificationOverlay!);
+    _notificationTimer = Timer(const Duration(seconds: 10), () {
+      if (!mounted || _activeNotification?.id != event.id) return;
+      _dismissInAppNotification();
+    });
+  }
+
+  void _dismissInAppNotification() {
+    _notificationTimer?.cancel();
+    _notificationTimer = null;
+    _activeNotification = null;
+    _removeNotificationOverlay();
+  }
+
+  void _removeNotificationOverlay() {
+    _notificationOverlay?.remove();
+    _notificationOverlay = null;
+  }
+
+  void _openAppNotification(AppNotificationEvent event) {
+    if (!mounted) return;
+    _dismissInAppNotification();
     _setChatSidebarOpen(false);
-    final route = payload.route;
-    if (route == 'checkin' || payload.type == 'checkin_reminder') {
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    if (event.isCheckin) {
       unawaited(
         _openCheckinFromNotification(
           CheckinNotificationPayload(
-            triggerId: payload.triggerId ?? '',
-            memoryId: payload.memoryId,
+            triggerId: event.triggerId ?? '',
+            memoryId: event.memoryId,
           ),
         ),
       );
       return;
     }
-    if (route == 'capsules' || payload.type == 'capsule_ready') {
+    if (event.isCapsule) {
       unawaited(_openSidebarDestination(_SidebarDestination.capsule));
       return;
     }
-    if (route == 'achievement' || payload.type == 'achievement_unlocked') {
+    if (event.isAchievement) {
       unawaited(_openSidebarDestination(_SidebarDestination.achievement));
       return;
     }
     setState(() => _index = 0);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _chatPageKey.currentState?.refreshReadyCapsules();
-    });
+    _chatPageKey.currentState?.scrollToLatest();
   }
 
   void _sendDraftToChat(CapsuleChatDraft draft) {
@@ -186,6 +270,7 @@ class _MainShellState extends State<MainShell> {
             key: _chatPageKey,
             api: widget.api,
             session: widget.session,
+            isActive: _chatContentActive,
             onOpenSidebar: () => _setChatSidebarOpen(true),
             onAchievementDetailRequested: _openAchievementOverlay,
             onAchievementOverlayChanged: _setAchievementOverlayOpen,
@@ -259,6 +344,133 @@ class _MainShellState extends State<MainShell> {
             onSelected: _openSidebarDestination,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _InAppNotificationBanner extends StatelessWidget {
+  const _InAppNotificationBanner({
+    required this.event,
+    required this.onTap,
+    required this.onDismiss,
+  });
+
+  final AppNotificationEvent? event;
+  final VoidCallback? onTap;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = event != null;
+    return Material(
+      type: MaterialType.transparency,
+      child: DefaultTextStyle.merge(
+        style: const TextStyle(decoration: TextDecoration.none),
+        child: IgnorePointer(
+          ignoring: !visible,
+          child: AnimatedSlide(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            offset: visible ? Offset.zero : const Offset(0, -0.7),
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              opacity: visible ? 1 : 0,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 370),
+                  child: GestureDetector(
+                    onTap: onTap,
+                    onVerticalDragEnd: (details) {
+                      if ((details.primaryVelocity ?? 0) < -80) {
+                        onDismiss();
+                      }
+                    },
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppColors.surface.withValues(alpha: 0.98),
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(color: AppColors.hairline),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.11),
+                            blurRadius: 24,
+                            offset: const Offset(0, 12),
+                          ),
+                        ],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: AppColors.accent.withValues(alpha: 0.12),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                CupertinoIcons.chat_bubble_2_fill,
+                                color: AppColors.accent,
+                                size: 19,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    event?.title ?? '',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.text,
+                                      decoration: TextDecoration.none,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    event?.body ?? '',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.muted,
+                                      decoration: TextDecoration.none,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: onDismiss,
+                              child: const Padding(
+                                padding: EdgeInsets.all(6),
+                                child: Icon(
+                                  CupertinoIcons.xmark,
+                                  color: AppColors.muted,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

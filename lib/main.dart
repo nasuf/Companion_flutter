@@ -65,6 +65,7 @@ part 'src/screens/store_subscription_view.dart';
 part 'src/screens/store_widgets.dart';
 part 'src/screens/weather_page.dart';
 part 'src/services/checkin_notification_service.dart';
+part 'src/services/app_notification_service.dart';
 part 'src/services/music_playback_controller.dart';
 part 'src/services/push_notification_service.dart';
 part 'src/theme/app_colors.dart';
@@ -79,12 +80,16 @@ part 'src/widgets/chat/inline_banner.dart';
 part 'src/widgets/chat/message_widgets.dart';
 part 'src/widgets/chat/panels.dart';
 
+final RouteObserver<PageRoute<dynamic>> appRouteObserver =
+    RouteObserver<PageRoute<dynamic>>();
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   tzdata.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation('Asia/Shanghai'));
   await CheckinNotificationService.instance.initialize();
   await PushNotificationService.instance.initialize();
+  AppNotificationService.instance.initialize();
   runApp(const CompanionApp());
 }
 
@@ -104,6 +109,7 @@ class CompanionApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: '伴生',
+      navigatorObservers: [appRouteObserver],
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,

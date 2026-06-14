@@ -7,6 +7,7 @@ class ChatPage extends StatefulWidget {
     super.key,
     required this.api,
     required this.session,
+    required this.isActive,
     required this.onOpenSidebar,
     this.onAchievementDetailRequested,
     this.onAchievementOverlayChanged,
@@ -14,6 +15,7 @@ class ChatPage extends StatefulWidget {
 
   final CompanionApi api;
   final AuthSession session;
+  final bool isActive;
   final VoidCallback onOpenSidebar;
   final ValueChanged<AchievementItem>? onAchievementDetailRequested;
   final ValueChanged<bool>? onAchievementOverlayChanged;
@@ -61,6 +63,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   double _lastKeyboardInset = 0;
   bool _pinToBottomDuringKeyboard = false;
   bool _wasNearBottomBeforePaddingChange = true;
+  int _newMessageCount = 0;
   ({String text, String clientId, ChatComponentCard? componentCard})?
   _pendingSend;
   int _achievementDemoIndex = 0;
@@ -167,6 +170,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _hasOlderMessages = false;
       _loadedServerMessages = 0;
       _historyError = null;
+      _newMessageCount = 0;
       _pendingSend = null;
       _readyCapsule = null;
       _conversationMeta = null;
@@ -967,6 +971,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         !_loadingOlder) {
       unawaited(_loadOlderMessages());
     }
+    if (_newMessageCount > 0 && _isNearBottomNow()) {
+      setState(() => _newMessageCount = 0);
+    }
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _updateStationCardDocked(),
     );
@@ -1007,6 +1014,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       case 'proactive':
         final text = payload['text']?.toString() ?? '';
         if (text.isEmpty) return;
+        final wasNearBottom = _isNearBottomNow();
+        final shouldAutoScroll = widget.isActive && wasNearBottom;
+        final messageId = payload['message_id']?.toString();
+        final assistantMessageId = payload['assistant_message_id']?.toString();
+        final replyIndex = _payloadReplyIndex(payload);
+        final shouldEmitInAppNotification =
+            !widget.isActive && (replyIndex == null || replyIndex == 0);
         final rawComponentCard =
             payload['component_card'] ?? payload['componentCard'];
         final componentCard = rawComponentCard is Map
@@ -1026,9 +1040,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             _adoptMusicStation(componentCard!, draft.id);
           }
           _sending = false;
+          if (!shouldAutoScroll) {
+            _newMessageCount += 1;
+          }
         });
+        if (shouldEmitInAppNotification) {
+          AppNotificationService.instance.emitAgentMessage(
+            text: text,
+            session: widget.session,
+            eventType: envelope.type,
+            messageId: messageId?.isNotEmpty == true
+                ? messageId
+                : assistantMessageId?.isNotEmpty == true
+                ? assistantMessageId
+                : null,
+          );
+        }
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scrollToBottom(animated: true);
+          if (shouldAutoScroll) {
+            _scrollToBottom(animated: true);
+          }
           _updateStationCardDocked();
         });
         break;
@@ -1159,8 +1190,24 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
+  void scrollToLatest({bool animated = true}) {
+    if (mounted && _newMessageCount > 0) {
+      setState(() => _newMessageCount = 0);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _scrollToBottom(animated: animated);
+    });
+  }
+
   void sendComponentMessage(String text, ChatComponentCard componentCard) {
     _sendText(text.trim(), componentCard: componentCard);
+  }
+
+  int? _payloadReplyIndex(Map<String, dynamic> payload) {
+    final value = payload['index'] ?? payload['reply_index'];
+    if (value is int) return value;
+    return int.tryParse(value?.toString() ?? '');
   }
 
   void _sendMessage() {
@@ -1494,6 +1541,27 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               child: _ChatPanel(panel: visiblePanel, onEmojiTap: _appendEmoji),
             ),
           ),
+          AnimatedPositioned(
+            left: 0,
+            right: 0,
+            bottom: inputSurfaceHeight + 12,
+            duration: _animationDuration,
+            curve: _animationCurve,
+            child: IgnorePointer(
+              ignoring: _newMessageCount == 0,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                opacity: _newMessageCount > 0 ? 1 : 0,
+                child: Center(
+                  child: _NewMessagesButton(
+                    count: _newMessageCount,
+                    onTap: () => scrollToLatest(),
+                  ),
+                ),
+              ),
+            ),
+          ),
           Positioned(
             top: 74,
             left: 26,
@@ -1543,6 +1611,57 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _NewMessagesButton extends StatelessWidget {
+  const _NewMessagesButton({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = count <= 1 ? '有新消息' : '$count 条新消息';
+    return GestureDetector(
+      onTap: onTap,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.accent,
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.accent.withValues(alpha: 0.28),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 16, 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                CupertinoIcons.arrow_down,
+                color: Colors.white,
+                size: 15,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
