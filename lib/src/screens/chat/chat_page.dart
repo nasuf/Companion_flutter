@@ -25,7 +25,8 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const _animationDuration = Duration(milliseconds: 260);
   static const _animationCurve = Curves.easeOutCubic;
-  static const _composerHeight = 68.0;
+  static const _composerMinHeight = 68.0;
+  static const _composerLineHeight = 22.0;
   static const _tabBarContentHeight = 64.0;
   static const _emojiPanelHeight = 238.0;
   static const _morePanelHeight = 236.0;
@@ -75,11 +76,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   String get _conversationId => widget.session.conversationId!;
 
+  String? get _agentAvatarUrl {
+    final explicit = widget.session.agentAvatarUrl?.trim();
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    final key = widget.session.agentAvatarKey?.trim();
+    if (key == null || key.isEmpty) return null;
+    return '${widget.api.baseUrl}/agents/avatar/${Uri.encodeComponent(key)}.png';
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_handleScroll);
+    _inputController.addListener(_handleInputChanged);
     _playback.addListener(_handleStationPlaybackChanged);
     _musicCompleteSub = _playback.completed.listen((_) {
       if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? true)) return;
@@ -106,6 +116,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _scrollController.removeListener(_handleScroll);
+    _inputController.removeListener(_handleInputChanged);
     _playback.removeListener(_handleStationPlaybackChanged);
     _scrollController.dispose();
     _inputController.dispose();
@@ -135,6 +146,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ComposerPanel.more => _morePanelHeight,
       ComposerPanel.none => 0,
     };
+  }
+
+  void _handleInputChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _bootstrapChat() async {
@@ -933,8 +948,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         final topLeft = renderObject.localToGlobal(Offset.zero);
         final bottom = topLeft.dy + renderObject.size.height;
         final screenHeight = MediaQuery.sizeOf(this.context).height;
+        final composerHeight = _composerHeightForWidth(
+          MediaQuery.sizeOf(this.context).width,
+        );
         final bottomLimit =
-            screenHeight - _composerHeight - _tabBarContentHeight;
+            screenHeight - composerHeight - _tabBarContentHeight;
         const dockRevealLine = 144.0;
         shouldDock = bottom < dockRevealLine || topLeft.dy > bottomLimit;
       }
@@ -1174,6 +1192,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _panel = ComposerPanel.none;
       _sending = true;
     });
+    if (componentCard == null) {
+      _inputFocus.requestFocus();
+    }
 
     final sent =
         _socket?.sendMessage(text, clientId, componentCard: componentCard) ??
@@ -1187,6 +1208,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       unawaited(_socket?.connect());
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && componentCard == null) {
+        _inputFocus.requestFocus();
+      }
       _scrollToBottom(animated: true);
       _updateStationCardDocked();
     });
@@ -1258,6 +1282,22 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     return position.maxScrollExtent - position.pixels < 120;
   }
 
+  double _composerHeightForWidth(double screenWidth) {
+    final inputWidth = math.max(120.0, screenWidth - 190.0);
+    final text = _inputController.text.isEmpty ? ' ' : _inputController.text;
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: const TextStyle(fontSize: 16, height: 1.25),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 3,
+    )..layout(maxWidth: inputWidth);
+    final lineHeight = painter.preferredLineHeight;
+    final lineCount = (painter.height / lineHeight).ceil().clamp(1, 3);
+    return _composerMinHeight + (lineCount - 1) * _composerLineHeight;
+  }
+
   void _appendEmoji(String emoji) {
     final text = _inputController.text;
     final selection = _inputController.selection;
@@ -1319,6 +1359,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
     final visiblePanel = _panel != ComposerPanel.none ? _panel : _heldPanel;
     final visiblePanelHeight = _panelHeightFor(visiblePanel);
+    final composerHeight = _composerHeightForWidth(
+      MediaQuery.sizeOf(context).width,
+    );
     final keyboardLift = isKeyboardOpen ? bottomInset : 0.0;
     final panelHeight = visiblePanelHeight;
     final safeBottom = MediaQuery.paddingOf(context).bottom;
@@ -1326,7 +1369,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final composerBottom = isKeyboardOpen
         ? math.max(keyboardLift, tabBarLift + panelHeight)
         : tabBarLift + panelHeight;
-    final inputSurfaceHeight = _composerHeight + composerBottom;
+    final inputSurfaceHeight = composerHeight + composerBottom;
     final stationTrack = _stationTrack;
     final showStationDock = stationTrack != null && _stationDockActive;
     final listBottomPadding = inputSurfaceHeight + 18;
@@ -1345,6 +1388,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (!isKeyboardOpen && wasKeyboardOpen) {
       _pinToBottomDuringKeyboard = false;
     }
+    final agentAvatarUrl = _agentAvatarUrl;
 
     return SafeArea(
       bottom: false,
@@ -1358,7 +1402,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 aiStatus: _conversationMeta?.aiStatus,
                 aiStatusLabel: _conversationMeta?.aiStatusLabel,
                 aiActivity: _conversationMeta?.aiActivity,
-                avatarUrl: widget.session.agentAvatarUrl,
+                avatarUrl: agentAvatarUrl,
                 isMusicListening: _isUserCoListening,
                 isMusicPlaying:
                     _conversationMeta?.musicCoListening?.isPlaying ?? false,
@@ -1400,7 +1444,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           isMusicBusy: _advancingStation,
                           stationMessageId: _musicStation.messageId,
                           stationMessageKey: _stationCardKey,
-                          agentAvatarUrl: widget.session.agentAvatarUrl,
+                          agentAvatarUrl: agentAvatarUrl,
                           userAvatarUrl: widget.session.userAvatarUrl,
                         ),
                 ),
@@ -1431,6 +1475,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             child: _Composer(
               controller: _inputController,
               focusNode: _inputFocus,
+              height: composerHeight,
               activePanel: _panel,
               sending: _sending,
               onFocusInput: _focusInput,

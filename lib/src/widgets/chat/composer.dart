@@ -4,6 +4,7 @@ class _Composer extends StatelessWidget {
   const _Composer({
     required this.controller,
     required this.focusNode,
+    required this.height,
     required this.activePanel,
     required this.sending,
     required this.onFocusInput,
@@ -15,6 +16,7 @@ class _Composer extends StatelessWidget {
 
   final TextEditingController controller;
   final FocusNode focusNode;
+  final double height;
   final ComposerPanel activePanel;
   final bool sending;
   final VoidCallback onFocusInput;
@@ -26,13 +28,14 @@ class _Composer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: _ChatPageState._composerHeight,
+      height: height,
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
       decoration: const BoxDecoration(
         color: AppColors.page,
         border: Border(top: BorderSide(color: AppColors.hairline)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           _RoundIconButton(
             tooltip: '语音',
@@ -42,7 +45,7 @@ class _Composer extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Container(
-              height: 42,
+              constraints: const BoxConstraints(minHeight: 42, maxHeight: 86),
               decoration: BoxDecoration(
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(21),
@@ -53,10 +56,9 @@ class _Composer extends StatelessWidget {
                 focusNode: focusNode,
                 minLines: 1,
                 maxLines: 3,
-                textInputAction: TextInputAction.send,
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
                 onTap: onFocusInput,
-                onTapOutside: (_) => FocusScope.of(context).unfocus(),
-                onSubmitted: (_) => onSend(),
                 decoration: const InputDecoration(
                   hintText: '发消息...',
                   hintStyle: TextStyle(color: AppColors.muted),

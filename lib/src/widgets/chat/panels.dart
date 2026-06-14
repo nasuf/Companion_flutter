@@ -25,11 +25,23 @@ class _ChatPanel extends StatelessWidget {
   }
 }
 
-class _EmojiPanel extends StatelessWidget {
+class _EmojiPanel extends StatefulWidget {
   const _EmojiPanel({required this.onEmojiTap, this.compact = false});
 
   final ValueChanged<String> onEmojiTap;
   final bool compact;
+
+  @override
+  State<_EmojiPanel> createState() => _EmojiPanelState();
+}
+
+class _EmojiPanelState extends State<_EmojiPanel> {
+  static const _columns = 8;
+  static const _rows = 4;
+  static const _perPage = _columns * _rows;
+
+  late final PageController _pageController;
+  int _page = 0;
 
   static const _emojis = [
     '😊',
@@ -56,14 +68,73 @@ class _EmojiPanel extends StatelessWidget {
     '💬',
     '🪄',
     '🌿',
+    '❤️',
+    '💕',
+    '🥰',
+    '😘',
+    '😆',
+    '😎',
+    '🤔',
+    '😴',
+    '🥳',
+    '😤',
+    '😇',
+    '🤗',
+    '😋',
+    '🤩',
+    '🙈',
+    '🤝',
+    '💪',
+    '👏',
+    '🙏',
+    '👌',
+    '✌️',
+    '🔥',
+    '⭐',
+    '🌈',
+    '🌸',
+    '🍀',
+    '🍵',
+    '🍜',
+    '🍭',
+    '🎁',
+    '🎵',
+    '🎬',
+    '🏖️',
+    '🛋️',
+    '📝',
+    '📷',
+    '💡',
+    '💤',
+    '💭',
+    '🔆',
   ];
+
+  List<List<String>> get _pages {
+    return [
+      for (var index = 0; index < _emojis.length; index += _perPage)
+        _emojis.sublist(index, math.min(index + _perPage, _emojis.length)),
+    ];
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     Widget emojiTile(String emoji) {
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => onEmojiTap(emoji),
+        onTap: () => widget.onEmojiTap(emoji),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: AppColors.surfaceMuted,
@@ -76,22 +147,31 @@ class _EmojiPanel extends StatelessWidget {
       );
     }
 
-    final grid = GridView.builder(
-      padding: EdgeInsets.zero,
-      primary: false,
-      physics: const BouncingScrollPhysics(),
-      itemCount: _emojis.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 8,
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
-      ),
-      itemBuilder: (context, index) => emojiTile(_emojis[index]),
-    );
+    Widget pageGrid(List<String> emojis) {
+      return GridView.builder(
+        padding: EdgeInsets.zero,
+        primary: false,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: emojis.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: _columns,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+        ),
+        itemBuilder: (context, index) => emojiTile(emojis[index]),
+      );
+    }
+
+    final pages = _pages;
 
     return Padding(
       key: const ValueKey('emoji'),
-      padding: EdgeInsets.fromLTRB(16, compact ? 6 : 14, 16, compact ? 10 : 18),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        widget.compact ? 6 : 14,
+        16,
+        widget.compact ? 10 : 14,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -99,8 +179,8 @@ class _EmojiPanel extends StatelessWidget {
             '常用表情',
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
           ),
-          SizedBox(height: compact ? 12 : 14),
-          if (compact)
+          SizedBox(height: widget.compact ? 12 : 14),
+          if (widget.compact)
             LayoutBuilder(
               builder: (context, constraints) {
                 final tileSize = (constraints.maxWidth - 56) / 8;
@@ -108,7 +188,7 @@ class _EmojiPanel extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    for (final emoji in _emojis)
+                    for (final emoji in _emojis.take(24))
                       SizedBox(
                         width: tileSize,
                         height: tileSize,
@@ -118,8 +198,36 @@ class _EmojiPanel extends StatelessWidget {
                 );
               },
             )
-          else
-            Expanded(child: grid),
+          else ...[
+            Expanded(
+              child: PageView.builder(
+                controller: _pageController,
+                physics: const BouncingScrollPhysics(),
+                itemCount: pages.length,
+                onPageChanged: (value) => setState(() => _page = value),
+                itemBuilder: (context, index) => pageGrid(pages[index]),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var index = 0; index < pages.length; index++)
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: index == _page ? 13 : 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: index == _page
+                          ? AppColors.accent
+                          : AppColors.hairline,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );

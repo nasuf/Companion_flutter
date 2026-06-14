@@ -252,8 +252,12 @@ class _AchievementLargeCardFront extends StatelessWidget {
       item: item,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _AchievementLevelIcon(item: item, size: 128, glow: true),
+          Align(
+            alignment: Alignment.center,
+            child: _AchievementLevelIcon(item: item, size: 128, glow: true),
+          ),
           const SizedBox(height: 24),
           Text(
             item.name,
@@ -289,6 +293,7 @@ class _AchievementLargeCardFront extends StatelessWidget {
           const Spacer(),
           const Text(
             '点击翻转查看详情',
+            textAlign: TextAlign.center,
             style: TextStyle(
               color: Color(0xFFB5BAC4),
               fontSize: 13,
@@ -316,21 +321,25 @@ class _AchievementLargeCardBack extends StatelessWidget {
       background: _AchievementBreathingWash(item: item, breath: breath),
       child: Stack(
         children: [
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                item.conditionText.isEmpty ? item.ruleText : item.conditionText,
-                maxLines: 5,
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF6E7480),
-                  fontSize: 19,
-                  height: 1.36,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0,
-                  decoration: TextDecoration.none,
+          Positioned.fill(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Text(
+                  item.conditionText.isEmpty
+                      ? item.ruleText
+                      : item.conditionText,
+                  maxLines: 5,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF6E7480),
+                    fontSize: 19,
+                    height: 1.36,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
               ),
             ),
@@ -394,9 +403,11 @@ class _AchievementLargeCardShell extends StatelessWidget {
           child: Stack(
             children: [
               if (background != null) Positioned.fill(child: background!),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 32, 20, 22),
-                child: child,
+              Positioned.fill(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 32, 20, 22),
+                  child: child,
+                ),
               ),
             ],
           ),

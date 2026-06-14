@@ -40,6 +40,16 @@ class CompanionApi {
     return _absoluteUrl(trimmed);
   }
 
+  String? _agentAvatarUrl({String? url, String? key}) {
+    final explicit = _absoluteOptionalUrl(url);
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    final trimmedKey = key?.trim();
+    if (trimmedKey == null || trimmedKey.isEmpty) return null;
+    return _absoluteUrl(
+      '/agents/avatar/${Uri.encodeComponent(trimmedKey)}.png',
+    );
+  }
+
   AuthSession _normalizeAuthSession(AuthSession session) {
     return AuthSession(
       token: session.token,
@@ -52,7 +62,10 @@ class CompanionApi {
       agentId: session.agentId,
       agentName: session.agentName,
       agentAvatarKey: session.agentAvatarKey,
-      agentAvatarUrl: _absoluteOptionalUrl(session.agentAvatarUrl),
+      agentAvatarUrl: _agentAvatarUrl(
+        url: session.agentAvatarUrl,
+        key: session.agentAvatarKey,
+      ),
       agentCity: session.agentCity,
       workspaceId: session.workspaceId,
       conversationId: session.conversationId,
@@ -68,7 +81,10 @@ class CompanionApi {
       gender: profile.gender,
       city: profile.city,
       avatarKey: profile.avatarKey,
-      avatarUrl: _absoluteOptionalUrl(profile.avatarUrl),
+      avatarUrl: _agentAvatarUrl(
+        url: profile.avatarUrl,
+        key: profile.avatarKey,
+      ),
     );
   }
 
