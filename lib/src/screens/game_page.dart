@@ -207,6 +207,9 @@ class _GamePageState extends State<GamePage>
         ...payload,
         'source': 'sud_flutter_callback',
         'mg_id': session.mgId,
+        'game_title': _activeGame.title,
+        'play_mode': _mode.name,
+        'difficulty': _difficulty.name,
       },
     );
   }
@@ -869,17 +872,19 @@ class _SudGamePlayPage extends StatefulWidget {
 class _SudGamePlayPageState extends State<_SudGamePlayPage> {
   SudConfigResponse? _config;
   SudSession? _session;
-  SudGamePlayMode _mode = SudGamePlayMode.versus;
-  SudGameDifficulty _difficulty = SudGameDifficulty.newbie;
+  List<SudSession> _rounds = const [];
   final List<_GameTimelineItem> _timeline = [];
+  bool _roundsLoading = true;
   bool _starting = false;
   String? _error;
+  String? _roundsError;
 
   @override
   void initState() {
     super.initState();
     _config = widget.initialConfig;
     if (_config == null) unawaited(_loadConfig());
+    unawaited(_loadRounds());
   }
 
   Future<void> _loadConfig() async {
@@ -888,6 +893,33 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
       if (mounted) setState(() => _config = config);
     } catch (error) {
       if (mounted) setState(() => _error = _formatError(error));
+    }
+  }
+
+  Future<void> _loadRounds() async {
+    if (!mounted) return;
+    setState(() {
+      _roundsLoading = true;
+      _roundsError = null;
+    });
+    try {
+      final sessions = await widget.api.listSudSessions();
+      final mgId = _resolvedMgId();
+      if (!mounted) return;
+      setState(() {
+        _rounds = sessions
+            .where(
+              (item) => item.mgId == mgId && _GameRoundSummary.canShow(item),
+            )
+            .toList();
+        _roundsLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _roundsLoading = false;
+        _roundsError = _formatError(error);
+      });
     }
   }
 
@@ -909,8 +941,8 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
         workspaceId: widget.authSession.workspaceId,
         conversationId: widget.authSession.conversationId,
         mgId: _resolvedMgId(),
-        playMode: _mode,
-        difficulty: _difficulty,
+        playMode: SudGamePlayMode.versus,
+        difficulty: SudGameDifficulty.newbie,
       );
       if (!mounted) return;
       setState(() {
@@ -931,6 +963,7 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
         }
         _trimTimeline();
       });
+      unawaited(_loadRounds());
     } catch (error) {
       if (mounted) setState(() => _error = _formatError(error));
     } finally {
@@ -968,8 +1001,8 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
           'source': 'sud_flutter_callback',
           'mg_id': session.mgId,
           'game_title': widget.game.title,
-          'play_mode': _mode.name,
-          'difficulty': _difficulty.name,
+          'play_mode': session.playMode.name,
+          'difficulty': session.difficulty.name,
         },
       );
       if (!mounted) return;
@@ -985,6 +1018,9 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
           _trimTimeline();
         }
       });
+      if (_GameRoundSummary.canShow(response.session)) {
+        unawaited(_loadRounds());
+      }
     } catch (error) {
       if (mounted) setState(() => _error = _formatError(error));
     }
@@ -1021,7 +1057,6 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
             physics: const BouncingScrollPhysics(),
             slivers: [
               SliverToBoxAdapter(child: _playHeader(context)),
-              SliverToBoxAdapter(child: _playModePanel()),
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
@@ -1082,6 +1117,7 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
                 ),
               ),
               SliverToBoxAdapter(child: _playTimeline()),
+              SliverToBoxAdapter(child: _roundHistorySection()),
               const SliverToBoxAdapter(child: SizedBox(height: 42)),
             ],
           ),
@@ -1149,48 +1185,6 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
     );
   }
 
-  Widget _playModePanel() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              for (final mode in SudGamePlayMode.values) ...[
-                Expanded(
-                  child: _SegmentButton(
-                    selected: _mode == mode,
-                    icon: mode == SudGamePlayMode.versus
-                        ? CupertinoIcons.scope
-                        : CupertinoIcons.circle_grid_hex,
-                    label: mode.title,
-                    onTap: _session == null
-                        ? () => setState(() => _mode = mode)
-                        : () {},
-                  ),
-                ),
-                if (mode != SudGamePlayMode.values.last)
-                  const SizedBox(width: 10),
-              ],
-            ],
-          ),
-          const SizedBox(height: 10),
-          for (final difficulty in SudGameDifficulty.values)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _DifficultyRow(
-                difficulty: difficulty,
-                selected: _difficulty == difficulty,
-                onTap: _session == null
-                    ? () => setState(() => _difficulty = difficulty)
-                    : () {},
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   Widget _playTimeline() {
     if (_timeline.isEmpty) return const SizedBox.shrink();
     return Padding(
@@ -1220,6 +1214,593 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
       ),
     );
   }
+
+  Widget _roundHistorySection() {
+    final summaries = _rounds.map(_GameRoundSummary.fromSession).toList();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
+      child: _GlassPanel(
+        radius: 24,
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    '游戏回顾',
+                    style: TextStyle(
+                      color: AppColors.text,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+                if (summaries.isNotEmpty)
+                  _SoftCountPill(text: '${summaries.length} 局'),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              '每一局都先收起来，等你想回味的时候再打开。',
+              style: TextStyle(
+                color: AppColors.text.withValues(alpha: 0.50),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 14),
+            if (_roundsLoading)
+              const SizedBox(
+                height: 72,
+                child: Center(child: CupertinoActivityIndicator()),
+              )
+            else if (_roundsError != null)
+              _GameRoundEmptyState(
+                icon: CupertinoIcons.exclamationmark_triangle,
+                title: '回顾暂时没拉到',
+                subtitle: _roundsError!,
+              )
+            else if (summaries.isEmpty)
+              const _GameRoundEmptyState(
+                icon: CupertinoIcons.sparkles,
+                title: '还没有完成的对局',
+                subtitle: '玩完一局后，这里会留下你和 AI 的小小战绩。',
+              )
+            else
+              Column(
+                children: [
+                  for (final summary in summaries)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _GameRoundCard(
+                        summary: summary,
+                        onTap: () => _showRoundDetail(summary),
+                      ),
+                    ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showRoundDetail(_GameRoundSummary summary) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      useSafeArea: false,
+      builder: (context) => _GameRoundDetailSheet(summary: summary),
+    );
+  }
+}
+
+class _GameRoundSummary {
+  const _GameRoundSummary({
+    required this.session,
+    required this.outcome,
+    required this.userScore,
+    required this.aiScore,
+    required this.durationSeconds,
+    required this.playedAt,
+    required this.userExtras,
+    required this.aiName,
+    required this.roomId,
+  });
+
+  final SudSession session;
+  final String outcome;
+  final int? userScore;
+  final int? aiScore;
+  final int? durationSeconds;
+  final DateTime? playedAt;
+  final Map<String, dynamic> userExtras;
+  final String aiName;
+  final String roomId;
+
+  static bool canShow(SudSession session) {
+    return session.result != null &&
+        {'settled', 'aborted'}.contains(session.status);
+  }
+
+  factory _GameRoundSummary.fromSession(SudSession session) {
+    final result = session.result ?? const <String, dynamic>{};
+    final user = _asMap(result['user']);
+    final ai = _asMap(result['ai']);
+    final outcome = (result['user_outcome'] ?? session.status).toString();
+    return _GameRoundSummary(
+      session: session,
+      outcome: outcome,
+      userScore: _intValue(user['score']),
+      aiScore: _intValue(ai['score']),
+      durationSeconds:
+          session.durationSeconds ?? _intValue(result['duration_seconds']),
+      playedAt: session.endedAt ?? session.startedAt ?? session.createdAt,
+      userExtras: _asMap(result['user_extras']),
+      aiName: session.aiPlayer.nickName.isEmpty
+          ? 'AI'
+          : session.aiPlayer.nickName,
+      roomId: session.roomId,
+    );
+  }
+
+  bool get isWin => outcome == 'win';
+  bool get isLose => outcome == 'lose';
+  bool get isAborted => outcome == 'aborted' || session.status == 'aborted';
+
+  String get resultLabel {
+    if (isAborted) return '未完成';
+    if (isWin) return '你赢了';
+    if (isLose) return '$aiName 小赢';
+    if (outcome == 'draw') return '平局';
+    return '已结束';
+  }
+
+  String get title {
+    if (isAborted) return '这局先停在半路';
+    if (isWin) return '这一局你拿下了';
+    if (isLose) return '差一点，节奏已经起来了';
+    if (outcome == 'draw') return '谁也没让谁舒服';
+    return '留下了一局记录';
+  }
+
+  String get subtitle {
+    final fragments = <String>[];
+    final scoreText = scoreLine;
+    if (scoreText != null) fragments.add(scoreText);
+    final combo = comboLine;
+    if (combo != null) fragments.add(combo);
+    if (fragments.isEmpty && durationText != null) fragments.add(durationText!);
+    return fragments.isEmpty ? '点开看看这一局发生了什么。' : fragments.join(' · ');
+  }
+
+  String? get scoreLine {
+    if (userScore == null || aiScore == null) return null;
+    return '你 $userScore : $aiScore $aiName';
+  }
+
+  String? get durationText {
+    final seconds = durationSeconds;
+    if (seconds == null || seconds <= 0) return null;
+    final minutes = seconds ~/ 60;
+    final rest = seconds % 60;
+    if (minutes <= 0) return '$rest 秒';
+    if (rest == 0) return '$minutes 分钟';
+    return '$minutes 分 $rest 秒';
+  }
+
+  String? get comboLine {
+    final perfect = _intValue(userExtras['numPerfect']) ?? 0;
+    final excellent = _intValue(userExtras['numExcellent']) ?? 0;
+    final crazy = _intValue(userExtras['numCrazy']) ?? 0;
+    final good = _intValue(userExtras['numGood']) ?? 0;
+    if (crazy > 0) return '$crazy 次 Crazy';
+    if (excellent > 0) return '$excellent 次 Excellent';
+    if (perfect > 0) return '$perfect 次 Perfect';
+    if (good > 0) return '$good 次 Good';
+    return null;
+  }
+
+  List<_RoundDetailMetric> get metrics {
+    final items = <_RoundDetailMetric>[];
+    if (scoreLine != null) {
+      items.add(_RoundDetailMetric('比分', scoreLine!));
+    }
+    if (durationText != null) {
+      items.add(_RoundDetailMetric('时长', durationText!));
+    }
+    final perfect = _intValue(userExtras['numPerfect']) ?? 0;
+    final good = _intValue(userExtras['numGood']) ?? 0;
+    final excellent = _intValue(userExtras['numExcellent']) ?? 0;
+    final crazy = _intValue(userExtras['numCrazy']) ?? 0;
+    if (perfect + good + excellent + crazy > 0) {
+      items.add(
+        _RoundDetailMetric(
+          '手感',
+          [
+            if (perfect > 0) '$perfect Perfect',
+            if (excellent > 0) '$excellent Excellent',
+            if (crazy > 0) '$crazy Crazy',
+            if (good > 0) '$good Good',
+          ].join(' · '),
+        ),
+      );
+    }
+    items.add(_RoundDetailMetric('房间', roomId));
+    return items;
+  }
+
+  Color get accent {
+    if (isWin) return const Color(0xFF19A56F);
+    if (isLose) return const Color(0xFF178BFF);
+    if (isAborted) return const Color(0xFF8996A6);
+    return const Color(0xFF8B5CF6);
+  }
+}
+
+class _RoundDetailMetric {
+  const _RoundDetailMetric(this.label, this.value);
+
+  final String label;
+  final String value;
+}
+
+class _GameRoundCard extends StatelessWidget {
+  const _GameRoundCard({required this.summary, required this.onTap});
+
+  final _GameRoundSummary summary;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = summary.accent;
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      borderRadius: BorderRadius.circular(18),
+      onPressed: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(13),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.54),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Icon(
+                summary.isAborted
+                    ? CupertinoIcons.pause_fill
+                    : summary.isWin
+                    ? CupertinoIcons.sparkles
+                    : CupertinoIcons.game_controller_solid,
+                color: accent,
+                size: 21,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          summary.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.text,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _SoftCountPill(text: summary.resultLabel, color: accent),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    summary.subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AppColors.text.withValues(alpha: 0.56),
+                      fontSize: 12,
+                      height: 1.25,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              CupertinoIcons.chevron_forward,
+              color: AppColors.text.withValues(alpha: 0.30),
+              size: 16,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GameRoundEmptyState extends StatelessWidget {
+  const _GameRoundEmptyState({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.70)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.accent, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: AppColors.text.withValues(alpha: 0.50),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SoftCountPill extends StatelessWidget {
+  const _SoftCountPill({required this.text, this.color = AppColors.accent});
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.20)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+          height: 1,
+        ),
+      ),
+    );
+  }
+}
+
+class _GameRoundDetailSheet extends StatelessWidget {
+  const _GameRoundDetailSheet({required this.summary});
+
+  final _GameRoundSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.72;
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: Container(
+              padding: EdgeInsets.fromLTRB(20, 14, 20, bottom + 20),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF7FBFF).withValues(alpha: 0.94),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.80)),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 42,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: AppColors.text.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: summary.accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: Icon(
+                            CupertinoIcons.game_controller_solid,
+                            color: summary.accent,
+                            size: 25,
+                          ),
+                        ),
+                        const SizedBox(width: 13),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                summary.resultLabel,
+                                style: TextStyle(
+                                  color: summary.accent,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                summary.title,
+                                style: const TextStyle(
+                                  color: AppColors.text,
+                                  fontSize: 21,
+                                  height: 1.08,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _roundMemorySentence(summary),
+                      style: TextStyle(
+                        color: AppColors.text.withValues(alpha: 0.66),
+                        fontSize: 13,
+                        height: 1.38,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        for (final metric in summary.metrics)
+                          _RoundMetricChip(metric: metric),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoundMetricChip extends StatelessWidget {
+  const _RoundMetricChip({required this.metric});
+
+  final _RoundDetailMetric metric;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 132),
+      padding: const EdgeInsets.fromLTRB(13, 11, 13, 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.68),
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.86)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            metric.label,
+            style: TextStyle(
+              color: AppColors.text.withValues(alpha: 0.44),
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            metric.value,
+            style: const TextStyle(
+              color: AppColors.text,
+              fontSize: 13,
+              height: 1.18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _roundMemorySentence(_GameRoundSummary summary) {
+  if (summary.isAborted) {
+    return '这局没有完整打完，但它也算一次共同经历。下次回来，可以从同样的节奏重新开。';
+  }
+  if (summary.isWin) {
+    return '这局更像是你把手感慢慢攒起来的一局。不是冷冰冰的胜负，它会留在你们的游戏记忆里。';
+  }
+  if (summary.isLose) {
+    return '这局虽然输了，但里面有几段节奏值得留下。下次再玩，AI 可以接着这个手感陪你调整。';
+  }
+  return '这局没有明显输赢，倒像是两个人一起试了一次节奏。';
+}
+
+Map<String, dynamic> _asMap(Object? value) {
+  if (value is Map) return Map<String, dynamic>.from(value);
+  return const {};
+}
+
+int? _intValue(Object? value) {
+  if (value is num) return value.round();
+  if (value is String) return int.tryParse(value);
+  return null;
 }
 
 class _SudNativeGameStage extends StatefulWidget {
@@ -1254,6 +1835,8 @@ class _SudNativeGameStageState extends State<_SudNativeGameStage>
   String? _loadedSessionKey;
   String? _status;
   bool _entryStateSynced = false;
+  bool _exitReported = false;
+  bool _nativeGameStarted = false;
 
   @override
   void initState() {
@@ -1261,9 +1844,20 @@ class _SudNativeGameStageState extends State<_SudNativeGameStage>
     WidgetsBinding.instance.addObserver(this);
     _fsmGame = SudGIPFSMGameDelegate(
       onGameLoadingProgress: (stage, retCode, progress) {
+        final code = (retCode as num?)?.round() ?? 0;
+        if (code != 0) {
+          final message = '加载失败 $code · $stage';
+          if (mounted) setState(() => _status = message);
+          widget.onEvent(
+            eventType: 'game_load_failed',
+            payload: {'stage': stage, 'ret_code': code, 'progress': progress},
+          );
+          return;
+        }
         if (mounted) setState(() => _status = '加载中 $progress%');
       },
       onGameStarted: () {
+        _nativeGameStarted = true;
         if (mounted) setState(() => _status = '游戏已启动');
         unawaited(_syncEntryStateToGame());
         widget.onEvent(
@@ -1273,6 +1867,7 @@ class _SudNativeGameStageState extends State<_SudNativeGameStage>
       },
       onGameDestroyed: () {
         if (mounted) setState(() => _status = '游戏已销毁');
+        unawaited(_reportGameExit('destroyed', eventType: 'game_destroyed'));
       },
       onExpireCode: (_) async {
         final refreshed = await widget.onRefreshCode();
@@ -1309,6 +1904,7 @@ class _SudNativeGameStageState extends State<_SudNativeGameStage>
     if (oldWidget.session.id != widget.session.id ||
         oldWidget.session.code != widget.session.code) {
       _entryStateSynced = false;
+      _nativeGameStarted = false;
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadGame());
     }
   }
@@ -1316,6 +1912,7 @@ class _SudNativeGameStageState extends State<_SudNativeGameStage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    unawaited(_reportGameExit('page_disposed'));
     final viewId = _platformViewId;
     if (viewId != null) {
       SudGipPlugin.removeFSMGame(viewId);
@@ -1323,6 +1920,19 @@ class _SudNativeGameStageState extends State<_SudNativeGameStage>
       SudGipPlugin.dispose(viewId);
     }
     super.dispose();
+  }
+
+  Future<void> _reportGameExit(
+    String reason, {
+    String eventType = 'game_exited',
+  }) async {
+    if (_exitReported) return;
+    if (!_nativeGameStarted && eventType != 'game_destroyed') return;
+    _exitReported = true;
+    await widget.onEvent(
+      eventType: eventType,
+      payload: {'reason': reason, 'gameState': 'aborted'},
+    );
   }
 
   Future<void> _loadGame() async {
@@ -1384,6 +1994,13 @@ class _SudNativeGameStageState extends State<_SudNativeGameStage>
         'isRandom': false,
         'teamId': 1,
       });
+      final gameSetting = _gameSettingSelectInfo(session);
+      if (gameSetting != null) {
+        await _notifyGameState(
+          'app_common_game_setting_select_info',
+          gameSetting,
+        );
+      }
       await _notifyGameState('app_common_self_ready', {'isReady': true});
       await _notifyGameState('app_common_self_captain', {
         'curCaptainUID': session.userId,
@@ -1416,6 +2033,17 @@ class _SudNativeGameStageState extends State<_SudNativeGameStage>
       _entryStateSynced = false;
       if (mounted) setState(() => _status = '入座/准备同步失败：$error');
     }
+  }
+
+  Map<String, dynamic>? _gameSettingSelectInfo(SudSession session) {
+    if (session.mgId == _monsterCrushSudMgId) {
+      return {
+        'MonsterCrush': {
+          'mode_ex': session.playMode == SudGamePlayMode.cooperate ? 2 : 1,
+        },
+      };
+    }
+    return null;
   }
 
   Future<void> _notifyGameState(
@@ -1511,6 +2139,10 @@ class _SudNativeGameStageState extends State<_SudNativeGameStage>
   String _eventTypeForSudState(String state) {
     final lower = state.toLowerCase();
     if (lower.contains('settle')) return 'game_settle';
+    if (lower.contains('player_scores')) return 'game_player_scores';
+    if (lower.contains('ranking')) return 'game_ranking';
+    if (lower.contains('game_info')) return 'game_process_info';
+    if (lower.contains('ai_message')) return 'sud_ai_message';
     if (lower.contains('start')) return 'game_started';
     if (lower.contains('game_state')) return 'sud_game_state';
     return 'sud_$state';
@@ -2689,10 +3321,12 @@ class _GameTile {
   final String image;
   final String mgId;
 
-  bool get isOnline => title == '五子棋';
+  bool get isOnline => mgId.isNotEmpty;
 }
 
-const _demoSudMgId = '1461227817776713818';
+const _gomokuSudMgId = '1676069429630722049';
+const _monsterCrushSudMgId = '1664525565526667266';
+const _demoSudMgId = _gomokuSudMgId;
 
 const _gameGroupCatalog = [
   _GameGroup(
@@ -2715,7 +3349,7 @@ const _gameGroupCatalog = [
         title: '五子棋',
         note: '五子连线，几分钟开局。',
         image: 'assets/prototype/games/gomoku-lets-go.jpg',
-        mgId: '',
+        mgId: _gomokuSudMgId,
       ),
       _GameTile(
         title: '象棋',
@@ -2772,11 +3406,17 @@ const _gameGroupCatalog = [
     kicker: 'quick match',
     title: '联机对战',
     badge: '热血一局',
-    metric: '4 个竞技场',
+    metric: '5 个竞技场',
     hero: 'assets/prototype/games/category-versus-hero.jpg',
     accent: Color(0xFF7C3CFF),
     description: '想把注意力切走的时候，打一局刚刚好，不把输赢看太重。',
     games: [
+      _GameTile(
+        title: '怪物消消乐',
+        note: '连消攒分，过程数据更适合伴聊。',
+        image: 'assets/prototype/games/monster-crush.png',
+        mgId: _monsterCrushSudMgId,
+      ),
       _GameTile(
         title: '拳皇',
         note: '街机感对战，出招要快。',

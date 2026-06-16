@@ -1108,6 +1108,41 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           (_) => _scrollToBottom(animated: true),
         );
         break;
+      case 'game_status':
+        final text = payload['text']?.toString() ?? '';
+        if (text.isEmpty) return;
+        final messageId = payload['message_id']?.toString();
+        final status = payload['status']?.toString() ?? 'started';
+        setState(() {
+          _messages.add(
+            ChatMessage(
+              id: messageId?.isNotEmpty == true
+                  ? messageId!
+                  : 'game-status-${DateTime.now().microsecondsSinceEpoch}',
+              conversationId: _conversationId,
+              role: 'assistant',
+              content: text,
+              createdAt: DateTime.now(),
+              metadata: {
+                'game_status': status,
+                'game_title': payload['game_title']?.toString() ?? '',
+                'game_session_id': payload['session_id']?.toString() ?? '',
+                'game_mg_id': payload['mg_id']?.toString() ?? '',
+                'game_status_actor': payload['actor']?.toString() ?? '',
+                'game_status_actor_name':
+                    payload['actor_name']?.toString() ?? '',
+                if (payload['reason'] != null)
+                  'game_ended_reason': payload['reason']?.toString() ?? '',
+              },
+              read: true,
+            ),
+          );
+          _sending = false;
+        });
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _scrollToBottom(animated: true),
+        );
+        break;
       case 'done':
         setState(() => _sending = false);
         unawaited(_loadLatestMessages(showLoading: false));

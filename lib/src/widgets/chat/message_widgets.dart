@@ -167,6 +167,9 @@ class _MessageRow extends StatelessWidget {
     if (message.isMusicStatus) {
       return _MusicStatusTimelineRow(message: message);
     }
+    if (message.isGameStatus) {
+      return _GameStatusTimelineRow(message: message);
+    }
 
     final avatar = _Avatar(
       size: _avatarSize,
@@ -203,6 +206,115 @@ class _MessageRow extends StatelessWidget {
           ),
           if (message.isMine) ...[const SizedBox(width: _avatarGap), avatar],
         ],
+      ),
+    );
+  }
+}
+
+class _GameStatusTimelineRow extends StatelessWidget {
+  const _GameStatusTimelineRow({required this.message});
+
+  final ChatMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = message.metadata?['game_status']?.toString().trim();
+    final isEnded = status == 'ended';
+    final gameTitle = message.metadata?['game_title']?.toString().trim();
+    final actorName = message.metadata?['game_status_actor_name']
+        ?.toString()
+        .trim();
+    final prefix = actorName?.isNotEmpty == true ? '$actorName 和你' : '你们';
+    final title = gameTitle?.isNotEmpty == true ? gameTitle! : '游戏';
+    final label = '$prefix已${isEnded ? '退出' : '进入'}游戏《$title》';
+    final accent = isEnded ? const Color(0xFF64748B) : const Color(0xFF177DDC);
+    final fill = isEnded ? const Color(0xFFF1F5F9) : const Color(0xFFEAF4FF);
+    final border = isEnded ? const Color(0xFFD5DEE9) : const Color(0xFFBFDDFF);
+    final iconFill = isEnded
+        ? const Color(0xFFE2E8F0)
+        : const Color(0xFFDCEEFF);
+    final maxBubbleWidth = math.min(
+      320.0,
+      MediaQuery.sizeOf(context).width - 72,
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+          child: IntrinsicWidth(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: fill,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: border),
+                boxShadow: [
+                  BoxShadow(
+                    color: accent.withValues(alpha: 0.06),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 7, 12, 6),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 22,
+                          height: 22,
+                          decoration: BoxDecoration(
+                            color: iconFill,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            isEnded
+                                ? CupertinoIcons.game_controller
+                                : CupertinoIcons.game_controller_solid,
+                            size: 12,
+                            color: accent,
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        Flexible(
+                          child: Text(
+                            label,
+                            maxLines: 2,
+                            softWrap: true,
+                            overflow: TextOverflow.visible,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: accent,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              height: 1.12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _formatTime(message.createdAt),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: accent.withValues(alpha: 0.56),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        height: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

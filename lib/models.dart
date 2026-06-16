@@ -269,6 +269,7 @@ class ChatMessage {
   bool get isMine => role == 'user';
   bool get isAchievement => role == 'achievement';
   bool get isMusicStatus => metadata?['music_status'] != null;
+  bool get isGameStatus => metadata?['game_status'] != null;
   bool get isChatMessage => role == 'user' || role == 'assistant';
   bool get isDraft => id.startsWith('draft-');
   String? get clientId => metadata?['client_id'] as String?;
@@ -630,6 +631,7 @@ class SudSession {
     this.conversationId,
     this.companionReply,
     this.result,
+    this.durationSeconds,
     this.startedAt,
     this.endedAt,
     this.createdAt,
@@ -658,6 +660,7 @@ class SudSession {
   final SudPlayerInfo aiPlayer;
   final String? companionReply;
   final Map<String, dynamic>? result;
+  final int? durationSeconds;
   final DateTime? startedAt;
   final DateTime? endedAt;
   final DateTime? createdAt;
@@ -698,6 +701,7 @@ class SudSession {
       result: json['result'] is Map
           ? Map<String, dynamic>.from(json['result'] as Map)
           : null,
+      durationSeconds: (json['duration_seconds'] as num?)?.round(),
       startedAt: DateTime.tryParse(json['started_at'] as String? ?? ''),
       endedAt: DateTime.tryParse(json['ended_at'] as String? ?? ''),
       createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
