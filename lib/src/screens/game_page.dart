@@ -285,6 +285,9 @@ class _GamePageState extends State<GamePage>
         _moveCount += 1;
         payload['move_index'] = slot;
         payload['piece'] = _boardMarks[slot];
+        payload['uid'] = _boardMarks[slot] == 'X'
+            ? session.userPlayer.uid
+            : session.aiPlayer.uid;
       case _GameDemoEvent.levelSuccess:
         payload['checkpoint'] = 'demo-clear';
       case _GameDemoEvent.levelFailed:
@@ -1308,6 +1311,7 @@ class _GameRoundSummary {
     required this.durationSeconds,
     required this.playedAt,
     required this.userExtras,
+    required this.gomoku,
     required this.aiName,
     required this.roomId,
   });
@@ -1319,6 +1323,7 @@ class _GameRoundSummary {
   final int? durationSeconds;
   final DateTime? playedAt;
   final Map<String, dynamic> userExtras;
+  final Map<String, dynamic> gomoku;
   final String aiName;
   final String roomId;
 
@@ -1331,6 +1336,8 @@ class _GameRoundSummary {
     final result = session.result ?? const <String, dynamic>{};
     final user = _asMap(result['user']);
     final ai = _asMap(result['ai']);
+    final process = _asMap(result['process']);
+    final gomoku = {..._asMap(process['gomoku']), ..._asMap(result['gomoku'])};
     final outcome = (result['user_outcome'] ?? session.status).toString();
     return _GameRoundSummary(
       session: session,
@@ -1341,6 +1348,7 @@ class _GameRoundSummary {
           session.durationSeconds ?? _intValue(result['duration_seconds']),
       playedAt: session.endedAt ?? session.startedAt ?? session.createdAt,
       userExtras: _asMap(result['user_extras']),
+      gomoku: gomoku,
       aiName: session.aiPlayer.nickName.isEmpty
           ? 'AI'
           : session.aiPlayer.nickName,
@@ -1351,6 +1359,7 @@ class _GameRoundSummary {
   bool get isWin => outcome == 'win';
   bool get isLose => outcome == 'lose';
   bool get isAborted => outcome == 'aborted' || session.status == 'aborted';
+  bool get isGomoku => gomoku.isNotEmpty;
 
   String get resultLabel {
     if (isAborted) return '未完成';
@@ -1374,6 +1383,8 @@ class _GameRoundSummary {
     if (scoreText != null) fragments.add(scoreText);
     final combo = comboLine;
     if (combo != null) fragments.add(combo);
+    final gomokuText = gomokuLine;
+    if (gomokuText != null) fragments.add(gomokuText);
     if (fragments.isEmpty && durationText != null) fragments.add(durationText!);
     return fragments.isEmpty ? '点开看看这一局发生了什么。' : fragments.join(' · ');
   }
@@ -1405,6 +1416,17 @@ class _GameRoundSummary {
     return null;
   }
 
+  String? get gomokuLine {
+    final moveCount = _intValue(gomoku['move_count']);
+    final direction = _gomokuDirectionLabel(
+      gomoku['win_direction']?.toString(),
+    );
+    final fragments = <String>[];
+    if (moveCount != null && moveCount > 0) fragments.add('$moveCount 手');
+    if (direction != null) fragments.add(direction);
+    return fragments.isEmpty ? null : fragments.join(' · ');
+  }
+
   List<_RoundDetailMetric> get metrics {
     final items = <_RoundDetailMetric>[];
     if (scoreLine != null) {
@@ -1412,6 +1434,28 @@ class _GameRoundSummary {
     }
     if (durationText != null) {
       items.add(_RoundDetailMetric('时长', durationText!));
+    }
+    if (isGomoku) {
+      final moveCount = _intValue(gomoku['move_count']);
+      final direction = _gomokuDirectionLabel(
+        gomoku['win_direction']?.toString(),
+      );
+      final lastMove = _asMap(gomoku['last_move']);
+      if (moveCount != null && moveCount > 0) {
+        items.add(_RoundDetailMetric('手数', '$moveCount 手'));
+      }
+      if (direction != null) {
+        items.add(_RoundDetailMetric('收官', direction));
+      }
+      if (lastMove.isNotEmpty) {
+        final x = _intValue(lastMove['x']);
+        final y = _intValue(lastMove['y']);
+        if (x != null && y != null) {
+          items.add(_RoundDetailMetric('最后一手', '(${x + 1}, ${y + 1})'));
+        }
+      }
+      items.add(_RoundDetailMetric('房间', roomId));
+      return items;
     }
     final perfect = _intValue(userExtras['numPerfect']) ?? 0;
     final good = _intValue(userExtras['numGood']) ?? 0;
@@ -1725,12 +1769,74 @@ class _GameRoundDetailSheet extends StatelessWidget {
                           _RoundMetricChip(metric: metric),
                       ],
                     ),
+                    const SizedBox(height: 18),
+                    _RoundDebugInfo(summary: summary),
                   ],
                 ),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _RoundDebugInfo extends StatelessWidget {
+  const _RoundDebugInfo({required this.summary});
+
+  final _GameRoundSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final debugData = _roundDebugData(summary);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(13, 12, 13, 13),
+      decoration: BoxDecoration(
+        color: const Color(0xFF101827).withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.text.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.data_object_rounded,
+                size: 15,
+                color: AppColors.text.withValues(alpha: 0.46),
+              ),
+              const SizedBox(width: 7),
+              Text(
+                'Debug Info',
+                style: TextStyle(
+                  color: AppColors.text.withValues(alpha: 0.62),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 280),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                const JsonEncoder.withIndent('  ').convert(debugData),
+                style: TextStyle(
+                  color: AppColors.text.withValues(alpha: 0.70),
+                  fontSize: 10.5,
+                  height: 1.35,
+                  fontFamily: 'Menlo',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1783,6 +1889,12 @@ String _roundMemorySentence(_GameRoundSummary summary) {
   if (summary.isAborted) {
     return '这局没有完整打完，但它也算一次共同经历。下次回来，可以从同样的节奏重新开。';
   }
+  if (summary.isGomoku) {
+    if (summary.isWin) {
+      return '这盘你最后收得很干净，不是突然赢的，是前面几手慢慢铺出来的。';
+    }
+    return '这盘有几手其实已经卡到关键点了，下次我可以陪你提前一手把那条线堵住。';
+  }
   if (summary.isWin) {
     return '这局更像是你把手感慢慢攒起来的一局。不是冷冰冰的胜负，它会留在你们的游戏记忆里。';
   }
@@ -1790,6 +1902,55 @@ String _roundMemorySentence(_GameRoundSummary summary) {
     return '这局虽然输了，但里面有几段节奏值得留下。下次再玩，AI 可以接着这个手感陪你调整。';
   }
   return '这局没有明显输赢，倒像是两个人一起试了一次节奏。';
+}
+
+Map<String, dynamic> _roundDebugData(_GameRoundSummary summary) {
+  final session = summary.session;
+  final result = session.result ?? const <String, dynamic>{};
+  final process = _asMap(result['process']);
+  return {
+    'session': {
+      'id': session.id,
+      'room_id': session.roomId,
+      'mg_id': session.mgId,
+      'status': session.status,
+      'play_mode': session.playMode.name,
+      'difficulty': session.difficulty.name,
+      'ai_level': session.aiLevel,
+      'duration_seconds': summary.durationSeconds,
+      'started_at': session.startedAt?.toIso8601String(),
+      'ended_at': session.endedAt?.toIso8601String(),
+      'created_at': session.createdAt?.toIso8601String(),
+    },
+    'players': {
+      'user': {
+        'uid': session.userPlayer.uid,
+        'nick_name': session.userPlayer.nickName,
+      },
+      'ai': {
+        'uid': session.aiPlayer.uid,
+        'nick_name': session.aiPlayer.nickName,
+        'is_ai': session.aiPlayer.isAi,
+      },
+    },
+    'summary': {
+      'outcome': summary.outcome,
+      'result_label': summary.resultLabel,
+      'user_score': summary.userScore,
+      'ai_score': summary.aiScore,
+      'score_line': summary.scoreLine,
+      'duration_text': summary.durationText,
+    },
+    'parsed': {
+      'user': _asMap(result['user']),
+      'ai': _asMap(result['ai']),
+      'user_extras': _asMap(result['user_extras']),
+      'ai_extras': _asMap(result['ai_extras']),
+      'gomoku': summary.gomoku,
+      'process': process,
+    },
+    'raw_result': result,
+  };
 }
 
 Map<String, dynamic> _asMap(Object? value) {
@@ -1801,6 +1962,19 @@ int? _intValue(Object? value) {
   if (value is num) return value.round();
   if (value is String) return int.tryParse(value);
   return null;
+}
+
+String? _gomokuDirectionLabel(String? direction) {
+  switch (direction) {
+    case 'horizontal':
+      return '横线收官';
+    case 'vertical':
+      return '竖线收官';
+    case 'diagonal':
+      return '斜线收官';
+    default:
+      return null;
+  }
 }
 
 class _SudNativeGameStage extends StatefulWidget {
@@ -2139,6 +2313,11 @@ class _SudNativeGameStageState extends State<_SudNativeGameStage>
   String _eventTypeForSudState(String state) {
     final lower = state.toLowerCase();
     if (lower.contains('settle')) return 'game_settle';
+    if (lower.contains('move') ||
+        lower.contains('chess') ||
+        lower.contains('stone')) {
+      return 'move';
+    }
     if (lower.contains('player_scores')) return 'game_player_scores';
     if (lower.contains('ranking')) return 'game_ranking';
     if (lower.contains('game_info')) return 'game_process_info';
@@ -3406,7 +3585,7 @@ const _gameGroupCatalog = [
     kicker: 'quick match',
     title: '联机对战',
     badge: '热血一局',
-    metric: '5 个竞技场',
+    metric: '4 个竞技场',
     hero: 'assets/prototype/games/category-versus-hero.jpg',
     accent: Color(0xFF7C3CFF),
     description: '想把注意力切走的时候，打一局刚刚好，不把输赢看太重。',
@@ -3433,12 +3612,6 @@ const _gameGroupCatalog = [
         title: '赛车竞速',
         note: '弯道超车，追一点风。',
         image: 'assets/prototype/games/forza-horizon-5.jpg',
-        mgId: '',
-      ),
-      _GameTile(
-        title: '球球大作战',
-        note: '轻量吞噬，随时开局。',
-        image: 'assets/prototype/games/ball-battle.jpg',
         mgId: '',
       ),
     ],
