@@ -24,6 +24,13 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
+class _PendingChatImage {
+  const _PendingChatImage({required this.localPath, required this.attachment});
+
+  final String localPath;
+  final ChatAttachment attachment;
+}
+
 class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const _animationDuration = Duration(milliseconds: 260);
   static const _animationCurve = Curves.easeOutCubic;
@@ -37,6 +44,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _scrollController = ScrollController();
   final _inputController = TextEditingController();
   final _inputFocus = FocusNode();
+  final _imagePicker = ImagePicker();
   final _playback = MusicPlaybackController.instance;
   final _stationCardKey = GlobalKey(debugLabel: 'chat-station-card');
   final _musicStation = ChatMusicStationState();
@@ -64,8 +72,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _pinToBottomDuringKeyboard = false;
   bool _wasNearBottomBeforePaddingChange = true;
   int _newMessageCount = 0;
-  ({String text, String clientId, ChatComponentCard? componentCard})?
+  ({
+    String text,
+    String clientId,
+    ChatComponentCard? componentCard,
+    List<ChatAttachment> attachments,
+  })?
   _pendingSend;
+  final List<_PendingChatImage> _pendingImages = [];
+  bool _uploadingImage = false;
   int _achievementDemoIndex = 0;
   bool _stationCardDocked = false;
   bool _stationDockActive = false;
@@ -163,6 +178,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (!mounted) return;
     setState(() {
       _messages.clear();
+      _pendingImages.clear();
       _panel = ComposerPanel.none;
       _heldPanel = ComposerPanel.none;
       _loadingInitial = true;
@@ -172,6 +188,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _historyError = null;
       _newMessageCount = 0;
       _pendingSend = null;
+      _uploadingImage = false;
       _readyCapsule = null;
       _conversationMeta = null;
       _musicStation.reset();
@@ -232,6 +249,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               pending.text,
               pending.clientId,
               componentCard: pending.componentCard,
+              attachments: pending.attachments,
             );
             _pendingSend = null;
           }
@@ -1247,53 +1265,184 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void _sendMessage() {
     final text = _inputController.text.trim();
-    _sendText(text);
+    if (_uploadingImage) return;
+    final attachments = _pendingImages.map((item) => item.attachment).toList();
+    _sendText(text, attachments: attachments);
   }
 
-  void _sendText(String text, {ChatComponentCard? componentCard}) {
-    if (text.isEmpty && componentCard == null) return;
+  void _sendText(
+    String text, {
+    ChatComponentCard? componentCard,
+    List<ChatAttachment> attachments = const [],
+  }) {
+    if (text.isEmpty && componentCard == null && attachments.isEmpty) return;
     final clientId =
-        'draft-${DateTime.now().microsecondsSinceEpoch}-${(text.isEmpty ? componentCard!.title : text).hashCode}';
+        'draft-${DateTime.now().microsecondsSinceEpoch}-${(text.isEmpty ? (componentCard?.title ?? attachments.map((item) => item.id).join(',')) : text).hashCode}';
+    final metadata = <String, dynamic>{
+      if (componentCard != null) 'component_card': componentCard.toJson(),
+      if (attachments.isNotEmpty)
+        'attachments': attachments.map((item) => item.toJson()).toList(),
+    };
     final draft = ChatMessage.draft(
       conversationId: _conversationId,
       role: 'user',
       content: text,
       clientId: clientId,
-      metadata: componentCard == null
-          ? null
-          : {'component_card': componentCard.toJson()},
+      metadata: metadata.isEmpty ? null : metadata,
     );
     setState(() {
       _messages.add(draft);
       if (_isMusicStationCard(componentCard)) {
         _musicStation.activate(componentCard!, draft.id);
       }
-      if (componentCard == null) _inputController.clear();
+      if (componentCard == null) {
+        _inputController.clear();
+        _pendingImages.clear();
+      }
       _panel = ComposerPanel.none;
       _sending = true;
     });
-    if (componentCard == null) {
+    if (componentCard == null && attachments.isEmpty) {
       _inputFocus.requestFocus();
     }
 
     final sent =
-        _socket?.sendMessage(text, clientId, componentCard: componentCard) ??
+        _socket?.sendMessage(
+          text,
+          clientId,
+          componentCard: componentCard,
+          attachments: attachments,
+        ) ??
         false;
     if (!sent) {
       _pendingSend = (
         text: text,
         clientId: clientId,
         componentCard: componentCard,
+        attachments: attachments,
       );
       unawaited(_socket?.connect());
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && componentCard == null) {
+      if (mounted && componentCard == null && attachments.isEmpty) {
         _inputFocus.requestFocus();
       }
       _scrollToBottom(animated: true);
       _updateStationCardDocked();
     });
+  }
+
+  Future<void> _pickChatImage(ImageSource source) async {
+    if (_pendingImages.length >= 3 || _uploadingImage) return;
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 82,
+      );
+      if (picked == null) return;
+      if (!mounted) return;
+      setState(() {
+        _uploadingImage = true;
+        _panel = ComposerPanel.none;
+      });
+      final bytes = await picked.readAsBytes();
+      final dimensions = await _decodeImageDimensions(bytes);
+      final mime = picked.mimeType ?? _mimeFromPath(picked.path);
+      final attachment = await widget.api.uploadChatImage(
+        conversationId: _conversationId,
+        name: picked.name,
+        mime: mime,
+        size: bytes.length,
+        width: dimensions.width.round(),
+        height: dimensions.height.round(),
+        base64Data: base64Encode(bytes),
+      );
+      if (!mounted) return;
+      setState(() {
+        _pendingImages.add(
+          _PendingChatImage(localPath: picked.path, attachment: attachment),
+        );
+        _historyError = null;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => _historyError = _asMessage(error));
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingImage = false);
+    }
+  }
+
+  Future<Size> _decodeImageDimensions(Uint8List bytes) async {
+    final codec = await instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    return Size(image.width.toDouble(), image.height.toDouble());
+  }
+
+  String _mimeFromPath(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
+  }
+
+  void _removePendingImage(String id) {
+    setState(
+      () => _pendingImages.removeWhere((item) => item.attachment.id == id),
+    );
+  }
+
+  Future<void> _previewPendingImage(_PendingChatImage image) async {
+    await _showImagePreview(localPath: image.localPath);
+  }
+
+  Future<void> _previewAttachment(ChatAttachment attachment) async {
+    await _showImagePreview(url: attachment.url);
+  }
+
+  Future<void> _showImagePreview({String? localPath, String? url}) async {
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'image-preview',
+      barrierColor: Colors.black.withValues(alpha: 0.86),
+      pageBuilder: (_, __, ___) {
+        final headers = widget.api.authToken?.isNotEmpty == true
+            ? {'Authorization': 'Bearer ${widget.api.authToken}'}
+            : null;
+        final image = localPath != null
+            ? Image.file(File(localPath), fit: BoxFit.contain)
+            : Image.network(url ?? '', fit: BoxFit.contain, headers: headers);
+        return SafeArea(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: InteractiveViewer(
+                    minScale: 0.7,
+                    maxScale: 4,
+                    child: Center(child: image),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 12,
+                right: 12,
+                child: _RoundIconButton(
+                  tooltip: '关闭',
+                  icon: CupertinoIcons.xmark,
+                  onTap: () => Navigator.of(context).pop(),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _scrollToBottom({bool animated = false}) {
@@ -1375,7 +1524,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     )..layout(maxWidth: inputWidth);
     final lineHeight = painter.preferredLineHeight;
     final lineCount = (painter.height / lineHeight).ceil().clamp(1, 3);
-    return _composerMinHeight + (lineCount - 1) * _composerLineHeight;
+    final attachmentHeight = _pendingImages.isEmpty ? 0.0 : 86.0;
+    return _composerMinHeight +
+        attachmentHeight +
+        (lineCount - 1) * _composerLineHeight;
   }
 
   void _appendEmoji(String emoji) {
@@ -1516,6 +1668,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           onMusicNext: () => unawaited(_playNextStationTrack()),
                           onMusicFavorite: (track) =>
                               unawaited(_toggleMusicFavorite(track)),
+                          onAttachmentTap: _previewAttachment,
                           activeMusicMessageId: _musicStation.activeMessageId,
                           musicCardPositions: _musicStation.cardPositions,
                           favoriteMusicTrackIds: _favoriteMusicTrackIds,
@@ -1526,6 +1679,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           stationMessageKey: _stationCardKey,
                           agentAvatarUrl: agentAvatarUrl,
                           userAvatarUrl: widget.session.userAvatarUrl,
+                          authToken: widget.api.authToken,
                         ),
                 ),
               ),
@@ -1557,12 +1711,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               focusNode: _inputFocus,
               height: composerHeight,
               activePanel: _panel,
-              sending: _sending,
+              sending: _sending || _uploadingImage,
+              pendingImages: _pendingImages,
               onFocusInput: _focusInput,
               onToggleEmoji: () => _setPanel(ComposerPanel.emoji),
               onShowKeyboard: _focusInput,
               onToggleMore: () => _setPanel(ComposerPanel.more),
               onSend: _sendMessage,
+              onRemoveImage: _removePendingImage,
+              onPreviewImage: _previewPendingImage,
             ),
           ),
           AnimatedPositioned(
@@ -1573,7 +1730,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             duration: positionDuration,
             curve: _animationCurve,
             child: ClipRect(
-              child: _ChatPanel(panel: visiblePanel, onEmojiTap: _appendEmoji),
+              child: _ChatPanel(
+                panel: visiblePanel,
+                onEmojiTap: _appendEmoji,
+                onPickPhoto: () =>
+                    unawaited(_pickChatImage(ImageSource.gallery)),
+                onTakePhoto: () =>
+                    unawaited(_pickChatImage(ImageSource.camera)),
+              ),
             ),
           ),
           AnimatedPositioned(

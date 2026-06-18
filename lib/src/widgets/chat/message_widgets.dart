@@ -14,6 +14,7 @@ class _MessageList extends StatelessWidget {
     required this.onMusicPrevious,
     required this.onMusicNext,
     required this.onMusicFavorite,
+    required this.onAttachmentTap,
     required this.activeMusicMessageId,
     required this.musicCardPositions,
     required this.favoriteMusicTrackIds,
@@ -24,6 +25,7 @@ class _MessageList extends StatelessWidget {
     this.stationMessageKey,
     this.agentAvatarUrl,
     this.userAvatarUrl,
+    this.authToken,
   });
 
   final ScrollController controller;
@@ -39,6 +41,7 @@ class _MessageList extends StatelessWidget {
   final VoidCallback onMusicPrevious;
   final VoidCallback onMusicNext;
   final ValueChanged<MusicTrack> onMusicFavorite;
+  final ValueChanged<ChatAttachment> onAttachmentTap;
   final String? activeMusicMessageId;
   final Map<String, Duration> musicCardPositions;
   final Set<String> favoriteMusicTrackIds;
@@ -49,6 +52,7 @@ class _MessageList extends StatelessWidget {
   final GlobalKey? stationMessageKey;
   final String? agentAvatarUrl;
   final String? userAvatarUrl;
+  final String? authToken;
 
   @override
   Widget build(BuildContext context) {
@@ -98,12 +102,14 @@ class _MessageList extends StatelessWidget {
           onMusicPrevious: onMusicPrevious,
           onMusicNext: onMusicNext,
           onMusicFavorite: onMusicFavorite,
+          onAttachmentTap: onAttachmentTap,
           activeMusicMessageId: activeMusicMessageId,
           musicCardPositions: musicCardPositions,
           favoriteMusicTrackIds: favoriteMusicTrackIds,
           busyMusicFavoriteIds: busyMusicFavoriteIds,
           canGoMusicPrevious: canGoMusicPrevious,
           isMusicBusy: isMusicBusy,
+          authToken: authToken,
         );
         if (message.id == stationMessageId && stationMessageKey != null) {
           return KeyedSubtree(key: stationMessageKey, child: row);
@@ -124,6 +130,7 @@ class _MessageRow extends StatelessWidget {
     required this.onMusicPrevious,
     required this.onMusicNext,
     required this.onMusicFavorite,
+    required this.onAttachmentTap,
     required this.activeMusicMessageId,
     required this.musicCardPositions,
     required this.favoriteMusicTrackIds,
@@ -132,6 +139,7 @@ class _MessageRow extends StatelessWidget {
     required this.isMusicBusy,
     this.agentAvatarUrl,
     this.userAvatarUrl,
+    this.authToken,
   });
 
   final ChatMessage message;
@@ -143,6 +151,7 @@ class _MessageRow extends StatelessWidget {
   final VoidCallback onMusicPrevious;
   final VoidCallback onMusicNext;
   final ValueChanged<MusicTrack> onMusicFavorite;
+  final ValueChanged<ChatAttachment> onAttachmentTap;
   final String? activeMusicMessageId;
   final Map<String, Duration> musicCardPositions;
   final Set<String> favoriteMusicTrackIds;
@@ -151,6 +160,7 @@ class _MessageRow extends StatelessWidget {
   final bool isMusicBusy;
   final String? agentAvatarUrl;
   final String? userAvatarUrl;
+  final String? authToken;
   static const _avatarSize = 40.0;
   static const _avatarGap = 10.0;
 
@@ -197,12 +207,14 @@ class _MessageRow extends StatelessWidget {
             onMusicPrevious: onMusicPrevious,
             onMusicNext: onMusicNext,
             onMusicFavorite: onMusicFavorite,
+            onAttachmentTap: onAttachmentTap,
             activeMusicMessageId: activeMusicMessageId,
             musicCardPositions: musicCardPositions,
             favoriteMusicTrackIds: favoriteMusicTrackIds,
             busyMusicFavoriteIds: busyMusicFavoriteIds,
             canGoMusicPrevious: canGoMusicPrevious,
             isMusicBusy: isMusicBusy,
+            authToken: authToken,
           ),
           if (message.isMine) ...[const SizedBox(width: _avatarGap), avatar],
         ],
@@ -433,12 +445,14 @@ class _Bubble extends StatelessWidget {
     required this.onMusicPrevious,
     required this.onMusicNext,
     required this.onMusicFavorite,
+    required this.onAttachmentTap,
     required this.activeMusicMessageId,
     required this.musicCardPositions,
     required this.favoriteMusicTrackIds,
     required this.busyMusicFavoriteIds,
     required this.canGoMusicPrevious,
     required this.isMusicBusy,
+    this.authToken,
   });
 
   final ChatMessage message;
@@ -449,19 +463,26 @@ class _Bubble extends StatelessWidget {
   final VoidCallback onMusicPrevious;
   final VoidCallback onMusicNext;
   final ValueChanged<MusicTrack> onMusicFavorite;
+  final ValueChanged<ChatAttachment> onAttachmentTap;
   final String? activeMusicMessageId;
   final Map<String, Duration> musicCardPositions;
   final Set<String> favoriteMusicTrackIds;
   final Set<String> busyMusicFavoriteIds;
   final bool canGoMusicPrevious;
   final bool isMusicBusy;
+  final String? authToken;
 
   @override
   Widget build(BuildContext context) {
     final componentCard = message.componentCard;
+    final attachments = message.attachments
+        .where((item) => item.isImage)
+        .toList();
     final showTextWithCard =
         componentCard?.type == 'music_track' &&
         message.content.trim().isNotEmpty;
+    final showTextWithAttachments =
+        attachments.isNotEmpty && message.content.trim().isNotEmpty;
     return Flexible(
       child: Column(
         crossAxisAlignment: message.isMine
@@ -503,7 +524,18 @@ class _Bubble extends StatelessWidget {
                   activeMusicMessageId == message.id && canGoMusicPrevious,
               isMusicBusy: isMusicBusy,
             )
-          else
+          else if (attachments.isNotEmpty) ...[
+            _ImageAttachmentBubble(
+              attachments: attachments,
+              isMine: message.isMine,
+              authToken: authToken,
+              onTap: onAttachmentTap,
+            ),
+            if (showTextWithAttachments) ...[
+              const SizedBox(height: 8),
+              _MessageTextBubble(message: message),
+            ],
+          ] else
             _MessageTextBubble(message: message),
           const SizedBox(height: 3),
           Row(
@@ -571,6 +603,97 @@ class _MessageTextBubble extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ImageAttachmentBubble extends StatelessWidget {
+  const _ImageAttachmentBubble({
+    required this.attachments,
+    required this.isMine,
+    required this.onTap,
+    this.authToken,
+  });
+
+  final List<ChatAttachment> attachments;
+  final bool isMine;
+  final ValueChanged<ChatAttachment> onTap;
+  final String? authToken;
+
+  @override
+  Widget build(BuildContext context) {
+    final headers = authToken?.isNotEmpty == true
+        ? {'Authorization': 'Bearer $authToken'}
+        : null;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 270),
+      child: Wrap(
+        alignment: isMine ? WrapAlignment.end : WrapAlignment.start,
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final attachment in attachments)
+            GestureDetector(
+              onTap: () => onTap(attachment),
+              child: ClipRRect(
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(isMine ? 17 : 3),
+                  topRight: Radius.circular(isMine ? 3 : 17),
+                  bottomLeft: const Radius.circular(17),
+                  bottomRight: const Radius.circular(17),
+                ),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceMuted,
+                    border: Border.all(color: AppColors.hairline),
+                  ),
+                  child: Image.network(
+                    attachment.url,
+                    headers: headers,
+                    width: _imageWidthFor(attachment),
+                    height: _imageHeightFor(attachment),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _imageFallback,
+                    loadingBuilder: (context, child, progress) {
+                      if (progress == null) return child;
+                      return SizedBox(
+                        width: _imageWidthFor(attachment),
+                        height: _imageHeightFor(attachment),
+                        child: const Center(
+                          child: CupertinoActivityIndicator(radius: 10),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  double _imageWidthFor(ChatAttachment attachment) {
+    final width = (attachment.width ?? 180).toDouble();
+    final height = (attachment.height ?? 180).toDouble();
+    if (width <= 0 || height <= 0) return 180;
+    final ratio = width / height;
+    return ratio >= 1 ? 210 : math.max(128, 168 * ratio);
+  }
+
+  double _imageHeightFor(ChatAttachment attachment) {
+    final width = (attachment.width ?? 180).toDouble();
+    final height = (attachment.height ?? 180).toDouble();
+    if (width <= 0 || height <= 0) return 180;
+    final ratio = width / height;
+    return ratio >= 1 ? math.max(118, 210 / ratio) : 168;
+  }
+
+  Widget get _imageFallback {
+    return const SizedBox(
+      width: 180,
+      height: 150,
+      child: Center(child: Icon(CupertinoIcons.photo, color: AppColors.muted)),
     );
   }
 }

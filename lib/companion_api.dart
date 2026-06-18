@@ -110,6 +110,25 @@ class CompanionApi {
     );
   }
 
+  ChatAttachment _normalizeChatAttachment(ChatAttachment value) {
+    return value.copyWith(url: _absoluteUrl(value.url));
+  }
+
+  ChatMessage _normalizeChatMessage(ChatMessage value) {
+    final metadata = value.metadata;
+    if (metadata == null) return value;
+    final rawAttachments = metadata['attachments'];
+    if (rawAttachments is! List) return value;
+    final attachments = [
+      for (final item in rawAttachments)
+        if (item is Map)
+          _normalizeChatAttachment(
+            ChatAttachment.fromJson(Map<String, dynamic>.from(item)),
+          ).toJson(),
+    ];
+    return value.copyWith(metadata: {...metadata, 'attachments': attachments});
+  }
+
   Future<dynamic> _request(
     String method,
     String path, {
@@ -289,8 +308,40 @@ class CompanionApi {
             )
             as List;
     return json
-        .map((item) => ChatMessage.fromJson(item as Map<String, dynamic>))
+        .map(
+          (item) => _normalizeChatMessage(
+            ChatMessage.fromJson(item as Map<String, dynamic>),
+          ),
+        )
         .toList();
+  }
+
+  Future<ChatAttachment> uploadChatImage({
+    required String conversationId,
+    required String name,
+    required String mime,
+    required int size,
+    required int width,
+    required int height,
+    required String base64Data,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/chat/media',
+              body: {
+                'conversation_id': conversationId,
+                'name': name,
+                'mime': mime,
+                'size': size,
+                'width': width,
+                'height': height,
+                'base64': base64Data,
+              },
+              debugLabel: 'chat.media.image',
+            )
+            as Map<String, dynamic>;
+    return _normalizeChatAttachment(ChatAttachment.fromJson(json));
   }
 
   Future<SudConfigResponse> getSudConfig() async {

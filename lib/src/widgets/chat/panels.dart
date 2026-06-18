@@ -1,10 +1,17 @@
 part of 'package:companion_flutter/main.dart';
 
 class _ChatPanel extends StatelessWidget {
-  const _ChatPanel({required this.panel, required this.onEmojiTap});
+  const _ChatPanel({
+    required this.panel,
+    required this.onEmojiTap,
+    required this.onPickPhoto,
+    required this.onTakePhoto,
+  });
 
   final ComposerPanel panel;
   final ValueChanged<String> onEmojiTap;
+  final VoidCallback onPickPhoto;
+  final VoidCallback onTakePhoto;
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +24,10 @@ class _ChatPanel extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         child: switch (panel) {
           ComposerPanel.emoji => _EmojiPanel(onEmojiTap: onEmojiTap),
-          ComposerPanel.more => const _MorePanel(),
+          ComposerPanel.more => _MorePanel(
+            onPickPhoto: onPickPhoto,
+            onTakePhoto: onTakePhoto,
+          ),
           ComposerPanel.none => const SizedBox.shrink(),
         },
       ),
@@ -245,40 +255,97 @@ class _EmojiPanelState extends State<_EmojiPanel> {
 }
 
 class _MorePanel extends StatelessWidget {
-  const _MorePanel();
+  const _MorePanel({required this.onPickPhoto, required this.onTakePhoto});
+
+  final VoidCallback onPickPhoto;
+  final VoidCallback onTakePhoto;
 
   static const _tools = [
-    _ToolSpec('图片', CupertinoIcons.photo, Color(0xFF1F6FFF)),
-    _ToolSpec('拍摄', CupertinoIcons.camera, Color(0xFF18C6C0)),
-    _ToolSpec('红包', CupertinoIcons.gift, Color(0xFFFF4D5F)),
-    _ToolSpec('位置', CupertinoIcons.location, Color(0xFF22C66B)),
-    _ToolSpec('查找', CupertinoIcons.search, Color(0xFF7C3CFF)),
-    _ToolSpec('电话', CupertinoIcons.phone, Color(0xFFFF8A3D)),
+    _ToolSpec('图片', CupertinoIcons.photo, Color(0xFF1F6FFF), _ToolAction.photo),
+    _ToolSpec(
+      '拍摄',
+      CupertinoIcons.camera,
+      Color(0xFF18C6C0),
+      _ToolAction.camera,
+    ),
+    _ToolSpec('红包', CupertinoIcons.gift, Color(0xFFFF4D5F), _ToolAction.none),
+    _ToolSpec(
+      '位置',
+      CupertinoIcons.location,
+      Color(0xFF22C66B),
+      _ToolAction.none,
+    ),
+    _ToolSpec('查找', CupertinoIcons.search, Color(0xFF7C3CFF), _ToolAction.none),
+    _ToolSpec('电话', CupertinoIcons.phone, Color(0xFFFF8A3D), _ToolAction.none),
   ];
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return LayoutBuilder(
       key: const ValueKey('more'),
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _ToolRow(tools: _tools.take(3).toList()),
-            const SizedBox(height: 26),
-            _ToolRow(tools: _tools.skip(3).take(3).toList()),
-          ],
-        ),
-      ),
+      builder: (context, constraints) {
+        if (constraints.maxHeight < 170) {
+          return ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            scrollDirection: Axis.horizontal,
+            itemCount: _tools.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 6),
+            itemBuilder: (context, index) {
+              final tool = _tools[index];
+              return SizedBox(
+                width: 62,
+                child: Center(
+                  child: _ToolButton(
+                    tool: tool,
+                    compact: true,
+                    onTap: switch (tool.action) {
+                      _ToolAction.photo => onPickPhoto,
+                      _ToolAction.camera => onTakePhoto,
+                      _ToolAction.none => null,
+                    },
+                  ),
+                ),
+              );
+            },
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _ToolRow(
+                  tools: _tools.take(3).toList(),
+                  onPickPhoto: onPickPhoto,
+                  onTakePhoto: onTakePhoto,
+                ),
+                const SizedBox(height: 26),
+                _ToolRow(
+                  tools: _tools.skip(3).take(3).toList(),
+                  onPickPhoto: onPickPhoto,
+                  onTakePhoto: onTakePhoto,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
 
 class _ToolRow extends StatelessWidget {
-  const _ToolRow({required this.tools});
+  const _ToolRow({
+    required this.tools,
+    required this.onPickPhoto,
+    required this.onTakePhoto,
+  });
 
   final List<_ToolSpec> tools;
+  final VoidCallback onPickPhoto;
+  final VoidCallback onTakePhoto;
 
   @override
   Widget build(BuildContext context) {
@@ -286,7 +353,16 @@ class _ToolRow extends StatelessWidget {
       children: [
         for (final tool in tools)
           Expanded(
-            child: Center(child: _ToolButton(tool: tool)),
+            child: Center(
+              child: _ToolButton(
+                tool: tool,
+                onTap: switch (tool.action) {
+                  _ToolAction.photo => onPickPhoto,
+                  _ToolAction.camera => onTakePhoto,
+                  _ToolAction.none => null,
+                },
+              ),
+            ),
           ),
       ],
     );
@@ -294,38 +370,58 @@ class _ToolRow extends StatelessWidget {
 }
 
 class _ToolButton extends StatelessWidget {
-  const _ToolButton({required this.tool});
+  const _ToolButton({required this.tool, this.onTap, this.compact = false});
 
   final _ToolSpec tool;
+  final VoidCallback? onTap;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            color: tool.color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Icon(tool.icon, color: tool.color, size: 24),
+    final iconSize = compact ? 40.0 : 50.0;
+    final iconRadius = compact ? 13.0 : 16.0;
+    final iconGlyphSize = compact ? 21.0 : 24.0;
+    final labelGap = compact ? 3.0 : 5.0;
+    final labelSize = compact ? 10.0 : 11.0;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Opacity(
+        opacity: onTap == null ? 0.45 : 1,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: iconSize,
+              height: iconSize,
+              decoration: BoxDecoration(
+                color: tool.color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(iconRadius),
+              ),
+              child: Icon(tool.icon, color: tool.color, size: iconGlyphSize),
+            ),
+            SizedBox(height: labelGap),
+            Text(
+              tool.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: AppColors.muted, fontSize: labelSize),
+            ),
+          ],
         ),
-        const SizedBox(height: 5),
-        Text(
-          tool.label,
-          style: const TextStyle(color: AppColors.muted, fontSize: 11),
-        ),
-      ],
+      ),
     );
   }
 }
 
 class _ToolSpec {
-  const _ToolSpec(this.label, this.icon, this.color);
+  const _ToolSpec(this.label, this.icon, this.color, this.action);
 
   final String label;
   final IconData icon;
   final Color color;
+  final _ToolAction action;
 }
+
+enum _ToolAction { photo, camera, none }

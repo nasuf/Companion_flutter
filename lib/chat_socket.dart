@@ -81,6 +81,7 @@ class ChatSocket {
     String text,
     String clientId, {
     ChatComponentCard? componentCard,
+    List<ChatAttachment> attachments = const [],
   }) {
     return send({
       'type': 'message',
@@ -88,6 +89,8 @@ class ChatSocket {
         'message': text,
         'client_id': clientId,
         if (componentCard != null) 'component_card': componentCard.toJson(),
+        if (attachments.isNotEmpty)
+          'attachments': attachments.map((item) => item.toJson()).toList(),
       },
     });
   }

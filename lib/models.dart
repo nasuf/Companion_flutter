@@ -284,6 +284,16 @@ class ChatMessage {
     return raw is Map ? ChatComponentCard.fromJson(raw) : null;
   }
 
+  List<ChatAttachment> get attachments {
+    final raw = metadata?['attachments'];
+    if (raw is! List) return const [];
+    return [
+      for (final item in raw)
+        if (item is Map)
+          ChatAttachment.fromJson(Map<String, dynamic>.from(item)),
+    ];
+  }
+
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     return ChatMessage(
       id: json['id'] as String? ?? '',
@@ -355,6 +365,85 @@ class ChatMessage {
       metadata: metadata ?? this.metadata,
       pending: pending ?? this.pending,
       read: read ?? this.read,
+    );
+  }
+}
+
+class ChatAttachment {
+  const ChatAttachment({
+    required this.id,
+    required this.kind,
+    required this.mime,
+    required this.size,
+    required this.url,
+    this.name,
+    this.width,
+    this.height,
+    this.visionStatus = 'pending',
+    this.visionSummary,
+    this.createdAt,
+  });
+
+  final String id;
+  final String kind;
+  final String? name;
+  final String mime;
+  final int size;
+  final int? width;
+  final int? height;
+  final String url;
+  final String visionStatus;
+  final String? visionSummary;
+  final DateTime? createdAt;
+
+  bool get isImage => kind == 'image' && url.trim().isNotEmpty;
+
+  factory ChatAttachment.fromJson(Map<String, dynamic> json) {
+    return ChatAttachment(
+      id: json['id'] as String? ?? '',
+      kind: json['kind'] as String? ?? 'image',
+      name: json['name'] as String?,
+      mime: json['mime'] as String? ?? 'image/jpeg',
+      size: (json['size'] as num?)?.round() ?? 0,
+      width: (json['width'] as num?)?.round(),
+      height: (json['height'] as num?)?.round(),
+      url: json['url'] as String? ?? '',
+      visionStatus: json['vision_status'] as String? ?? 'pending',
+      visionSummary: json['vision_summary'] as String?,
+      createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'kind': kind,
+      'name': name,
+      'mime': mime,
+      'size': size,
+      'width': width,
+      'height': height,
+      'url': url,
+      'vision_status': visionStatus,
+      if (visionSummary != null && visionSummary!.isNotEmpty)
+        'vision_summary': visionSummary,
+      if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
+    };
+  }
+
+  ChatAttachment copyWith({String? url}) {
+    return ChatAttachment(
+      id: id,
+      kind: kind,
+      name: name,
+      mime: mime,
+      size: size,
+      width: width,
+      height: height,
+      url: url ?? this.url,
+      visionStatus: visionStatus,
+      visionSummary: visionSummary,
+      createdAt: createdAt,
     );
   }
 }
