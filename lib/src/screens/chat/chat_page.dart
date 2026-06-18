@@ -1416,29 +1416,32 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         final image = localPath != null
             ? Image.file(File(localPath), fit: BoxFit.contain)
             : Image.network(url ?? '', fit: BoxFit.contain, headers: headers);
-        return SafeArea(
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  child: InteractiveViewer(
-                    minScale: 0.7,
-                    maxScale: 4,
-                    child: Center(child: image),
+        return Material(
+          type: MaterialType.transparency,
+          child: SafeArea(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: InteractiveViewer(
+                      minScale: 0.7,
+                      maxScale: 4,
+                      child: Center(child: image),
+                    ),
                   ),
                 ),
-              ),
-              Positioned(
-                top: 12,
-                right: 12,
-                child: _RoundIconButton(
-                  tooltip: '关闭',
-                  icon: CupertinoIcons.xmark,
-                  onTap: () => Navigator.of(context).pop(),
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: _RoundIconButton(
+                    tooltip: '关闭',
+                    icon: CupertinoIcons.xmark,
+                    onTap: () => Navigator.of(context).pop(),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
