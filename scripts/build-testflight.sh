@@ -46,12 +46,82 @@ commit_version_change() {
     return
   fi
 
-  if git diff --quiet -- pubspec.yaml; then
+  local files_to_commit=()
+  if ! git diff --quiet -- pubspec.yaml; then
+    files_to_commit+=(pubspec.yaml)
+  fi
+  if [[ -f ios/Podfile.lock ]] && ! git diff --quiet -- ios/Podfile.lock; then
+    files_to_commit+=(ios/Podfile.lock)
+  fi
+
+  if [[ "${#files_to_commit[@]}" -eq 0 ]]; then
     return
   fi
 
-  git add pubspec.yaml
+  git add "${files_to_commit[@]}"
   git commit -m "Bump mobile build version to $version"
+}
+
+install_ios_distribution_profile() {
+  local profile_path="${IOS_PROVISIONING_PROFILE_PATH:-$ROOT_DIR/../Bansheng_Dev_App_Store.mobileprovision}"
+
+  if [[ ! -f "$profile_path" ]]; then
+    echo "No local provisioning profile found at: $profile_path"
+    echo "Set IOS_PROVISIONING_PROFILE_PATH=/path/to/profile.mobileprovision if Xcode automatic signing cannot export."
+    return
+  fi
+
+  local decoded_plist
+  decoded_plist="$(mktemp -t bansheng-profile.XXXXXX.plist)"
+  security cms -D -i "$profile_path" > "$decoded_plist"
+
+  IOS_PROFILE_UUID="$(plutil -extract UUID raw -o - "$decoded_plist")"
+  IOS_PROFILE_NAME="$(plutil -extract Name raw -o - "$decoded_plist")"
+
+  local profile_dir="$HOME/Library/MobileDevice/Provisioning Profiles"
+  mkdir -p "$profile_dir"
+  cp "$profile_path" "$profile_dir/$IOS_PROFILE_UUID.mobileprovision"
+  xattr -d com.apple.quarantine "$profile_dir/$IOS_PROFILE_UUID.mobileprovision" 2>/dev/null || true
+  xattr -d com.apple.provenance "$profile_dir/$IOS_PROFILE_UUID.mobileprovision" 2>/dev/null || true
+
+  rm -f "$decoded_plist"
+  echo "Installed provisioning profile: $IOS_PROFILE_NAME ($IOS_PROFILE_UUID)"
+}
+
+create_ios_export_options_plist() {
+  local export_options_path="$1"
+
+  if [[ -z "${IOS_PROFILE_NAME:-}" ]]; then
+    return 1
+  fi
+
+  cat > "$export_options_path" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>method</key>
+  <string>app-store</string>
+  <key>teamID</key>
+  <string>${IOS_TEAM_ID:-F3FB94L862}</string>
+  <key>signingStyle</key>
+  <string>manual</string>
+  <key>signingCertificate</key>
+  <string>Apple Distribution</string>
+  <key>provisioningProfiles</key>
+  <dict>
+    <key>${IOS_BUNDLE_ID:-com.bansheng.dev}</key>
+    <string>$IOS_PROFILE_NAME</string>
+  </dict>
+  <key>destination</key>
+  <string>export</string>
+  <key>stripSwiftSymbols</key>
+  <true/>
+  <key>uploadSymbols</key>
+  <true/>
+</dict>
+</plist>
+EOF
 }
 
 require_clean_git_worktree
@@ -130,6 +200,8 @@ echo "Building TestFlight IPA app version $build_name, build $build_number"
 build_started_marker="$(mktemp -t build-testflight-start.XXXXXX)"
 trap 'rm -f "$build_started_marker"' EXIT
 
+install_ios_distribution_profile
+
 flutter clean
 flutter pub get
 
@@ -140,10 +212,19 @@ if [[ "$(uname -s)" == "Darwin" && -d ios ]]; then
   )
 fi
 
+export_options_plist="$(mktemp -t bansheng-export-options.XXXXXX.plist)"
+if create_ios_export_options_plist "$export_options_plist"; then
+  export_options_args=(--export-options-plist="$export_options_plist")
+  echo "Using export options profile: $IOS_PROFILE_NAME"
+else
+  export_options_args=()
+fi
+
 flutter build ipa --release \
   --build-name="$build_name" \
   --build-number="$build_number" \
   --dart-define=API_BASE_URL="$API_BASE_URL" \
+  "${export_options_args[@]}" \
   "$@"
 
 shopt -s nullglob
