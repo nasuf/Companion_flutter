@@ -129,6 +129,20 @@ class CompanionApi {
     return value.copyWith(metadata: {...metadata, 'attachments': attachments});
   }
 
+  DailySharePhotosResponse _normalizeDailySharePhotos(
+    DailySharePhotosResponse value,
+  ) {
+    return DailySharePhotosResponse(
+      total: value.total,
+      groups: [
+        for (final group in value.groups)
+          group.copyWith(
+            photos: group.photos.map(_normalizeChatAttachment).toList(),
+          ),
+      ],
+    );
+  }
+
   Future<dynamic> _request(
     String method,
     String path, {
@@ -342,6 +356,14 @@ class CompanionApi {
             )
             as Map<String, dynamic>;
     return _normalizeChatAttachment(ChatAttachment.fromJson(json));
+  }
+
+  Future<DailySharePhotosResponse> listDailySharePhotos({int? limit}) async {
+    final suffix = limit == null ? '' : '?limit=$limit';
+    final json =
+        await _request('GET', '/daily-share/photos$suffix')
+            as Map<String, dynamic>;
+    return _normalizeDailySharePhotos(DailySharePhotosResponse.fromJson(json));
   }
 
   Future<SudConfigResponse> getSudConfig() async {

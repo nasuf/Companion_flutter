@@ -448,6 +448,68 @@ class ChatAttachment {
   }
 }
 
+class DailySharePhotoGroup {
+  const DailySharePhotoGroup({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.count,
+    required this.photos,
+  });
+
+  final String id;
+  final String title;
+  final String subtitle;
+  final int count;
+  final List<ChatAttachment> photos;
+
+  factory DailySharePhotoGroup.fromJson(Map<String, dynamic> json) {
+    final rawPhotos = json['photos'];
+    return DailySharePhotoGroup(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      subtitle: json['subtitle'] as String? ?? '',
+      count: (json['count'] as num?)?.round() ?? 0,
+      photos: [
+        if (rawPhotos is List)
+          for (final item in rawPhotos)
+            if (item is Map)
+              ChatAttachment.fromJson(Map<String, dynamic>.from(item)),
+      ],
+    );
+  }
+
+  DailySharePhotoGroup copyWith({List<ChatAttachment>? photos}) {
+    return DailySharePhotoGroup(
+      id: id,
+      title: title,
+      subtitle: subtitle,
+      count: count,
+      photos: photos ?? this.photos,
+    );
+  }
+}
+
+class DailySharePhotosResponse {
+  const DailySharePhotosResponse({required this.total, required this.groups});
+
+  final int total;
+  final List<DailySharePhotoGroup> groups;
+
+  factory DailySharePhotosResponse.fromJson(Map<String, dynamic> json) {
+    final rawGroups = json['groups'];
+    return DailySharePhotosResponse(
+      total: (json['total'] as num?)?.round() ?? 0,
+      groups: [
+        if (rawGroups is List)
+          for (final item in rawGroups)
+            if (item is Map)
+              DailySharePhotoGroup.fromJson(Map<String, dynamic>.from(item)),
+      ],
+    );
+  }
+}
+
 class ChatComponentCard {
   const ChatComponentCard({
     required this.type,

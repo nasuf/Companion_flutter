@@ -46,6 +46,9 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
           if (portal.id == 'game') {
             return GamePage(api: widget.api, session: widget.session);
           }
+          if (portal.id == 'daily') {
+            return DailySharePage(api: widget.api);
+          }
           return _OnlinePortalDetailPage(portal: portal);
         },
       ),
@@ -743,7 +746,7 @@ const _onlinePortals = [
   _OnlinePortal(
     id: 'daily',
     title: '日常分享',
-    subtitle: '照片、书影音和美食被整理成自然分享卡。',
+    subtitle: '照片和链接被整理成自然分享卡。',
     metric: '今日 5 张',
     asset: 'assets/prototype/daily-journal.jpg',
     accent: Color(0xFFFFB58C),
