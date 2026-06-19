@@ -582,6 +582,8 @@ class _GamePageState extends State<GamePage>
                         key: ValueKey('${session!.id}:${session.code}'),
                         session: session,
                         api: widget.api,
+                        isFullscreen: false,
+                        shouldReportExitOnDispose: () => true,
                         onRefreshCode: _refreshCodeForNativeGame,
                         onEvent: _handleNativeEvent,
                       )
@@ -879,6 +881,11 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
   final List<_GameTimelineItem> _timeline = [];
   bool _roundsLoading = true;
   bool _starting = false;
+  bool _nativeFullscreen = false;
+  bool _systemUiHidden = false;
+  bool _suppressNextNativeDisposeReport = false;
+  int _nativeStageRevision = 0;
+  final Set<String> _reportedNativeLifecycleEvents = <String>{};
   String? _error;
   String? _roundsError;
 
@@ -937,6 +944,7 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
       _starting = true;
       _error = null;
       _timeline.clear();
+      _reportedNativeLifecycleEvents.clear();
     });
     try {
       final session = await widget.api.createSudSession(
@@ -950,6 +958,7 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
       if (!mounted) return;
       setState(() {
         _session = session;
+        _nativeFullscreen = session.canLoadNativeGame;
         _timeline.insert(
           0,
           _GameTimelineItem.system(
@@ -966,12 +975,59 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
         }
         _trimTimeline();
       });
+      if (session.canLoadNativeGame) {
+        unawaited(_applyFullscreenSystemUi());
+      }
       unawaited(_loadRounds());
     } catch (error) {
       if (mounted) setState(() => _error = _formatError(error));
     } finally {
       if (mounted) setState(() => _starting = false);
     }
+  }
+
+  @override
+  void dispose() {
+    unawaited(_restoreSystemUi());
+    super.dispose();
+  }
+
+  void _enterNativeFullscreen() {
+    if (_session?.canLoadNativeGame != true) return;
+    _suppressNextNativeDisposeReport = true;
+    setState(() {
+      _nativeFullscreen = true;
+      _nativeStageRevision += 1;
+    });
+    unawaited(_applyFullscreenSystemUi());
+    _clearNativeDisposeSuppressionAfterFrame();
+  }
+
+  void _exitNativeFullscreen() {
+    _suppressNextNativeDisposeReport = true;
+    setState(() {
+      _nativeFullscreen = false;
+      _nativeStageRevision += 1;
+    });
+    unawaited(_restoreSystemUi());
+    _clearNativeDisposeSuppressionAfterFrame();
+  }
+
+  Future<void> _applyFullscreenSystemUi() async {
+    _systemUiHidden = true;
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  Future<void> _restoreSystemUi() async {
+    if (!_systemUiHidden) return;
+    _systemUiHidden = false;
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
+
+  void _clearNativeDisposeSuppressionAfterFrame() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _suppressNextNativeDisposeReport = false;
+    });
   }
 
   Future<SudSession?> _refreshCode() async {
@@ -994,6 +1050,7 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
   }) async {
     final session = _session;
     if (session == null) return;
+    if (_isDuplicateNativeLifecycleEvent(eventType)) return;
     try {
       final response = await widget.api.sendSudGameEvent(
         sessionId: session.id,
@@ -1029,6 +1086,12 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
     }
   }
 
+  bool _isDuplicateNativeLifecycleEvent(String eventType) {
+    const lifecycleEvents = {'sdk_ready', 'game_started', 'sud_entry_synced'};
+    if (!lifecycleEvents.contains(eventType)) return false;
+    return !_reportedNativeLifecycleEvents.add(eventType);
+  }
+
   String? _resolvedMgId() {
     if (widget.game.mgId.isNotEmpty) return widget.game.mgId;
     final configMgId = _config?.defaultMgId ?? '';
@@ -1051,6 +1114,20 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
   Widget build(BuildContext context) {
     final session = _session;
     final canLoadGame = session?.canLoadNativeGame == true;
+    final nativeStage = canLoadGame
+        ? _SudNativeGameStage(
+            key: ValueKey(
+              '${session!.id}:${session.code}:$_nativeStageRevision'
+              ':${_nativeFullscreen ? 'full' : 'window'}',
+            ),
+            session: session,
+            api: widget.api,
+            isFullscreen: _nativeFullscreen,
+            shouldReportExitOnDispose: () => !_suppressNextNativeDisposeReport,
+            onRefreshCode: _refreshCode,
+            onEvent: _handleNativeEvent,
+          )
+        : null;
     return Scaffold(
       backgroundColor: const Color(0xFFF5F8FB),
       body: Stack(
@@ -1072,48 +1149,27 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
                           height: 420,
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(22),
-                            child: canLoadGame
-                                ? _SudNativeGameStage(
-                                    key: ValueKey(
-                                      '${session!.id}:${session.code}',
-                                    ),
-                                    session: session,
-                                    api: widget.api,
-                                    onRefreshCode: _refreshCode,
-                                    onEvent: _handleNativeEvent,
+                            child: canLoadGame && !_nativeFullscreen
+                                ? Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      nativeStage!,
+                                      Positioned(
+                                        top: 12,
+                                        right: 12,
+                                        child: _NativeStageControl(
+                                          icon: Icons.fullscreen_rounded,
+                                          label: '全屏',
+                                          onPressed: _enterNativeFullscreen,
+                                        ),
+                                      ),
+                                    ],
                                   )
                                 : _GamePlaceholderStage(game: widget.game),
                           ),
                         ),
                         const SizedBox(height: 12),
-                        CupertinoButton(
-                          padding: EdgeInsets.zero,
-                          borderRadius: BorderRadius.circular(16),
-                          onPressed: _starting ? null : _startSession,
-                          child: Container(
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: _starting
-                                  ? AppColors.accent.withValues(alpha: 0.58)
-                                  : AppColors.accent,
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Center(
-                              child: _starting
-                                  ? const CupertinoActivityIndicator(
-                                      color: Colors.white,
-                                    )
-                                  : Text(
-                                      session == null ? '开始游戏' : '重新开一局',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                        ),
+                        _playPrimaryActions(canLoadGame: canLoadGame),
                       ],
                     ),
                   ),
@@ -1124,8 +1180,48 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
               const SliverToBoxAdapter(child: SizedBox(height: 42)),
             ],
           ),
+          if (canLoadGame && _nativeFullscreen)
+            Positioned.fill(
+              child: _FullscreenNativeGameStage(
+                title: widget.game.title,
+                stage: nativeStage!,
+                onMinimize: _exitNativeFullscreen,
+                onClose: () => Navigator.maybePop(context),
+              ),
+            ),
         ],
       ),
+    );
+  }
+
+  Widget _playPrimaryActions({required bool canLoadGame}) {
+    if (_session != null && canLoadGame) {
+      return Row(
+        children: [
+          Expanded(
+            child: _PrimaryGameButton(
+              label: '全屏继续',
+              icon: Icons.fullscreen_rounded,
+              disabled: _starting,
+              onPressed: _enterNativeFullscreen,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _PrimaryGameButton(
+              label: '重新开一局',
+              disabled: _starting,
+              onPressed: _startSession,
+            ),
+          ),
+        ],
+      );
+    }
+    return _PrimaryGameButton(
+      label: _session == null ? '开始游戏' : '重新开一局',
+      loading: _starting,
+      disabled: _starting,
+      onPressed: _startSession,
     );
   }
 
@@ -1298,6 +1394,179 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
       isScrollControlled: true,
       useSafeArea: false,
       builder: (context) => _GameRoundDetailSheet(summary: summary),
+    );
+  }
+}
+
+class _PrimaryGameButton extends StatelessWidget {
+  const _PrimaryGameButton({
+    required this.label,
+    required this.onPressed,
+    this.icon,
+    this.loading = false,
+    this.disabled = false,
+  });
+
+  final String label;
+  final IconData? icon;
+  final bool loading;
+  final bool disabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = !disabled && !loading;
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      borderRadius: BorderRadius.circular(16),
+      onPressed: active ? onPressed : null,
+      child: Container(
+        height: 48,
+        decoration: BoxDecoration(
+          color: active
+              ? AppColors.accent
+              : AppColors.accent.withValues(alpha: 0.58),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Center(
+          child: loading
+              ? const CupertinoActivityIndicator(color: Colors.white)
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (icon != null) ...[
+                      Icon(icon, color: Colors.white, size: 19),
+                      const SizedBox(width: 7),
+                    ],
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FullscreenNativeGameStage extends StatelessWidget {
+  const _FullscreenNativeGameStage({
+    required this.title,
+    required this.stage,
+    required this.onMinimize,
+    required this.onClose,
+  });
+
+  final String title;
+  final Widget stage;
+  final VoidCallback onMinimize;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: const Color(0xFF05070D),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          stage,
+          Positioned(
+            left: 12,
+            right: 12,
+            top: MediaQuery.paddingOf(context).top + 10,
+            child: Row(
+              children: [
+                Expanded(
+                  child: IgnorePointer(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.78),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+                _NativeStageControl(
+                  icon: Icons.fullscreen_exit_rounded,
+                  label: '小窗',
+                  onPressed: onMinimize,
+                ),
+                const SizedBox(width: 8),
+                _NativeStageControl(
+                  icon: Icons.close_rounded,
+                  label: '返回',
+                  onPressed: onClose,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NativeStageControl extends StatelessWidget {
+  const _NativeStageControl({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: const Size(0, 0),
+      borderRadius: BorderRadius.circular(18),
+      onPressed: onPressed,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: Container(
+            height: 36,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.38),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 18, color: Colors.white),
+                const SizedBox(width: 5),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1982,12 +2251,16 @@ class _SudNativeGameStage extends StatefulWidget {
     super.key,
     required this.session,
     required this.api,
+    required this.isFullscreen,
+    required this.shouldReportExitOnDispose,
     required this.onRefreshCode,
     required this.onEvent,
   });
 
   final SudSession session;
   final CompanionApi api;
+  final bool isFullscreen;
+  final bool Function() shouldReportExitOnDispose;
   final Future<SudSession?> Function() onRefreshCode;
   final Future<void> Function({
     required String eventType,
@@ -2086,7 +2359,9 @@ class _SudNativeGameStageState extends State<_SudNativeGameStage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    unawaited(_reportGameExit('page_disposed'));
+    if (widget.shouldReportExitOnDispose()) {
+      unawaited(_reportGameExit('page_disposed'));
+    }
     final viewId = _platformViewId;
     if (viewId != null) {
       SudGipPlugin.removeFSMGame(viewId);
@@ -2241,6 +2516,12 @@ class _SudNativeGameStageState extends State<_SudNativeGameStage>
     final box = _viewKey.currentContext?.findRenderObject() as RenderBox?;
     final size = box?.size ?? const Size(1, 1);
     final ratio = MediaQuery.devicePixelRatioOf(context);
+    final topInset = widget.isFullscreen
+        ? math.min(96.0, MediaQuery.paddingOf(context).top + 48)
+        : 0.0;
+    final bottomInset = widget.isFullscreen
+        ? math.min(96.0, MediaQuery.paddingOf(context).bottom + 44)
+        : 0.0;
     return jsonEncode({
       'ret_code': 0,
       'ret_msg': 'success',
@@ -2250,9 +2531,9 @@ class _SudNativeGameStageState extends State<_SudNativeGameStage>
       },
       'view_game_rect': {
         'left': 0,
-        'top': (72 * ratio).ceil(),
+        'top': (topInset * ratio).ceil(),
         'right': 0,
-        'bottom': (116 * ratio).ceil(),
+        'bottom': (bottomInset * ratio).ceil(),
       },
     });
   }
