@@ -71,7 +71,7 @@ class _AchievementPageState extends State<AchievementPage> {
     final safeBottom = MediaQuery.paddingOf(context).bottom;
     final levelTint = _selectedLevel.color;
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F5),
+      backgroundColor: AppColors.page,
       body: FutureBuilder<AchievementsResponse>(
         future: _future,
         builder: (context, snapshot) {
@@ -303,6 +303,7 @@ class _AchievementPageBackground extends StatelessWidget {
       curve: Curves.easeOutCubic,
       builder: (context, value, _) {
         final color = value ?? tint;
+        final colors = AppColors.of(context);
         return DecoratedBox(
           decoration: BoxDecoration(
             gradient: RadialGradient(
@@ -310,7 +311,7 @@ class _AchievementPageBackground extends StatelessWidget {
               radius: 0.92,
               colors: [
                 color.withValues(alpha: 0.20),
-                Color.lerp(const Color(0xFFF6F8F5), color, 0.035)!,
+                Color.lerp(colors.page, color, 0.08)!,
               ],
             ),
           ),
@@ -396,6 +397,7 @@ class _AchievementLevelTabsBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selectedIndex = _achievementLevelTabs.indexOf(selected);
+    final isDark = AppColors.isDark(context);
     return TweenAnimationBuilder<Color?>(
       tween: ColorTween(end: tint),
       duration: const Duration(milliseconds: 420),
@@ -408,13 +410,15 @@ class _AchievementLevelTabsBar extends StatelessWidget {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: Color.lerp(
-                  const Color(0xFFF6F8F5),
+                  AppColors.page,
                   color,
-                  0.06,
-                )!.withValues(alpha: 0.86),
+                  isDark ? 0.10 : 0.06,
+                )!.withValues(alpha: isDark ? 0.92 : 0.86),
                 boxShadow: [
                   BoxShadow(
-                    color: color.withValues(alpha: elevated ? 0.10 : 0),
+                    color: color.withValues(
+                      alpha: elevated ? (isDark ? 0.18 : 0.10) : 0,
+                    ),
                     blurRadius: 18,
                     offset: const Offset(0, 10),
                   ),
@@ -433,10 +437,12 @@ class _AchievementLevelTabsBar extends StatelessWidget {
                     return Container(
                       height: tabBarHeight,
                       decoration: ShapeDecoration(
-                        color: Colors.white.withValues(alpha: 0.58),
+                        color: AppColors.subtleFill(context, light: 0.58),
                         shape: StadiumBorder(
                           side: BorderSide(
-                            color: color.withValues(alpha: 0.30),
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.12)
+                                : color.withValues(alpha: 0.30),
                           ),
                         ),
                         shadows: [
@@ -462,10 +468,18 @@ class _AchievementLevelTabsBar extends StatelessWidget {
                             width: tabWidth - indicatorInset * 2,
                             child: DecoratedBox(
                               decoration: ShapeDecoration(
-                                color: Colors.white.withValues(alpha: 0.96),
+                                color: isDark
+                                    ? Color.lerp(
+                                        AppColors.surfaceMuted,
+                                        color,
+                                        0.18,
+                                      )!.withValues(alpha: 0.94)
+                                    : Colors.white.withValues(alpha: 0.96),
                                 shape: StadiumBorder(
                                   side: BorderSide(
-                                    color: color.withValues(alpha: 0.48),
+                                    color: color.withValues(
+                                      alpha: isDark ? 0.42 : 0.48,
+                                    ),
                                   ),
                                 ),
                                 shadows: [
@@ -493,8 +507,12 @@ class _AchievementLevelTabsBar extends StatelessWidget {
                                         curve: Curves.easeOutCubic,
                                         style: TextStyle(
                                           color: tab == selected
-                                              ? const Color(0xFF11181D)
-                                              : const Color(0xFF59625F),
+                                              ? (isDark
+                                                    ? AppColors.text
+                                                    : const Color(0xFF11181D))
+                                              : (isDark
+                                                    ? AppColors.muted
+                                                    : const Color(0xFF59625F)),
                                           fontSize: 13,
                                           fontWeight: tab == selected
                                               ? FontWeight.w900
@@ -531,6 +549,7 @@ class _AchievementEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return TweenAnimationBuilder<Color?>(
       tween: ColorTween(end: tint),
       duration: const Duration(milliseconds: 420),
@@ -542,12 +561,16 @@ class _AchievementEmptyState extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.fromLTRB(22, 24, 22, 24),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.84),
+              color: AppColors.elevatedSurface(context, light: 0.84),
               borderRadius: BorderRadius.circular(26),
-              border: Border.all(color: color.withValues(alpha: 0.14)),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : color.withValues(alpha: 0.14),
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: color.withValues(alpha: 0.10),
+                  color: color.withValues(alpha: isDark ? 0.18 : 0.10),
                   blurRadius: 28,
                   offset: const Offset(0, 18),
                 ),
@@ -556,8 +579,8 @@ class _AchievementEmptyState extends StatelessWidget {
             child: Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFF7C8582),
+              style: TextStyle(
+                color: isDark ? AppColors.muted : const Color(0xFF7C8582),
                 fontSize: 14,
                 height: 1.48,
                 fontWeight: FontWeight.w700,

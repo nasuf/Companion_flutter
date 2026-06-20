@@ -9,11 +9,13 @@ class _PlanModeSwitch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onceSelected = value == _CheckinEntryMode.once;
+    final isDark = AppColors.isDark(context);
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3F5F8),
+        color: AppColors.subtleFill(context, light: 0.72),
         borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.glassBorder(context)),
       ),
       child: SizedBox(
         height: 48,
@@ -30,11 +32,13 @@ class _PlanModeSwitch extends StatelessWidget {
                 heightFactor: 1,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.elevatedSurface(context, light: 0.98),
                     borderRadius: BorderRadius.circular(18),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF4F5EA8).withValues(alpha: 0.12),
+                        color: const Color(
+                          0xFF4F5EA8,
+                        ).withValues(alpha: isDark ? 0.20 : 0.12),
                         blurRadius: 16,
                         offset: const Offset(0, 8),
                       ),
@@ -124,8 +128,9 @@ class _ReadOnlyModePill extends StatelessWidget {
       height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3F5F8),
+        color: AppColors.subtleFill(context, light: 0.72),
         borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.glassBorder(context)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -161,9 +166,9 @@ class _SettingCard extends StatelessWidget {
       height: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F8FA),
+        color: AppColors.elevatedSurface(context, light: 0.88),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFECEFF3)),
+        border: Border.all(color: AppColors.glassBorder(context)),
       ),
       child: child,
     );
@@ -181,8 +186,9 @@ class _SettingIconBox extends StatelessWidget {
       width: 42,
       height: 42,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.subtleFill(context, light: 0.92),
         borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: AppColors.glassBorder(context)),
       ),
       child: Icon(icon, color: AppColors.text, size: 23),
     );
@@ -198,7 +204,7 @@ class _SettingLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(
+      style: TextStyle(
         color: AppColors.muted,
         fontSize: 15,
         fontWeight: FontWeight.w900,
@@ -218,7 +224,7 @@ class _SettingTitle extends StatelessWidget {
       text,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: const TextStyle(
+      style: TextStyle(
         color: AppColors.text,
         fontSize: 16,
         fontWeight: FontWeight.w900,
@@ -243,8 +249,9 @@ class _IconPillButton extends StatelessWidget {
         width: 42,
         height: 42,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.subtleFill(context, light: 0.92),
           borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: AppColors.glassBorder(context)),
         ),
         child: Icon(icon, color: const Color(0xFF4F5EA8), size: 21),
       ),
@@ -320,9 +327,9 @@ class _HabitWeekdaySection extends StatelessWidget {
                     vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.subtleFill(context, light: 0.92),
                     borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0xFFE7EAF0)),
+                    border: Border.all(color: AppColors.glassBorder(context)),
                   ),
                   child: Text(
                     _timeLabel(dateTime),
@@ -374,6 +381,7 @@ class _WeekdayDotButton extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = math.min(38.0, constraints.maxWidth);
+        final isDark = AppColors.isDark(context);
         return Center(
           child: CupertinoButton(
             padding: EdgeInsets.zero,
@@ -385,19 +393,23 @@ class _WeekdayDotButton extends StatelessWidget {
               width: size,
               height: size,
               decoration: BoxDecoration(
-                color: selected ? const Color(0xFFFFC338) : Colors.white,
+                color: selected
+                    ? const Color(0xFFFFC338)
+                    : AppColors.subtleFill(context, light: 0.92),
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: selected
                       ? const Color(0xFFFFC338)
-                      : const Color(0xFFE4E8EE),
+                      : AppColors.glassBorder(context),
                 ),
               ),
               alignment: Alignment.center,
               child: Text(
                 label,
                 style: TextStyle(
-                  color: selected ? AppColors.text : AppColors.muted,
+                  color: selected
+                      ? (isDark ? const Color(0xFF121A23) : AppColors.text)
+                      : AppColors.muted,
                   fontSize: 15,
                   fontWeight: FontWeight.w900,
                 ),

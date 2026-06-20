@@ -13,14 +13,14 @@ class _DailyHeader extends StatelessWidget {
       children: [
         Row(
           children: [
-            _DailyCircleButton(
+            _AppNavCircleButton(
               icon: CupertinoIcons.chevron_left,
               onPressed: onBack,
             ),
           ],
         ),
         const SizedBox(height: 34),
-        const Text(
+        Text(
           'DAILY BOARD',
           style: TextStyle(
             color: AppColors.accentDeep,
@@ -30,7 +30,7 @@ class _DailyHeader extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        const Text(
+        Text(
           '你说的我都懂，你想\n的我都在',
           style: TextStyle(
             color: AppColors.text,
@@ -79,9 +79,12 @@ class _DailyTabsHeaderDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
+    final isDark = AppColors.isDark(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFCF8).withValues(alpha: 0.86),
+        color: isDark
+            ? AppColors.page.withValues(alpha: 0.74)
+            : const Color(0xFFFFFCF8).withValues(alpha: 0.86),
         boxShadow: overlapsContent
             ? [
                 BoxShadow(
@@ -114,15 +117,18 @@ class _DailyTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(25),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.62),
+            color: isDark
+                ? AppColors.surfaceMuted.withValues(alpha: 0.72)
+                : Colors.white.withValues(alpha: 0.62),
             borderRadius: BorderRadius.circular(25),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.74)),
+            border: Border.all(color: AppColors.glassBorder(context)),
             boxShadow: [
               BoxShadow(
                 color: const Color(0xFF2C3448).withValues(alpha: 0.08),
@@ -168,6 +174,7 @@ class _DailyTabButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
@@ -178,7 +185,7 @@ class _DailyTabButton extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             gradient: selected
-                ? const LinearGradient(
+                ? LinearGradient(
                     colors: [AppColors.accentDeep, AppColors.accentCyan],
                   )
                 : null,
@@ -195,7 +202,11 @@ class _DailyTabButton extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              color: selected ? Colors.white : const Color(0x99707A85),
+              color: selected
+                  ? Colors.white
+                  : (isDark
+                        ? const Color(0x9EEAF2F8)
+                        : const Color(0x99707A85)),
               fontSize: 15,
               fontWeight: FontWeight.w900,
             ),
@@ -356,7 +367,7 @@ class _DailyHeroMark extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: Colors.white.withValues(alpha: 0.24)),
           ),
-          child: const Padding(
+          child: Padding(
             padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               mainAxisSize: MainAxisSize.min,

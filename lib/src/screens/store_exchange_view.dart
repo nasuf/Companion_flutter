@@ -70,6 +70,7 @@ class _ExchangeCategoryBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selectedIndex = _ExchangeCategory.values.indexOf(selected);
+    final isDark = AppColors.isDark(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(23),
       child: BackdropFilter(
@@ -77,9 +78,9 @@ class _ExchangeCategoryBar extends StatelessWidget {
         child: Container(
           height: 46,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.64),
+            color: AppColors.subtleFill(context, light: 0.64),
             borderRadius: BorderRadius.circular(23),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
+            border: Border.all(color: AppColors.glassBorder(context)),
           ),
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -96,7 +97,9 @@ class _ExchangeCategoryBar extends StatelessWidget {
                     width: width - 6,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.98),
+                        color: isDark
+                            ? AppColors.surfaceMuted.withValues(alpha: 0.94)
+                            : Colors.white.withValues(alpha: 0.98),
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
@@ -121,7 +124,9 @@ class _ExchangeCategoryBar extends StatelessWidget {
                                 style: TextStyle(
                                   color: category == selected
                                       ? AppColors.text
-                                      : const Color(0xFF596979),
+                                      : (isDark
+                                            ? AppColors.muted
+                                            : const Color(0xFF596979)),
                                   fontSize: 16,
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: 0,
@@ -158,6 +163,24 @@ class _ExchangeProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
+    final priceBackground = affordable
+        ? (isDark
+              ? Color.lerp(AppColors.surfaceMuted, AppColors.accent, 0.18)!
+              : AppColors.text)
+        : (isDark
+              ? AppColors.surfaceMuted.withValues(alpha: 0.72)
+              : const Color(0xFFEAF1F8));
+    final priceBorder = isDark
+        ? (affordable
+              ? AppColors.accent.withValues(alpha: 0.38)
+              : Colors.white.withValues(alpha: 0.10))
+        : Colors.transparent;
+    final priceTextColor = affordable
+        ? (isDark ? AppColors.text : Colors.white)
+        : (isDark
+              ? AppColors.muted.withValues(alpha: 0.76)
+              : const Color(0xFF7B8792));
     return _GlassCard(
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
       radius: 18,
@@ -173,9 +196,11 @@ class _ExchangeProductCard extends StatelessWidget {
                   height: 100,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.82),
+                    color: AppColors.subtleFill(context, light: 0.82),
                     border: Border.all(
-                      color: AppColors.accent.withValues(alpha: 0.12),
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.10)
+                          : AppColors.accent.withValues(alpha: 0.12),
                     ),
                   ),
                 ),
@@ -213,7 +238,7 @@ class _ExchangeProductCard extends StatelessWidget {
             product.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.text,
               fontSize: 15,
               fontWeight: FontWeight.w900,
@@ -226,8 +251,8 @@ class _ExchangeProductCard extends StatelessWidget {
             product.subtitle,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF6A7784),
+            style: TextStyle(
+              color: isDark ? AppColors.muted : const Color(0xFF6A7784),
               fontSize: 11,
               fontWeight: FontWeight.w700,
               letterSpacing: 0,
@@ -242,15 +267,26 @@ class _ExchangeProductCard extends StatelessWidget {
             child: Container(
               height: 36,
               decoration: BoxDecoration(
-                color: affordable ? AppColors.text : const Color(0xFFEAF1F8),
+                color: priceBackground,
                 borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: priceBorder),
+                boxShadow: [
+                  if (affordable)
+                    BoxShadow(
+                      color: AppColors.accent.withValues(
+                        alpha: isDark ? 0.18 : 0.10,
+                      ),
+                      blurRadius: 14,
+                      offset: const Offset(0, 7),
+                    ),
+                ],
               ),
               child: Center(
                 child: product.price == 0
-                    ? const Text(
+                    ? Text(
                         '免费',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: priceTextColor,
                           fontSize: 15,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 0,
@@ -268,9 +304,7 @@ class _ExchangeProductCard extends StatelessWidget {
                           Text(
                             '${product.price}',
                             style: TextStyle(
-                              color: affordable
-                                  ? Colors.white
-                                  : const Color(0xFF7B8792),
+                              color: priceTextColor,
                               fontSize: 15,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 0,
@@ -309,9 +343,14 @@ class _ExchangeCategoryHeaderDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
+    final isDark = AppColors.isDark(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFEAF7FF).withValues(alpha: 0.86),
+        color: Color.lerp(
+          AppColors.page,
+          AppColors.accent,
+          isDark ? 0.08 : 0.05,
+        )!.withValues(alpha: isDark ? 0.94 : 0.86),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),

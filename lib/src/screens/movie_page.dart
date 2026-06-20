@@ -201,11 +201,9 @@ class _CinemaActions extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        CupertinoButton(
-          padding: EdgeInsets.zero,
-          minimumSize: Size.zero,
+        _AppNavCircleButton(
+          icon: CupertinoIcons.chevron_left,
           onPressed: onBack,
-          child: _GlassCircleButton(icon: CupertinoIcons.chevron_left),
         ),
         const Spacer(),
         CupertinoButton(
@@ -232,31 +230,6 @@ class _CinemaActions extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _GlassCircleButton extends StatelessWidget {
-  const _GlassCircleButton({required this.icon});
-
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipOval(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white.withValues(alpha: 0.12),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-          ),
-          child: Icon(icon, color: Colors.white, size: 24),
-        ),
-      ),
     );
   }
 }

@@ -153,63 +153,77 @@ class _RechargeHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
+    final accent = currency == _StoreCurrency.ticket
+        ? const Color(0xFFFFC83D)
+        : AppColors.accent;
+    final label = currency == _StoreCurrency.ticket ? '钞票余额' : '积分余额';
+    final detailColor = isDark
+        ? AppColors.muted.withValues(alpha: 0.86)
+        : const Color(0xFF8B938F);
     return SizedBox(
       height: 300,
       child: Stack(
         children: [
           Positioned.fill(
-            child: CustomPaint(
-              painter: _RechargePatternPainter(
-                color: currency == _StoreCurrency.ticket
-                    ? const Color(0xFFFFC83D)
-                    : AppColors.accent,
-              ),
-            ),
+            child: CustomPaint(painter: _RechargePatternPainter(color: accent)),
           ),
           Align(
-            alignment: const Alignment(0, -0.36),
-            child: CustomPaint(
-              size: const Size(118, 92),
-              painter: currency == _StoreCurrency.ticket
-                  ? const _TicketStackPainter()
-                  : const _PointCrystalPainter(sizeScale: 1.24),
-            ),
-          ),
-          Align(
-            alignment: Alignment(0, onAdRewardTap == null ? 0.42 : 0.02),
+            alignment: Alignment(0, onAdRewardTap == null ? 0.02 : -0.10),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                _RechargeBalanceBadge(currency: currency, accent: accent),
+                const SizedBox(height: 14),
                 Text(
-                  currency == _StoreCurrency.ticket ? '钞票余额' : '积分余额',
-                  style: const TextStyle(
-                    color: AppColors.text,
+                  label,
+                  style: TextStyle(
+                    color: isDark
+                        ? AppColors.text.withValues(alpha: 0.82)
+                        : AppColors.text,
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 0,
                     decoration: TextDecoration.none,
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 6),
                 Text(
                   '$balance',
-                  style: const TextStyle(
-                    color: Colors.black,
+                  style: TextStyle(
+                    color: isDark ? AppColors.text : Colors.black,
                     fontSize: 44,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 0,
                     decoration: TextDecoration.none,
                   ),
                 ),
-                const SizedBox(height: 6),
-                const Text(
-                  '明细清单 ›',
-                  style: TextStyle(
-                    color: Color(0xFF8B938F),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.06)
+                        : Colors.white.withValues(alpha: 0.36),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.white.withValues(alpha: 0.52),
+                    ),
+                  ),
+                  child: Text(
+                    '明细清单 ›',
+                    style: TextStyle(
+                      color: detailColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                    ),
                   ),
                 ),
               ],
@@ -228,6 +242,48 @@ class _RechargeHero extends StatelessWidget {
   }
 }
 
+class _RechargeBalanceBadge extends StatelessWidget {
+  const _RechargeBalanceBadge({required this.currency, required this.accent});
+
+  final _StoreCurrency currency;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
+    return Container(
+      width: 128,
+      height: 96,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [
+            accent.withValues(alpha: isDark ? 0.18 : 0.13),
+            accent.withValues(alpha: 0),
+          ],
+        ),
+      ),
+      child: SizedBox(
+        width: 104,
+        height: 82,
+        child: CustomPaint(
+          painter: currency == _StoreCurrency.ticket
+              ? _TicketStackPainter(
+                  labelColor: isDark ? AppColors.text : null,
+                  glowColor: accent,
+                )
+              : _PointCrystalPainter(
+                  sizeScale: 1.16,
+                  labelColor: isDark ? AppColors.text : null,
+                  glowColor: accent,
+                ),
+        ),
+      ),
+    );
+  }
+}
+
 class _AdRewardRow extends StatelessWidget {
   const _AdRewardRow({required this.onTap});
 
@@ -235,6 +291,7 @@ class _AdRewardRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
@@ -243,11 +300,11 @@ class _AdRewardRow extends StatelessWidget {
         height: 54,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.72),
+          color: AppColors.elevatedSurface(context, light: 0.72),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.80)),
+          border: Border.all(color: AppColors.glassBorder(context)),
         ),
-        child: const Row(
+        child: Row(
           children: [
             _CircleIcon(
               icon: CupertinoIcons.play_rectangle_fill,
@@ -266,7 +323,10 @@ class _AdRewardRow extends StatelessWidget {
                 ),
               ),
             ),
-            Icon(CupertinoIcons.chevron_right, color: Color(0xFF7E8891)),
+            Icon(
+              CupertinoIcons.chevron_right,
+              color: isDark ? AppColors.muted : const Color(0xFF7E8891),
+            ),
           ],
         ),
       ),
@@ -287,6 +347,7 @@ class _RechargePackCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
@@ -295,10 +356,12 @@ class _RechargePackCard extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: selected ? 0.96 : 0.62),
+          color: selected
+              ? AppColors.elevatedSurface(context, light: 0.96)
+              : AppColors.subtleFill(context, light: 0.62),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: selected ? AppColors.accent : Colors.white,
+            color: selected ? AppColors.accent : AppColors.glassBorder(context),
             width: selected ? 2.3 : 1,
           ),
         ),
@@ -315,8 +378,8 @@ class _RechargePackCard extends StatelessWidget {
                     '${pack.amount}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF3A4350),
+                    style: TextStyle(
+                      color: isDark ? AppColors.text : const Color(0xFF3A4350),
                       fontSize: 21,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 0,
@@ -339,8 +402,8 @@ class _RechargePackCard extends StatelessWidget {
                   pack.currency == _StoreCurrency.ticket
                       ? '¥${pack.cost}'
                       : '${pack.cost}',
-                  style: const TextStyle(
-                    color: Color(0xFF7C858F),
+                  style: TextStyle(
+                    color: isDark ? AppColors.muted : const Color(0xFF7C858F),
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0,

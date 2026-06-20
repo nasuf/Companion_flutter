@@ -67,7 +67,7 @@ class _WeatherPageState extends State<WeatherPage>
       builder: (context, _) {
         final progress = Curves.easeInOut.transform(_breathController.value);
         return Scaffold(
-          backgroundColor: const Color(0xFFF8FBFA),
+          backgroundColor: AppColors.page,
           body: Stack(
             children: [
               Positioned.fill(child: _WeatherBackground(progress: progress)),
@@ -138,42 +138,12 @@ class _WeatherTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        _WeatherCircleButton(icon: CupertinoIcons.chevron_left, onTap: onBack),
+        _AppNavCircleButton(
+          icon: CupertinoIcons.chevron_left,
+          onPressed: onBack,
+        ),
         const Spacer(),
       ],
-    );
-  }
-}
-
-class _WeatherCircleButton extends StatelessWidget {
-  const _WeatherCircleButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return CupertinoButton(
-      minimumSize: Size.zero,
-      padding: EdgeInsets.zero,
-      onPressed: onTap,
-      child: Container(
-        width: 56,
-        height: 56,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.92),
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF315B88).withValues(alpha: 0.13),
-              blurRadius: 24,
-              offset: const Offset(0, 12),
-            ),
-          ],
-        ),
-        child: Icon(icon, color: const Color(0xFF111922), size: 27),
-      ),
     );
   }
 }
@@ -185,15 +155,16 @@ class _WeatherBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Colors.white,
-            const Color(0xFFEFFBFA).withValues(alpha: 0.96),
-            const Color(0xFFF8FAFF),
+            colors.page,
+            Color.lerp(colors.page, colors.surfaceMuted, 0.44)!,
+            Color.lerp(colors.page, colors.accentSoft, 0.20)!,
           ],
         ),
       ),
@@ -288,6 +259,7 @@ class _WeatherHeroCard extends StatelessWidget {
     final max = day.maxTemperature.round();
     final windLevel = _windLevel(snapshot.windSpeed);
     final advice = _weatherAdvice(day);
+    final isDark = AppColors.isDark(context);
 
     return Container(
       height: 306,
@@ -298,22 +270,27 @@ class _WeatherHeroCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Colors.white.withValues(alpha: 0.92),
-            const Color(0xFFEAF3FF).withValues(alpha: 0.72),
+            isDark
+                ? AppColors.surface.withValues(alpha: 0.92)
+                : Colors.white.withValues(alpha: 0.92),
+            isDark
+                ? AppColors.accentSoft.withValues(alpha: 0.72)
+                : const Color(0xFFEAF3FF).withValues(alpha: 0.72),
           ],
         ),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.80)),
+        border: Border.all(color: AppColors.glassBorder(context)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF315B88).withValues(alpha: 0.13),
+            color: AppColors.shadow.withValues(alpha: isDark ? 0.80 : 0.13),
             blurRadius: 34,
             offset: const Offset(0, 20),
           ),
-          BoxShadow(
-            color: Colors.white.withValues(alpha: 0.82),
-            blurRadius: 1,
-            offset: const Offset(0, 1),
-          ),
+          if (!isDark)
+            BoxShadow(
+              color: Colors.white.withValues(alpha: 0.82),
+              blurRadius: 1,
+              offset: const Offset(0, 1),
+            ),
         ],
       ),
       child: Stack(
@@ -327,7 +304,7 @@ class _WeatherHeroCard extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'WEATHER CARD',
                 style: TextStyle(
                   color: AppColors.accent,
@@ -346,7 +323,7 @@ class _WeatherHeroCard extends StatelessWidget {
                     '$temp° ${day.weatherText}，$advice',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.text,
                       fontSize: 30,
                       height: 1.12,
@@ -415,6 +392,7 @@ class _WeatherMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: BackdropFilter(
@@ -423,9 +401,11 @@ class _WeatherMetric extends StatelessWidget {
           height: 60,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.57),
+            color: isDark
+                ? AppColors.surfaceMuted.withValues(alpha: 0.70)
+                : Colors.white.withValues(alpha: 0.57),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
+            border: Border.all(color: AppColors.glassBorder(context)),
           ),
           child: FittedBox(
             alignment: Alignment.centerLeft,
@@ -436,7 +416,7 @@ class _WeatherMetric extends StatelessWidget {
               children: [
                 Text(
                   value,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.text,
                     fontSize: 23,
                     height: 1,
@@ -666,19 +646,22 @@ class _WeatherDayTabsState extends State<_WeatherDayTabs> {
             padding: const EdgeInsets.all(5),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(28),
-              color: Colors.white.withValues(alpha: 0.58),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.76)),
+              color: AppColors.subtleFill(context, light: 0.58),
+              border: Border.all(color: AppColors.glassBorder(context)),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF315B88).withValues(alpha: 0.07),
+                  color: AppColors.shadow.withValues(
+                    alpha: AppColors.isDark(context) ? 0.62 : 0.07,
+                  ),
                   blurRadius: 22,
                   offset: const Offset(0, 12),
                 ),
-                BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.70),
-                  blurRadius: 1,
-                  offset: const Offset(0, 1),
-                ),
+                if (!AppColors.isDark(context))
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: 0.70),
+                    blurRadius: 1,
+                    offset: const Offset(0, 1),
+                  ),
               ],
             ),
             child: LayoutBuilder(
@@ -772,6 +755,7 @@ class _WeatherDateTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
@@ -782,7 +766,9 @@ class _WeatherDateTab extends StatelessWidget {
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
           style: TextStyle(
-            color: selected ? Colors.white : AppColors.text,
+            color: selected
+                ? Colors.white
+                : (isDark ? const Color(0xDDEAF2F8) : AppColors.text),
             fontSize: 14,
             height: 1,
             fontWeight: FontWeight.w900,
@@ -833,12 +819,14 @@ class _WeatherChartCard extends StatelessWidget {
       height: 156,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.73),
+        color: AppColors.elevatedSurface(context, light: 0.73),
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.82)),
+        border: Border.all(color: AppColors.glassBorder(context)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF315B88).withValues(alpha: 0.08),
+            color: AppColors.shadow.withValues(
+              alpha: AppColors.isDark(context) ? 0.68 : 0.08,
+            ),
             blurRadius: 28,
             offset: const Offset(0, 14),
           ),
@@ -848,7 +836,7 @@ class _WeatherChartCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text(
+              Text(
                 '温度曲线',
                 style: TextStyle(
                   color: AppColors.text,
@@ -943,12 +931,14 @@ class _WeatherInsightGrid extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.70),
+            color: AppColors.elevatedSurface(context, light: 0.70),
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.80)),
+            border: Border.all(color: AppColors.glassBorder(context)),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF315B88).withValues(alpha: 0.07),
+                color: AppColors.shadow.withValues(
+                  alpha: AppColors.isDark(context) ? 0.62 : 0.07,
+                ),
                 blurRadius: 18,
                 offset: const Offset(0, 10),
               ),
@@ -960,7 +950,9 @@ class _WeatherInsightGrid extends StatelessWidget {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEAF4FF),
+                  color: AppColors.accentSoft.withValues(
+                    alpha: AppColors.isDark(context) ? 0.82 : 1,
+                  ),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(item.$3, color: AppColors.accent, size: 22),
@@ -985,7 +977,7 @@ class _WeatherInsightGrid extends StatelessWidget {
                       fit: BoxFit.scaleDown,
                       child: Text(
                         item.$2,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.text,
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
@@ -1015,12 +1007,14 @@ class _WeatherSuggestionRow extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 92),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.82),
+        color: AppColors.elevatedSurface(context, light: 0.82),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.80)),
+        border: Border.all(color: AppColors.glassBorder(context)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF315B88).withValues(alpha: 0.08),
+            color: AppColors.shadow.withValues(
+              alpha: AppColors.isDark(context) ? 0.66 : 0.08,
+            ),
             blurRadius: 24,
             offset: const Offset(0, 14),
           ),
@@ -1033,12 +1027,14 @@ class _WeatherSuggestionRow extends StatelessWidget {
             height: 60,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: const Color(0xFFDCEBFF),
+              color: AppColors.accentSoft.withValues(
+                alpha: AppColors.isDark(context) ? 0.90 : 1,
+              ),
               borderRadius: BorderRadius.circular(22),
             ),
             child: Text(
               event.hour,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.accent,
                 fontSize: 24,
                 fontWeight: FontWeight.w900,
@@ -1053,7 +1049,7 @@ class _WeatherSuggestionRow extends StatelessWidget {
               children: [
                 Text(
                   event.title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.text,
                     fontSize: 17,
                     fontWeight: FontWeight.w900,
@@ -1104,9 +1100,9 @@ class _WeatherLoading extends StatelessWidget {
             width: 88,
             height: 88,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.78),
+              color: AppColors.elevatedSurface(context, light: 0.78),
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withValues(alpha: 0.82)),
+              border: Border.all(color: AppColors.glassBorder(context)),
             ),
             child: const CupertinoActivityIndicator(radius: 16),
           ),
@@ -1132,14 +1128,14 @@ class _WeatherError extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.82),
+            color: AppColors.elevatedSurface(context, light: 0.82),
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.82)),
+            border: Border.all(color: AppColors.glassBorder(context)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 '天气暂时没有回来',
                 style: TextStyle(
                   color: AppColors.text,

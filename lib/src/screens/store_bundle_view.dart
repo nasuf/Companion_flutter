@@ -132,7 +132,7 @@ class _BundleCard extends StatelessWidget {
                                 product.title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: AppColors.text,
                                   fontSize: 21,
                                   fontWeight: FontWeight.w900,
@@ -153,8 +153,10 @@ class _BundleCard extends StatelessWidget {
                           product.subtitle,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF61707C),
+                          style: TextStyle(
+                            color: AppColors.isDark(context)
+                                ? AppColors.muted
+                                : const Color(0xFF61707C),
                             fontSize: 12,
                             height: 1.34,
                             fontWeight: FontWeight.w700,
@@ -220,6 +222,7 @@ class _BundleIconMedallion extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return SizedBox(
       width: 104,
       height: 104,
@@ -234,8 +237,10 @@ class _BundleIconMedallion extends StatelessWidget {
               shape: BoxShape.circle,
               gradient: RadialGradient(
                 colors: [
-                  Colors.white.withValues(alpha: 0.98),
-                  accent.withValues(alpha: 0.06),
+                  isDark
+                      ? AppColors.surfaceMuted.withValues(alpha: 0.88)
+                      : Colors.white.withValues(alpha: 0.98),
+                  accent.withValues(alpha: isDark ? 0.14 : 0.06),
                 ],
               ),
               border: Border.all(color: accent.withValues(alpha: 0.18)),
@@ -256,8 +261,10 @@ class _BundleIconMedallion extends StatelessWidget {
               shape: BoxShape.circle,
               gradient: RadialGradient(
                 colors: [
-                  Colors.white.withValues(alpha: 0.98),
-                  accent.withValues(alpha: 0.08),
+                  isDark
+                      ? AppColors.surface.withValues(alpha: 0.88)
+                      : Colors.white.withValues(alpha: 0.98),
+                  accent.withValues(alpha: isDark ? 0.16 : 0.08),
                 ],
               ),
             ),
@@ -271,7 +278,7 @@ class _BundleIconMedallion extends StatelessWidget {
               height: 18,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.92),
+                color: AppColors.elevatedSurface(context, light: 0.92),
                 border: Border.all(color: accent.withValues(alpha: 0.22)),
               ),
               child: Icon(
@@ -310,6 +317,7 @@ class _BundleCycleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
@@ -321,10 +329,12 @@ class _BundleCycleButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected
               ? color.withValues(alpha: 0.16)
-              : Colors.white.withValues(alpha: 0.70),
+              : AppColors.subtleFill(context, light: 0.70),
           borderRadius: BorderRadius.circular(15),
           border: Border.all(
-            color: selected ? color.withValues(alpha: 0.50) : Colors.white,
+            color: selected
+                ? color.withValues(alpha: 0.50)
+                : AppColors.glassBorder(context),
             width: selected ? 1.2 : 1,
           ),
         ),
@@ -337,7 +347,9 @@ class _BundleCycleButton extends StatelessWidget {
                 Text(
                   label,
                   style: TextStyle(
-                    color: selected ? color : const Color(0xFF6B7580),
+                    color: selected
+                        ? color
+                        : (isDark ? AppColors.muted : const Color(0xFF6B7580)),
                     fontSize: 11,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 0,
@@ -348,7 +360,9 @@ class _BundleCycleButton extends StatelessWidget {
                 Text(
                   '¥$price$suffix',
                   style: TextStyle(
-                    color: selected ? color : const Color(0xFF4B5660),
+                    color: selected
+                        ? color
+                        : (isDark ? AppColors.text : const Color(0xFF4B5660)),
                     fontSize: 12,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 0,
@@ -541,6 +555,7 @@ class _BundleIconPlate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final imageUrl = product.imageUrl;
+    final isDark = AppColors.isDark(context);
     return DecoratedBox(
       decoration: BoxDecoration(
         shape: BoxShape.circle,
@@ -548,22 +563,29 @@ class _BundleIconPlate extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Colors.white.withValues(alpha: 0.96),
-            Color.lerp(accent, Colors.white, 0.72)!.withValues(alpha: 0.58),
+            isDark
+                ? AppColors.surfaceMuted.withValues(alpha: 0.92)
+                : Colors.white.withValues(alpha: 0.96),
+            Color.lerp(
+              accent,
+              isDark ? AppColors.surfaceMuted : Colors.white,
+              0.72,
+            )!.withValues(alpha: isDark ? 0.62 : 0.58),
           ],
         ),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.86)),
+        border: Border.all(color: AppColors.glassBorder(context)),
         boxShadow: [
           BoxShadow(
             color: accent.withValues(alpha: 0.16),
             blurRadius: 18,
             offset: const Offset(0, 9),
           ),
-          BoxShadow(
-            color: Colors.white.withValues(alpha: 0.72),
-            blurRadius: 8,
-            offset: const Offset(-3, -3),
-          ),
+          if (!isDark)
+            BoxShadow(
+              color: Colors.white.withValues(alpha: 0.72),
+              blurRadius: 8,
+              offset: const Offset(-3, -3),
+            ),
         ],
       ),
       child: Stack(
@@ -577,7 +599,9 @@ class _BundleIconPlate extends StatelessWidget {
               height: 30,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.34),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.10)
+                    : Colors.white.withValues(alpha: 0.34),
               ),
             ),
           ),

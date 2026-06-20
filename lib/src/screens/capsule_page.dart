@@ -167,8 +167,10 @@ class _CapsulePageState extends State<CapsulePage> {
                           padding: const EdgeInsets.fromLTRB(26, 28, 26, 10),
                           child: Text(
                             '已开启胶囊',
-                            style: const TextStyle(
-                              color: Color(0xFF9BA4A1),
+                            style: TextStyle(
+                              color: AppColors.isDark(context)
+                                  ? AppColors.muted
+                                  : const Color(0xFF9BA4A1),
                               fontSize: 18,
                               fontWeight: FontWeight.w800,
                               letterSpacing: 0,
@@ -320,7 +322,7 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
   final _recorder = AudioRecorder();
   AudioPlayer? _audioPlayer;
   DateTime? _openDate;
-  String _skin = 'paper';
+  String _skin = '';
   _CapsuleImageAttachment? _image;
   _CapsuleVoiceAttachment? _voice;
   late String _initialContent;
@@ -335,19 +337,42 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
   String? _savingStatus;
   String? _savingMessage;
   String? _error;
+  bool _skinInitialized = false;
+  bool _skinManuallySelected = false;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.draft?.content ?? '');
     _openDate = widget.draft?.openDate;
-    _skin = widget.draft?.skin ?? 'paper';
+    _skin = widget.draft?.skin ?? '';
     _restoreMedia(widget.draft?.media);
     _initialContent = widget.draft?.content.trim() ?? '';
-    _initialSkin = _skin;
     _initialOpenDate = _openDate;
     _initialMediaKey = _mediaKey(_mediaPayload());
     unawaited(_loadDraftDetailMedia());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final defaultSkin = _defaultSkinForContext(context);
+    if (!_skinInitialized) {
+      _skin = widget.draft?.skin ?? defaultSkin;
+      _initialSkin = _skin;
+      _skinInitialized = true;
+      return;
+    }
+    if (widget.draft == null &&
+        !_skinManuallySelected &&
+        _skin != defaultSkin) {
+      _skin = defaultSkin;
+      _initialSkin = _skin;
+    }
+  }
+
+  String _defaultSkinForContext(BuildContext context) {
+    return AppColors.isDark(context) ? 'night' : 'paper';
   }
 
   @override
@@ -428,32 +453,132 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
   Future<void> _pickDate() async {
     final now = DateTime.now();
     var selected = _openDate ?? DateTime(now.year, now.month, now.day + 1);
+    final skin = _CapsuleSkin.byId(_skin);
+    final isDark = AppColors.isDark(context);
+    final sheetColor = isDark ? skin.paper : skin.page;
+    final pickerSurface = isDark
+        ? Color.lerp(skin.paper, Colors.white, 0.03)!
+        : skin.paper;
+    final overlayColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.08);
     await showCupertinoModalPopup<void>(
       context: context,
+      barrierColor: Colors.black.withValues(alpha: isDark ? 0.58 : 0.26),
       builder: (context) {
-        return Container(
-          height: 318,
-          color: Colors.white,
-          child: Column(
-            children: [
-              SizedBox(
-                height: 248,
-                child: CupertinoDatePicker(
-                  mode: CupertinoDatePickerMode.date,
-                  initialDateTime: selected,
-                  minimumDate: DateTime(now.year, now.month, now.day),
-                  maximumDate: DateTime(now.year + 20, 12, 31),
-                  onDateTimeChanged: (value) => selected = value,
-                ),
-              ),
-              CupertinoButton(
-                child: const Text('确定'),
-                onPressed: () {
-                  setState(() => _openDate = selected);
-                  Navigator.of(context).pop();
-                },
+        final bottom = MediaQuery.paddingOf(context).bottom;
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: sheetColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+            border: Border(
+              top: BorderSide(color: skin.line.withValues(alpha: 0.38)),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.44 : 0.10),
+                blurRadius: 28,
+                offset: const Offset(0, -12),
               ),
             ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(18, 0, 18, bottom + 10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const _SheetGrabber(),
+                  Row(
+                    children: [
+                      Text(
+                        '开启日期',
+                        style: TextStyle(
+                          color: skin.text,
+                          fontSize: 18,
+                          height: 1,
+                          fontWeight: FontWeight.w900,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      const Spacer(),
+                      CupertinoButton(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                        minimumSize: Size.zero,
+                        borderRadius: BorderRadius.circular(999),
+                        color: skin.accent.withValues(
+                          alpha: isDark ? 0.18 : 0.12,
+                        ),
+                        onPressed: () {
+                          setState(() => _openDate = selected);
+                          Navigator.of(context).pop();
+                        },
+                        child: Text(
+                          '确定',
+                          style: TextStyle(
+                            color: skin.accent,
+                            fontSize: 15,
+                            height: 1,
+                            fontWeight: FontWeight.w900,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: ColoredBox(
+                      color: pickerSurface,
+                      child: SizedBox(
+                        height: 238,
+                        child: CupertinoTheme(
+                          data: CupertinoThemeData(
+                            brightness: isDark
+                                ? Brightness.dark
+                                : Brightness.light,
+                            primaryColor: skin.accent,
+                            textTheme: CupertinoTextThemeData(
+                              dateTimePickerTextStyle: TextStyle(
+                                color: skin.text,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          child: CupertinoDatePicker(
+                            mode: CupertinoDatePickerMode.date,
+                            backgroundColor: pickerSurface,
+                            initialDateTime: selected,
+                            minimumDate: DateTime(now.year, now.month, now.day),
+                            maximumDate: DateTime(now.year + 20, 12, 31),
+                            selectionOverlayBuilder:
+                                (
+                                  context, {
+                                  required columnCount,
+                                  required selectedIndex,
+                                }) {
+                                  return CupertinoPickerDefaultSelectionOverlay(
+                                    background: overlayColor,
+                                    capStartEdge: selectedIndex == 0,
+                                    capEndEdge:
+                                        selectedIndex == columnCount - 1,
+                                  );
+                                },
+                            onDateTimeChanged: (value) => selected = value,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },
@@ -683,13 +808,13 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
       builder: (_) => MediaQuery(
         data: MediaQuery.of(context),
         child: DefaultTextStyle(
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.text,
             decoration: TextDecoration.none,
           ),
           child: Container(
             height: 270,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: AppColors.surface,
               borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
             ),
@@ -876,7 +1001,10 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
       builder: (_) => _CapsuleSkinSheet(
         selected: _skin,
         onSelected: (value) {
-          setState(() => _skin = value);
+          setState(() {
+            _skin = value;
+            _skinManuallySelected = true;
+          });
           Navigator.of(context).pop();
         },
       ),
@@ -898,9 +1026,9 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
               padding: const EdgeInsets.fromLTRB(18, 10, 18, 8),
               child: Row(
                 children: [
-                  _CapsuleCircleButton(
+                  _AppNavCircleButton(
                     icon: CupertinoIcons.xmark,
-                    onTap: _saving
+                    onPressed: _saving
                         ? null
                         : () => Navigator.of(context).maybePop(),
                   ),
@@ -909,7 +1037,7 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
                       widget.readOnly ? '胶囊详情' : '写新胶囊',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: AppColors.text,
+                        color: skin.text,
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
                       ),
@@ -1197,12 +1325,12 @@ class _CapsuleSkin {
     _CapsuleSkin(
       id: 'night',
       name: '深夜蓝纸',
-      page: Color(0xFFEDEFF7),
-      paper: Color(0xFF252C45),
-      line: Color(0xFF3D4662),
-      text: Color(0xFFF7F2E8),
-      muted: Color(0xFFB8BED4),
-      accent: Color(0xFF9CB4FF),
+      page: Color(0xFF070D16),
+      paper: Color(0xFF101A25),
+      line: Color(0xFF5C6878),
+      text: Color(0xFFF4F8FC),
+      muted: Color(0xFF9FAEC0),
+      accent: Color(0xFF4BA3FF),
     ),
     _CapsuleSkin(
       id: 'rose',
@@ -1291,43 +1419,43 @@ class _CapsuleLetterPaper extends StatelessWidget {
               painter: _LetterLinePainter(lineColor: skin.line),
               child: Stack(
                 children: [
-                  SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 86),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: math.max(0, constraints.maxHeight - 104),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          TextField(
-                            controller: controller,
-                            readOnly: readOnly,
-                            showCursor: !readOnly,
-                            minLines: 8,
-                            maxLines: null,
-                            keyboardType: TextInputType.multiline,
-                            textInputAction: TextInputAction.newline,
-                            cursorHeight: 23,
-                            style: TextStyle(
-                              color: skin.text,
-                              fontSize: 17,
-                              height: 1.76,
-                            ),
-                            decoration: InputDecoration(
-                              hintText: '我想对未来的我说...',
-                              hintStyle: TextStyle(
-                                color: skin.muted.withValues(alpha: 0.72),
-                                fontSize: 17,
-                                height: 1.76,
-                              ),
-                              border: InputBorder.none,
-                              isCollapsed: true,
-                              contentPadding: EdgeInsets.zero,
-                            ),
+                  Positioned.fill(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 86),
+                      child: TextField(
+                        controller: controller,
+                        readOnly: readOnly,
+                        showCursor: !readOnly,
+                        expands: true,
+                        minLines: null,
+                        maxLines: null,
+                        keyboardType: TextInputType.multiline,
+                        textInputAction: TextInputAction.newline,
+                        cursorHeight: 23,
+                        cursorColor: skin.accent,
+                        style: TextStyle(
+                          color: skin.text,
+                          fontSize: 17,
+                          height: 1.76,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: '我想对未来的我说...',
+                          hintStyle: TextStyle(
+                            color: skin.muted.withValues(alpha: 0.72),
+                            fontSize: 17,
+                            height: 1.76,
                           ),
-                        ],
+                          filled: false,
+                          fillColor: Colors.transparent,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          focusedErrorBorder: InputBorder.none,
+                          isCollapsed: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
                       ),
                     ),
                   ),
@@ -1428,15 +1556,14 @@ class _CapsuleAttachmentStrip extends StatelessWidget {
           height: 66,
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.76),
+            color: AppColors.elevatedSurface(context, light: 0.76),
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.92),
-              width: 1,
-            ),
+            border: Border.all(color: AppColors.glassBorder(context), width: 1),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.06),
+                color: AppColors.shadow.withValues(
+                  alpha: AppColors.isDark(context) ? 0.42 : 0.06,
+                ),
                 blurRadius: 18,
                 offset: const Offset(0, 8),
               ),
@@ -1791,8 +1918,9 @@ class _CapsuleDatePill extends StatelessWidget {
         height: 50,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.88),
+          color: AppColors.elevatedSurface(context, light: 0.88),
           borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.glassBorder(context)),
         ),
         child: Row(
           children: [
@@ -1807,18 +1935,14 @@ class _CapsuleDatePill extends StatelessWidget {
                 openDate == null ? '开启日期' : _formatCapsuleShortDate(openDate!),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.text,
                   fontWeight: FontWeight.w800,
                   fontSize: 14,
                 ),
               ),
             ),
-            const Icon(
-              CupertinoIcons.chevron_down,
-              color: AppColors.muted,
-              size: 16,
-            ),
+            Icon(CupertinoIcons.chevron_down, color: AppColors.muted, size: 16),
           ],
         ),
       ),
@@ -1849,8 +1973,9 @@ class _CapsuleEditorToolbar extends StatelessWidget {
       height: 50,
       padding: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.86),
+        color: AppColors.elevatedSurface(context, light: 0.86),
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.glassBorder(context)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -2015,14 +2140,14 @@ class _CapsuleSkinSheet extends StatelessWidget {
     return Container(
       height: MediaQuery.sizeOf(context).height * 0.66,
       padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.page,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: SafeArea(
         top: false,
         child: DefaultTextStyle(
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.text,
             decoration: TextDecoration.none,
           ),
@@ -2030,7 +2155,7 @@ class _CapsuleSkinSheet extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const _SheetGrabber(),
-              const Text(
+              Text(
                 '选择信纸皮肤',
                 style: TextStyle(
                   color: AppColors.text,
@@ -2105,7 +2230,10 @@ class _CapsuleTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        _CapsuleCircleButton(icon: CupertinoIcons.chevron_left, onTap: onBack),
+        _AppNavCircleButton(
+          icon: CupertinoIcons.chevron_left,
+          onPressed: onBack,
+        ),
       ],
     );
   }
@@ -2211,11 +2339,14 @@ class _CapsuleMiniActionButton extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.88),
+            color: AppColors.elevatedSurface(context, light: 0.88),
             shape: BoxShape.circle,
+            border: Border.all(color: AppColors.glassBorder(context)),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF315B88).withValues(alpha: 0.10),
+                color: AppColors.shadow.withValues(
+                  alpha: AppColors.isDark(context) ? 0.42 : 0.10,
+                ),
                 blurRadius: 18,
                 offset: const Offset(0, 10),
               ),
@@ -2288,15 +2419,18 @@ class _CapsuleHeroCardState extends State<_CapsuleHeroCard>
       animation: _controller,
       builder: (context, _) {
         final breath = Curves.easeInOut.transform(_controller.value);
+        final isDark = AppColors.isDark(context);
         return Container(
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.94),
+            color: AppColors.elevatedSurface(context, light: 0.94),
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.88)),
+            border: Border.all(color: AppColors.glassBorder(context)),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF5D45D8).withValues(alpha: 0.12),
+                color: const Color(
+                  0xFF5D45D8,
+                ).withValues(alpha: isDark ? 0.24 : 0.12),
                 blurRadius: 34,
                 offset: const Offset(0, 18),
               ),
@@ -2332,12 +2466,14 @@ class _CapsuleHeroCardState extends State<_CapsuleHeroCard>
                       ),
                     ),
                     const SizedBox(height: 24),
-                    const Padding(
-                      padding: EdgeInsets.only(right: 26),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 26),
                       child: Text(
                         '此刻的低语，留给后来的自己',
                         style: TextStyle(
-                          color: Color(0xFF151719),
+                          color: isDark
+                              ? AppColors.text
+                              : const Color(0xFF151719),
                           fontSize: 30,
                           height: 1.14,
                           fontWeight: FontWeight.w900,
@@ -2346,12 +2482,14 @@ class _CapsuleHeroCardState extends State<_CapsuleHeroCard>
                       ),
                     ),
                     const SizedBox(height: 18),
-                    const Padding(
-                      padding: EdgeInsets.only(right: 52),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 52),
                       child: Text(
                         '不必急着奔赴，此刻的心情，未来的你会慢慢读懂',
                         style: TextStyle(
-                          color: Color(0xFF6F7775),
+                          color: isDark
+                              ? AppColors.muted
+                              : const Color(0xFF6F7775),
                           fontSize: 15,
                           height: 1.52,
                           fontWeight: FontWeight.w600,
@@ -2433,26 +2571,46 @@ class _CapsuleChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
+    final isDark = AppColors.isDark(context);
+    final background = primary
+        ? const Color(0xFF7C3CFF)
+        : enabled
+        ? AppColors.subtleFill(context, light: 0.82)
+        : (isDark
+              ? AppColors.surfaceMuted.withValues(alpha: 0.78)
+              : const Color(0xFFE9EDF3));
+    final borderColor = primary
+        ? Colors.transparent
+        : (isDark
+              ? Colors.white.withValues(alpha: enabled ? 0.12 : 0.08)
+              : Colors.white.withValues(alpha: enabled ? 0.76 : 0.44));
+    final textColor = primary
+        ? Colors.white
+        : enabled
+        ? AppColors.text
+        : (isDark
+              ? AppColors.muted.withValues(alpha: 0.76)
+              : const Color(0xFF9AA2AD));
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
       onPressed: onTap,
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 180),
-        opacity: enabled ? 1 : 0.42,
+        opacity: 1,
         child: Container(
           height: 44,
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
-            color: primary ? const Color(0xFF7C3CFF) : Colors.white,
+            color: background,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: primary ? 0 : 0.76),
-            ),
+            border: Border.all(color: borderColor),
             boxShadow: [
               BoxShadow(
-                color: (primary ? const Color(0xFF7C3CFF) : Colors.black)
-                    .withValues(alpha: primary ? 0.20 : 0.045),
+                color: (primary ? const Color(0xFF7C3CFF) : AppColors.shadow)
+                    .withValues(
+                      alpha: primary ? 0.20 : (isDark ? 0.30 : 0.045),
+                    ),
                 blurRadius: primary ? 14 : 12,
                 offset: const Offset(0, 7),
               ),
@@ -2463,8 +2621,10 @@ class _CapsuleChip extends StatelessWidget {
             label,
             maxLines: 1,
             style: TextStyle(
-              color: primary ? Colors.white : AppColors.text,
-              fontWeight: primary ? FontWeight.w900 : FontWeight.w700,
+              color: textColor,
+              fontWeight: primary || enabled
+                  ? FontWeight.w900
+                  : FontWeight.w800,
               fontSize: 14,
             ),
           ),
@@ -2498,6 +2658,7 @@ class _CapsuleListTile extends StatelessWidget {
     final openDateLabel = capsule.openDate == null
         ? '--/--'
         : _formatCapsuleShortDate(capsule.openDate!);
+    final isDark = AppColors.isDark(context);
     final tile = CupertinoButton(
       padding: EdgeInsets.zero,
       onPressed: enabled ? onTap : null,
@@ -2513,13 +2674,16 @@ class _CapsuleListTile extends StatelessWidget {
             compact ? 12 : 14,
           ),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: compact ? 0.96 : 0.90),
+            color: compact
+                ? AppColors.elevatedSurface(context, light: 0.96)
+                : AppColors.elevatedSurface(context, light: 0.90),
             borderRadius: BorderRadius.circular(compact ? 22 : 24),
+            border: Border.all(color: AppColors.glassBorder(context)),
             boxShadow: [
               BoxShadow(
-                color: const Color(
-                  0xFF4A5568,
-                ).withValues(alpha: compact ? 0.07 : 0.045),
+                color: AppColors.shadow.withValues(
+                  alpha: isDark ? 0.58 : (compact ? 0.07 : 0.045),
+                ),
                 blurRadius: compact ? 18 : 18,
                 offset: Offset(0, compact ? 9 : 10),
               ),
@@ -2532,15 +2696,21 @@ class _CapsuleListTile extends StatelessWidget {
                 height: compact ? 48 : 50,
                 decoration: BoxDecoration(
                   color: locked
-                      ? const Color(0xFFEFEFF4)
-                      : const Color(0xFFE9DCFF),
+                      ? (isDark
+                            ? AppColors.surfaceMuted.withValues(alpha: 0.84)
+                            : const Color(0xFFEFEFF4))
+                      : (isDark
+                            ? const Color(0xFF2C214A)
+                            : const Color(0xFFE9DCFF)),
                   borderRadius: BorderRadius.circular(compact ? 15 : 16),
                 ),
                 alignment: Alignment.center,
                 child: locked
                     ? Icon(
                         CupertinoIcons.lock_fill,
-                        color: const Color(0xFF7B8280),
+                        color: isDark
+                            ? AppColors.muted
+                            : const Color(0xFF7B8280),
                         size: compact ? 19 : 23,
                       )
                     : Text(
@@ -2562,7 +2732,9 @@ class _CapsuleListTile extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: locked ? const Color(0xFF6F7775) : AppColors.text,
+                    color: locked
+                        ? (isDark ? AppColors.muted : const Color(0xFF6F7775))
+                        : AppColors.text,
                     fontSize: compact ? 15 : 16,
                     height: 1.34,
                     fontWeight: FontWeight.w700,
@@ -2579,7 +2751,7 @@ class _CapsuleListTile extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
                   style: TextStyle(
-                    color: Color(0xFF9AA19E),
+                    color: isDark ? AppColors.muted : const Color(0xFF9AA19E),
                     fontSize: locked
                         ? (compact ? 13 : 15)
                         : (compact ? 16 : 15),
@@ -2669,14 +2841,14 @@ class _CapsulePickerSheet extends StatelessWidget {
     return Container(
       height: math.min(430, MediaQuery.sizeOf(context).height * 0.56),
       padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.page,
         borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
       child: SafeArea(
         top: false,
         child: DefaultTextStyle(
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.text,
             decoration: TextDecoration.none,
           ),
@@ -2686,7 +2858,7 @@ class _CapsulePickerSheet extends StatelessWidget {
               const _SheetGrabber(),
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.text,
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
@@ -3289,6 +3461,7 @@ class _CapsuleActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,
       onPressed: enabled && !loading ? onTap : null,
@@ -3298,11 +3471,23 @@ class _CapsuleActionButton extends StatelessWidget {
         child: Container(
           height: 54,
           decoration: BoxDecoration(
-            color: filled ? const Color(0xFF7C3CFF) : Colors.white,
+            color: filled
+                ? const Color(0xFF7C3CFF)
+                : AppColors.elevatedSurface(context, light: 0.92),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: filled ? const Color(0xFF7C3CFF) : const Color(0xFFE8E8EE),
+              color: filled
+                  ? const Color(0xFF7C3CFF)
+                  : AppColors.glassBorder(context),
             ),
+            boxShadow: [
+              if (!filled && isDark)
+                BoxShadow(
+                  color: AppColors.shadow.withValues(alpha: 0.42),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+            ],
           ),
           alignment: Alignment.center,
           child: loading
@@ -3365,6 +3550,7 @@ class _CapsuleCircleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,
       onPressed: onTap,
@@ -3375,11 +3561,12 @@ class _CapsuleCircleButton extends StatelessWidget {
           width: 54,
           height: 54,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.82),
+            color: AppColors.elevatedSurface(context, light: 0.82),
             shape: BoxShape.circle,
+            border: Border.all(color: AppColors.glassBorder(context)),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF315B88).withValues(alpha: 0.10),
+                color: AppColors.shadow.withValues(alpha: isDark ? 0.72 : 0.10),
                 blurRadius: 24,
                 offset: const Offset(0, 14),
               ),
@@ -3399,7 +3586,9 @@ class _CapsuleCircleButton extends StatelessWidget {
                 )
               : Icon(
                   icon,
-                  color: danger ? const Color(0xFFE05555) : AppColors.text,
+                  color: danger
+                      ? const Color(0xFFE05555)
+                      : (isDark ? const Color(0xFFEAF2F8) : AppColors.text),
                   size: 25,
                 ),
         ),
@@ -3411,12 +3600,16 @@ class _CapsuleCircleButton extends StatelessWidget {
 class _CapsuleBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFFDFEFC), Color(0xFFF3F6F2)],
+          colors: [
+            colors.page,
+            Color.lerp(colors.page, colors.surfaceMuted, 0.42)!,
+          ],
         ),
       ),
       child: Stack(
@@ -3528,11 +3721,11 @@ class _EmptyCapsuleList extends StatelessWidget {
         height: 112,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.78),
+          color: AppColors.elevatedSurface(context, light: 0.78),
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.white),
+          border: Border.all(color: AppColors.glassBorder(context)),
         ),
-        child: const Text(
+        child: Text(
           '暂无胶囊开启',
           style: TextStyle(
             color: AppColors.muted,

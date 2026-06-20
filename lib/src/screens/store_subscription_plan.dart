@@ -19,6 +19,7 @@ class _PlanCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
@@ -28,15 +29,19 @@ class _PlanCard extends StatelessWidget {
         width: 132,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: selected ? 0.98 : 0.72),
+          color: selected
+              ? AppColors.elevatedSurface(context, light: 0.98)
+              : AppColors.subtleFill(context, light: 0.72),
           borderRadius: BorderRadius.circular(27),
           border: Border.all(
-            color: selected ? AppColors.accent : Colors.white,
+            color: selected ? AppColors.accent : AppColors.glassBorder(context),
             width: selected ? 2.6 : 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: AppColors.accent.withValues(alpha: selected ? 0.20 : 0.08),
+              color: AppColors.accent.withValues(
+                alpha: selected ? (isDark ? 0.30 : 0.20) : 0.08,
+              ),
               blurRadius: selected ? 26 : 14,
               offset: const Offset(0, 12),
             ),
@@ -85,7 +90,7 @@ class _PlanCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.text,
                         fontSize: 17,
                         fontWeight: FontWeight.w900,
@@ -96,8 +101,10 @@ class _PlanCard extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       price,
-                      style: const TextStyle(
-                        color: Color(0xFF243040),
+                      style: TextStyle(
+                        color: isDark
+                            ? AppColors.text
+                            : const Color(0xFF243040),
                         fontSize: 31,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 0,
@@ -107,8 +114,10 @@ class _PlanCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       origin,
-                      style: const TextStyle(
-                        color: Color(0xFF9AA5B2),
+                      style: TextStyle(
+                        color: isDark
+                            ? AppColors.muted
+                            : const Color(0xFF9AA5B2),
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0,

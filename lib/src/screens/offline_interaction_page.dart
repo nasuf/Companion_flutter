@@ -126,12 +126,18 @@ class _OfflineBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final isDark = AppColors.isDark(context);
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFFFFFCF7), Color(0xFFF7FCFF), Color(0xFFF0FBF7)],
+          colors: [
+            colors.page,
+            Color.lerp(colors.page, colors.surfaceMuted, 0.40)!,
+            Color.lerp(colors.page, colors.accentSoft, 0.20)!,
+          ],
           stops: [0, 0.52, 1],
         ),
       ),
@@ -172,7 +178,9 @@ class _OfflineBackground extends StatelessWidget {
                   center: const Alignment(0.76, -0.62),
                   radius: 0.78 + 0.02 * progress,
                   colors: [
-                    Colors.white.withValues(alpha: 0.66),
+                    isDark
+                        ? colors.accentSoft.withValues(alpha: 0.30)
+                        : Colors.white.withValues(alpha: 0.66),
                     Colors.transparent,
                   ],
                 ),
@@ -190,25 +198,38 @@ class _OfflineBreathingPlate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return Container(
       width: 248,
       height: 214,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(72),
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0x6E8DB8FF), Color(0x4B78D6FF), Color(0x3845D4C5)],
-          stops: [0, 0.58, 1],
+          colors: isDark
+              ? const [Color(0x4A6AA8DC), Color(0x334C83C7), Color(0x242DD8D2)]
+              : const [Color(0x6E8DB8FF), Color(0x4B78D6FF), Color(0x3845D4C5)],
+          stops: const [0, 0.58, 1],
         ),
       ),
       foregroundDecoration: BoxDecoration(
         borderRadius: BorderRadius.circular(72),
-        gradient: const RadialGradient(
+        gradient: RadialGradient(
           center: Alignment(-0.10, -0.40),
           radius: 0.56,
-          colors: [Color(0xAAFFFFFF), Color(0x2EFFFFFF), Colors.transparent],
-          stops: [0, 0.50, 1],
+          colors: isDark
+              ? [
+                  Colors.white.withValues(alpha: 0.16),
+                  Colors.white.withValues(alpha: 0.05),
+                  Colors.transparent,
+                ]
+              : const [
+                  Color(0xAAFFFFFF),
+                  Color(0x2EFFFFFF),
+                  Colors.transparent,
+                ],
+          stops: const [0, 0.50, 1],
         ),
       ),
     );
@@ -222,18 +243,20 @@ class _OfflineHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final isDark = AppColors.isDark(context);
     return SizedBox(
       height: 320,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          const Positioned(
+          Positioned(
             left: 0,
             top: 10,
             child: Text(
               'REAL WORLD BOARD',
               style: TextStyle(
-                color: AppColors.accent,
+                color: colors.accent,
                 fontSize: 14,
                 height: 1,
                 fontWeight: FontWeight.w900,
@@ -241,13 +264,13 @@ class _OfflineHero extends StatelessWidget {
               ),
             ),
           ),
-          const Positioned(
+          Positioned(
             left: 0,
             top: 54,
             child: Text(
               '我想，参与你的每\n一个真实时刻',
               style: TextStyle(
-                color: Color(0xFF11161A),
+                color: colors.text,
                 fontSize: 34,
                 height: 1.06,
                 fontWeight: FontWeight.w900,
@@ -262,7 +285,9 @@ class _OfflineHero extends StatelessWidget {
             child: Text(
               '那些你说过的约定、期待和小事，我都记得。',
               style: TextStyle(
-                color: const Color(0xFF1A2229).withValues(alpha: 0.48),
+                color: isDark
+                    ? colors.muted.withValues(alpha: 0.84)
+                    : colors.muted,
                 fontSize: 15,
                 height: 1.5,
                 fontWeight: FontWeight.w500,
@@ -303,13 +328,20 @@ class _OfflineHero extends StatelessWidget {
                           vertical: 7,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.55),
+                          color: isDark
+                              ? colors.surfaceMuted.withValues(alpha: 0.76)
+                              : Colors.white.withValues(alpha: 0.55),
                           borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.10)
+                                : Colors.transparent,
+                          ),
                         ),
-                        child: const Text(
+                        child: Text(
                           'LIVE',
                           style: TextStyle(
-                            color: AppColors.accent,
+                            color: colors.accent,
                             fontSize: 12,
                             height: 1,
                             fontWeight: FontWeight.w900,
@@ -430,6 +462,19 @@ class _OfflineFeatureCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final isDark = AppColors.isDark(context);
+    final cardGradient = isDark
+        ? [
+            Color.lerp(colors.surface, gradient.first, 0.24)!,
+            Color.lerp(colors.surfaceMuted, gradient[1], 0.22)!,
+            Color.lerp(colors.surface, gradient.last, 0.16)!,
+          ]
+        : gradient;
+    final primaryText = isDark ? colors.text : const Color(0xFF11161A);
+    final secondaryText = isDark
+        ? colors.muted.withValues(alpha: 0.88)
+        : const Color(0xFF16212B).withValues(alpha: 0.58);
     return CupertinoButton(
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
@@ -442,11 +487,16 @@ class _OfflineFeatureCard extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: gradient,
+            colors: cardGradient,
           ),
+          border: isDark
+              ? Border.all(color: Colors.white.withValues(alpha: 0.10))
+              : null,
           boxShadow: [
             BoxShadow(
-              color: gradient.first.withValues(alpha: 0.18),
+              color: isDark
+                  ? Colors.black.withValues(alpha: 0.30)
+                  : gradient.first.withValues(alpha: 0.18),
               blurRadius: 28,
               offset: const Offset(0, 16),
             ),
@@ -467,7 +517,14 @@ class _OfflineFeatureCard extends StatelessWidget {
                   height: 48,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
-                    color: Colors.white.withValues(alpha: 0.82),
+                    color: isDark
+                        ? colors.surface.withValues(alpha: 0.78)
+                        : Colors.white.withValues(alpha: 0.82),
+                    border: Border.all(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.10)
+                          : Colors.transparent,
+                    ),
                   ),
                   child: Icon(icon, color: iconColor, size: 24),
                 ),
@@ -479,14 +536,21 @@ class _OfflineFeatureCard extends StatelessWidget {
                   height: 32,
                   padding: const EdgeInsets.symmetric(horizontal: 13),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.58),
+                    color: isDark
+                        ? colors.surface.withValues(alpha: 0.72)
+                        : Colors.white.withValues(alpha: 0.58),
                     borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.10)
+                          : Colors.transparent,
+                    ),
                   ),
                   child: Center(
                     child: Text(
                       status,
-                      style: const TextStyle(
-                        color: Color(0xFF31414C),
+                      style: TextStyle(
+                        color: isDark ? colors.text : const Color(0xFF31414C),
                         fontSize: 12,
                         height: 1,
                         fontWeight: FontWeight.w800,
@@ -507,8 +571,8 @@ class _OfflineFeatureCard extends StatelessWidget {
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF11161A),
+                      style: TextStyle(
+                        color: primaryText,
                         fontSize: 20,
                         height: 1.08,
                         fontWeight: FontWeight.w900,
@@ -523,9 +587,7 @@ class _OfflineFeatureCard extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: const Color(
-                            0xFF16212B,
-                          ).withValues(alpha: 0.58),
+                          color: secondaryText,
                           fontSize: 13,
                           height: 1.28,
                           fontWeight: FontWeight.w600,
@@ -533,10 +595,10 @@ class _OfflineFeatureCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    const Text(
+                    Text(
                       '进入 ›',
                       style: TextStyle(
-                        color: Color(0xFF11161A),
+                        color: primaryText,
                         fontSize: 13,
                         height: 1,
                         fontWeight: FontWeight.w900,
@@ -580,15 +642,16 @@ class _OfflineWaitingPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Column(
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            const Text(
+            Text(
               '陪你一起等',
               style: TextStyle(
-                color: Color(0xFF11161A),
+                color: colors.text,
                 fontSize: 24,
                 height: 1,
                 fontWeight: FontWeight.w900,
@@ -605,7 +668,7 @@ class _OfflineWaitingPanel extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: const Color(0xFF1A2229).withValues(alpha: 0.42),
+                    color: colors.muted,
                     fontSize: 12,
                     height: 1,
                     fontWeight: FontWeight.w500,
@@ -654,6 +717,7 @@ class _OfflineWaitRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
@@ -662,9 +726,7 @@ class _OfflineWaitRow extends StatelessWidget {
         height: 72,
         decoration: BoxDecoration(
           border: Border(
-            top: BorderSide(
-              color: const Color(0xFF1A2229).withValues(alpha: 0.07),
-            ),
+            top: BorderSide(color: colors.hairline.withValues(alpha: 0.72)),
           ),
         ),
         child: Row(
@@ -673,8 +735,8 @@ class _OfflineWaitRow extends StatelessWidget {
               width: 76,
               child: Text(
                 value,
-                style: const TextStyle(
-                  color: Color(0xFF11161A),
+                style: TextStyle(
+                  color: colors.text,
                   fontSize: 22,
                   height: 1,
                   fontWeight: FontWeight.w900,
@@ -685,8 +747,8 @@ class _OfflineWaitRow extends StatelessWidget {
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
-                  color: Color(0xFF11161A),
+                style: TextStyle(
+                  color: colors.text,
                   fontSize: 16,
                   height: 1,
                   fontWeight: FontWeight.w800,
@@ -696,7 +758,7 @@ class _OfflineWaitRow extends StatelessWidget {
             Text(
               state,
               style: TextStyle(
-                color: const Color(0xFF1A2229).withValues(alpha: 0.42),
+                color: colors.muted,
                 fontSize: 14,
                 height: 1,
                 fontWeight: FontWeight.w700,

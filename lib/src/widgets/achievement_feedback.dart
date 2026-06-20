@@ -14,7 +14,7 @@ class _AchievementError extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
+            Icon(
               CupertinoIcons.exclamationmark_circle,
               color: AppColors.muted,
               size: 42,
@@ -23,7 +23,7 @@ class _AchievementError extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.muted, fontSize: 14),
+              style: TextStyle(color: AppColors.muted, fontSize: 14),
             ),
             const SizedBox(height: 14),
             CupertinoButton.filled(onPressed: onRetry, child: const Text('重试')),
@@ -43,6 +43,7 @@ class _AchievementTimelineRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _achievementLevelColor(item);
+    final isDark = AppColors.isDark(context);
     final screenWidth = MediaQuery.sizeOf(context).width;
     final pillWidth = math.min(238.0, math.max(212.0, screenWidth - 136));
     return Padding(
@@ -61,12 +62,19 @@ class _AchievementTimelineRow extends StatelessWidget {
             onPressed: onTap,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.94),
+                color: isDark
+                    ? AppColors.surfaceMuted.withValues(alpha: 0.88)
+                    : Colors.white.withValues(alpha: 0.94),
                 borderRadius: BorderRadius.circular(28),
-                border: Border.all(color: Colors.white, width: 1.2),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.12)
+                      : Colors.white,
+                  width: 1.2,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: color.withValues(alpha: 0.18),
+                    color: color.withValues(alpha: isDark ? 0.24 : 0.18),
                     blurRadius: 22,
                     offset: const Offset(0, 10),
                   ),
@@ -91,8 +99,10 @@ class _AchievementTimelineRow extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: AppColors.text,
+                          style: TextStyle(
+                            color: isDark
+                                ? const Color(0xFFF2F7FB)
+                                : AppColors.text,
                             fontSize: 15,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 0,
@@ -248,6 +258,7 @@ class _AchievementLargeCardFront extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return _AchievementLargeCardShell(
       item: item,
       child: Column(
@@ -264,8 +275,8 @@ class _AchievementLargeCardFront extends StatelessWidget {
             maxLines: 2,
             textAlign: TextAlign.center,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.text,
+            style: TextStyle(
+              color: isDark ? const Color(0xFFF2F7FB) : AppColors.text,
               fontSize: 24,
               fontWeight: FontWeight.w900,
               letterSpacing: 0,
@@ -280,8 +291,8 @@ class _AchievementLargeCardFront extends StatelessWidget {
               maxLines: 2,
               textAlign: TextAlign.center,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.muted,
+              style: TextStyle(
+                color: isDark ? const Color(0xB8EAF2F8) : AppColors.muted,
                 fontSize: 13,
                 height: 1.28,
                 fontWeight: FontWeight.w800,
@@ -291,11 +302,11 @@ class _AchievementLargeCardFront extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          const Text(
+          Text(
             '点击翻转查看详情',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFFB5BAC4),
+              color: isDark ? const Color(0x88EAF2F8) : const Color(0xFFB5BAC4),
               fontSize: 13,
               fontWeight: FontWeight.w800,
               letterSpacing: 0,
@@ -316,6 +327,7 @@ class _AchievementLargeCardBack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return _AchievementLargeCardShell(
       item: item,
       background: _AchievementBreathingWash(item: item, breath: breath),
@@ -332,8 +344,10 @@ class _AchievementLargeCardBack extends StatelessWidget {
                   maxLines: 5,
                   textAlign: TextAlign.center,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF6E7480),
+                  style: TextStyle(
+                    color: isDark
+                        ? const Color(0xEAF2F7FB)
+                        : const Color(0xFF6E7480),
                     fontSize: 19,
                     height: 1.36,
                     fontWeight: FontWeight.w800,
@@ -344,12 +358,14 @@ class _AchievementLargeCardBack extends StatelessWidget {
               ),
             ),
           ),
-          const Align(
+          Align(
             alignment: Alignment.bottomCenter,
             child: Text(
               '点击翻转返回',
               style: TextStyle(
-                color: Color(0xFFB5BAC4),
+                color: isDark
+                    ? const Color(0x88EAF2F8)
+                    : const Color(0xFFB5BAC4),
                 fontSize: 13,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0,
@@ -377,14 +393,20 @@ class _AchievementLargeCardShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _achievementLevelColor(item);
+    final isDark = AppColors.isDark(context);
     return SizedBox(
       width: 292,
       height: 356,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.97),
+          color: isDark
+              ? AppColors.surface.withValues(alpha: 0.96)
+              : Colors.white.withValues(alpha: 0.97),
           borderRadius: BorderRadius.circular(34),
-          border: Border.all(color: Colors.white, width: 1.2),
+          border: Border.all(
+            color: isDark ? Colors.white.withValues(alpha: 0.14) : Colors.white,
+            width: 1.2,
+          ),
           boxShadow: [
             BoxShadow(
               color: color.withValues(alpha: 0.20),

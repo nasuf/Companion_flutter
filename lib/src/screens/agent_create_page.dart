@@ -496,12 +496,17 @@ class _AgentCreateBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFFFBFEFD), Color(0xFFF7FBFA), Color(0xFFF7FBFF)],
+          colors: [
+            colors.page,
+            Color.lerp(colors.page, colors.surfaceMuted, 0.44)!,
+            Color.lerp(colors.page, colors.accentSoft, 0.22)!,
+          ],
           stops: [0, 0.58, 1],
         ),
       ),
@@ -609,7 +614,7 @@ class _CreateHero extends StatelessWidget {
             top: 36,
             child: _ProfileKicker('FIRST PROFILE'),
           ),
-          const Positioned(
+          Positioned(
             left: 0,
             top: 88,
             right: 0,
@@ -646,7 +651,7 @@ class _CreateHero extends StatelessWidget {
 class _SoulProfileIntro extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return const Padding(
+    return Padding(
       padding: EdgeInsets.only(top: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -688,7 +693,7 @@ class _ProfileKicker extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(
+      style: TextStyle(
         color: AppColors.text,
         fontSize: 13,
         height: 1,
@@ -723,7 +728,7 @@ class _AgentBasicFields extends StatelessWidget {
               isDense: true,
               contentPadding: EdgeInsets.zero,
             ),
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.text,
               fontSize: 21,
               height: 1.08,
@@ -1117,7 +1122,7 @@ class _TraitSliderRow extends StatelessWidget {
                         Expanded(
                           child: Text(
                             trait.name,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: AppColors.text,
                               fontSize: 13,
                               height: 1,
@@ -1127,7 +1132,7 @@ class _TraitSliderRow extends StatelessWidget {
                         ),
                         Text(
                           displayedValue.toString(),
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.text,
                             fontSize: 11,
                             height: 1,
@@ -1484,7 +1489,7 @@ class _ProvisionProgressOverlay extends StatelessWidget {
             Text(
               failed ? '创建遇到问题' : '正在创建你的 AI 伙伴',
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.text,
                 fontSize: 21,
                 height: 1.15,
@@ -1681,7 +1686,7 @@ class _CreateAgentButton extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(17),
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
             colors: [AppColors.accentDeep, AppColors.accentCyan],

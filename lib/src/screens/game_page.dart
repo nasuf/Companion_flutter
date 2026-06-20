@@ -320,7 +320,7 @@ class _GamePageState extends State<GamePage>
       builder: (context, _) {
         final progress = Curves.easeInOut.transform(_controller.value);
         return Scaffold(
-          backgroundColor: const Color(0xFFF5F8FB),
+          backgroundColor: AppColors.page,
           body: Stack(
             children: [
               _GameBackground(progress: progress),
@@ -370,7 +370,7 @@ class _GamePageState extends State<GamePage>
               height: 36,
               padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: _glassDecoration(18),
-              child: const Center(
+              child: Center(
                 child: Text(
                   '刷新',
                   style: TextStyle(
@@ -394,7 +394,7 @@ class _GamePageState extends State<GamePage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'LIVE MINI GAME',
             style: TextStyle(
               color: AppColors.accent,
@@ -406,7 +406,7 @@ class _GamePageState extends State<GamePage>
           const SizedBox(height: 10),
           Text(
             '和 ${widget.session.agentName ?? 'AI'} 一起玩',
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.text,
               fontSize: 34,
               height: 1.05,
@@ -486,7 +486,7 @@ class _GamePageState extends State<GamePage>
                 Expanded(
                   child: Text(
                     message,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.text,
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
@@ -642,7 +642,7 @@ class _GamePageState extends State<GamePage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '测试事件',
             style: TextStyle(
               color: AppColors.text,
@@ -672,7 +672,7 @@ class _GamePageState extends State<GamePage>
                     child: Center(
                       child: Text(
                         event.label,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.text,
                           fontSize: 12,
                           fontWeight: FontWeight.w900,
@@ -721,7 +721,7 @@ class _GamePageState extends State<GamePage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'AI 伴聊与事件流水',
               style: TextStyle(
                 color: AppColors.text,
@@ -759,7 +759,7 @@ class _GamePageState extends State<GamePage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '最近房间',
             style: TextStyle(
               color: AppColors.text,
@@ -802,7 +802,7 @@ class _GamePageState extends State<GamePage>
                     decoration: _glassDecoration(14),
                     child: Row(
                       children: [
-                        const Icon(
+                        Icon(
                           CupertinoIcons.rectangle_stack_fill,
                           color: AppColors.accent,
                           size: 18,
@@ -814,7 +814,7 @@ class _GamePageState extends State<GamePage>
                             children: [
                               Text(
                                 session.roomId,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: AppColors.text,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w900,
@@ -1129,7 +1129,7 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
           )
         : null;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F8FB),
+      backgroundColor: AppColors.page,
       body: Stack(
         children: [
           const _GameBackground(progress: 0.5),
@@ -1249,7 +1249,7 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
           const SizedBox(height: 16),
           Text(
             widget.game.title,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.text,
               fontSize: 34,
               height: 1.05,
@@ -1294,7 +1294,7 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'AI 伴聊',
               style: TextStyle(
                 color: AppColors.text,
@@ -1326,7 +1326,7 @@ class _SudGamePlayPageState extends State<_SudGamePlayPage> {
           children: [
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
                     '游戏回顾',
                     style: TextStyle(
@@ -1771,6 +1771,7 @@ class _GameRoundCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = summary.accent;
+    final isDark = AppColors.isDark(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,
       borderRadius: BorderRadius.circular(18),
@@ -1778,9 +1779,17 @@ class _GameRoundCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(13),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.54),
+          color: AppColors.subtleFill(context, light: 0.54),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
+          border: Border.all(color: AppColors.glassBorder(context)),
+          boxShadow: [
+            if (isDark)
+              BoxShadow(
+                color: AppColors.shadow.withValues(alpha: 0.46),
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              ),
+          ],
         ),
         child: Row(
           children: [
@@ -1813,7 +1822,7 @@ class _GameRoundCard extends StatelessWidget {
                           summary.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.text,
                             fontSize: 14,
                             fontWeight: FontWeight.w900,
@@ -1866,13 +1875,22 @@ class _GameRoundEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.42),
+        color: AppColors.subtleFill(context, light: 0.42),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.70)),
+        border: Border.all(color: AppColors.glassBorder(context)),
+        boxShadow: [
+          if (isDark)
+            BoxShadow(
+              color: AppColors.shadow.withValues(alpha: 0.40),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+        ],
       ),
       child: Row(
         children: [
@@ -1884,7 +1902,7 @@ class _GameRoundEmptyState extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.text,
                     fontSize: 13,
                     fontWeight: FontWeight.w900,
@@ -1909,13 +1927,14 @@ class _GameRoundEmptyState extends StatelessWidget {
 }
 
 class _SoftCountPill extends StatelessWidget {
-  const _SoftCountPill({required this.text, this.color = AppColors.accent});
+  const _SoftCountPill({required this.text, this.color});
 
   final String text;
-  final Color color;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
+    final color = this.color ?? AppColors.accent;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
@@ -1945,6 +1964,7 @@ class _GameRoundDetailSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
     final maxHeight = MediaQuery.sizeOf(context).height * 0.72;
+    final isDark = AppColors.isDark(context);
     return Align(
       alignment: Alignment.bottomCenter,
       child: ConstrainedBox(
@@ -1956,8 +1976,17 @@ class _GameRoundDetailSheet extends StatelessWidget {
             child: Container(
               padding: EdgeInsets.fromLTRB(20, 14, 20, bottom + 20),
               decoration: BoxDecoration(
-                color: const Color(0xFFF7FBFF).withValues(alpha: 0.94),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.80)),
+                color: AppColors.elevatedSurface(context, light: 0.94),
+                border: Border.all(color: AppColors.glassBorder(context)),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.shadow.withValues(
+                      alpha: isDark ? 0.78 : 0.10,
+                    ),
+                    blurRadius: 30,
+                    offset: const Offset(0, -8),
+                  ),
+                ],
               ),
               child: SingleChildScrollView(
                 child: Column(
@@ -2006,7 +2035,7 @@ class _GameRoundDetailSheet extends StatelessWidget {
                               const SizedBox(height: 4),
                               Text(
                                 summary.title,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: AppColors.text,
                                   fontSize: 21,
                                   height: 1.08,
@@ -2059,13 +2088,16 @@ class _RoundDebugInfo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final debugData = _roundDebugData(summary);
+    final isDark = AppColors.isDark(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(13, 12, 13, 13),
       decoration: BoxDecoration(
-        color: const Color(0xFF101827).withValues(alpha: 0.06),
+        color: isDark
+            ? AppColors.surfaceMuted.withValues(alpha: 0.62)
+            : const Color(0xFF101827).withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.text.withValues(alpha: 0.08)),
+        border: Border.all(color: AppColors.glassBorder(context)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2122,9 +2154,9 @@ class _RoundMetricChip extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 132),
       padding: const EdgeInsets.fromLTRB(13, 11, 13, 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.68),
+        color: AppColors.subtleFill(context, light: 0.68),
         borderRadius: BorderRadius.circular(17),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.86)),
+        border: Border.all(color: AppColors.glassBorder(context)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2141,7 +2173,7 @@ class _RoundMetricChip extends StatelessWidget {
           const SizedBox(height: 5),
           Text(
             metric.value,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.text,
               fontSize: 13,
               height: 1.18,
@@ -2616,12 +2648,17 @@ class _GameBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFFF8FBFF), Color(0xFFFFFBF5), Color(0xFFEFF8F6)],
+          colors: [
+            colors.page,
+            Color.lerp(colors.page, colors.surfaceMuted, 0.40)!,
+            Color.lerp(colors.page, colors.accentSoft, 0.18)!,
+          ],
         ),
       ),
       child: Stack(
@@ -2717,7 +2754,7 @@ class _MetricCard extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.text,
               fontSize: 15,
               fontWeight: FontWeight.w900,
@@ -2753,6 +2790,7 @@ class _SegmentButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,
       borderRadius: BorderRadius.circular(14),
@@ -2762,9 +2800,13 @@ class _SegmentButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected
               ? AppColors.accent
-              : Colors.white.withValues(alpha: 0.58),
+              : AppColors.subtleFill(context, light: 0.58),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.70)),
+          border: Border.all(
+            color: selected
+                ? AppColors.accent.withValues(alpha: 0.36)
+                : AppColors.glassBorder(context),
+          ),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -2772,7 +2814,9 @@ class _SegmentButton extends StatelessWidget {
             Icon(
               icon,
               size: 17,
-              color: selected ? Colors.white : AppColors.text,
+              color: selected
+                  ? Colors.white
+                  : (isDark ? const Color(0xFFEAF2F8) : AppColors.text),
             ),
             const SizedBox(width: 7),
             Text(
@@ -2810,9 +2854,11 @@ class _DifficultyRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: selected ? 0.76 : 0.46),
+          color: selected
+              ? AppColors.elevatedSurface(context, light: 0.76)
+              : AppColors.subtleFill(context, light: 0.46),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.68)),
+          border: Border.all(color: AppColors.glassBorder(context)),
         ),
         child: Row(
           children: [
@@ -2832,7 +2878,7 @@ class _DifficultyRow extends StatelessWidget {
                 children: [
                   Text(
                     difficulty.title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.text,
                       fontSize: 13,
                       fontWeight: FontWeight.w900,
@@ -3594,7 +3640,7 @@ class _TimelineRow extends StatelessWidget {
               children: [
                 Text(
                   item.title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.text,
                     fontSize: 12,
                     fontWeight: FontWeight.w900,
@@ -3664,13 +3710,21 @@ class _GlassButton extends StatelessWidget {
 }
 
 BoxDecoration _glassDecoration(double radius) {
+  final colors = AppColors.current;
+  final isDark = colors == AppColors.dark;
   return BoxDecoration(
-    color: Colors.white.withValues(alpha: 0.60),
+    color: isDark
+        ? colors.surfaceMuted.withValues(alpha: 0.74)
+        : Colors.white.withValues(alpha: 0.60),
     borderRadius: BorderRadius.circular(radius),
-    border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
+    border: Border.all(
+      color: isDark
+          ? Colors.white.withValues(alpha: 0.12)
+          : Colors.white.withValues(alpha: 0.72),
+    ),
     boxShadow: [
       BoxShadow(
-        color: const Color(0xFF40546A).withValues(alpha: 0.10),
+        color: colors.shadow.withValues(alpha: isDark ? 0.70 : 0.10),
         blurRadius: 24,
         offset: const Offset(0, 12),
       ),

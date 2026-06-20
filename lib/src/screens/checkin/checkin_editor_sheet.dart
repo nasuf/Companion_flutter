@@ -89,9 +89,10 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
     );
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      decoration: BoxDecoration(
+        color: AppColors.page,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        border: Border(top: BorderSide(color: AppColors.glassBorder(context))),
       ),
       child: SafeArea(
         top: false,
@@ -162,7 +163,7 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
           const SizedBox(height: 20),
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   '我的计划是...',
                   style: TextStyle(
@@ -178,9 +179,9 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
           const SizedBox(height: 14),
           Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFF4F5F7),
+              color: AppColors.elevatedSurface(context, light: 0.82),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFECEFF3)),
+              border: Border.all(color: AppColors.glassBorder(context)),
             ),
             child: TextField(
               controller: _controller,
@@ -189,12 +190,12 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
               minLines: 1,
               maxLines: 3,
               onChanged: (_) => setState(() {}),
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.text,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: '添加计划信息',
                 hintStyle: TextStyle(
                   color: AppColors.muted,
@@ -266,8 +267,8 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
               padding: EdgeInsets.zero,
               minimumSize: const Size(124, 58),
               borderRadius: BorderRadius.circular(20),
-              color: const Color(0xFFF3F5F8),
-              disabledColor: const Color(0xFFF3F5F8),
+              color: AppColors.subtleFill(context, light: 0.74),
+              disabledColor: AppColors.subtleFill(context, light: 0.58),
               onPressed: _saving || _completing || _deleting || !_canSave
                   ? null
                   : _shareToChat,
@@ -384,8 +385,9 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
       width: 42,
       height: 42,
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F7),
+        color: AppColors.subtleFill(context, light: 0.74),
         borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.glassBorder(context)),
       ),
       child: const Icon(
         CupertinoIcons.sparkles,

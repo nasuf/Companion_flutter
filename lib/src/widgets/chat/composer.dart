@@ -36,7 +36,7 @@ class _Composer extends StatelessWidget {
     return Container(
       height: height,
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.page,
         border: Border(top: BorderSide(color: AppColors.hairline)),
       ),
@@ -79,7 +79,7 @@ class _Composer extends StatelessWidget {
                     keyboardType: TextInputType.multiline,
                     textInputAction: TextInputAction.newline,
                     onTap: onFocusInput,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: '发消息...',
                       hintStyle: TextStyle(color: AppColors.muted),
                       border: InputBorder.none,
@@ -232,7 +232,7 @@ class _RoundIconButton extends StatelessWidget {
             shape: BoxShape.circle,
             color: selected ? null : AppColors.surface,
             gradient: selected
-                ? const LinearGradient(
+                ? LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [AppColors.accentDeep, AppColors.accentCyan],

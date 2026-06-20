@@ -38,7 +38,7 @@ class _ChatHeader extends StatelessWidget {
     return Container(
       height: 70,
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.page,
         border: Border(bottom: BorderSide(color: AppColors.hairline)),
       ),

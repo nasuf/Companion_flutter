@@ -2328,6 +2328,9 @@ class _ReadyCapsuleBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final date = capsule.openDate;
     final dateText = date == null ? '今天' : _formatCapsuleShortDate(date);
+    final colors = AppColors.of(context);
+    final isDark = AppColors.isDark(context);
+    final accent = const Color(0xFF7C3CFF);
     return Align(
       alignment: Alignment.topCenter,
       child: CupertinoButton(
@@ -2342,13 +2345,21 @@ class _ReadyCapsuleBanner extends StatelessWidget {
               height: 54,
               padding: const EdgeInsets.fromLTRB(12, 8, 14, 8),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.88),
+                color: isDark
+                    ? colors.surfaceMuted.withValues(alpha: 0.92)
+                    : Colors.white.withValues(alpha: 0.88),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.12)
+                      : Colors.white.withValues(alpha: 0.78),
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF7C3CFF).withValues(alpha: 0.16),
-                    blurRadius: 22,
+                    color: isDark
+                        ? Colors.black.withValues(alpha: 0.38)
+                        : accent.withValues(alpha: 0.16),
+                    blurRadius: isDark ? 26 : 22,
                     offset: const Offset(0, 10),
                   ),
                 ],
@@ -2360,8 +2371,19 @@ class _ReadyCapsuleBanner extends StatelessWidget {
                     width: 34,
                     height: 34,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF7C3CFF),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [accent, colors.accentDeep],
+                      ),
                       borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: accent.withValues(alpha: isDark ? 0.34 : 0.18),
+                          blurRadius: 14,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
                     ),
                     child: const Center(
                       child: CustomPaint(
@@ -2383,7 +2405,7 @@ class _ReadyCapsuleBanner extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: AppColors.text,
+                            color: colors.text,
                             fontSize: 14,
                             fontWeight: FontWeight.w900,
                             decoration: TextDecoration.none,
@@ -2394,7 +2416,7 @@ class _ReadyCapsuleBanner extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: AppColors.muted,
+                            color: colors.muted,
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
                             decoration: TextDecoration.none,
@@ -2404,9 +2426,9 @@ class _ReadyCapsuleBanner extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Icon(
+                  Icon(
                     CupertinoIcons.chevron_down,
-                    color: Color(0xFF7C3CFF),
+                    color: isDark ? colors.accentDeep : accent,
                     size: 18,
                   ),
                 ],

@@ -55,6 +55,7 @@ class _AchievementCardFront extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return _AchievementShell(
       color: color,
       child: Stack(
@@ -82,8 +83,8 @@ class _AchievementCardFront extends StatelessWidget {
                   item.name,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF151719),
+                  style: TextStyle(
+                    color: isDark ? AppColors.text : const Color(0xFF151719),
                     fontSize: 20,
                     height: 1.13,
                     fontWeight: FontWeight.w900,
@@ -96,8 +97,8 @@ class _AchievementCardFront extends StatelessWidget {
                   item.popupText.isEmpty ? item.conditionText : item.popupText,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF747C82),
+                  style: TextStyle(
+                    color: isDark ? AppColors.muted : const Color(0xFF747C82),
                     fontSize: 12,
                     height: 1.34,
                     fontWeight: FontWeight.w700,
@@ -112,8 +113,10 @@ class _AchievementCardFront extends StatelessWidget {
                       _achievementCardTrail(item),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF9BA4A1),
+                      style: TextStyle(
+                        color: isDark
+                            ? AppColors.muted.withValues(alpha: 0.88)
+                            : const Color(0xFF9BA4A1),
                         fontSize: 12,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 0,
@@ -124,7 +127,9 @@ class _AchievementCardFront extends StatelessWidget {
                     Icon(
                       CupertinoIcons.chevron_right,
                       size: 14,
-                      color: const Color(0xFF9BA4A1).withValues(alpha: 0.78),
+                      color:
+                          (isDark ? AppColors.muted : const Color(0xFF9BA4A1))
+                              .withValues(alpha: 0.78),
                     ),
                   ],
                 ),
@@ -152,6 +157,7 @@ class _AchievementCardBack extends StatelessWidget {
     final condition = item.conditionText.isEmpty
         ? item.ruleText
         : item.conditionText;
+    final isDark = AppColors.isDark(context);
     return _AchievementShell(
       color: color,
       child: Stack(
@@ -186,8 +192,10 @@ class _AchievementCardBack extends StatelessWidget {
                       maxLines: 5,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Color(0xFF5F6765),
+                      style: TextStyle(
+                        color: isDark
+                            ? AppColors.text
+                            : const Color(0xFF5F6765),
                         fontSize: 15,
                         height: 1.42,
                         fontWeight: FontWeight.w800,
@@ -202,8 +210,10 @@ class _AchievementCardBack extends StatelessWidget {
                   children: [
                     Text(
                       '+${item.score} 积分',
-                      style: const TextStyle(
-                        color: Color(0xFF9BA4A1),
+                      style: TextStyle(
+                        color: isDark
+                            ? AppColors.muted
+                            : const Color(0xFF9BA4A1),
                         fontSize: 12,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 0,
@@ -211,10 +221,12 @@ class _AchievementCardBack extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
-                    const Text(
+                    Text(
                       '点击返回',
                       style: TextStyle(
-                        color: Color(0xFFB1B7B5),
+                        color: isDark
+                            ? AppColors.muted.withValues(alpha: 0.74)
+                            : const Color(0xFFB1B7B5),
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0,
@@ -240,20 +252,21 @@ class _AchievementShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.92),
+        color: AppColors.elevatedSurface(context, light: 0.92),
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.86)),
+        border: Border.all(color: AppColors.glassBorder(context)),
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha: 0.13),
+            color: color.withValues(alpha: isDark ? 0.22 : 0.13),
             blurRadius: 28,
             offset: const Offset(0, 18),
           ),
           BoxShadow(
-            color: const Color(0xFF20242A).withValues(alpha: 0.08),
+            color: AppColors.shadow.withValues(alpha: isDark ? 0.58 : 0.08),
             blurRadius: 22,
             offset: const Offset(0, 12),
           ),

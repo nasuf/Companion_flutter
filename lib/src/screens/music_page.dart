@@ -661,10 +661,7 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
                 padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding + 12),
                 child: Column(
                   children: [
-                    _MusicActions(
-                      onBack: _goBack,
-                      onShare: _shareToChat,
-                    ),
+                    _MusicActions(onBack: _goBack, onShare: _shareToChat),
                     const SizedBox(height: 12),
                     _MusicHeader(agentName: _agentName),
                     const SizedBox(height: 12),
@@ -913,20 +910,9 @@ class _MusicActions extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        CupertinoButton(
-          padding: EdgeInsets.zero,
-          minimumSize: Size.zero,
+        _AppNavCircleButton(
+          icon: CupertinoIcons.chevron_left,
           onPressed: onBack,
-          child: const _MusicGlassButton(
-            width: 54,
-            height: 54,
-            radius: 21,
-            child: Icon(
-              CupertinoIcons.chevron_left,
-              color: Colors.white,
-              size: 25,
-            ),
-          ),
         ),
         const Spacer(),
         CupertinoButton(

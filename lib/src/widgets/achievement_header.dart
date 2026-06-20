@@ -82,18 +82,18 @@ class _AchievementTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return Row(
       children: [
-        _AchievementCircleButton(
+        _AppNavCircleButton(
           icon: CupertinoIcons.chevron_left,
-          tint: tint,
-          onTap: onBack,
+          onPressed: onBack,
         ),
         const SizedBox(width: 14),
-        const Text(
+        Text(
           '成就',
           style: TextStyle(
-            color: Color(0xFF151719),
+            color: isDark ? AppColors.text : const Color(0xFF151719),
             fontSize: 28,
             fontWeight: FontWeight.w900,
             letterSpacing: 0,
@@ -101,44 +101,6 @@ class _AchievementTopBar extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _AchievementCircleButton extends StatelessWidget {
-  const _AchievementCircleButton({
-    required this.icon,
-    required this.tint,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final Color tint;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return CupertinoButton(
-      minimumSize: Size.zero,
-      padding: EdgeInsets.zero,
-      onPressed: onTap,
-      child: Container(
-        width: 58,
-        height: 58,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.86),
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withValues(alpha: 0.92)),
-          boxShadow: [
-            BoxShadow(
-              color: tint.withValues(alpha: 0.10),
-              blurRadius: 24,
-              offset: const Offset(0, 14),
-            ),
-          ],
-        ),
-        child: Icon(icon, color: const Color(0xFF151719), size: 28),
-      ),
     );
   }
 }
@@ -160,21 +122,23 @@ class _AchievementHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return Container(
       clipBehavior: Clip.antiAlias,
       constraints: const BoxConstraints(minHeight: 316),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.93),
+        color: AppColors.elevatedSurface(context, light: 0.93),
         borderRadius: BorderRadius.circular(32),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.84)),
+        border: Border.all(color: AppColors.glassBorder(context)),
         boxShadow: [
+          if (!isDark)
+            BoxShadow(
+              color: Colors.white.withValues(alpha: 0.96),
+              blurRadius: 1,
+              offset: const Offset(0, -1),
+            ),
           BoxShadow(
-            color: Colors.white.withValues(alpha: 0.96),
-            blurRadius: 1,
-            offset: const Offset(0, -1),
-          ),
-          BoxShadow(
-            color: const Color(0xFF20242A).withValues(alpha: 0.10),
+            color: AppColors.shadow.withValues(alpha: isDark ? 0.72 : 0.10),
             blurRadius: 42,
             offset: const Offset(0, 22),
           ),
@@ -193,6 +157,7 @@ class _AchievementHeroCard extends StatelessWidget {
               painter: _AchievementHeroLightPainter(
                 progress: breath,
                 tint: tint,
+                isDark: isDark,
               ),
             ),
           ),
@@ -223,12 +188,12 @@ class _AchievementHeroCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 18),
-                const Padding(
-                  padding: EdgeInsets.only(right: 22),
+                Padding(
+                  padding: const EdgeInsets.only(right: 22),
                   child: Text(
                     '把关系里发生过的事，变成可回看的里程碑',
                     style: TextStyle(
-                      color: Color(0xFF151719),
+                      color: isDark ? AppColors.text : const Color(0xFF151719),
                       fontSize: 30,
                       height: 1.13,
                       fontWeight: FontWeight.w900,
@@ -238,12 +203,12 @@ class _AchievementHeroCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Padding(
-                  padding: EdgeInsets.only(right: 56),
+                Padding(
+                  padding: const EdgeInsets.only(right: 56),
                   child: Text(
                     '成就不是任务压力，而是你们长期陪伴慢慢留下的证据。',
                     style: TextStyle(
-                      color: Color(0xFF6F7775),
+                      color: isDark ? AppColors.muted : const Color(0xFF6F7775),
                       fontSize: 14,
                       height: 1.58,
                       fontWeight: FontWeight.w600,
@@ -372,10 +337,12 @@ class _AchievementHeroLightPainter extends CustomPainter {
   const _AchievementHeroLightPainter({
     required this.progress,
     required this.tint,
+    required this.isDark,
   });
 
   final double progress;
   final Color tint;
+  final bool isDark;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -387,8 +354,17 @@ class _AchievementHeroLightPainter extends CustomPainter {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Colors.white.withValues(alpha: 0.86),
-            Color.lerp(Colors.white, tint, 0.08)!.withValues(alpha: 0.76),
+            if (isDark) ...[
+              AppColors.surface.withValues(alpha: 0.84),
+              Color.lerp(
+                AppColors.surfaceMuted,
+                tint,
+                0.10,
+              )!.withValues(alpha: 0.78),
+            ] else ...[
+              Colors.white.withValues(alpha: 0.86),
+              Color.lerp(Colors.white, tint, 0.08)!.withValues(alpha: 0.76),
+            ],
           ],
         ).createShader(rect),
     );
@@ -425,15 +401,17 @@ class _AchievementHeroLightPainter extends CustomPainter {
     );
     drawGlow(
       Alignment(-1.08 + progress * 0.05, 0.82 - progress * 0.04),
-      Color.lerp(tint, const Color(0xFFFFFFFF), 0.36)!,
-      0.12,
+      Color.lerp(tint, isDark ? AppColors.surfaceMuted : Colors.white, 0.36)!,
+      isDark ? 0.18 : 0.12,
       size.width * 0.62,
     );
   }
 
   @override
   bool shouldRepaint(_AchievementHeroLightPainter oldDelegate) {
-    return oldDelegate.progress != progress || oldDelegate.tint != tint;
+    return oldDelegate.progress != progress ||
+        oldDelegate.tint != tint ||
+        oldDelegate.isDark != isDark;
   }
 }
 
@@ -450,16 +428,21 @@ class _AchievementMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return Container(
       height: 64,
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 7),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.58),
+        color: AppColors.subtleFill(context, light: 0.58),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: tint.withValues(alpha: 0.10)),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.10)
+              : tint.withValues(alpha: 0.10),
+        ),
         boxShadow: [
           BoxShadow(
-            color: tint.withValues(alpha: 0.08),
+            color: tint.withValues(alpha: isDark ? 0.14 : 0.08),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -473,8 +456,8 @@ class _AchievementMetric extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF151719),
+            style: TextStyle(
+              color: isDark ? AppColors.text : const Color(0xFF151719),
               fontSize: 18,
               height: 1.0,
               fontWeight: FontWeight.w900,
@@ -487,8 +470,8 @@ class _AchievementMetric extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF9CA4A2),
+            style: TextStyle(
+              color: isDark ? AppColors.muted : const Color(0xFF9CA4A2),
               fontSize: 10.5,
               height: 1.05,
               fontWeight: FontWeight.w800,

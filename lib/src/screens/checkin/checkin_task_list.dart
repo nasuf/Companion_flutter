@@ -206,6 +206,7 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
   Widget build(BuildContext context) {
     final item = widget.item;
     final completed = widget.completed || _optimisticCompleted;
+    final isDark = AppColors.isDark(context);
     final leadingLimit = completed ? _leadingReveal / 2 : _leadingReveal;
     final trailingLimit = completed ? _trailingReveal / 2 : _trailingReveal;
     final leadingWidth = _offset > 0 ? _offset : 0.0;
@@ -339,13 +340,19 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
                                 11,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: AppColors.elevatedSurface(
+                                  context,
+                                  light: 0.96,
+                                ),
                                 borderRadius: foregroundRadius,
+                                border: Border.all(
+                                  color: AppColors.glassBorder(context),
+                                ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: const Color(
-                                      0xFF24344A,
-                                    ).withValues(alpha: 0.06),
+                                    color: AppColors.shadow.withValues(
+                                      alpha: isDark ? 0.50 : 0.06,
+                                    ),
                                     blurRadius: 16,
                                     offset: const Offset(0, 8),
                                   ),
@@ -437,7 +444,7 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
                                               : item.isHabit
                                               ? '${_chatCardRecurrenceLabel(item.recurrence, item.habitWeekdays)} · ${_timeLabel(item.triggerTime)}'
                                               : '${_timeLabel(item.triggerTime)} · ${_recurrenceLabel(item.recurrence)}',
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             color: AppColors.muted,
                                             fontSize: 12,
                                             fontWeight: FontWeight.w600,

@@ -14,21 +14,15 @@ class _StoreTopBar extends StatelessWidget {
         height: 46,
         child: Row(
           children: [
-            CupertinoButton(
-              minimumSize: Size.zero,
-              padding: EdgeInsets.zero,
+            _AppNavCircleButton(
+              icon: CupertinoIcons.chevron_left,
               onPressed: () => Navigator.of(context).maybePop(),
-              child: const Icon(
-                CupertinoIcons.chevron_left,
-                color: AppColors.text,
-                size: 30,
-              ),
             ),
             Expanded(
               child: Center(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.text,
                     fontSize: 19,
                     fontWeight: FontWeight.w900,
@@ -45,7 +39,7 @@ class _StoreTopBar extends StatelessWidget {
                 widthFactor: 1,
                 child:
                     trailing ??
-                    const Icon(
+                    Icon(
                       CupertinoIcons.doc_text,
                       color: AppColors.text,
                       size: 27,
@@ -80,9 +74,9 @@ class _StoreBalancePill extends StatelessWidget {
             constraints: const BoxConstraints(minWidth: 44),
             padding: const EdgeInsets.only(left: 7, right: 5),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.70),
+              color: AppColors.subtleFill(context, light: 0.70),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.76)),
+              border: Border.all(color: AppColors.glassBorder(context)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -91,7 +85,7 @@ class _StoreBalancePill extends StatelessWidget {
                 const SizedBox(width: 5),
                 Text(
                   '$points',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.text,
                     fontSize: 14,
                     fontWeight: FontWeight.w900,
@@ -120,6 +114,7 @@ class _StoreBottomBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final values = _StoreSection.values;
     final selectedIndex = values.indexOf(selected);
+    final isDark = AppColors.isDark(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(30),
       child: BackdropFilter(
@@ -128,12 +123,12 @@ class _StoreBottomBar extends StatelessWidget {
           height: 68,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.68),
+            color: AppColors.elevatedSurface(context, light: 0.68),
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
+            border: Border.all(color: AppColors.glassBorder(context)),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF315B88).withValues(alpha: 0.12),
+                color: AppColors.shadow.withValues(alpha: isDark ? 0.72 : 0.12),
                 blurRadius: 28,
                 offset: const Offset(0, 14),
               ),
@@ -157,7 +152,9 @@ class _StoreBottomBar extends StatelessWidget {
                       height: 52,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(26),
-                        color: Colors.white.withValues(alpha: 0.94),
+                        color: isDark
+                            ? AppColors.surfaceMuted.withValues(alpha: 0.92)
+                            : Colors.white.withValues(alpha: 0.94),
                         boxShadow: [
                           BoxShadow(
                             color: AppColors.accent.withValues(alpha: 0.15),
@@ -203,6 +200,10 @@ class _StoreNavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
+    final inactive = isDark
+        ? AppColors.muted.withValues(alpha: 0.68)
+        : const Color(0xFF1B2733).withValues(alpha: 0.42);
     return Tooltip(
       message: item.label,
       child: InkResponse(
@@ -215,9 +216,7 @@ class _StoreNavItem extends StatelessWidget {
               Icon(
                 item.icon,
                 size: 23,
-                color: selected
-                    ? AppColors.accent
-                    : const Color(0xFF1B2733).withValues(alpha: 0.42),
+                color: selected ? AppColors.accent : inactive,
               ),
               const SizedBox(height: 4),
               Text(
@@ -225,9 +224,7 @@ class _StoreNavItem extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: selected
-                      ? AppColors.text
-                      : const Color(0xFF1B2733).withValues(alpha: 0.42),
+                  color: selected ? AppColors.text : inactive,
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0,
@@ -250,6 +247,7 @@ class _OutfitPickerSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
+    final isDark = AppColors.isDark(context);
     return Padding(
       padding: EdgeInsets.fromLTRB(14, 0, 14, bottom + 14),
       child: ClipRRect(
@@ -259,9 +257,9 @@ class _OutfitPickerSheet extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.90),
+              color: AppColors.elevatedSurface(context, light: 0.90),
               borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: Colors.white),
+              border: Border.all(color: AppColors.glassBorder(context)),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -271,7 +269,7 @@ class _OutfitPickerSheet extends StatelessWidget {
                   children: [
                     Text(
                       product.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.text,
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
@@ -289,10 +287,10 @@ class _OutfitPickerSheet extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   '选择一款预览样式，后续接入后会写入用户装扮库存。',
                   style: TextStyle(
-                    color: Color(0xFF65727E),
+                    color: isDark ? AppColors.muted : const Color(0xFF65727E),
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     height: 1.35,
@@ -365,7 +363,7 @@ class _OutfitOption extends StatelessWidget {
           const Spacer(),
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.text,
               fontSize: 13,
               fontWeight: FontWeight.w900,
@@ -436,6 +434,7 @@ class _GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: BackdropFilter(
@@ -443,12 +442,12 @@ class _GlassCard extends StatelessWidget {
         child: Container(
           padding: padding,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.70),
+            color: AppColors.elevatedSurface(context, light: 0.70),
             borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.82)),
+            border: Border.all(color: AppColors.glassBorder(context)),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF315B88).withValues(alpha: 0.10),
+                color: AppColors.shadow.withValues(alpha: isDark ? 0.62 : 0.10),
                 blurRadius: 22,
                 offset: const Offset(0, 12),
               ),

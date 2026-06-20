@@ -42,7 +42,7 @@ class PlaceholderPage extends StatelessWidget {
                   children: [
                     Icon(icon, size: 52, color: AppColors.muted),
                     const SizedBox(height: 12),
-                    const Text(
+                    Text(
                       '页面内容待接入',
                       style: TextStyle(color: AppColors.muted, fontSize: 15),
                     ),

@@ -118,10 +118,12 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
           ),
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           '到期按所选周期自动续费，可随时取消',
           style: TextStyle(
-            color: Color(0xFF53616E),
+            color: AppColors.isDark(context)
+                ? AppColors.muted
+                : const Color(0xFF53616E),
             fontSize: 12,
             fontWeight: FontWeight.w700,
             letterSpacing: 0,
@@ -169,11 +171,13 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
                       : null,
                 ),
                 const SizedBox(width: 8),
-                const Flexible(
+                Flexible(
                   child: Text(
                     '已阅读同意《会员协议与续费条款》',
                     style: TextStyle(
-                      color: Color(0xFF66727E),
+                      color: AppColors.isDark(context)
+                          ? AppColors.muted
+                          : const Color(0xFF66727E),
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0,

@@ -160,9 +160,9 @@ class _CheckinPageState extends State<CheckinPage> {
   Widget _topBar(List<ReminderItem> items) {
     return Row(
       children: [
-        _CircleAction(
+        _AppNavCircleButton(
           icon: CupertinoIcons.chevron_back,
-          onTap: () => Navigator.of(context).pop(),
+          onPressed: () => Navigator.of(context).pop(),
         ),
         const Spacer(),
       ],
@@ -174,17 +174,20 @@ class _CheckinPageState extends State<CheckinPage> {
     final calendarMonth = _calendarMonth ?? _monthOnly(_selectedDate);
     final calendarProgress = _calendarProgress;
     final weekActive = calendarProgress < 0.35;
+    final isDark = AppColors.isDark(context);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
       padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.72),
+        color: AppColors.elevatedSurface(context, light: 0.72),
         borderRadius: BorderRadius.circular(34),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.86)),
+        border: Border.all(color: AppColors.glassBorder(context)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF7C3CFF).withValues(alpha: 0.12),
+            color: const Color(
+              0xFF7C3CFF,
+            ).withValues(alpha: isDark ? 0.24 : 0.12),
             blurRadius: 36,
             offset: const Offset(0, 22),
           ),
@@ -193,9 +196,13 @@ class _CheckinPageState extends State<CheckinPage> {
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
           colors: [
-            const Color(0xFFE9DDFF).withValues(alpha: 0.78),
-            Colors.white.withValues(alpha: 0.90),
-            const Color(0xFFFFF3D7).withValues(alpha: 0.62),
+            isDark
+                ? const Color(0xFF2A1F48).withValues(alpha: 0.82)
+                : const Color(0xFFE9DDFF).withValues(alpha: 0.78),
+            AppColors.elevatedSurface(context, light: 0.90),
+            isDark
+                ? const Color(0xFF352916).withValues(alpha: 0.48)
+                : const Color(0xFFFFF3D7).withValues(alpha: 0.62),
           ],
         ),
       ),
@@ -212,7 +219,7 @@ class _CheckinPageState extends State<CheckinPage> {
             ),
           ),
           const SizedBox(height: 22),
-          const Text(
+          Text(
             '提醒不是催促，是有人陪你把一天收住',
             style: TextStyle(
               color: AppColors.text,
@@ -225,7 +232,7 @@ class _CheckinPageState extends State<CheckinPage> {
           const SizedBox(height: 14),
           Text(
             '${widget.session.agentName ?? '小芜'}会按你的状态选择语音、消息或轻提醒，不把打卡做成压力。',
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.muted,
               fontSize: 15,
               height: 1.55,
@@ -285,7 +292,7 @@ class _CheckinPageState extends State<CheckinPage> {
         const Spacer(),
         Text(
           '$count 件',
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.muted,
             fontSize: 12,
             fontWeight: FontWeight.w800,

@@ -120,7 +120,7 @@ class _LoginPageState extends State<LoginPage>
                                 Positioned(
                                   left: 0,
                                   top: brandTop,
-                                  child: const _BrandLockup(),
+                                  child: _BrandLockup(),
                                 ),
                                 Positioned(
                                   left: 0,
@@ -128,7 +128,7 @@ class _LoginPageState extends State<LoginPage>
                                   child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
-                                    children: const [
+                                    children: [
                                       Text(
                                         '从一句话开始',
                                         style: TextStyle(
@@ -214,12 +214,17 @@ class _LoginBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFFFBFDFF), Color(0xFFF7FBFF), Color(0xFFF6FBF7)],
+          colors: [
+            colors.page,
+            Color.lerp(colors.page, colors.surfaceMuted, 0.42)!,
+            Color.lerp(colors.page, colors.accentSoft, 0.24)!,
+          ],
           stops: [0, 0.52, 1],
         ),
       ),
@@ -320,7 +325,7 @@ class _BrandLockup extends StatelessWidget {
           child: Image.asset('assets/prototype/logo.png', fit: BoxFit.cover),
         ),
         const SizedBox(width: 22),
-        const Column(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
@@ -469,7 +474,7 @@ class _PhoneLoginButton extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
             colors: [AppColors.accentDeep, AppColors.accentCyan],
@@ -1051,7 +1056,7 @@ class _LoginField extends StatelessWidget {
           prefixIcon: Icon(icon, size: 20, color: AppColors.muted),
           suffixIcon: trailing,
           labelText: label,
-          labelStyle: const TextStyle(color: AppColors.muted),
+          labelStyle: TextStyle(color: AppColors.muted),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(vertical: 16),
         ),

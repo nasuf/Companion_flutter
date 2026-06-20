@@ -248,7 +248,7 @@ class _DateRailState extends State<_DateRail> {
                   child: Center(
                     child: Text(
                       label,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.text,
                         fontSize: 11,
                         height: 1,
@@ -510,7 +510,7 @@ class _MonthCalendarState extends State<_MonthCalendar> {
               child: Text(
                 '${_visibleMonth.year}年${_visibleMonth.month}月',
                 key: ValueKey(_dateKey(_visibleMonth)),
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.text,
                   fontSize: 17,
                   fontWeight: FontWeight.w900,
@@ -522,7 +522,7 @@ class _MonthCalendarState extends State<_MonthCalendar> {
               padding: EdgeInsets.zero,
               minimumSize: Size.zero,
               onPressed: widget.onCollapse,
-              child: const Icon(
+              child: Icon(
                 CupertinoIcons.chevron_up,
                 size: 18,
                 color: AppColors.muted,
@@ -538,7 +538,7 @@ class _MonthCalendarState extends State<_MonthCalendar> {
                   child: Center(
                     child: Text(
                       day,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.muted,
                         fontSize: 12,
                         fontWeight: FontWeight.w800,

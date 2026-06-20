@@ -28,7 +28,7 @@ class _PickerSheet extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.text,
                 fontSize: 20,
                 fontWeight: FontWeight.w900,
@@ -50,37 +50,6 @@ class _PickerSheet extends StatelessWidget {
   }
 }
 
-class _CircleAction extends StatelessWidget {
-  const _CircleAction({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      onPressed: onTap,
-      child: Container(
-        width: 58,
-        height: 58,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.82),
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF24344A).withValues(alpha: 0.10),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Icon(icon, color: AppColors.text, size: 25),
-      ),
-    );
-  }
-}
-
 class _CheckinLoadingCard extends StatelessWidget {
   const _CheckinLoadingCard();
 
@@ -90,8 +59,9 @@ class _CheckinLoadingCard extends StatelessWidget {
       height: 118,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.72),
+        color: AppColors.elevatedSurface(context, light: 0.72),
         borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: AppColors.glassBorder(context)),
       ),
       child: const CupertinoActivityIndicator(),
     );
@@ -112,10 +82,11 @@ class _CheckinEmptyCard extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.76),
+          color: AppColors.elevatedSurface(context, light: 0.76),
           borderRadius: BorderRadius.circular(26),
+          border: Border.all(color: AppColors.glassBorder(context)),
         ),
-        child: const Text(
+        child: Text(
           '这一天还没有打卡任务',
           textAlign: TextAlign.center,
           style: TextStyle(
@@ -134,12 +105,17 @@ class _CheckinBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
+    final colors = AppColors.of(context);
+    return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFFFCFDFB), Color(0xFFF3F8F5), Color(0xFFFAFBF8)],
+          colors: [
+            colors.page,
+            Color.lerp(colors.page, colors.surfaceMuted, 0.42)!,
+            colors.page,
+          ],
         ),
       ),
     );

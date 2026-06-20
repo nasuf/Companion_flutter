@@ -32,6 +32,7 @@ class _VipHeroCardState extends State<_VipHeroCard>
       animation: _breathController,
       builder: (context, child) {
         final breath = Curves.easeInOut.transform(_breathController.value);
+        final isDark = AppColors.isDark(context);
         return Container(
           height: 236,
           decoration: BoxDecoration(
@@ -60,9 +61,9 @@ class _VipHeroCardState extends State<_VipHeroCard>
                   Positioned.fill(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.72),
+                        color: AppColors.elevatedSurface(context, light: 0.72),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.88),
+                          color: AppColors.glassBorder(context),
                         ),
                         borderRadius: BorderRadius.circular(34),
                       ),
@@ -133,10 +134,12 @@ class _VipHeroCardState extends State<_VipHeroCard>
                           ),
                         ),
                         const SizedBox(height: 14),
-                        const Text(
+                        Text(
                           '更完整的陪伴体验',
                           style: TextStyle(
-                            color: Color(0xFF0B2237),
+                            color: isDark
+                                ? AppColors.text
+                                : const Color(0xFF0B2237),
                             fontSize: 20,
                             height: 1.15,
                             fontWeight: FontWeight.w900,
@@ -145,10 +148,12 @@ class _VipHeroCardState extends State<_VipHeroCard>
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
+                        Text(
                           '畅聊、赠礼、装扮和活动券统一升级',
                           style: TextStyle(
-                            color: Color(0xFF6B7A86),
+                            color: isDark
+                                ? AppColors.muted
+                                : const Color(0xFF6B7A86),
                             fontSize: 13,
                             height: 1.35,
                             fontWeight: FontWeight.w700,
@@ -264,14 +269,15 @@ class _VipMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return Expanded(
       child: Container(
         height: 50,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.58),
+          color: AppColors.subtleFill(context, light: 0.58),
           borderRadius: BorderRadius.circular(17),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.80)),
+          border: Border.all(color: AppColors.glassBorder(context)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -280,7 +286,7 @@ class _VipMetric extends StatelessWidget {
               value,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.text,
                 fontSize: 16,
                 fontWeight: FontWeight.w900,
@@ -293,8 +299,8 @@ class _VipMetric extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFF6D7984),
+              style: TextStyle(
+                color: isDark ? AppColors.muted : const Color(0xFF6D7984),
                 fontSize: 10,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0,
@@ -334,6 +340,7 @@ class _MemberBenefitGrid extends StatelessWidget {
       ),
       itemBuilder: (context, index) {
         final item = _benefits[index];
+        final isDark = AppColors.isDark(context);
         return _GlassCard(
           padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
           radius: 20,
@@ -350,7 +357,7 @@ class _MemberBenefitGrid extends StatelessWidget {
                       item.$1,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.text,
                         fontSize: 14,
                         fontWeight: FontWeight.w900,
@@ -363,8 +370,10 @@ class _MemberBenefitGrid extends StatelessWidget {
                       item.$2,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF5D6873),
+                      style: TextStyle(
+                        color: isDark
+                            ? AppColors.muted
+                            : const Color(0xFF5D6873),
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0,

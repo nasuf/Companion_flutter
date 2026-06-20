@@ -121,12 +121,18 @@ class _OnlineBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final isDark = AppColors.isDark(context);
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFFFFFAF4), Color(0xFFFBFBFF), Color(0xFFEEF9F8)],
+          colors: [
+            colors.page,
+            Color.lerp(colors.page, colors.surfaceMuted, 0.40)!,
+            Color.lerp(colors.page, colors.accentSoft, 0.24)!,
+          ],
           stops: [0, 0.44, 1],
         ),
       ),
@@ -167,7 +173,9 @@ class _OnlineBackground extends StatelessWidget {
                   center: const Alignment(0.70, -0.58),
                   radius: 0.72 + 0.025 * progress,
                   colors: [
-                    Colors.white.withValues(alpha: 0.62),
+                    isDark
+                        ? colors.accentSoft.withValues(alpha: 0.32)
+                        : Colors.white.withValues(alpha: 0.62),
                     Colors.transparent,
                   ],
                 ),
@@ -232,6 +240,7 @@ class _OnlineHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return SizedBox(
       height: 210,
       child: Stack(
@@ -266,13 +275,13 @@ class _OnlineHero extends StatelessWidget {
               child: const _OnlineGlassOrb(),
             ),
           ),
-          const Positioned(
+          Positioned(
             left: 0,
             top: 12,
             child: Text(
               'ONLINE ROOM',
               style: TextStyle(
-                color: AppColors.accent,
+                color: colors.accent,
                 fontSize: 14,
                 height: 1,
                 fontWeight: FontWeight.w900,
@@ -280,13 +289,13 @@ class _OnlineHero extends StatelessWidget {
               ),
             ),
           ),
-          const Positioned(
+          Positioned(
             left: 0,
             top: 58,
             child: Text(
               '我想和你做的事情\n有很多',
               style: TextStyle(
-                color: Color(0xFF11161A),
+                color: colors.text,
                 fontSize: 34,
                 height: 1.04,
                 fontWeight: FontWeight.w900,
@@ -494,6 +503,8 @@ class _OnlinePortalCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final isDark = AppColors.isDark(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
@@ -503,12 +514,20 @@ class _OnlinePortalCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(32),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.34),
+            color: isDark
+                ? colors.surface.withValues(alpha: 0.74)
+                : Colors.white.withValues(alpha: 0.34),
             borderRadius: BorderRadius.circular(32),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.86)),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.10)
+                  : Colors.white.withValues(alpha: 0.86),
+            ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF40546A).withValues(alpha: 0.14),
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.30)
+                    : const Color(0xFF40546A).withValues(alpha: 0.14),
                 blurRadius: 28,
                 offset: const Offset(0, 16),
               ),
@@ -576,6 +595,7 @@ class _PortalBottomBlur extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return Align(
       alignment: Alignment.bottomCenter,
       child: ShaderMask(
@@ -602,12 +622,19 @@ class _PortalBottomBlur extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.white.withValues(alpha: 0),
-                    Colors.white.withValues(alpha: 0.50),
-                    Colors.white.withValues(alpha: 0.88),
-                    Colors.white,
-                  ],
+                  colors: isDark
+                      ? [
+                          Colors.black.withValues(alpha: 0),
+                          Colors.black.withValues(alpha: 0.34),
+                          Colors.black.withValues(alpha: 0.68),
+                          Colors.black.withValues(alpha: 0.84),
+                        ]
+                      : [
+                          Colors.white.withValues(alpha: 0),
+                          Colors.white.withValues(alpha: 0.50),
+                          Colors.white.withValues(alpha: 0.88),
+                          Colors.white,
+                        ],
                   stops: const [0, 0.30, 0.56, 1],
                 ),
               ),
@@ -626,6 +653,8 @@ class _PortalText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final isDark = AppColors.isDark(context);
     return Positioned(
       left: 20,
       right: 20,
@@ -636,8 +665,8 @@ class _PortalText extends StatelessWidget {
         children: [
           Text(
             portal.title,
-            style: const TextStyle(
-              color: Color(0xFF11161A),
+            style: TextStyle(
+              color: isDark ? Colors.white : colors.text,
               fontSize: 21,
               height: 1.10,
               fontWeight: FontWeight.w900,
@@ -650,7 +679,9 @@ class _PortalText extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: const Color(0xFF182026).withValues(alpha: 0.62),
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.72)
+                  : colors.muted,
               fontSize: 12,
               height: 1.34,
               fontWeight: FontWeight.w500,
@@ -661,8 +692,8 @@ class _PortalText extends StatelessWidget {
             children: [
               Text(
                 portal.metric,
-                style: const TextStyle(
-                  color: Color(0xFF11161A),
+                style: TextStyle(
+                  color: isDark ? Colors.white : colors.text,
                   fontSize: 12,
                   height: 1,
                   fontWeight: FontWeight.w900,
@@ -672,7 +703,9 @@ class _PortalText extends StatelessWidget {
               Text(
                 '›',
                 style: TextStyle(
-                  color: const Color(0xFF13191E).withValues(alpha: 0.58),
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.70)
+                      : colors.muted,
                   fontSize: 17,
                   height: 1,
                   fontWeight: FontWeight.w900,

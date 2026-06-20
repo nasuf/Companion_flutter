@@ -79,7 +79,7 @@ class _LastWillPageState extends State<LastWillPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9F7),
+      backgroundColor: AppColors.page,
       body: SafeArea(
         bottom: false,
         child: FutureBuilder<List<LastWill>>(
@@ -90,17 +90,31 @@ class _LastWillPageState extends State<LastWillPage>
             return Stack(
               children: [
                 Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: RadialGradient(
-                        center: const Alignment(0.72, -0.36),
-                        radius: 0.92,
-                        colors: [
-                          const Color(0xFFE6E9E3).withValues(alpha: 0.86),
-                          const Color(0xFFF8FAF8),
-                        ],
-                      ),
-                    ),
+                  child: Builder(
+                    builder: (context) {
+                      final colors = AppColors.of(context);
+                      final isDark = AppColors.isDark(context);
+                      return DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            center: const Alignment(0.72, -0.36),
+                            radius: 0.92,
+                            colors: [
+                              isDark
+                                  ? Color.lerp(
+                                      colors.page,
+                                      const Color(0xFF2D3440),
+                                      0.46,
+                                    )!
+                                  : const Color(
+                                      0xFFE6E9E3,
+                                    ).withValues(alpha: 0.86),
+                              colors.page,
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
                 CustomScrollView(
@@ -446,42 +460,11 @@ class _TopActions extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
       child: Row(
         children: [
-          _LegacyRoundIconButton(
+          _AppNavCircleButton(
             icon: CupertinoIcons.chevron_left,
-            onTap: () => Navigator.of(context).maybePop(),
+            onPressed: () => Navigator.of(context).maybePop(),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _LegacyRoundIconButton extends StatelessWidget {
-  const _LegacyRoundIconButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      onPressed: onTap,
-      child: Container(
-        width: 58,
-        height: 58,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.86),
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF27384B).withValues(alpha: 0.08),
-              blurRadius: 24,
-              offset: const Offset(0, 12),
-            ),
-          ],
-        ),
-        child: Icon(icon, color: const Color(0xFF121A23), size: 28),
       ),
     );
   }
@@ -527,8 +510,8 @@ class _LegacyHeroLightPainter extends CustomPainter {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Colors.white.withValues(alpha: 0.82),
-            Colors.white.withValues(alpha: 0.58),
+            AppColors.surface.withValues(alpha: 0.82),
+            AppColors.surfaceMuted.withValues(alpha: 0.58),
           ],
         ).createShader(baseRect),
     );
@@ -610,6 +593,7 @@ class _HeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return AnimatedBuilder(
       animation: animation,
       builder: (context, child) {
@@ -626,15 +610,18 @@ class _HeroCard extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 224),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.70)),
+          border: Border.all(color: AppColors.glassBorder(context)),
           boxShadow: [
+            if (!AppColors.isDark(context))
+              BoxShadow(
+                color: Colors.white.withValues(alpha: 0.96),
+                blurRadius: 1,
+                offset: const Offset(0, -1),
+              ),
             BoxShadow(
-              color: Colors.white.withValues(alpha: 0.96),
-              blurRadius: 1,
-              offset: const Offset(0, -1),
-            ),
-            BoxShadow(
-              color: const Color(0xFF20242A).withValues(alpha: 0.10),
+              color: AppColors.shadow.withValues(
+                alpha: AppColors.isDark(context) ? 0.72 : 0.10,
+              ),
               blurRadius: 42,
               offset: const Offset(0, 22),
             ),
@@ -675,18 +662,20 @@ class _HeroCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'PRIVATE NOTE',
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 1.4,
-                      color: Color(0xFF1F252C),
+                      color: isDark
+                          ? AppColors.muted.withValues(alpha: 0.70)
+                          : const Color(0xFF1F252C),
                     ),
                   ),
                   const SizedBox(height: 24),
-                  const Padding(
-                    padding: EdgeInsets.only(right: 64),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 64),
                     child: Text(
                       '留一份遗书吧',
                       style: TextStyle(
@@ -694,19 +683,23 @@ class _HeroCard extends StatelessWidget {
                         height: 1.12,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 0,
-                        color: Color(0xFF171B20),
+                        color: isDark
+                            ? AppColors.text
+                            : const Color(0xFF171B20),
                       ),
                     ),
                   ),
                   const SizedBox(height: 14),
-                  const Padding(
-                    padding: EdgeInsets.only(right: 74),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 74),
                     child: Text(
                       '既要生得光荣，也要死得伟大',
                       style: TextStyle(
                         fontSize: 15,
                         height: 1.52,
-                        color: Color(0xFF747C82),
+                        color: isDark
+                            ? AppColors.muted
+                            : const Color(0xFF747C82),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -753,6 +746,7 @@ class _MetricTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
@@ -761,9 +755,9 @@ class _MetricTile extends StatelessWidget {
         height: 58,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.56),
+          color: AppColors.subtleFill(context, light: 0.56),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.74)),
+          border: Border.all(color: AppColors.glassBorder(context)),
         ),
         alignment: Alignment.centerLeft,
         child: FittedBox(
@@ -775,20 +769,20 @@ class _MetricTile extends StatelessWidget {
             children: [
               Text(
                 value,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 22,
                   height: 1,
                   fontWeight: FontWeight.w900,
-                  color: Color(0xFF171B20),
+                  color: isDark ? AppColors.text : const Color(0xFF171B20),
                 ),
               ),
               const SizedBox(height: 3),
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 10,
                   height: 1.05,
-                  color: Color(0xFF9AA0A4),
+                  color: isDark ? AppColors.muted : const Color(0xFF9AA0A4),
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -827,8 +821,9 @@ class _InfoRow extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 80),
           padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.76),
+            color: AppColors.elevatedSurface(context, light: 0.76),
             borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.glassBorder(context)),
             boxShadow: [
               BoxShadow(
                 color: const Color(0xFF314054).withValues(alpha: 0.045),
@@ -1134,14 +1129,14 @@ class _DaysSheetState extends State<_DaysSheet> {
     return Container(
       height: MediaQuery.sizeOf(context).height * 0.48,
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.page,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: SafeArea(
         top: false,
         child: DefaultTextStyle(
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.text,
             decoration: TextDecoration.none,
           ),
@@ -1149,7 +1144,7 @@ class _DaysSheetState extends State<_DaysSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const _LastWillSheetGrabber(),
-              const Text(
+              Text(
                 '请选择连续未登录天数',
                 style: TextStyle(
                   color: AppColors.text,
@@ -1159,7 +1154,7 @@ class _DaysSheetState extends State<_DaysSheet> {
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 '系统将按约定，把你未说出口的话，悄悄送达',
                 style: TextStyle(
                   color: AppColors.muted,
@@ -1239,6 +1234,7 @@ class _LastWillWheelGlassSelection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 34),
       child: ClipRRect(
@@ -1248,20 +1244,23 @@ class _LastWillWheelGlassSelection extends StatelessWidget {
           child: Container(
             height: 58,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.42),
+              color: AppColors.subtleFill(context, light: 0.42),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
+              border: Border.all(color: AppColors.glassBorder(context)),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF2B3440).withValues(alpha: 0.08),
+                  color: AppColors.shadow.withValues(
+                    alpha: isDark ? 0.58 : 0.08,
+                  ),
                   blurRadius: 28,
                   offset: const Offset(0, 14),
                 ),
-                BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.55),
-                  blurRadius: 1,
-                  offset: const Offset(0, -1),
-                ),
+                if (!isDark)
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: 0.55),
+                    blurRadius: 1,
+                    offset: const Offset(0, -1),
+                  ),
               ],
             ),
           ),
@@ -1373,9 +1372,10 @@ class _ContactsSheetState extends State<_ContactsSheet> {
         top: 18,
         bottom: MediaQuery.viewInsetsOf(context).bottom + 22,
       ),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      decoration: BoxDecoration(
+        color: AppColors.page,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        border: Border(top: BorderSide(color: AppColors.glassBorder(context))),
       ),
       child: SingleChildScrollView(
         child: Column(
@@ -1388,7 +1388,7 @@ class _ContactsSheetState extends State<_ContactsSheet> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               '最多 3 位。邮箱或电话至少填写一个。',
               style: TextStyle(color: AppColors.muted, fontSize: 14),
             ),
@@ -1420,7 +1420,7 @@ class _ContactsSheetState extends State<_ContactsSheet> {
                     borderRadius: BorderRadius.circular(16),
                   ),
                   alignment: Alignment.center,
-                  child: const Text(
+                  child: Text(
                     '添加联系人',
                     style: TextStyle(
                       color: AppColors.text,
@@ -1505,14 +1505,14 @@ class _ContactsDetailSheet extends StatelessWidget {
         20,
         MediaQuery.paddingOf(context).bottom + 18,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.page,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: SafeArea(
         top: false,
         child: DefaultTextStyle(
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.text,
             decoration: TextDecoration.none,
           ),
@@ -1535,7 +1535,7 @@ class _ContactsDetailSheet extends StatelessWidget {
                   ),
                   Text(
                     '${contacts.length} 人',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.muted,
                       fontSize: 16,
                       fontWeight: FontWeight.w900,
@@ -1568,11 +1568,13 @@ class _ContactsDetailSheet extends StatelessWidget {
                 child: Container(
                   height: 54,
                   decoration: BoxDecoration(
-                    color: editable ? const Color(0xFF121A23) : Colors.white,
+                    color: editable
+                        ? const Color(0xFF121A23)
+                        : AppColors.elevatedSurface(context, light: 0.90),
                     borderRadius: BorderRadius.circular(20),
                     border: editable
                         ? null
-                        : Border.all(color: const Color(0xFFE0E4EA)),
+                        : Border.all(color: AppColors.glassBorder(context)),
                   ),
                   alignment: Alignment.center,
                   child: Text(
@@ -1602,15 +1604,16 @@ class _ContactDetailCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.84),
+        color: AppColors.elevatedSurface(context, light: 0.84),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white),
+        border: Border.all(color: AppColors.glassBorder(context)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF314054).withValues(alpha: 0.05),
+            color: AppColors.shadow.withValues(alpha: isDark ? 0.50 : 0.05),
             blurRadius: 22,
             offset: const Offset(0, 12),
           ),
@@ -1629,7 +1632,7 @@ class _ContactDetailCard extends StatelessWidget {
             alignment: Alignment.center,
             child: Text(
               '${index + 1}',
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.text,
                 fontSize: 21,
                 fontWeight: FontWeight.w900,
@@ -1646,7 +1649,7 @@ class _ContactDetailCard extends StatelessWidget {
                   contact.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.text,
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
@@ -1733,9 +1736,9 @@ class _ContactEditor extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F8FA),
+        color: AppColors.elevatedSurface(context, light: 0.88),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE6E9EF)),
+        border: Border.all(color: AppColors.glassBorder(context)),
       ),
       child: Column(
         children: [
@@ -1783,9 +1786,13 @@ class _SheetField extends StatelessWidget {
       placeholder: placeholder,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.elevatedSurface(context, light: 0.92),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE6E9EF)),
+        border: Border.all(color: AppColors.glassBorder(context)),
+      ),
+      style: TextStyle(color: AppColors.text),
+      placeholderStyle: TextStyle(
+        color: AppColors.muted.withValues(alpha: 0.62),
       ),
     );
   }
@@ -1900,7 +1907,7 @@ class _LastWillEditorSheetState extends State<_LastWillEditorSheet> {
         alignment: Alignment.bottomCenter,
         child: Container(
           height: availableHeight,
-          color: const Color(0xFFF7F9F7),
+          color: AppColors.page,
           child: SafeArea(
             top: true,
             bottom: false,
@@ -1910,9 +1917,9 @@ class _LastWillEditorSheetState extends State<_LastWillEditorSheet> {
                   padding: const EdgeInsets.fromLTRB(18, 10, 18, 8),
                   child: Row(
                     children: [
-                      _LegacyRoundIconButton(
+                      _AppNavCircleButton(
                         icon: CupertinoIcons.xmark,
-                        onTap: () => Navigator.of(context).maybePop(),
+                        onPressed: () => Navigator.of(context).maybePop(),
                       ),
                       const Expanded(
                         child: Text(
@@ -1937,14 +1944,16 @@ class _LastWillEditorSheetState extends State<_LastWillEditorSheet> {
                     child: Container(
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.82),
+                        color: AppColors.elevatedSurface(context, light: 0.82),
                         borderRadius: BorderRadius.circular(28),
-                        border: Border.all(color: Colors.white),
+                        border: Border.all(
+                          color: AppColors.glassBorder(context),
+                        ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(
-                              0xFF314054,
-                            ).withValues(alpha: 0.08),
+                            color: AppColors.shadow.withValues(
+                              alpha: AppColors.isDark(context) ? 0.56 : 0.08,
+                            ),
                             blurRadius: 30,
                             offset: const Offset(0, 18),
                           ),
@@ -1957,7 +1966,16 @@ class _LastWillEditorSheetState extends State<_LastWillEditorSheet> {
                         textAlignVertical: TextAlignVertical.top,
                         placeholder: '把想留下的话写在这里。',
                         padding: EdgeInsets.zero,
-                        style: const TextStyle(fontSize: 18, height: 1.55),
+                        style: TextStyle(
+                          color: AppColors.text,
+                          fontSize: 18,
+                          height: 1.55,
+                        ),
+                        placeholderStyle: TextStyle(
+                          color: AppColors.muted.withValues(alpha: 0.62),
+                          fontSize: 18,
+                          height: 1.55,
+                        ),
                         decoration: const BoxDecoration(),
                       ),
                     ),
@@ -1982,16 +2000,29 @@ class _LastWillEditorSheetState extends State<_LastWillEditorSheet> {
                           child: Container(
                             height: 54,
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: AppColors.elevatedSurface(
+                                context,
+                                light: 0.92,
+                              ),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: const Color(0xFFE0E4EA),
+                                color: AppColors.glassBorder(context),
                               ),
+                              boxShadow: [
+                                if (AppColors.isDark(context))
+                                  BoxShadow(
+                                    color: AppColors.shadow.withValues(
+                                      alpha: 0.42,
+                                    ),
+                                    blurRadius: 16,
+                                    offset: const Offset(0, 8),
+                                  ),
+                              ],
                             ),
                             alignment: Alignment.center,
                             child: Text(
                               widget.canConvertToDraft ? '转草稿' : '存草稿',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppColors.text,
                                 fontSize: 16,
                                 fontWeight: FontWeight.w900,
