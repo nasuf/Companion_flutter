@@ -769,6 +769,25 @@ class _ComponentCardBubble extends StatelessWidget {
     final accent = _parseColor(card.accent);
     final isTimeCapsule = card.type == 'time_capsule';
     final timeCapsuleContent = _timeCapsuleContent(card);
+    final isDark = AppColors.isDark(context);
+    final capsuleSkin = isTimeCapsule
+        ? _CapsuleSkin.byId(
+            _effectiveCapsuleSkinId(
+              context,
+              card.payload['skin']?.toString(),
+              useThemeDefaultForPaper: true,
+            ),
+          )
+        : null;
+    final cardSurface = isTimeCapsule
+        ? capsuleSkin!.paper
+        : (isDark ? AppColors.surface : Colors.white);
+    final borderColor = isTimeCapsule
+        ? capsuleSkin!.accent.withValues(alpha: isDark ? 0.34 : 0.24)
+        : accent.withValues(alpha: isDark ? 0.20 : 0.24);
+    final titleColor = isTimeCapsule ? capsuleSkin!.text : AppColors.text;
+    final mutedColor = isTimeCapsule ? capsuleSkin!.muted : AppColors.muted;
+    final glowColor = isTimeCapsule ? capsuleSkin!.accent : accent;
     final icon = switch (card.type) {
       'weather' => CupertinoIcons.cloud_sun_fill,
       'external_link' => CupertinoIcons.link_circle_fill,
@@ -785,18 +804,18 @@ class _ComponentCardBubble extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 292),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: cardSurface,
             borderRadius: BorderRadius.only(
               topLeft: Radius.circular(isMine ? 20 : 5),
               topRight: Radius.circular(isMine ? 5 : 20),
               bottomLeft: const Radius.circular(20),
               bottomRight: const Radius.circular(20),
             ),
-            border: Border.all(color: accent.withValues(alpha: 0.24)),
+            border: Border.all(color: borderColor),
             boxShadow: [
               BoxShadow(
-                color: accent.withValues(alpha: 0.14),
-                blurRadius: 22,
+                color: glowColor.withValues(alpha: isDark ? 0.22 : 0.14),
+                blurRadius: isDark ? 26 : 22,
                 offset: const Offset(0, 10),
               ),
             ],
@@ -818,7 +837,7 @@ class _ComponentCardBubble extends StatelessWidget {
                     height: 102,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: accent.withValues(alpha: 0.12),
+                      color: glowColor.withValues(alpha: isDark ? 0.16 : 0.12),
                     ),
                   ),
                 ),
@@ -845,7 +864,7 @@ class _ComponentCardBubble extends StatelessWidget {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      color: AppColors.muted,
+                                      color: mutedColor,
                                       fontWeight: FontWeight.w700,
                                       fontSize: 12,
                                       height: 1.25,
@@ -860,7 +879,7 @@ class _ComponentCardBubble extends StatelessWidget {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
-                                          color: AppColors.text,
+                                          color: titleColor,
                                           fontWeight: FontWeight.w800,
                                           fontSize: 15,
                                           height: 1.15,
@@ -872,7 +891,7 @@ class _ComponentCardBubble extends StatelessWidget {
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
-                                            color: AppColors.muted,
+                                            color: mutedColor,
                                             fontWeight: FontWeight.w600,
                                             fontSize: 11,
                                             height: 1.35,
@@ -910,7 +929,7 @@ class _ComponentCardBubble extends StatelessWidget {
                           maxLines: isTimeCapsule ? 2 : 4,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: AppColors.text,
+                            color: titleColor,
                             fontSize: 14,
                             height: 1.42,
                           ),
@@ -923,7 +942,7 @@ class _ComponentCardBubble extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: accent,
+                            color: isTimeCapsule ? capsuleSkin!.accent : accent,
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 0,
