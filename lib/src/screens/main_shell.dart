@@ -1573,7 +1573,15 @@ class _ProfileThemeSectionV6 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final controller = AppThemeScope.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final selectedMode = controller.mode;
+    final isLightSelected =
+        selectedMode == ThemeMode.light ||
+        (selectedMode == ThemeMode.system && !isDark);
+    final isDarkSelected =
+        selectedMode == ThemeMode.dark ||
+        (selectedMode == ThemeMode.system && isDark);
     return _ProfileSectionV6(
       title: '界面风格',
       trailing: isDark ? '当前 深色' : '当前 浅色',
@@ -1586,8 +1594,9 @@ class _ProfileThemeSectionV6 extends StatelessWidget {
                 label: '浅色',
                 caption: '清透明亮',
                 icon: CupertinoIcons.sun_max_fill,
-                selected: !isDark,
+                selected: isLightSelected,
                 brightness: Brightness.light,
+                mode: ThemeMode.light,
               ),
             ),
             const SizedBox(width: 12),
@@ -1596,8 +1605,9 @@ class _ProfileThemeSectionV6 extends StatelessWidget {
                 label: '深色',
                 caption: '安静沉浸',
                 icon: CupertinoIcons.moon_stars_fill,
-                selected: isDark,
+                selected: isDarkSelected,
                 brightness: Brightness.dark,
+                mode: ThemeMode.dark,
               ),
             ),
           ],
@@ -1666,6 +1676,7 @@ class _ProfileThemeModeCardV6 extends StatelessWidget {
     required this.icon,
     required this.selected,
     required this.brightness,
+    required this.mode,
   });
 
   final String label;
@@ -1673,6 +1684,7 @@ class _ProfileThemeModeCardV6 extends StatelessWidget {
   final IconData icon;
   final bool selected;
   final Brightness brightness;
+  final ThemeMode mode;
 
   @override
   Widget build(BuildContext context) {
@@ -1692,7 +1704,7 @@ class _ProfileThemeModeCardV6 extends StatelessWidget {
     return CupertinoButton(
       padding: EdgeInsets.zero,
       borderRadius: BorderRadius.circular(24),
-      onPressed: null,
+      onPressed: () => AppThemeScope.of(context).setMode(mode),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
