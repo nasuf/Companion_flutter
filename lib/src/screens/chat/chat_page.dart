@@ -40,6 +40,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const _composerPanelHeight = 236.0;
   static const _messagePageSize = 100;
   static const _loadOlderThreshold = 80.0;
+  static final _supportedSharedLinkPattern = RegExp(
+    r'(?:https?:\/\/)?(?:[\w-]+\.)?(?:xhslink\.com|xiaohongshu\.com|v\.douyin\.com|douyin\.com|iesdouyin\.com|weibo\.com|weibo\.cn|t\.cn|toutiao\.com|snssdk\.com|zhihu\.com|zhuanlan\.zhihu\.com)\/[^\s，。；：）】》]+',
+    caseSensitive: false,
+  );
 
   final _scrollController = ScrollController();
   final _inputController = TextEditingController();
@@ -54,6 +58,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   StreamSubscription<WsEnvelope>? _eventSub;
   StreamSubscription<ChatSocketState>? _stateSub;
   StreamSubscription<void>? _musicCompleteSub;
+  StreamSubscription<List<SharedMediaFile>>? _shareIntentSub;
   ComposerPanel _panel = ComposerPanel.none;
   ComposerPanel _heldPanel = ComposerPanel.none;
   Timer? _panelHoldTimer;
@@ -90,6 +95,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Timer? _stationPauseTimer;
   final Set<String> _favoriteMusicTrackIds = {};
   final Set<String> _busyMusicFavoriteIds = {};
+  String? _lastClipboardLinkText;
+  bool _checkingClipboardLink = false;
 
   String get _conversationId => widget.session.conversationId!;
 
@@ -146,6 +153,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _conversationMetaTimer?.cancel();
     _stationPauseTimer?.cancel();
     _musicCompleteSub?.cancel();
+    _shareIntentSub?.cancel();
     super.dispose();
   }
 
@@ -154,6 +162,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (state != AppLifecycleState.resumed) return;
     unawaited(_scanReadyCapsules());
     unawaited(_refreshConversationMeta());
+    unawaited(_handleClipboardLink());
     _scheduleNextCapsuleScan();
   }
 
@@ -171,6 +180,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Future<void> _bootstrapChat() async {
     await _eventSub?.cancel();
     await _stateSub?.cancel();
+    await _shareIntentSub?.cancel();
+    _shareIntentSub = null;
     await _socket?.close();
     _panelHoldTimer?.cancel();
     _capsuleScanTimer?.cancel();
@@ -212,6 +223,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _scheduleNextCapsuleScan();
     _scheduleConversationMetaRefresh();
     _connectSocket();
+    unawaited(_listenForSharedLinks());
+    unawaited(_handleClipboardLink());
   }
 
   void _scheduleConversationMetaRefresh() {
@@ -264,6 +277,78 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     });
     _eventSub = socket.events.listen(_handleWsEvent);
     unawaited(socket.connect());
+  }
+
+  Future<void> _listenForSharedLinks() async {
+    try {
+      final initial = await ReceiveSharingIntent.instance.getInitialMedia();
+      if (initial.isNotEmpty) {
+        await _handleSharedMedia(initial);
+        await ReceiveSharingIntent.instance.reset();
+      }
+      _shareIntentSub = ReceiveSharingIntent.instance.getMediaStream().listen(
+        (files) => unawaited(_handleSharedMedia(files)),
+      );
+    } catch (error) {
+      debugPrint('Share intent unavailable: $error');
+    }
+  }
+
+  Future<void> _handleSharedMedia(List<SharedMediaFile> files) async {
+    final text = _sharedTextFromMedia(files);
+    if (text.trim().isEmpty || !mounted) return;
+    await _sendSharedLinkText(text, sourceApp: 'system_share_sheet');
+  }
+
+  Future<void> _handleClipboardLink() async {
+    if (_checkingClipboardLink || !mounted) return;
+    _checkingClipboardLink = true;
+    try {
+      final data = await services.Clipboard.getData(
+        services.Clipboard.kTextPlain,
+      );
+      final text = data?.text?.trim() ?? '';
+      if (text.isEmpty || text == _lastClipboardLinkText) return;
+      if (!_supportedSharedLinkPattern.hasMatch(text)) return;
+      _lastClipboardLinkText = text;
+      await _sendSharedLinkText(text, sourceApp: 'clipboard');
+    } catch (error) {
+      debugPrint('Clipboard link check failed: $error');
+    } finally {
+      _checkingClipboardLink = false;
+    }
+  }
+
+  Future<void> _sendSharedLinkText(
+    String text, {
+    required String sourceApp,
+  }) async {
+    try {
+      final preview = await widget.api.previewChatLink(
+        conversationId: _conversationId,
+        sharedText: text,
+        sourceApp: sourceApp,
+      );
+      if (!mounted) return;
+      final bodyText = text == preview.finalUrl || text == preview.sourceUrl
+          ? ''
+          : text;
+      _sendText(bodyText, componentCard: preview.componentCard);
+    } catch (error) {
+      debugPrint('Link preview failed, sending raw shared text: $error');
+      if (mounted) _sendText(text);
+    }
+  }
+
+  String _sharedTextFromMedia(List<SharedMediaFile> files) {
+    final parts = <String>[];
+    for (final file in files) {
+      final path = file.path.trim();
+      if (path.isNotEmpty) parts.add(path);
+      final message = file.message?.trim();
+      if (message != null && message.isNotEmpty) parts.add(message);
+    }
+    return parts.toSet().join('\n');
   }
 
   Future<void> _loadLatestMessages({required bool showLoading}) async {
@@ -395,6 +480,18 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _openComponentCard(ChatComponentCard card) async {
+    if (card.type == 'external_link') {
+      final rawUrl =
+          card.payload['final_url']?.toString() ??
+          card.payload['source_url']?.toString();
+      final uri = Uri.tryParse(rawUrl ?? '');
+      if (uri == null) return;
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened) {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+      return;
+    }
     if (card.type == 'music_track') {
       final rawTrack = card.payload['track'];
       final track = rawTrack is Map
@@ -2281,7 +2378,7 @@ class _ReadyCapsuleBanner extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           '有一个新胶囊待开启',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -2296,7 +2393,7 @@ class _ReadyCapsuleBanner extends StatelessWidget {
                           '$dateText 开启，点一下看看',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.muted,
                             fontSize: 11,
                             fontWeight: FontWeight.w700,

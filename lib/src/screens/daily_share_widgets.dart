@@ -7,12 +7,17 @@ class _DailyBreathingBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFFFFFCF8), Color(0xFFFBF8FF), Color(0xFFF4FBFF)],
+          colors: [
+            colors.page,
+            Color.lerp(colors.page, colors.surfaceMuted, 0.38)!,
+            Color.lerp(colors.page, colors.accentSoft, 0.20)!,
+          ],
           stops: [0, 0.54, 1],
         ),
       ),
@@ -294,17 +299,23 @@ class _DailyLoadingState extends StatelessWidget {
 }
 
 class _DailyErrorState extends StatelessWidget {
-  const _DailyErrorState({required this.onRetry});
+  const _DailyErrorState({
+    required this.onRetry,
+    this.title = '照片暂时没拿到',
+    this.subtitle = '网络恢复后再整理一次。',
+  });
 
   final Future<void> Function() onRetry;
+  final String title;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 30, 24, 0),
       child: _DailyStateCard(
-        title: '照片暂时没拿到',
-        subtitle: '网络恢复后再整理一次。',
+        title: title,
+        subtitle: subtitle,
         actionLabel: '重试',
         onAction: onRetry,
       ),
@@ -313,29 +324,21 @@ class _DailyErrorState extends StatelessWidget {
 }
 
 class _DailyEmptyState extends StatelessWidget {
-  const _DailyEmptyState();
+  const _DailyEmptyState({
+    this.icon = CupertinoIcons.photo_on_rectangle,
+    this.title = '还没有照片',
+    this.subtitle = '聊天里发出的图片会自动出现在这里。',
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(24, 30, 24, 0),
-      child: _DailyStateCard(title: '还没有照片', subtitle: '聊天里发出的图片会自动出现在这里。'),
-    );
-  }
-}
-
-class _DailyLinkStub extends StatelessWidget {
-  const _DailyLinkStub();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(24, 30, 24, 0),
-      child: _DailyStateCard(
-        icon: CupertinoIcons.link,
-        title: '链接会放在这里',
-        subtitle: '下一步会把聊天里分享过的链接整理成卡片。',
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 30, 24, 0),
+      child: _DailyStateCard(icon: icon, title: title, subtitle: subtitle),
     );
   }
 }
@@ -357,15 +360,16 @@ class _DailyStateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(28),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.62),
+            color: AppColors.elevatedSurface(context, light: 0.62),
             borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.74)),
+            border: Border.all(color: AppColors.glassBorder(context)),
           ),
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -379,7 +383,7 @@ class _DailyStateCard extends StatelessWidget {
                     children: [
                       Text(
                         title,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.text,
                           fontSize: 17,
                           fontWeight: FontWeight.w900,
@@ -388,8 +392,10 @@ class _DailyStateCard extends StatelessWidget {
                       const SizedBox(height: 5),
                       Text(
                         subtitle,
-                        style: const TextStyle(
-                          color: Color(0x99707A85),
+                        style: TextStyle(
+                          color: isDark
+                              ? AppColors.muted
+                              : const Color(0x99707A85),
                           fontSize: 13,
                           height: 1.35,
                           fontWeight: FontWeight.w600,

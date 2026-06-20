@@ -143,6 +143,10 @@ class CompanionApi {
     );
   }
 
+  ChatLinkCardResponse _normalizeChatLinkCard(ChatLinkCardResponse value) {
+    return value;
+  }
+
   Future<dynamic> _request(
     String method,
     String path, {
@@ -371,12 +375,44 @@ class CompanionApi {
     return _normalizeChatAttachment(ChatAttachment.fromJson(json));
   }
 
+  Future<ChatLinkCardResponse> previewChatLink({
+    required String conversationId,
+    String? url,
+    String? sharedText,
+    String? sourceApp,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/chat/links/preview',
+              body: {
+                'conversation_id': conversationId,
+                if (url?.trim().isNotEmpty == true) 'url': url!.trim(),
+                if (sharedText?.trim().isNotEmpty == true)
+                  'shared_text': sharedText!.trim(),
+                if (sourceApp?.trim().isNotEmpty == true)
+                  'source_app': sourceApp!.trim(),
+              },
+              debugLabel: 'chat.links.preview',
+            )
+            as Map<String, dynamic>;
+    return _normalizeChatLinkCard(ChatLinkCardResponse.fromJson(json));
+  }
+
   Future<DailySharePhotosResponse> listDailySharePhotos({int? limit}) async {
     final suffix = limit == null ? '' : '?limit=$limit';
     final json =
         await _request('GET', '/daily-share/photos$suffix')
             as Map<String, dynamic>;
     return _normalizeDailySharePhotos(DailySharePhotosResponse.fromJson(json));
+  }
+
+  Future<DailyShareLinksResponse> listDailyShareLinks({int? limit}) async {
+    final suffix = limit == null ? '' : '?limit=$limit';
+    final json =
+        await _request('GET', '/daily-share/links$suffix')
+            as Map<String, dynamic>;
+    return DailyShareLinksResponse.fromJson(json);
   }
 
   Future<SudConfigResponse> getSudConfig() async {

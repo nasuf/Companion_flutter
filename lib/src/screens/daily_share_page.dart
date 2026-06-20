@@ -16,6 +16,7 @@ class _DailySharePageState extends State<DailySharePage>
   late final AnimationController _breathController;
   late final ScrollController _scrollController;
   late Future<DailySharePhotosResponse> _photosFuture;
+  late Future<DailyShareLinksResponse> _linksFuture;
   _DailyShareTab _tab = _DailyShareTab.photo;
   double _heroFade = 0;
 
@@ -28,6 +29,7 @@ class _DailySharePageState extends State<DailySharePage>
     )..repeat(reverse: true);
     _scrollController = ScrollController()..addListener(_syncHeroFade);
     _photosFuture = widget.api.listDailySharePhotos();
+    _linksFuture = widget.api.listDailyShareLinks();
   }
 
   @override
@@ -45,9 +47,25 @@ class _DailySharePageState extends State<DailySharePage>
   }
 
   Future<void> _refresh() async {
-    final next = widget.api.listDailySharePhotos();
-    setState(() => _photosFuture = next);
-    await next;
+    final nextPhotos = widget.api.listDailySharePhotos();
+    final nextLinks = widget.api.listDailyShareLinks();
+    setState(() {
+      _photosFuture = nextPhotos;
+      _linksFuture = nextLinks;
+    });
+    await Future.wait([nextPhotos, nextLinks]);
+  }
+
+  Future<void> _openLink(DailyShareLink link) async {
+    final rawUrl = link.finalUrl.trim().isNotEmpty
+        ? link.finalUrl
+        : link.sourceUrl;
+    final uri = Uri.tryParse(rawUrl);
+    if (uri == null) return;
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened) {
+      await launchUrl(uri, mode: LaunchMode.platformDefault);
+    }
   }
 
   Future<void> _previewPhoto(
@@ -94,7 +112,7 @@ class _DailySharePageState extends State<DailySharePage>
           builder: (context, _) {
             final breath = Curves.easeInOut.transform(_breathController.value);
             return Scaffold(
-              backgroundColor: const Color(0xFFFFFCF8),
+              backgroundColor: AppColors.page,
               body: Stack(
                 children: [
                   _DailyBreathingBackground(progress: breath),
@@ -152,7 +170,11 @@ class _DailySharePageState extends State<DailySharePage>
                             breath: _breathController.value,
                           )
                         else
-                          const SliverToBoxAdapter(child: _DailyLinkStub()),
+                          _DailyLinkContent(
+                            future: _linksFuture,
+                            onRetry: _refresh,
+                            onOpen: _openLink,
+                          ),
                         const SliverToBoxAdapter(child: SizedBox(height: 116)),
                       ],
                     ),
@@ -218,6 +240,238 @@ class _DailyPhotoContent extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+class _DailyLinkContent extends StatelessWidget {
+  const _DailyLinkContent({
+    required this.future,
+    required this.onRetry,
+    required this.onOpen,
+  });
+
+  final Future<DailyShareLinksResponse> future;
+  final Future<void> Function() onRetry;
+  final ValueChanged<DailyShareLink> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<DailyShareLinksResponse>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SliverToBoxAdapter(child: _DailyLoadingState());
+        }
+        if (snapshot.hasError) {
+          return SliverToBoxAdapter(
+            child: _DailyErrorState(
+              title: '链接暂时没拿到',
+              subtitle: '网络恢复后再整理一次。',
+              onRetry: onRetry,
+            ),
+          );
+        }
+        final groups = snapshot.data?.groups ?? const <DailyShareLinkGroup>[];
+        if (groups.isEmpty) {
+          return const SliverToBoxAdapter(
+            child: _DailyEmptyState(
+              icon: CupertinoIcons.link,
+              title: '还没有链接',
+              subtitle: '聊天里分享过的链接会按时间收在这里。',
+            ),
+          );
+        }
+        return SliverPadding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+          sliver: SliverList.builder(
+            itemCount: groups.length,
+            itemBuilder: (context, index) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 22),
+                child: _DailyLinkGroupSection(
+                  group: groups[index],
+                  onOpen: onOpen,
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _DailyLinkGroupSection extends StatelessWidget {
+  const _DailyLinkGroupSection({required this.group, required this.onOpen});
+
+  final DailyShareLinkGroup group;
+  final ValueChanged<DailyShareLink> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          group.title,
+          style: const TextStyle(
+            color: Color(0xFF11161A),
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+            height: 1.1,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${group.count} 条 · ${group.subtitle}',
+          style: TextStyle(
+            color: AppColors.muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 12),
+        for (final link in group.links) ...[
+          _DailyLinkCard(link: link, onTap: () => onOpen(link)),
+          const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+}
+
+class _DailyLinkCard extends StatelessWidget {
+  const _DailyLinkCard({required this.link, required this.onTap});
+
+  final DailyShareLink link;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _parseColor(link.componentCard.accent);
+    final imageUrl = link.imageUrl?.trim();
+    final isDark = AppColors.isDark(context);
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: Size.zero,
+      onPressed: onTap,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.elevatedSurface(context, light: 0.76),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.12)
+                : accent.withValues(alpha: 0.20),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: isDark ? 0.18 : 0.10),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: imageUrl?.isNotEmpty == true
+                    ? Image.network(
+                        imageUrl!,
+                        width: 68,
+                        height: 68,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                            _DailyLinkIcon(accent: accent),
+                      )
+                    : _DailyLinkIcon(accent: accent),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      link.platform,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      link.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.text,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        height: 1.18,
+                      ),
+                    ),
+                    if ((link.summary.isNotEmpty ||
+                        link.description.isNotEmpty)) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        link.summary.isNotEmpty
+                            ? link.summary
+                            : link.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                          height: 1.28,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 7),
+                    Text(
+                      '打开原链接',
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _parseColor(String value) {
+    final hex = value.replaceFirst('#', '').trim();
+    final parsed = hex.length == 6 ? int.tryParse(hex, radix: 16) : null;
+    return parsed == null ? AppColors.accent : Color(0xFF000000 | parsed);
+  }
+}
+
+class _DailyLinkIcon extends StatelessWidget {
+  const _DailyLinkIcon({required this.accent});
+
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 68,
+      height: 68,
+      color: accent.withValues(alpha: 0.10),
+      child: Icon(CupertinoIcons.link, color: accent, size: 24),
     );
   }
 }
@@ -364,7 +618,7 @@ class _DailyPhotoGroupSectionState extends State<_DailyPhotoGroupSection> {
                   children: [
                     Text(
                       widget.group.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.text,
                         fontSize: 21,
                         fontWeight: FontWeight.w900,
@@ -532,10 +786,12 @@ class _DailyPhotoTile extends StatelessWidget {
               height: 104,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.54),
+                  color: AppColors.subtleFill(context, light: 0.54),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF22364A).withValues(alpha: 0.12),
+                      color: AppColors.shadow.withValues(
+                        alpha: AppColors.isDark(context) ? 0.48 : 0.12,
+                      ),
                       blurRadius: 28,
                       offset: const Offset(0, 16),
                     ),

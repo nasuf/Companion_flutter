@@ -595,6 +595,184 @@ class ChatComponentCard {
   }
 }
 
+class ChatLinkCardResponse {
+  const ChatLinkCardResponse({
+    required this.id,
+    required this.conversationId,
+    required this.sourceUrl,
+    required this.finalUrl,
+    required this.platform,
+    required this.title,
+    required this.componentCard,
+    this.messageId,
+    this.role = 'user',
+    this.sourceApp,
+    this.description = '',
+    this.author,
+    this.imageUrl,
+    this.summary = '',
+    this.status = 'ready',
+    this.error,
+    this.createdAt,
+  });
+
+  final String id;
+  final String conversationId;
+  final String? messageId;
+  final String role;
+  final String? sourceApp;
+  final String sourceUrl;
+  final String finalUrl;
+  final String platform;
+  final String title;
+  final String description;
+  final String? author;
+  final String? imageUrl;
+  final String summary;
+  final String status;
+  final String? error;
+  final DateTime? createdAt;
+  final ChatComponentCard componentCard;
+
+  factory ChatLinkCardResponse.fromJson(Map<String, dynamic> json) {
+    return ChatLinkCardResponse(
+      id: json['id'] as String? ?? '',
+      conversationId: json['conversation_id'] as String? ?? '',
+      messageId: json['message_id'] as String?,
+      role: json['role'] as String? ?? 'user',
+      sourceApp: json['source_app'] as String?,
+      sourceUrl: json['source_url'] as String? ?? '',
+      finalUrl: json['final_url'] as String? ?? '',
+      platform: json['platform'] as String? ?? '链接',
+      title: json['title'] as String? ?? '未命名链接',
+      description: json['description'] as String? ?? '',
+      author: json['author'] as String?,
+      imageUrl: json['image_url'] as String?,
+      summary: json['summary'] as String? ?? '',
+      status: json['status'] as String? ?? 'ready',
+      error: json['error'] as String?,
+      createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
+      componentCard: ChatComponentCard.fromJson(
+        json['component_card'] is Map
+            ? json['component_card'] as Map
+            : const <String, dynamic>{},
+      ),
+    );
+  }
+}
+
+class DailyShareLink {
+  const DailyShareLink({
+    required this.id,
+    required this.conversationId,
+    required this.role,
+    required this.sourceUrl,
+    required this.finalUrl,
+    required this.platform,
+    required this.title,
+    required this.componentCard,
+    this.messageId,
+    this.sourceApp,
+    this.description = '',
+    this.author,
+    this.imageUrl,
+    this.summary = '',
+    this.createdAt,
+  });
+
+  final String id;
+  final String? messageId;
+  final String conversationId;
+  final String role;
+  final String? sourceApp;
+  final String sourceUrl;
+  final String finalUrl;
+  final String platform;
+  final String title;
+  final String description;
+  final String? author;
+  final String? imageUrl;
+  final String summary;
+  final DateTime? createdAt;
+  final ChatComponentCard componentCard;
+
+  factory DailyShareLink.fromJson(Map<String, dynamic> json) {
+    return DailyShareLink(
+      id: json['id'] as String? ?? '',
+      messageId: json['message_id'] as String?,
+      conversationId: json['conversation_id'] as String? ?? '',
+      role: json['role'] as String? ?? 'user',
+      sourceApp: json['source_app'] as String?,
+      sourceUrl: json['source_url'] as String? ?? '',
+      finalUrl: json['final_url'] as String? ?? '',
+      platform: json['platform'] as String? ?? '链接',
+      title: json['title'] as String? ?? '未命名链接',
+      description: json['description'] as String? ?? '',
+      author: json['author'] as String?,
+      imageUrl: json['image_url'] as String?,
+      summary: json['summary'] as String? ?? '',
+      createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
+      componentCard: ChatComponentCard.fromJson(
+        json['component_card'] is Map
+            ? json['component_card'] as Map
+            : const <String, dynamic>{},
+      ),
+    );
+  }
+}
+
+class DailyShareLinkGroup {
+  const DailyShareLinkGroup({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.count,
+    required this.links,
+  });
+
+  final String id;
+  final String title;
+  final String subtitle;
+  final int count;
+  final List<DailyShareLink> links;
+
+  factory DailyShareLinkGroup.fromJson(Map<String, dynamic> json) {
+    final rawLinks = json['links'];
+    return DailyShareLinkGroup(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      subtitle: json['subtitle'] as String? ?? '',
+      count: (json['count'] as num?)?.round() ?? 0,
+      links: [
+        if (rawLinks is List)
+          for (final item in rawLinks)
+            if (item is Map)
+              DailyShareLink.fromJson(Map<String, dynamic>.from(item)),
+      ],
+    );
+  }
+}
+
+class DailyShareLinksResponse {
+  const DailyShareLinksResponse({required this.total, required this.groups});
+
+  final int total;
+  final List<DailyShareLinkGroup> groups;
+
+  factory DailyShareLinksResponse.fromJson(Map<String, dynamic> json) {
+    final rawGroups = json['groups'];
+    return DailyShareLinksResponse(
+      total: (json['total'] as num?)?.round() ?? 0,
+      groups: [
+        if (rawGroups is List)
+          for (final item in rawGroups)
+            if (item is Map)
+              DailyShareLinkGroup.fromJson(Map<String, dynamic>.from(item)),
+      ],
+    );
+  }
+}
+
 class AchievementItem {
   const AchievementItem({
     required this.id,

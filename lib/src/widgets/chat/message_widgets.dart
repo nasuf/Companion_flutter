@@ -57,7 +57,7 @@ class _MessageList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (messages.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
           '还没有聊天记录，发一句话开始吧。',
           style: TextStyle(color: AppColors.muted),
@@ -239,12 +239,19 @@ class _GameStatusTimelineRow extends StatelessWidget {
     final prefix = actorName?.isNotEmpty == true ? '$actorName 和你' : '你们';
     final title = gameTitle?.isNotEmpty == true ? gameTitle! : '游戏';
     final label = '$prefix已${isEnded ? '退出' : '进入'}游戏《$title》';
-    final accent = isEnded ? const Color(0xFF64748B) : const Color(0xFF177DDC);
-    final fill = isEnded ? const Color(0xFFF1F5F9) : const Color(0xFFEAF4FF);
-    final border = isEnded ? const Color(0xFFD5DEE9) : const Color(0xFFBFDDFF);
-    final iconFill = isEnded
-        ? const Color(0xFFE2E8F0)
-        : const Color(0xFFDCEEFF);
+    final isDark = AppColors.isDark(context);
+    final accent = isEnded
+        ? (isDark ? const Color(0xFF9AA8B8) : const Color(0xFF64748B))
+        : (isDark ? AppColors.accent : const Color(0xFF177DDC));
+    final fill = isDark
+        ? AppColors.surfaceMuted.withValues(alpha: 0.76)
+        : (isEnded ? const Color(0xFFF1F5F9) : const Color(0xFFEAF4FF));
+    final border = isDark
+        ? Colors.white.withValues(alpha: 0.12)
+        : (isEnded ? const Color(0xFFD5DEE9) : const Color(0xFFBFDDFF));
+    final iconFill = isDark
+        ? accent.withValues(alpha: 0.16)
+        : (isEnded ? const Color(0xFFE2E8F0) : const Color(0xFFDCEEFF));
     final maxBubbleWidth = math.min(
       320.0,
       MediaQuery.sizeOf(context).width - 72,
@@ -351,12 +358,19 @@ class _MusicStatusTimelineRow extends StatelessWidget {
       _ => '',
     };
     final label = '$prefix${isEnded ? '已退出共听' : '已加入共听'}';
-    final accent = isEnded ? const Color(0xFF64748B) : const Color(0xFF149249);
-    final fill = isEnded ? const Color(0xFFF1F5F9) : const Color(0xFFEAF8EF);
-    final border = isEnded ? const Color(0xFFD5DEE9) : const Color(0xFFBDEBCB);
-    final iconFill = isEnded
-        ? const Color(0xFFE2E8F0)
-        : const Color(0xFFD9F5E4);
+    final isDark = AppColors.isDark(context);
+    final accent = isEnded
+        ? (isDark ? const Color(0xFF9AA8B8) : const Color(0xFF64748B))
+        : (isDark ? const Color(0xFF35D487) : const Color(0xFF149249));
+    final fill = isDark
+        ? AppColors.surfaceMuted.withValues(alpha: 0.76)
+        : (isEnded ? const Color(0xFFF1F5F9) : const Color(0xFFEAF8EF));
+    final border = isDark
+        ? Colors.white.withValues(alpha: 0.12)
+        : (isEnded ? const Color(0xFFD5DEE9) : const Color(0xFFBDEBCB));
+    final iconFill = isDark
+        ? accent.withValues(alpha: 0.16)
+        : (isEnded ? const Color(0xFFE2E8F0) : const Color(0xFFD9F5E4));
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
       child: Center(
@@ -479,7 +493,8 @@ class _Bubble extends StatelessWidget {
         .where((item) => item.isImage)
         .toList();
     final showTextWithCard =
-        componentCard?.type == 'music_track' &&
+        (componentCard?.type == 'music_track' ||
+            componentCard?.type == 'external_link') &&
         message.content.trim().isNotEmpty;
     final showTextWithAttachments =
         attachments.isNotEmpty && message.content.trim().isNotEmpty;
@@ -543,7 +558,7 @@ class _Bubble extends StatelessWidget {
             children: [
               Text(
                 _formatTime(message.createdAt),
-                style: const TextStyle(color: AppColors.muted, fontSize: 10),
+                style: TextStyle(color: AppColors.muted, fontSize: 10),
               ),
               if (message.isMine && message.read) ...[
                 const SizedBox(width: 5),
@@ -690,7 +705,7 @@ class _ImageAttachmentBubble extends StatelessWidget {
   }
 
   Widget get _imageFallback {
-    return const SizedBox(
+    return SizedBox(
       width: 180,
       height: 150,
       child: Center(child: Icon(CupertinoIcons.photo, color: AppColors.muted)),
@@ -756,6 +771,7 @@ class _ComponentCardBubble extends StatelessWidget {
     final timeCapsuleContent = _timeCapsuleContent(card);
     final icon = switch (card.type) {
       'weather' => CupertinoIcons.cloud_sun_fill,
+      'external_link' => CupertinoIcons.link_circle_fill,
       'checkin_reminder' ||
       'checkin_habit' => CupertinoIcons.check_mark_circled_solid,
       _ => CupertinoIcons.square_grid_2x2_fill,
@@ -828,7 +844,7 @@ class _ComponentCardBubble extends StatelessWidget {
                                         : card.subtitle,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       color: AppColors.muted,
                                       fontWeight: FontWeight.w700,
                                       fontSize: 12,
@@ -843,7 +859,7 @@ class _ComponentCardBubble extends StatelessWidget {
                                         card.title,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           color: AppColors.text,
                                           fontWeight: FontWeight.w800,
                                           fontSize: 15,
@@ -855,7 +871,7 @@ class _ComponentCardBubble extends StatelessWidget {
                                           card.subtitle,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             color: AppColors.muted,
                                             fontWeight: FontWeight.w600,
                                             fontSize: 11,
@@ -870,11 +886,30 @@ class _ComponentCardBubble extends StatelessWidget {
                       if ((isTimeCapsule ? timeCapsuleContent : card.body)
                           .isNotEmpty) ...[
                         const SizedBox(height: 12),
+                        if (card.type == 'external_link' &&
+                            (card.payload['image_url']
+                                    ?.toString()
+                                    .trim()
+                                    .isNotEmpty ??
+                                false)) ...[
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.network(
+                              card.payload['image_url'].toString(),
+                              height: 112,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  const SizedBox.shrink(),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                        ],
                         Text(
                           isTimeCapsule ? timeCapsuleContent : card.body,
                           maxLines: isTimeCapsule ? 2 : 4,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.text,
                             fontSize: 14,
                             height: 1.42,

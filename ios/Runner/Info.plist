@@ -36,6 +36,16 @@
 				<string>$(WECHAT_APP_ID)</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>sharemedia</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>ShareMedia-$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
@@ -43,6 +53,11 @@
 	<array>
 		<string>weixin</string>
 		<string>weixinULAPI</string>
+		<string>xhsdiscover</string>
+		<string>sinaweibo</string>
+		<string>snssdk141</string>
+		<string>snssdk1128</string>
+		<string>zhihu</string>
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>

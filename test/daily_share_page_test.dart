@@ -61,6 +61,46 @@ class _FakeDailyShareApi extends CompanionApi {
       ],
     );
   }
+
+  @override
+  Future<DailyShareLinksResponse> listDailyShareLinks({int? limit}) async {
+    return const DailyShareLinksResponse(
+      total: 1,
+      groups: [
+        DailyShareLinkGroup(
+          id: 'links-2026-06-19',
+          title: '06月19日',
+          subtitle: '小红书',
+          count: 1,
+          links: [
+            DailyShareLink(
+              id: 'link-1',
+              conversationId: 'conv-1',
+              role: 'user',
+              sourceUrl: 'https://xhslink.com/a1',
+              finalUrl: 'https://www.xiaohongshu.com/explore/1',
+              platform: '小红书',
+              title: '周末咖啡馆',
+              summary: '阳光很好，适合坐在窗边。',
+              componentCard: ChatComponentCard(
+                type: 'external_link',
+                title: '周末咖啡馆',
+                subtitle: '小红书',
+                body: '阳光很好，适合坐在窗边。',
+                footer: '点击打开原 App / 网页',
+                accent: '#F43F5E',
+                payload: {
+                  'link_id': 'link-1',
+                  'final_url': 'https://www.xiaohongshu.com/explore/1',
+                  'platform': '小红书',
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 }
 
 Future<void> _pumpDailySharePage(WidgetTester tester) async {
@@ -174,7 +214,12 @@ void main() {
     await tester.tap(find.text('链接'));
     await tester.pump();
 
-    expect(find.text('链接会放在这里'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('06月19日'), findsOneWidget);
+    expect(find.text('1 条 · 小红书'), findsOneWidget);
+    expect(find.text('周末咖啡馆'), findsOneWidget);
+    expect(find.text('阳光很好，适合坐在窗边。'), findsOneWidget);
     expect(find.text('PHOTO DIARY'), findsNothing);
     expect(find.text('把照片整理成一句自然分享'), findsNothing);
   });
