@@ -681,9 +681,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
     if (!mounted || shouldOpen != true) return;
     try {
+      await _waitForNavigatorUnlock();
+      if (!mounted) return;
       final opened = await widget.api.openTimeCapsule(capsule.id);
       if (!mounted) return;
       setState(() => _readyCapsule = null);
+      await _waitForNavigatorUnlock();
+      if (!mounted) return;
       final draft = await Navigator.of(context).push<CapsuleChatDraft>(
         CupertinoPageRoute<CapsuleChatDraft>(
           fullscreenDialog: true,

@@ -339,6 +339,7 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
   String? _error;
   bool _skinInitialized = false;
   bool _skinManuallySelected = false;
+  bool _routeSettled = false;
 
   @override
   void initState() {
@@ -351,28 +352,39 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
     _initialOpenDate = _openDate;
     _initialMediaKey = _mediaKey(_mediaPayload());
     unawaited(_loadDraftDetailMedia());
+    unawaited(_markRouteSettled());
+  }
+
+  Future<void> _markRouteSettled() async {
+    await _waitForNavigatorUnlock(delay: const Duration(milliseconds: 340));
+    if (!mounted) return;
+    setState(() => _routeSettled = true);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final defaultSkin = _defaultSkinForContext(context);
+    final initialSkin = _initialSkinForContext(context);
     if (!_skinInitialized) {
-      _skin = widget.draft?.skin ?? defaultSkin;
+      _skin = initialSkin;
       _initialSkin = _skin;
       _skinInitialized = true;
       return;
     }
-    if (widget.draft == null &&
+    if ((widget.draft == null || widget.readOnly) &&
         !_skinManuallySelected &&
-        _skin != defaultSkin) {
-      _skin = defaultSkin;
+        _skin != initialSkin) {
+      _skin = initialSkin;
       _initialSkin = _skin;
     }
   }
 
-  String _defaultSkinForContext(BuildContext context) {
-    return AppColors.isDark(context) ? 'night' : 'paper';
+  String _initialSkinForContext(BuildContext context) {
+    return _effectiveCapsuleSkinId(
+      context,
+      widget.draft?.skin,
+      useThemeDefaultForPaper: widget.readOnly,
+    );
   }
 
   @override
@@ -698,8 +710,16 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
 
   Future<void> _deleteCapsule() async {
     final draft = widget.draft;
-    if (draft == null || _saving) return;
-    final confirmed = await _confirmDeleteCapsule(context);
+    if (draft == null || _saving || !_routeSettled) return;
+    bool? confirmed;
+    try {
+      await _waitForNavigatorUnlock();
+      if (!mounted) return;
+      confirmed = await _confirmDeleteCapsule(context);
+    } catch (error) {
+      if (mounted) setState(() => _error = _asMessage(error));
+      return;
+    }
     if (confirmed != true || !mounted) return;
     setState(() {
       _saving = true;
@@ -708,6 +728,9 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
     });
     try {
       await widget.api.deleteTimeCapsule(draft.id);
+      if (mounted) {
+        await _waitForNavigatorUnlock(delay: Duration.zero);
+      }
       if (mounted) {
         Navigator.of(context).pop(_CapsuleEditorResult.deleted(draft));
       }
@@ -719,6 +742,17 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
           _savingStatus = null;
         });
       }
+    }
+  }
+
+  Future<void> _closeEditor([Object? result]) async {
+    if (_saving || !_routeSettled) return;
+    await _waitForNavigatorUnlock(delay: Duration.zero);
+    if (!mounted) return;
+    if (result == null) {
+      await Navigator.of(context).maybePop();
+    } else {
+      Navigator.of(context).pop(result);
     }
   }
 
@@ -1028,9 +1062,9 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
                 children: [
                   _AppNavCircleButton(
                     icon: CupertinoIcons.xmark,
-                    onPressed: _saving
+                    onPressed: _saving || !_routeSettled
                         ? null
-                        : () => Navigator.of(context).maybePop(),
+                        : () => unawaited(_closeEditor()),
                   ),
                   Expanded(
                     child: Text(
@@ -1046,11 +1080,11 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
                   if (isReadOnly)
                     _ReadOnlyCapsuleActions(
                       deleting: _savingStatus == 'delete',
-                      enabled: !_saving,
+                      enabled: !_saving && _routeSettled,
                       onDelete: _deleteCapsule,
-                      onSend: () => Navigator.of(
-                        context,
-                      ).pop(_draftForCapsule(widget.draft!)),
+                      onSend: () => unawaited(
+                        _closeEditor(_draftForCapsule(widget.draft!)),
+                      ),
                     )
                   else if (widget.draft == null)
                     const SizedBox(width: 54)
@@ -1059,7 +1093,7 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
                       icon: CupertinoIcons.delete,
                       danger: true,
                       loading: _savingStatus == 'delete',
-                      onTap: _saving ? null : _deleteCapsule,
+                      onTap: _saving || !_routeSettled ? null : _deleteCapsule,
                     ),
                 ],
               ),
@@ -3774,9 +3808,24 @@ CapsuleChatDraft _draftForCapsule(TimeCapsule capsule) {
           ? null
           : _dateOnly(capsule.openDate!),
       'content': capsule.content,
+      'skin': capsule.skin,
     },
   );
   return CapsuleChatDraft(agentText: text, card: card);
+}
+
+String _effectiveCapsuleSkinId(
+  BuildContext context,
+  String? storedSkin, {
+  required bool useThemeDefaultForPaper,
+}) {
+  final raw = storedSkin?.trim() ?? '';
+  final defaultSkin = AppColors.isDark(context) ? 'night' : 'paper';
+  if (raw.isEmpty) return defaultSkin;
+  if (useThemeDefaultForPaper && raw == 'paper' && AppColors.isDark(context)) {
+    return defaultSkin;
+  }
+  return raw;
 }
 
 Future<bool?> _confirmDeleteCapsule(BuildContext context) {
@@ -3798,6 +3847,16 @@ Future<bool?> _confirmDeleteCapsule(BuildContext context) {
       ],
     ),
   );
+}
+
+Future<void> _waitForNavigatorUnlock({
+  Duration delay = const Duration(milliseconds: 80),
+}) async {
+  await WidgetsBinding.instance.endOfFrame;
+  if (delay > Duration.zero) {
+    await Future<void>.delayed(delay);
+  }
+  await WidgetsBinding.instance.endOfFrame;
 }
 
 String _formatCapsuleDate(DateTime value) {
