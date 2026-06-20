@@ -70,6 +70,8 @@ flutter:
 
   assets:
     - assets/prototype/logo.png
+    - assets/prototype/agent-avatar.png
+    - assets/prototype/user-avatar-shanmu.jpg
     - assets/prototype/daily-journal.jpg
     - assets/prototype/movie-bouquet.jpg
     - assets/prototype/movie-super-mario-galaxy.jpeg

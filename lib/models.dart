@@ -120,6 +120,41 @@ class AgentProfile {
   }
 }
 
+class ProfileStats {
+  const ProfileStats({
+    required this.workspaceId,
+    required this.intimacyStage,
+    required this.intimacyStageLabel,
+    required this.topicIntimacy,
+    required this.companionDays,
+    required this.chatHours,
+    required this.messageCount,
+    required this.companionSummary,
+  });
+
+  final String workspaceId;
+  final String intimacyStage;
+  final String intimacyStageLabel;
+  final double topicIntimacy;
+  final int companionDays;
+  final int chatHours;
+  final int messageCount;
+  final String companionSummary;
+
+  factory ProfileStats.fromJson(Map<String, dynamic> json) {
+    return ProfileStats(
+      workspaceId: json['workspace_id'] as String? ?? '',
+      intimacyStage: json['intimacy_stage'] as String? ?? 'P1',
+      intimacyStageLabel: json['intimacy_stage_label'] as String? ?? '初见陪伴',
+      topicIntimacy: (json['topic_intimacy'] as num?)?.toDouble() ?? 0,
+      companionDays: (json['companion_days'] as num?)?.round() ?? 0,
+      chatHours: (json['chat_hours'] as num?)?.round() ?? 0,
+      messageCount: (json['message_count'] as num?)?.round() ?? 0,
+      companionSummary: json['companion_summary'] as String? ?? '唯一伴生对象',
+    );
+  }
+}
+
 class AgentProvisionStatus {
   const AgentProvisionStatus({
     required this.agentId,

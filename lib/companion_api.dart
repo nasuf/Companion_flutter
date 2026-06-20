@@ -276,6 +276,19 @@ class CompanionApi {
     return _normalizeAgentProfile(AgentProfile.fromJson(json));
   }
 
+  Future<ProfileStats> fetchProfileStats({String? workspaceId}) async {
+    final params = <String, String>{};
+    if (workspaceId != null && workspaceId.isNotEmpty) {
+      params['workspace_id'] = workspaceId;
+    }
+    final query = Uri(queryParameters: params).query;
+    final path = query.isEmpty
+        ? '/users/me/profile-stats'
+        : '/users/me/profile-stats?$query';
+    final json = await _request('GET', path) as Map<String, dynamic>;
+    return ProfileStats.fromJson(json);
+  }
+
   Future<List<Conversation>> listConversations({
     required String userId,
     String? workspaceId,
