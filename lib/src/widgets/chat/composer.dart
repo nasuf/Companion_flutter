@@ -8,6 +8,8 @@ class _Composer extends StatelessWidget {
     required this.activePanel,
     required this.sending,
     required this.pendingImages,
+    required this.pendingLink,
+    required this.authToken,
     required this.onFocusInput,
     required this.onToggleEmoji,
     required this.onShowKeyboard,
@@ -15,6 +17,8 @@ class _Composer extends StatelessWidget {
     required this.onSend,
     required this.onRemoveImage,
     required this.onPreviewImage,
+    required this.onRemoveLink,
+    required this.onPreviewLink,
   });
 
   final TextEditingController controller;
@@ -23,6 +27,8 @@ class _Composer extends StatelessWidget {
   final ComposerPanel activePanel;
   final bool sending;
   final List<_PendingChatImage> pendingImages;
+  final _PendingLinkPreview? pendingLink;
+  final String? authToken;
   final VoidCallback onFocusInput;
   final VoidCallback onToggleEmoji;
   final VoidCallback onShowKeyboard;
@@ -30,6 +36,8 @@ class _Composer extends StatelessWidget {
   final VoidCallback onSend;
   final ValueChanged<String> onRemoveImage;
   final ValueChanged<_PendingChatImage> onPreviewImage;
+  final VoidCallback onRemoveLink;
+  final ValueChanged<_PendingLinkPreview> onPreviewLink;
 
   @override
   Widget build(BuildContext context) {
@@ -43,11 +51,15 @@ class _Composer extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (pendingImages.isNotEmpty) ...[
-            _ComposerImageStrip(
+          if (pendingImages.isNotEmpty || pendingLink != null) ...[
+            _ComposerAttachmentStrip(
               images: pendingImages,
-              onRemove: onRemoveImage,
-              onPreview: onPreviewImage,
+              link: pendingLink,
+              onRemoveImage: onRemoveImage,
+              onPreviewImage: onPreviewImage,
+              onRemoveLink: onRemoveLink,
+              onPreviewLink: onPreviewLink,
+              authToken: authToken,
             ),
             const SizedBox(height: 8),
           ],
@@ -106,7 +118,8 @@ class _Composer extends StatelessWidget {
                 builder: (context, _) {
                   final canSend =
                       controller.text.trim().isNotEmpty ||
-                      pendingImages.isNotEmpty;
+                      pendingImages.isNotEmpty ||
+                      pendingLink != null;
                   if (canSend) {
                     return FilledButton(
                       onPressed: sending ? null : onSend,
@@ -140,69 +153,237 @@ class _Composer extends StatelessWidget {
   }
 }
 
-class _ComposerImageStrip extends StatelessWidget {
-  const _ComposerImageStrip({
+class _ComposerAttachmentStrip extends StatelessWidget {
+  const _ComposerAttachmentStrip({
     required this.images,
-    required this.onRemove,
-    required this.onPreview,
+    required this.link,
+    required this.onRemoveImage,
+    required this.onPreviewImage,
+    required this.onRemoveLink,
+    required this.onPreviewLink,
+    required this.authToken,
   });
 
   final List<_PendingChatImage> images;
-  final ValueChanged<String> onRemove;
-  final ValueChanged<_PendingChatImage> onPreview;
+  final _PendingLinkPreview? link;
+  final ValueChanged<String> onRemoveImage;
+  final ValueChanged<_PendingChatImage> onPreviewImage;
+  final VoidCallback onRemoveLink;
+  final ValueChanged<_PendingLinkPreview> onPreviewLink;
+  final String? authToken;
 
   @override
   Widget build(BuildContext context) {
+    final itemCount = images.length + (link == null ? 0 : 1);
     return SizedBox(
       height: 70,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: images.length,
+        itemCount: itemCount,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
-          final image = images[index];
-          return Stack(
-            clipBehavior: Clip.none,
-            children: [
-              GestureDetector(
-                onTap: () => onPreview(image),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.file(
-                    File(image.localPath),
-                    width: 70,
-                    height: 70,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ),
-              Positioned(
-                top: -6,
-                right: -6,
-                child: GestureDetector(
-                  onTap: () => onRemove(image.attachment.id),
-                  child: Container(
-                    width: 22,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      color: const Color(0xE6000000),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 1.5),
-                    ),
-                    child: const Icon(
-                      CupertinoIcons.xmark,
-                      color: Colors.white,
-                      size: 13,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+          final pendingLink = link;
+          if (pendingLink != null && index == 0) {
+            return _ComposerLinkTile(
+              link: pendingLink,
+              onRemove: onRemoveLink,
+              onTap: () => onPreviewLink(pendingLink),
+              authToken: authToken,
+            );
+          }
+          final imageIndex = pendingLink == null ? index : index - 1;
+          final image = images[imageIndex];
+          return _ComposerImageTile(
+            image: image,
+            onRemove: () => onRemoveImage(image.attachment.id),
+            onPreview: () => onPreviewImage(image),
           );
         },
       ),
     );
   }
+}
+
+class _ComposerImageTile extends StatelessWidget {
+  const _ComposerImageTile({
+    required this.image,
+    required this.onRemove,
+    required this.onPreview,
+  });
+
+  final _PendingChatImage image;
+  final VoidCallback onRemove;
+  final VoidCallback onPreview;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        GestureDetector(
+          onTap: onPreview,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.file(
+              File(image.localPath),
+              width: 70,
+              height: 70,
+              fit: BoxFit.cover,
+            ),
+          ),
+        ),
+        Positioned(
+          top: -6,
+          right: -6,
+          child: _ComposerRemoveButton(onTap: onRemove),
+        ),
+      ],
+    );
+  }
+}
+
+class _ComposerLinkTile extends StatelessWidget {
+  const _ComposerLinkTile({
+    required this.link,
+    required this.onRemove,
+    required this.onTap,
+    required this.authToken,
+  });
+
+  final _PendingLinkPreview link;
+  final VoidCallback onRemove;
+  final VoidCallback onTap;
+  final String? authToken;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final card = link.preview.componentCard;
+    final accent = _composerLinkAccent(card.accent);
+    final imageUrl = (link.preview.imageUrl ?? card.payload['image_url'])
+        ?.toString()
+        .trim();
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Tooltip(
+          message: link.sourceText,
+          child: GestureDetector(
+            onTap: onTap,
+            child: Container(
+              width: 228,
+              height: 70,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: accent.withValues(alpha: 0.28)),
+              ),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(7),
+                    child: imageUrl != null && imageUrl.isNotEmpty
+                        ? Image.network(
+                            imageUrl,
+                            headers: _mediaHeadersForUrl(imageUrl, authToken),
+                            width: 54,
+                            height: 54,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                _ComposerLinkFallbackIcon(accent: accent),
+                          )
+                        : _ComposerLinkFallbackIcon(accent: accent),
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          link.preview.platform,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: accent,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          card.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: colors.text,
+                            fontSize: 13,
+                            height: 1.18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: -6,
+          right: -6,
+          child: _ComposerRemoveButton(onTap: onRemove),
+        ),
+      ],
+    );
+  }
+}
+
+class _ComposerLinkFallbackIcon extends StatelessWidget {
+  const _ComposerLinkFallbackIcon({required this.accent});
+
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 54,
+      height: 54,
+      color: accent.withValues(alpha: 0.12),
+      child: Icon(CupertinoIcons.link, color: accent, size: 21),
+    );
+  }
+}
+
+class _ComposerRemoveButton extends StatelessWidget {
+  const _ComposerRemoveButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 22,
+        height: 22,
+        decoration: BoxDecoration(
+          color: const Color(0xE6000000),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 1.5),
+        ),
+        child: const Icon(CupertinoIcons.xmark, color: Colors.white, size: 13),
+      ),
+    );
+  }
+}
+
+Color _composerLinkAccent(String value) {
+  final hex = value.replaceFirst('#', '').trim();
+  final parsed = hex.length == 6 ? int.tryParse(hex, radix: 16) : null;
+  return parsed == null ? AppColors.accent : Color(0xFF000000 | parsed);
 }
 
 class _RoundIconButton extends StatelessWidget {

@@ -111,10 +111,14 @@ class _MessageList extends StatelessWidget {
           isMusicBusy: isMusicBusy,
           authToken: authToken,
         );
+        final keyedRow = KeyedSubtree(
+          key: ValueKey('chat-message-${message.id}'),
+          child: row,
+        );
         if (message.id == stationMessageId && stationMessageKey != null) {
-          return KeyedSubtree(key: stationMessageKey, child: row);
+          return KeyedSubtree(key: stationMessageKey, child: keyedRow);
         }
-        return row;
+        return keyedRow;
       },
     );
   }
@@ -538,6 +542,7 @@ class _Bubble extends StatelessWidget {
               canGoMusicPrevious:
                   activeMusicMessageId == message.id && canGoMusicPrevious,
               isMusicBusy: isMusicBusy,
+              authToken: authToken,
             )
           else if (attachments.isNotEmpty) ...[
             _ImageAttachmentBubble(
@@ -729,6 +734,7 @@ class _ComponentCardBubble extends StatelessWidget {
     required this.busyMusicFavoriteIds,
     required this.canGoMusicPrevious,
     required this.isMusicBusy,
+    this.authToken,
   });
 
   final ChatComponentCard card;
@@ -745,6 +751,7 @@ class _ComponentCardBubble extends StatelessWidget {
   final Set<String> busyMusicFavoriteIds;
   final bool canGoMusicPrevious;
   final bool isMusicBusy;
+  final String? authToken;
 
   @override
   Widget build(BuildContext context) {
@@ -915,11 +922,15 @@ class _ComponentCardBubble extends StatelessWidget {
                             borderRadius: BorderRadius.circular(10),
                             child: Image.network(
                               card.payload['image_url'].toString(),
+                              headers: _mediaHeadersForUrl(
+                                card.payload['image_url']?.toString(),
+                                authToken,
+                              ),
                               height: 112,
                               width: double.infinity,
                               fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) =>
-                                  const SizedBox.shrink(),
+                                  _ComponentCardImageFallback(accent: accent),
                             ),
                           ),
                           const SizedBox(height: 10),
@@ -976,6 +987,23 @@ class _ComponentCardBubble extends StatelessWidget {
       return payloadContent;
     }
     return card.title.trim();
+  }
+}
+
+class _ComponentCardImageFallback extends StatelessWidget {
+  const _ComponentCardImageFallback({required this.accent});
+
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 112,
+      width: double.infinity,
+      color: accent.withValues(alpha: 0.10),
+      alignment: Alignment.center,
+      child: Icon(CupertinoIcons.link, color: accent, size: 26),
+    );
   }
 }
 

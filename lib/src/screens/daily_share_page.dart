@@ -57,15 +57,11 @@ class _DailySharePageState extends State<DailySharePage>
   }
 
   Future<void> _openLink(DailyShareLink link) async {
-    final rawUrl = link.finalUrl.trim().isNotEmpty
-        ? link.finalUrl
-        : link.sourceUrl;
-    final uri = Uri.tryParse(rawUrl);
-    if (uri == null) return;
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!opened) {
-      await launchUrl(uri, mode: LaunchMode.platformDefault);
-    }
+    await _openExternalLinkPayload(
+      link.componentCard.payload,
+      fallbackFinalUrl: link.finalUrl,
+      fallbackSourceUrl: link.sourceUrl,
+    );
   }
 
   Future<void> _previewPhoto(
@@ -172,6 +168,7 @@ class _DailySharePageState extends State<DailySharePage>
                         else
                           _DailyLinkContent(
                             future: _linksFuture,
+                            authToken: widget.api.authToken,
                             onRetry: _refresh,
                             onOpen: _openLink,
                           ),
@@ -247,11 +244,13 @@ class _DailyPhotoContent extends StatelessWidget {
 class _DailyLinkContent extends StatelessWidget {
   const _DailyLinkContent({
     required this.future,
+    required this.authToken,
     required this.onRetry,
     required this.onOpen,
   });
 
   final Future<DailyShareLinksResponse> future;
+  final String? authToken;
   final Future<void> Function() onRetry;
   final ValueChanged<DailyShareLink> onOpen;
 
@@ -291,6 +290,7 @@ class _DailyLinkContent extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 22),
                 child: _DailyLinkGroupSection(
                   group: groups[index],
+                  authToken: authToken,
                   onOpen: onOpen,
                 ),
               );
@@ -303,9 +303,14 @@ class _DailyLinkContent extends StatelessWidget {
 }
 
 class _DailyLinkGroupSection extends StatelessWidget {
-  const _DailyLinkGroupSection({required this.group, required this.onOpen});
+  const _DailyLinkGroupSection({
+    required this.group,
+    required this.authToken,
+    required this.onOpen,
+  });
 
   final DailyShareLinkGroup group;
+  final String? authToken;
   final ValueChanged<DailyShareLink> onOpen;
 
   @override
@@ -333,7 +338,11 @@ class _DailyLinkGroupSection extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         for (final link in group.links) ...[
-          _DailyLinkCard(link: link, onTap: () => onOpen(link)),
+          _DailyLinkCard(
+            link: link,
+            authToken: authToken,
+            onTap: () => onOpen(link),
+          ),
           const SizedBox(height: 10),
         ],
       ],
@@ -342,9 +351,14 @@ class _DailyLinkGroupSection extends StatelessWidget {
 }
 
 class _DailyLinkCard extends StatelessWidget {
-  const _DailyLinkCard({required this.link, required this.onTap});
+  const _DailyLinkCard({
+    required this.link,
+    required this.authToken,
+    required this.onTap,
+  });
 
   final DailyShareLink link;
+  final String? authToken;
   final VoidCallback onTap;
 
   @override
@@ -383,6 +397,7 @@ class _DailyLinkCard extends StatelessWidget {
                 child: imageUrl?.isNotEmpty == true
                     ? Image.network(
                         imageUrl!,
+                        headers: _mediaHeadersForUrl(imageUrl, authToken),
                         width: 68,
                         height: 68,
                         fit: BoxFit.cover,

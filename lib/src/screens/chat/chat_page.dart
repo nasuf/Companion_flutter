@@ -31,6 +31,88 @@ class _PendingChatImage {
   final ChatAttachment attachment;
 }
 
+class _PendingLinkPreview {
+  const _PendingLinkPreview({required this.preview, required this.sourceText});
+
+  final ChatLinkCardResponse preview;
+  final String sourceText;
+}
+
+Future<void> _openExternalLinkPayload(
+  Map<String, dynamic> payload, {
+  String? fallbackFinalUrl,
+  String? fallbackSourceUrl,
+}) async {
+  final finalUrl = payload['final_url']?.toString() ?? fallbackFinalUrl;
+  final sourceUrl = payload['source_url']?.toString() ?? fallbackSourceUrl;
+  final candidates = [
+    payload['app_url']?.toString() ??
+        _externalLinkAppUrlFromPayload(payload, finalUrl, sourceUrl),
+    finalUrl,
+    sourceUrl,
+  ];
+  for (final raw in candidates) {
+    final value = raw?.trim();
+    if (value == null || value.isEmpty) continue;
+    final uri = Uri.tryParse(value);
+    if (uri == null) continue;
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (opened) return;
+    if (uri.scheme == 'http' || uri.scheme == 'https') {
+      final fallbackOpened = await launchUrl(
+        uri,
+        mode: LaunchMode.platformDefault,
+      );
+      if (fallbackOpened) return;
+    }
+  }
+}
+
+String? _externalLinkAppUrlFromPayload(
+  Map<String, dynamic> payload,
+  String? finalUrl,
+  String? sourceUrl,
+) {
+  final platform = payload['platform']?.toString();
+  final url =
+      ((finalUrl?.trim().isNotEmpty ?? false) ? finalUrl : sourceUrl) ?? '';
+  String? firstMatch(String pattern) =>
+      RegExp(pattern).firstMatch(url)?.group(1);
+  switch (platform) {
+    case '今日头条':
+      final articleId = firstMatch(r'/article/(\d+)');
+      return articleId == null ? null : 'snssdk141://detail?groupid=$articleId';
+    case '微博':
+      final matches = RegExp(r'/(\d{10,})(?=[/?#]|$)').allMatches(url).toList();
+      if (matches.isEmpty) return null;
+      return 'sinaweibo://detail?mblogid=${matches.last.group(1)}';
+    case '抖音':
+      final videoId = firstMatch(r'/video/(\d+)');
+      return videoId == null ? null : 'snssdk1128://aweme/detail/$videoId';
+    case '知乎':
+      final answerId = firstMatch(r'/answer/(\d+)');
+      if (answerId != null) return 'zhihu://answers/$answerId';
+      final questionId = firstMatch(r'/question/(\d+)');
+      return questionId == null ? null : 'zhihu://questions/$questionId';
+    case '小红书':
+      final noteId = firstMatch(r'/(?:explore|discovery/item)/([0-9a-fA-F]+)');
+      return noteId == null ? null : 'xhsdiscover://item/$noteId';
+    default:
+      return null;
+  }
+}
+
+Map<String, String>? _mediaHeadersForUrl(String? url, String? authToken) {
+  final value = url?.trim();
+  if (value == null || value.isEmpty || authToken?.isNotEmpty != true) {
+    return null;
+  }
+  final uri = Uri.tryParse(value);
+  final path = uri?.path ?? value;
+  if (!path.startsWith('/chat/media/')) return null;
+  return {'Authorization': 'Bearer $authToken'};
+}
+
 class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const _animationDuration = Duration(milliseconds: 260);
   static const _animationCurve = Curves.easeOutCubic;
@@ -85,18 +167,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   })?
   _pendingSend;
   final List<_PendingChatImage> _pendingImages = [];
+  _PendingLinkPreview? _pendingLinkPreview;
   bool _uploadingImage = false;
+  String? _linkPreviewInFlightText;
+  String _lastInputText = '';
   int _achievementDemoIndex = 0;
   bool _stationCardDocked = false;
   bool _stationDockActive = false;
+  bool _stationDockCheckScheduled = false;
   bool _advancingStation = false;
   bool _openingMusicPage = false;
   bool _localUserCoListeningActive = false;
   Timer? _stationPauseTimer;
   final Set<String> _favoriteMusicTrackIds = {};
   final Set<String> _busyMusicFavoriteIds = {};
-  String? _lastClipboardLinkText;
-  bool _checkingClipboardLink = false;
 
   String get _conversationId => widget.session.conversationId!;
 
@@ -162,7 +246,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (state != AppLifecycleState.resumed) return;
     unawaited(_scanReadyCapsules());
     unawaited(_refreshConversationMeta());
-    unawaited(_handleClipboardLink());
     _scheduleNextCapsuleScan();
   }
 
@@ -174,7 +257,18 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _handleInputChanged() {
-    if (mounted) setState(() {});
+    if (mounted) {
+      final previousText = _lastInputText;
+      final currentText = _inputController.text;
+      _lastInputText = currentText;
+      setState(() {});
+      unawaited(
+        _maybePromoteInputLinkToPendingCard(
+          previousText: previousText,
+          currentText: currentText,
+        ),
+      );
+    }
   }
 
   Future<void> _bootstrapChat() async {
@@ -190,6 +284,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     setState(() {
       _messages.clear();
       _pendingImages.clear();
+      _pendingLinkPreview = null;
+      _linkPreviewInFlightText = null;
+      _lastInputText = _inputController.text;
       _panel = ComposerPanel.none;
       _heldPanel = ComposerPanel.none;
       _loadingInitial = true;
@@ -205,6 +302,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _musicStation.reset();
       _stationCardDocked = false;
       _stationDockActive = false;
+      _stationDockCheckScheduled = false;
       _advancingStation = false;
       _openingMusicPage = false;
       _localUserCoListeningActive = false;
@@ -224,7 +322,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _scheduleConversationMetaRefresh();
     _connectSocket();
     unawaited(_listenForSharedLinks());
-    unawaited(_handleClipboardLink());
   }
 
   void _scheduleConversationMetaRefresh() {
@@ -297,32 +394,46 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Future<void> _handleSharedMedia(List<SharedMediaFile> files) async {
     final text = _sharedTextFromMedia(files);
     if (text.trim().isEmpty || !mounted) return;
-    await _sendSharedLinkText(text, sourceApp: 'system_share_sheet');
+    await _stageSharedLinkText(text, sourceApp: 'system_share_sheet');
   }
 
-  Future<void> _handleClipboardLink() async {
-    if (_checkingClipboardLink || !mounted) return;
-    _checkingClipboardLink = true;
-    try {
-      final data = await services.Clipboard.getData(
-        services.Clipboard.kTextPlain,
-      );
-      final text = data?.text?.trim() ?? '';
-      if (text.isEmpty || text == _lastClipboardLinkText) return;
-      if (!_supportedSharedLinkPattern.hasMatch(text)) return;
-      _lastClipboardLinkText = text;
-      await _sendSharedLinkText(text, sourceApp: 'clipboard');
-    } catch (error) {
-      debugPrint('Clipboard link check failed: $error');
-    } finally {
-      _checkingClipboardLink = false;
+  Future<void> _maybePromoteInputLinkToPendingCard({
+    required String previousText,
+    required String currentText,
+  }) async {
+    if (!mounted ||
+        _pendingLinkPreview != null ||
+        _linkPreviewInFlightText != null) {
+      return;
     }
+    final insertedText = _insertedInputText(
+      previous: previousText,
+      current: currentText,
+    );
+    final insertedMatch = _firstSupportedSharedLink(insertedText);
+    final sourceText = insertedMatch == null ? currentText : insertedText;
+    final match = insertedMatch ?? _firstSupportedSharedLink(currentText);
+    if (match == null) return;
+    await _stageSharedLinkText(
+      sourceText,
+      sourceApp: 'manual_paste',
+      linkText: match,
+      stripText: insertedMatch == null ? match : insertedText,
+      stripFromInput: true,
+    );
   }
 
-  Future<void> _sendSharedLinkText(
+  Future<void> _stageSharedLinkText(
     String text, {
     required String sourceApp,
+    String? linkText,
+    String? stripText,
+    bool stripFromInput = false,
   }) async {
+    final match = linkText ?? _firstSupportedSharedLink(text);
+    if (match == null || !mounted) return;
+    if (_linkPreviewInFlightText != null) return;
+    _linkPreviewInFlightText = match;
     try {
       final preview = await widget.api.previewChatLink(
         conversationId: _conversationId,
@@ -330,14 +441,79 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         sourceApp: sourceApp,
       );
       if (!mounted) return;
-      final bodyText = text == preview.finalUrl || text == preview.sourceUrl
-          ? ''
-          : text;
-      _sendText(bodyText, componentCard: preview.componentCard);
+      if (stripFromInput) {
+        final currentText = _inputController.text;
+        if (!_textContainsSharedLink(currentText, match)) return;
+        _removeSharedLinkFromInput(stripText ?? match);
+      }
+      setState(() {
+        _pendingLinkPreview = _PendingLinkPreview(
+          preview: preview,
+          sourceText: match,
+        );
+        _historyError = null;
+        _panel = ComposerPanel.none;
+      });
+      _inputFocus.requestFocus();
     } catch (error) {
-      debugPrint('Link preview failed, sending raw shared text: $error');
-      if (mounted) _sendText(text);
+      debugPrint('Link preview failed: $error');
+      if (mounted) setState(() => _historyError = _asMessage(error));
+    } finally {
+      if (_linkPreviewInFlightText == match) {
+        _linkPreviewInFlightText = null;
+      }
     }
+  }
+
+  String? _firstSupportedSharedLink(String text) {
+    final match = _supportedSharedLinkPattern.firstMatch(text);
+    return match?.group(0)?.trim();
+  }
+
+  bool _textContainsSharedLink(String text, String link) {
+    return text.contains(link) || _supportedSharedLinkPattern.hasMatch(text);
+  }
+
+  String _insertedInputText({
+    required String previous,
+    required String current,
+  }) {
+    if (previous.isEmpty || current.length <= previous.length) return current;
+    var prefix = 0;
+    final maxPrefix = math.min(previous.length, current.length);
+    while (prefix < maxPrefix &&
+        previous.codeUnitAt(prefix) == current.codeUnitAt(prefix)) {
+      prefix += 1;
+    }
+    var suffix = 0;
+    while (suffix < previous.length - prefix &&
+        suffix < current.length - prefix &&
+        previous.codeUnitAt(previous.length - 1 - suffix) ==
+            current.codeUnitAt(current.length - 1 - suffix)) {
+      suffix += 1;
+    }
+    return current.substring(prefix, current.length - suffix);
+  }
+
+  void _removeSharedLinkFromInput(String textToRemove) {
+    final stripped = _stripSharedLinkFromText(
+      _inputController.text,
+      textToRemove,
+    );
+    _lastInputText = stripped;
+    _inputController.value = TextEditingValue(
+      text: stripped,
+      selection: TextSelection.collapsed(offset: stripped.length),
+    );
+  }
+
+  String _stripSharedLinkFromText(String text, String textToRemove) {
+    final withoutLink = text.replaceFirst(textToRemove, ' ');
+    return withoutLink
+        .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
+        .replaceAll(RegExp(r' *\n *'), '\n')
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+        .trim();
   }
 
   String _sharedTextFromMedia(List<SharedMediaFile> files) {
@@ -352,6 +528,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _loadLatestMessages({required bool showLoading}) async {
+    final hadScrollPosition = _scrollController.hasClients;
+    final oldPixels = hadScrollPosition ? _scrollController.position.pixels : 0;
+    final wasNearBottom = hadScrollPosition ? _isNearBottomNow() : true;
     if (showLoading) {
       setState(() {
         _loadingInitial = true;
@@ -366,7 +545,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (!mounted) return;
       final chronological = newestFirst.reversed.toList();
       setState(() {
-        _replaceWithServerMessages(chronological);
+        if (showLoading) {
+          _replaceWithServerMessages(chronological);
+        } else {
+          _mergeLatestServerMessages(chronological);
+        }
         _hasOlderMessages =
             _countServerMessages(newestFirst) == _messagePageSize;
         _loadedServerMessages = _countServerMessages(_messages);
@@ -374,8 +557,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       });
       _adoptLatestMusicStationFromMessages();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToBottom();
-        _updateStationCardDocked();
+        if (!_scrollController.hasClients) return;
+        if (showLoading || !hadScrollPosition || wasNearBottom) {
+          _scrollToBottom();
+        } else {
+          final target = oldPixels.clamp(
+            _scrollController.position.minScrollExtent,
+            _scrollController.position.maxScrollExtent,
+          );
+          _scrollController.jumpTo(target.toDouble());
+        }
+        _scheduleStationDockCheck();
       });
     } catch (error) {
       if (!mounted) return;
@@ -410,6 +602,33 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ..addAll(transientAssistantReplies);
     _messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     _localUserCoListeningActive = _userCoListeningActiveFromMessages(_messages);
+  }
+
+  void _mergeLatestServerMessages(List<ChatMessage> serverMessages) {
+    for (final serverMessage in serverMessages) {
+      _upsertServerMessage(serverMessage);
+    }
+    _messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    _localUserCoListeningActive = _userCoListeningActiveFromMessages(_messages);
+  }
+
+  void _upsertServerMessage(ChatMessage serverMessage) {
+    final serverClientId = serverMessage.clientId;
+    final exactIndex = _messages.indexWhere((message) {
+      if (message.id == serverMessage.id) return true;
+      return serverClientId != null && message.clientId == serverClientId;
+    });
+    if (exactIndex != -1) {
+      _messages[exactIndex] = serverMessage;
+      return;
+    }
+    _messages.removeWhere(
+      (message) =>
+          !message.isMine &&
+          message.isDraft &&
+          _hasMatchingServerAssistant(message, [serverMessage]),
+    );
+    _messages.add(serverMessage);
   }
 
   bool _userCoListeningActiveFromMessages(List<ChatMessage> messages) {
@@ -466,30 +685,30 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _hasOlderMessages =
             _countServerMessages(newestFirst) == _messagePageSize;
         _loadedServerMessages = _countServerMessages(_messages);
+        _loadingOlder = false;
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!_scrollController.hasClients) return;
         final delta = _scrollController.position.maxScrollExtent - oldMaxExtent;
-        _scrollController.jumpTo(oldPixels + delta);
+        final target = (oldPixels + delta).clamp(
+          _scrollController.position.minScrollExtent,
+          _scrollController.position.maxScrollExtent,
+        );
+        _scrollController.jumpTo(target.toDouble());
       });
     } catch (error) {
-      if (mounted) setState(() => _historyError = _asMessage(error));
-    } finally {
-      if (mounted) setState(() => _loadingOlder = false);
+      if (mounted) {
+        setState(() {
+          _historyError = _asMessage(error);
+          _loadingOlder = false;
+        });
+      }
     }
   }
 
   Future<void> _openComponentCard(ChatComponentCard card) async {
     if (card.type == 'external_link') {
-      final rawUrl =
-          card.payload['final_url']?.toString() ??
-          card.payload['source_url']?.toString();
-      final uri = Uri.tryParse(rawUrl ?? '');
-      if (uri == null) return;
-      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!opened) {
-        await launchUrl(uri, mode: LaunchMode.platformDefault);
-      }
+      await _openExternalLinkPayload(card.payload);
       return;
     }
     if (card.type == 'music_track') {
@@ -755,9 +974,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     } else if (mounted) {
       setState(() {});
     }
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _updateStationCardDocked(),
-    );
+    _scheduleStationDockCheck();
   }
 
   void _cacheActiveMusicPosition() {
@@ -865,9 +1082,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _musicStation.lastLoading = loading;
     if (shouldRebuild) {
       if (track != null) unawaited(_syncStationPlayback(track));
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _updateStationCardDocked(),
-      );
+      _scheduleStationDockCheck();
       if (mounted) setState(() {});
     }
   }
@@ -1056,6 +1271,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void _updateStationCardDocked() {
     if (!mounted) return;
+    _stationDockCheckScheduled = false;
     final hasStation = _musicStation.card != null && _stationTrack != null;
     if (!hasStation) {
       if (_stationCardDocked) setState(() => _stationCardDocked = false);
@@ -1078,9 +1294,21 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         shouldDock = bottom < dockRevealLine || topLeft.dy > bottomLimit;
       }
     }
-    if (!_stationCardDocked && shouldDock) {
-      setState(() => _stationCardDocked = true);
+    if (_stationCardDocked != shouldDock) {
+      setState(() => _stationCardDocked = shouldDock);
     }
+  }
+
+  void _scheduleStationDockCheck() {
+    if (_stationDockCheckScheduled) return;
+    _stationDockCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        _stationDockCheckScheduled = false;
+        return;
+      }
+      _updateStationCardDocked();
+    });
   }
 
   void _handleScroll() {
@@ -1093,9 +1321,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (_newMessageCount > 0 && _isNearBottomNow()) {
       setState(() => _newMessageCount = 0);
     }
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _updateStationCardDocked(),
-    );
+    _scheduleStationDockCheck();
   }
 
   void _handleWsEvent(WsEnvelope envelope) {
@@ -1179,12 +1405,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           if (shouldAutoScroll) {
             _scrollToBottom(animated: true);
           }
-          _updateStationCardDocked();
+          _scheduleStationDockCheck();
         });
         break;
       case 'music_status':
         final text = payload['text']?.toString() ?? '';
         if (text.isEmpty) return;
+        final shouldAutoScroll = widget.isActive && _isNearBottomNow();
         final messageId = payload['message_id']?.toString();
         final status = payload['status']?.toString() ?? 'started';
         setState(() {
@@ -1223,13 +1450,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           _sending = false;
         });
         unawaited(_refreshConversationMeta());
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => _scrollToBottom(animated: true),
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (shouldAutoScroll) _scrollToBottom(animated: true);
+          _scheduleStationDockCheck();
+        });
         break;
       case 'game_status':
         final text = payload['text']?.toString() ?? '';
         if (text.isEmpty) return;
+        final shouldAutoScroll = widget.isActive && _isNearBottomNow();
         final messageId = payload['message_id']?.toString();
         final status = payload['status']?.toString() ?? 'started';
         setState(() {
@@ -1258,9 +1487,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           );
           _sending = false;
         });
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => _scrollToBottom(animated: true),
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (shouldAutoScroll) _scrollToBottom(animated: true);
+          _scheduleStationDockCheck();
+        });
         break;
       case 'done':
         setState(() => _sending = false);
@@ -1286,6 +1516,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _showAchievementNotice(AchievementItem item) {
+    final shouldAutoScroll = widget.isActive && _isNearBottomNow();
     final message = ChatMessage.achievement(
       conversationId: _conversationId,
       item: item,
@@ -1294,9 +1525,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _messages.add(message);
       _messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     });
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _scrollToBottom(animated: true),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (shouldAutoScroll) _scrollToBottom(animated: true);
+      _scheduleStationDockCheck();
+    });
   }
 
   void _openAchievementDetail(AchievementItem item) {
@@ -1355,7 +1587,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void sendComponentMessage(String text, ChatComponentCard componentCard) {
-    _sendText(text.trim(), componentCard: componentCard);
+    _sendText(text.trim(), componentCard: componentCard, clearComposer: false);
   }
 
   int? _payloadReplyIndex(Map<String, dynamic> payload) {
@@ -1368,13 +1600,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final text = _inputController.text.trim();
     if (_uploadingImage) return;
     final attachments = _pendingImages.map((item) => item.attachment).toList();
-    _sendText(text, attachments: attachments);
+    final linkPreview = _pendingLinkPreview;
+    _sendText(
+      text,
+      componentCard: linkPreview?.preview.componentCard,
+      attachments: attachments,
+      clearComposer: true,
+    );
   }
 
   void _sendText(
     String text, {
     ChatComponentCard? componentCard,
     List<ChatAttachment> attachments = const [],
+    bool clearComposer = true,
   }) {
     if (text.isEmpty && componentCard == null && attachments.isEmpty) return;
     final clientId =
@@ -1396,14 +1635,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (_isMusicStationCard(componentCard)) {
         _musicStation.activate(componentCard!, draft.id);
       }
-      if (componentCard == null) {
+      if (clearComposer) {
         _inputController.clear();
+        _lastInputText = '';
         _pendingImages.clear();
+        _pendingLinkPreview = null;
       }
       _panel = ComposerPanel.none;
       _sending = true;
     });
-    if (componentCard == null && attachments.isEmpty) {
+    if (clearComposer && attachments.isEmpty) {
       _inputFocus.requestFocus();
     }
 
@@ -1425,11 +1666,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       unawaited(_socket?.connect());
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && componentCard == null && attachments.isEmpty) {
+      if (mounted && clearComposer && attachments.isEmpty) {
         _inputFocus.requestFocus();
       }
       _scrollToBottom(animated: true);
-      _updateStationCardDocked();
+      _scheduleStationDockCheck();
     });
   }
 
@@ -1494,6 +1735,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     setState(
       () => _pendingImages.removeWhere((item) => item.attachment.id == id),
     );
+  }
+
+  void _removePendingLink() {
+    setState(() => _pendingLinkPreview = null);
+  }
+
+  Future<void> _openPendingLink(_PendingLinkPreview pendingLink) async {
+    await _openComponentCard(pendingLink.preview.componentCard);
   }
 
   Future<void> _previewPendingImage(_PendingChatImage image) async {
@@ -1628,7 +1877,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     )..layout(maxWidth: inputWidth);
     final lineHeight = painter.preferredLineHeight;
     final lineCount = (painter.height / lineHeight).ceil().clamp(1, 3);
-    final attachmentHeight = _pendingImages.isEmpty ? 0.0 : 86.0;
+    final hasPendingAttachment =
+        _pendingImages.isNotEmpty || _pendingLinkPreview != null;
+    final attachmentHeight = hasPendingAttachment ? 86.0 : 0.0;
     return _composerMinHeight +
         attachmentHeight +
         (lineCount - 1) * _composerLineHeight;
@@ -1666,10 +1917,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       final double target;
       if (forcePinToBottom || _wasNearBottomBeforePaddingChange) {
         target = position.maxScrollExtent;
-      } else if (delta > 0) {
-        target = (position.pixels + delta)
-            .clamp(position.minScrollExtent, position.maxScrollExtent)
-            .toDouble();
       } else {
         return;
       }
@@ -1817,6 +2064,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               activePanel: _panel,
               sending: _sending || _uploadingImage,
               pendingImages: _pendingImages,
+              pendingLink: _pendingLinkPreview,
+              authToken: widget.api.authToken,
               onFocusInput: _focusInput,
               onToggleEmoji: () => _setPanel(ComposerPanel.emoji),
               onShowKeyboard: _focusInput,
@@ -1824,6 +2073,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               onSend: _sendMessage,
               onRemoveImage: _removePendingImage,
               onPreviewImage: _previewPendingImage,
+              onRemoveLink: _removePendingLink,
+              onPreviewLink: _openPendingLink,
             ),
           ),
           AnimatedPositioned(
