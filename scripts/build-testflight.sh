@@ -62,37 +62,95 @@ commit_version_change() {
   git commit -m "Bump mobile build version to $version"
 }
 
-install_ios_distribution_profile() {
-  local profile_path="${IOS_PROVISIONING_PROFILE_PATH:-$ROOT_DIR/../Bansheng_Dev_App_Store.mobileprovision}"
+profile_has_app_group() {
+  local decoded_plist="$1"
+  local app_group_id="$2"
 
-  if [[ ! -f "$profile_path" ]]; then
-    echo "No local provisioning profile found at: $profile_path"
-    echo "Set IOS_PROVISIONING_PROFILE_PATH=/path/to/profile.mobileprovision if Xcode automatic signing cannot export."
-    return
-  fi
+  /usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.security.application-groups" "$decoded_plist" 2>/dev/null |
+    grep -q "$app_group_id"
+}
+
+install_ios_profile() {
+  local profile_path="$1"
+  local bundle_id="$2"
+  local app_group_id="$3"
+  local name_var="$4"
 
   local decoded_plist
   decoded_plist="$(mktemp -t bansheng-profile.XXXXXX.plist)"
   security cms -D -i "$profile_path" > "$decoded_plist"
 
-  IOS_PROFILE_UUID="$(plutil -extract UUID raw -o - "$decoded_plist")"
-  IOS_PROFILE_NAME="$(plutil -extract Name raw -o - "$decoded_plist")"
+  local profile_uuid
+  local profile_name
+  local app_identifier
+  profile_uuid="$(plutil -extract UUID raw -o - "$decoded_plist")"
+  profile_name="$(plutil -extract Name raw -o - "$decoded_plist")"
+  app_identifier="$(plutil -extract Entitlements.application-identifier raw -o - "$decoded_plist")"
+
+  if [[ "$app_identifier" != "${IOS_TEAM_ID:-F3FB94L862}.$bundle_id" ]]; then
+    echo "Provisioning profile '$profile_name' is for '$app_identifier', not '${IOS_TEAM_ID:-F3FB94L862}.$bundle_id'." >&2
+    rm -f "$decoded_plist"
+    exit 1
+  fi
+
+  if [[ -n "$app_group_id" ]] && ! profile_has_app_group "$decoded_plist" "$app_group_id"; then
+    echo "Provisioning profile '$profile_name' does not include App Group '$app_group_id'." >&2
+    echo "Regenerate this App Store profile in Apple Developer after enabling App Groups for bundle id '$bundle_id'." >&2
+    rm -f "$decoded_plist"
+    exit 1
+  fi
+
+  printf -v "$name_var" "%s" "$profile_name"
 
   local profile_dir="$HOME/Library/MobileDevice/Provisioning Profiles"
   mkdir -p "$profile_dir"
-  cp "$profile_path" "$profile_dir/$IOS_PROFILE_UUID.mobileprovision"
-  xattr -d com.apple.quarantine "$profile_dir/$IOS_PROFILE_UUID.mobileprovision" 2>/dev/null || true
-  xattr -d com.apple.provenance "$profile_dir/$IOS_PROFILE_UUID.mobileprovision" 2>/dev/null || true
+  cp "$profile_path" "$profile_dir/$profile_uuid.mobileprovision"
+  xattr -d com.apple.quarantine "$profile_dir/$profile_uuid.mobileprovision" 2>/dev/null || true
+  xattr -d com.apple.provenance "$profile_dir/$profile_uuid.mobileprovision" 2>/dev/null || true
 
   rm -f "$decoded_plist"
-  echo "Installed provisioning profile: $IOS_PROFILE_NAME ($IOS_PROFILE_UUID)"
+  echo "Installed provisioning profile: $profile_name ($profile_uuid)"
+}
+
+install_ios_distribution_profiles() {
+  IOS_APP_BUNDLE_ID="${IOS_BUNDLE_ID:-com.bansheng.dev}"
+  IOS_SHARE_EXTENSION_BUNDLE_ID="${IOS_SHARE_EXTENSION_BUNDLE_ID:-com.bansheng.dev.ShareExtension}"
+  IOS_APP_GROUP_ID="${IOS_APP_GROUP_ID:-group.com.bansheng.dev}"
+
+  local app_profile_path="${IOS_APP_PROFILE_PATH:-${IOS_PROVISIONING_PROFILE_PATH:-$ROOT_DIR/../Bansheng_Dev_App_Store.mobileprovision}}"
+  local extension_profile_path="${IOS_SHARE_EXTENSION_PROFILE_PATH:-$ROOT_DIR/../Bansheng_Dev_Share_Extension_App_Store.mobileprovision}"
+
+  if [[ ! -f "$app_profile_path" ]]; then
+    echo "No local app provisioning profile found at: $app_profile_path"
+    echo "Set IOS_APP_PROFILE_PATH=/path/to/profile.mobileprovision if Xcode automatic signing cannot export."
+    return
+  fi
+
+  install_ios_profile "$app_profile_path" "$IOS_APP_BUNDLE_ID" "$IOS_APP_GROUP_ID" IOS_APP_PROFILE_NAME
+
+  if [[ -d "$ROOT_DIR/ios/Share Extension" ]]; then
+    if [[ ! -f "$extension_profile_path" ]]; then
+      echo "No local Share Extension provisioning profile found at: $extension_profile_path" >&2
+      echo "Create/download an App Store profile for '$IOS_SHARE_EXTENSION_BUNDLE_ID' with App Group '$IOS_APP_GROUP_ID' enabled." >&2
+      echo "Then save it there, or set IOS_SHARE_EXTENSION_PROFILE_PATH=/path/to/profile.mobileprovision." >&2
+      exit 1
+    fi
+
+    install_ios_profile "$extension_profile_path" "$IOS_SHARE_EXTENSION_BUNDLE_ID" "$IOS_APP_GROUP_ID" IOS_SHARE_EXTENSION_PROFILE_NAME
+  fi
 }
 
 create_ios_export_options_plist() {
   local export_options_path="$1"
 
-  if [[ -z "${IOS_PROFILE_NAME:-}" ]]; then
+  if [[ -z "${IOS_APP_PROFILE_NAME:-}" ]]; then
     return 1
+  fi
+
+  local extension_profile_entry=""
+  if [[ -n "${IOS_SHARE_EXTENSION_PROFILE_NAME:-}" ]]; then
+    extension_profile_entry="    <key>${IOS_SHARE_EXTENSION_BUNDLE_ID:-com.bansheng.dev.ShareExtension}</key>
+    <string>$IOS_SHARE_EXTENSION_PROFILE_NAME</string>"
   fi
 
   cat > "$export_options_path" <<EOF
@@ -110,8 +168,9 @@ create_ios_export_options_plist() {
   <string>Apple Distribution</string>
   <key>provisioningProfiles</key>
   <dict>
-    <key>${IOS_BUNDLE_ID:-com.bansheng.dev}</key>
-    <string>$IOS_PROFILE_NAME</string>
+$extension_profile_entry
+    <key>${IOS_APP_BUNDLE_ID:-com.bansheng.dev}</key>
+    <string>$IOS_APP_PROFILE_NAME</string>
   </dict>
   <key>destination</key>
   <string>export</string>
@@ -200,7 +259,7 @@ echo "Building TestFlight IPA app version $build_name, build $build_number"
 build_started_marker="$(mktemp -t build-testflight-start.XXXXXX)"
 trap 'rm -f "$build_started_marker"' EXIT
 
-install_ios_distribution_profile
+install_ios_distribution_profiles
 
 flutter clean
 flutter pub get
@@ -215,7 +274,10 @@ fi
 export_options_plist="$(mktemp -t bansheng-export-options.XXXXXX.plist)"
 if create_ios_export_options_plist "$export_options_plist"; then
   export_options_args=(--export-options-plist="$export_options_plist")
-  echo "Using export options profile: $IOS_PROFILE_NAME"
+  echo "Using app export profile: $IOS_APP_PROFILE_NAME"
+  if [[ -n "${IOS_SHARE_EXTENSION_PROFILE_NAME:-}" ]]; then
+    echo "Using Share Extension export profile: $IOS_SHARE_EXTENSION_PROFILE_NAME"
+  fi
 else
   export_options_args=()
 fi
