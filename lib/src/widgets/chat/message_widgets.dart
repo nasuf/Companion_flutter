@@ -795,6 +795,13 @@ class _ComponentCardBubble extends StatelessWidget {
     final titleColor = isTimeCapsule ? capsuleSkin!.text : AppColors.text;
     final mutedColor = isTimeCapsule ? capsuleSkin!.muted : AppColors.muted;
     final glowColor = isTimeCapsule ? capsuleSkin!.accent : accent;
+    final displayBody = card.type == 'external_link'
+        ? _cleanExternalLinkCardText(
+            card.body,
+            platform: card.payload['platform']?.toString(),
+            author: card.payload['author']?.toString(),
+          )
+        : card.body;
     final icon = switch (card.type) {
       'weather' => CupertinoIcons.cloud_sun_fill,
       'external_link' => CupertinoIcons.link_circle_fill,
@@ -909,7 +916,7 @@ class _ComponentCardBubble extends StatelessWidget {
                           ),
                         ],
                       ),
-                      if ((isTimeCapsule ? timeCapsuleContent : card.body)
+                      if ((isTimeCapsule ? timeCapsuleContent : displayBody)
                           .isNotEmpty) ...[
                         const SizedBox(height: 12),
                         if (card.type == 'external_link' &&
@@ -936,7 +943,7 @@ class _ComponentCardBubble extends StatelessWidget {
                           const SizedBox(height: 10),
                         ],
                         Text(
-                          isTimeCapsule ? timeCapsuleContent : card.body,
+                          isTimeCapsule ? timeCapsuleContent : displayBody,
                           maxLines: isTimeCapsule ? 2 : 4,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -1005,6 +1012,54 @@ class _ComponentCardImageFallback extends StatelessWidget {
       child: Icon(CupertinoIcons.link, color: accent, size: 26),
     );
   }
+}
+
+String _cleanExternalLinkCardText(
+  String value, {
+  String? platform,
+  String? author,
+}) {
+  final original = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (original.isEmpty) return '';
+  var text = original
+      .replaceFirst(RegExp(r'^(?:图\s*)?\d+\s*/\s*\d+\s+'), '')
+      .trim();
+  final authorText = author?.trim() ?? '';
+  if (authorText.isNotEmpty) {
+    text = text
+        .replaceFirst(
+          RegExp(
+            '^${RegExp.escape(authorText)}\\s+(?:关注|已关注|Follow|follow)\\s+',
+          ),
+          '',
+        )
+        .trim();
+  }
+  final followMatch = RegExp(
+    r'^(.{1,40}?)\s+(?:关注|已关注|Follow|follow)\s+',
+  ).firstMatch(text);
+  if (followMatch != null) {
+    final prefix = followMatch.group(1) ?? '';
+    if (!RegExp(r'[，。！？!?：:；;#]').hasMatch(prefix)) {
+      text = text.substring(followMatch.end).trim();
+    }
+  }
+  text = text
+      .replaceFirst(RegExp(r'\s*(?:展开|收起|全文|更多)\s*$'), '')
+      .replaceFirst(RegExp(r'\s*(?:点击|打开).{0,12}(?:App|APP|网页|原文)\s*$'), '')
+      .trim();
+  final aggressive = platform == '小红书' || platform == '抖音';
+  if (aggressive) {
+    final tagMatch = RegExp(r'\s#[^#]+').firstMatch(text);
+    if (tagMatch != null &&
+        text.substring(0, tagMatch.start).trim().length >= 4) {
+      text = text.substring(0, tagMatch.start).trim();
+    }
+  } else {
+    text = text.replaceFirst(RegExp(r'(?:\s*#[^\s#]+#?)+\s*$'), '').trim();
+  }
+  text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  return text.isEmpty ? original : text;
 }
 
 class _MusicComponentCard extends StatefulWidget {

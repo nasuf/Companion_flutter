@@ -364,7 +364,14 @@ class _DailyLinkCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = _parseColor(link.componentCard.accent);
-    final imageUrl = link.imageUrl?.trim();
+    final imageUrl = link.imageUrl?.trim().isNotEmpty == true
+        ? link.imageUrl!.trim()
+        : link.componentCard.payload['image_url']?.toString().trim();
+    final body = _cleanExternalLinkCardText(
+      link.summary.isNotEmpty ? link.summary : link.description,
+      platform: link.platform,
+      author: link.author,
+    );
     final isDark = AppColors.isDark(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,
@@ -433,13 +440,10 @@ class _DailyLinkCard extends StatelessWidget {
                         height: 1.18,
                       ),
                     ),
-                    if ((link.summary.isNotEmpty ||
-                        link.description.isNotEmpty)) ...[
+                    if (body.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Text(
-                        link.summary.isNotEmpty
-                            ? link.summary
-                            : link.description,
+                        body,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
