@@ -97,6 +97,11 @@ String? _externalLinkAppUrlFromPayload(
     case '小红书':
       final noteId = firstMatch(r'/(?:explore|discovery/item)/([0-9a-fA-F]+)');
       return noteId == null ? null : 'xhsdiscover://item/$noteId';
+    case 'B站':
+      final bvid =
+          firstMatch(r'/video/(BV[0-9A-Za-z]+)') ??
+          firstMatch(r'\b(BV[0-9A-Za-z]{8,})\b');
+      return bvid == null ? null : 'bilibili://video/$bvid';
     default:
       return null;
   }
@@ -123,7 +128,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const _messagePageSize = 100;
   static const _loadOlderThreshold = 80.0;
   static final _supportedSharedLinkPattern = RegExp(
-    r'(?:https?:\/\/)?(?:[\w-]+\.)?(?:xhslink\.com|xiaohongshu\.com|v\.douyin\.com|douyin\.com|iesdouyin\.com|weibo\.com|weibo\.cn|t\.cn|toutiao\.com|snssdk\.com|zhihu\.com|zhuanlan\.zhihu\.com)\/[^\s，。；：）】》]+',
+    r'(?:https?:\/\/)?(?:[\w-]+\.)?(?:xhslink\.com|xiaohongshu\.com|v\.douyin\.com|douyin\.com|iesdouyin\.com|weibo\.com|weibo\.cn|t\.cn|toutiao\.com|snssdk\.com|zhihu\.com|zhuanlan\.zhihu\.com|b23\.tv|bilibili\.com)\/[^\s，。；：）】》]+',
     caseSensitive: false,
   );
 

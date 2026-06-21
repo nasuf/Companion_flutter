@@ -496,9 +496,16 @@ class _Bubble extends StatelessWidget {
     final attachments = message.attachments
         .where((item) => item.isImage)
         .toList();
+    final shouldHideExternalLinkText =
+        componentCard?.type == 'external_link' &&
+        _isShareTextRepresentedByExternalLinkCard(
+          message.content,
+          componentCard!,
+        );
     final showTextWithCard =
         (componentCard?.type == 'music_track' ||
-            componentCard?.type == 'external_link') &&
+            (componentCard?.type == 'external_link' &&
+                !shouldHideExternalLinkText)) &&
         message.content.trim().isNotEmpty;
     final showTextWithAttachments =
         attachments.isNotEmpty && message.content.trim().isNotEmpty;
@@ -795,10 +802,11 @@ class _ComponentCardBubble extends StatelessWidget {
     final titleColor = isTimeCapsule ? capsuleSkin!.text : AppColors.text;
     final mutedColor = isTimeCapsule ? capsuleSkin!.muted : AppColors.muted;
     final glowColor = isTimeCapsule ? capsuleSkin!.accent : accent;
+    final platform = card.payload['platform']?.toString();
     final displayBody = card.type == 'external_link'
         ? _cleanExternalLinkCardText(
             card.body,
-            platform: card.payload['platform']?.toString(),
+            platform: platform,
             author: card.payload['author']?.toString(),
           )
         : card.body;
@@ -867,6 +875,7 @@ class _ComponentCardBubble extends StatelessWidget {
                             type: card.type,
                             accent: accent,
                             fallbackIcon: icon,
+                            label: platform == 'B站' ? 'B' : null,
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -1020,6 +1029,49 @@ String _cleanExternalLinkCardText(
   }
   text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
   return text.isEmpty ? original : text;
+}
+
+bool _isShareTextRepresentedByExternalLinkCard(
+  String value,
+  ChatComponentCard card,
+) {
+  final text = value.trim();
+  if (text.isEmpty) return true;
+  final urls = RegExp(r'https?://[^\s，。；：）】》]+')
+      .allMatches(text)
+      .map((match) => match.group(0) ?? '')
+      .where((url) => url.isNotEmpty)
+      .toList();
+  if (urls.isEmpty) return false;
+  var remainder = text;
+  for (final url in urls) {
+    remainder = remainder.replaceAll(url, ' ');
+  }
+  remainder = remainder
+      .replaceAll(RegExp(r'【[^】]*】'), ' ')
+      .replaceAll(RegExp(r'B站|哔哩哔哩|小红书|微博|抖音|知乎|今日头条'), ' ')
+      .replaceAll(RegExp(r'[-_｜|]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  if (remainder.isEmpty) return true;
+
+  final title = card.title.trim();
+  final body = card.body.trim();
+  bool closeToCardText(String candidate) {
+    if (candidate.isEmpty) return false;
+    final normalizedRemainder = _normalizeShareComparableText(remainder);
+    final normalizedCandidate = _normalizeShareComparableText(candidate);
+    return normalizedCandidate.contains(normalizedRemainder) ||
+        normalizedRemainder.contains(normalizedCandidate);
+  }
+
+  return closeToCardText(title) || closeToCardText(body);
+}
+
+String _normalizeShareComparableText(String value) {
+  return value
+      .replaceAll(RegExp(r'[\s，。；：、,.!?！？【】\[\]()（）\-_|｜「」『』]+'), '')
+      .toLowerCase();
 }
 
 class _MusicComponentCard extends StatefulWidget {
@@ -1670,11 +1722,13 @@ class _ComponentCardIcon extends StatelessWidget {
     required this.type,
     required this.accent,
     required this.fallbackIcon,
+    this.label,
   });
 
   final String type;
   final Color accent;
   final IconData fallbackIcon;
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
@@ -1711,7 +1765,19 @@ class _ComponentCardIcon extends StatelessWidget {
         color: accent.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Icon(fallbackIcon, color: accent, size: 19),
+      child: label == null
+          ? Icon(fallbackIcon, color: accent, size: 19)
+          : Center(
+              child: Text(
+                label!,
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+            ),
     );
   }
 }
