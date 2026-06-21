@@ -919,29 +919,6 @@ class _ComponentCardBubble extends StatelessWidget {
                       if ((isTimeCapsule ? timeCapsuleContent : displayBody)
                           .isNotEmpty) ...[
                         const SizedBox(height: 12),
-                        if (card.type == 'external_link' &&
-                            (card.payload['image_url']
-                                    ?.toString()
-                                    .trim()
-                                    .isNotEmpty ??
-                                false)) ...[
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: Image.network(
-                              card.payload['image_url'].toString(),
-                              headers: _mediaHeadersForUrl(
-                                card.payload['image_url']?.toString(),
-                                authToken,
-                              ),
-                              height: 112,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
-                                  _ComponentCardImageFallback(accent: accent),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                        ],
                         Text(
                           isTimeCapsule ? timeCapsuleContent : displayBody,
                           maxLines: isTimeCapsule ? 2 : 4,
@@ -994,23 +971,6 @@ class _ComponentCardBubble extends StatelessWidget {
       return payloadContent;
     }
     return card.title.trim();
-  }
-}
-
-class _ComponentCardImageFallback extends StatelessWidget {
-  const _ComponentCardImageFallback({required this.accent});
-
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 112,
-      width: double.infinity,
-      color: accent.withValues(alpha: 0.10),
-      alignment: Alignment.center,
-      child: Icon(CupertinoIcons.link, color: accent, size: 26),
-    );
   }
 }
 
