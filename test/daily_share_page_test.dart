@@ -84,15 +84,16 @@ class _FakeDailyShareApi extends CompanionApi {
               summary: '阳光很好，适合坐在窗边。',
               componentCard: ChatComponentCard(
                 type: 'external_link',
-                title: '周末咖啡馆',
-                subtitle: '小红书',
-                body: '阳光很好，适合坐在窗边。',
-                footer: '点击打开原 App / 网页',
+                title: '小红书',
+                subtitle: '',
+                body: '复制来的小红书原文 阳光很好，适合坐在窗边。',
+                footer: '点击打开小红书app/网页',
                 accent: '#F43F5E',
                 payload: {
                   'link_id': 'link-1',
                   'final_url': 'https://www.xiaohongshu.com/explore/1',
                   'platform': '小红书',
+                  'original_text': '复制来的小红书原文 阳光很好，适合坐在窗边。',
                 },
               ),
             ),
@@ -218,8 +219,9 @@ void main() {
 
     expect(find.text('06月19日'), findsOneWidget);
     expect(find.text('1 条 · 小红书'), findsOneWidget);
-    expect(find.text('周末咖啡馆'), findsOneWidget);
-    expect(find.text('阳光很好，适合坐在窗边。'), findsOneWidget);
+    expect(find.text('周末咖啡馆'), findsNothing);
+    expect(find.text('复制来的小红书原文 阳光很好，适合坐在窗边。'), findsOneWidget);
+    expect(find.text('点击打开小红书app/网页'), findsOneWidget);
     expect(find.text('PHOTO DIARY'), findsNothing);
     expect(find.text('把照片整理成一句自然分享'), findsNothing);
   });

@@ -802,14 +802,18 @@ class _ComponentCardBubble extends StatelessWidget {
     final titleColor = isTimeCapsule ? capsuleSkin!.text : AppColors.text;
     final mutedColor = isTimeCapsule ? capsuleSkin!.muted : AppColors.muted;
     final glowColor = isTimeCapsule ? capsuleSkin!.accent : accent;
+    final isExternalLink = card.type == 'external_link';
     final platform = card.payload['platform']?.toString();
-    final displayBody = card.type == 'external_link'
-        ? _cleanExternalLinkCardText(
-            card.body,
-            platform: platform,
-            author: card.payload['author']?.toString(),
-          )
+    final displayTitle = isExternalLink
+        ? _externalLinkPlatformName(card)
+        : card.title;
+    final displaySubtitle = isExternalLink ? '' : card.subtitle;
+    final displayBody = isExternalLink
+        ? _externalLinkOriginalText(card)
         : card.body;
+    final displayFooter = isExternalLink
+        ? _externalLinkFooter(card)
+        : card.footer;
     final icon = switch (card.type) {
       'weather' => CupertinoIcons.cloud_sun_fill,
       'external_link' => CupertinoIcons.link_circle_fill,
@@ -898,7 +902,7 @@ class _ComponentCardBubble extends StatelessWidget {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        card.title,
+                                        displayTitle,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
@@ -908,9 +912,9 @@ class _ComponentCardBubble extends StatelessWidget {
                                           height: 1.15,
                                         ),
                                       ),
-                                      if (card.subtitle.isNotEmpty)
+                                      if (displaySubtitle.isNotEmpty)
                                         Text(
-                                          card.subtitle,
+                                          displaySubtitle,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
@@ -939,10 +943,10 @@ class _ComponentCardBubble extends StatelessWidget {
                           ),
                         ),
                       ],
-                      if (card.footer.isNotEmpty) ...[
+                      if (displayFooter.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         Text(
-                          card.footer,
+                          displayFooter,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -983,52 +987,30 @@ class _ComponentCardBubble extends StatelessWidget {
   }
 }
 
-String _cleanExternalLinkCardText(
-  String value, {
-  String? platform,
-  String? author,
-}) {
-  final original = value.trim().replaceAll(RegExp(r'\s+'), ' ');
-  if (original.isEmpty) return '';
-  var text = original
-      .replaceFirst(RegExp(r'^(?:图\s*)?\d+\s*/\s*\d+\s+'), '')
-      .trim();
-  final authorText = author?.trim() ?? '';
-  if (authorText.isNotEmpty) {
-    text = text
-        .replaceFirst(
-          RegExp(
-            '^${RegExp.escape(authorText)}\\s+(?:关注|已关注|Follow|follow)\\s+',
-          ),
-          '',
-        )
-        .trim();
+String _externalLinkPlatformName(ChatComponentCard card) {
+  final platform = card.payload['platform']?.toString().trim();
+  if (platform != null && platform.isNotEmpty) return platform;
+  final subtitle = card.subtitle.trim();
+  if (subtitle.isNotEmpty) return subtitle.split(' · ').first.trim();
+  final title = card.title.trim();
+  return title.isEmpty ? '链接' : title;
+}
+
+String _externalLinkOriginalText(ChatComponentCard card) {
+  for (final value in [
+    card.payload['original_text'],
+    card.payload['content_text'],
+    card.body,
+  ]) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isNotEmpty) return text;
   }
-  final followMatch = RegExp(
-    r'^(.{1,40}?)\s+(?:关注|已关注|Follow|follow)\s+',
-  ).firstMatch(text);
-  if (followMatch != null) {
-    final prefix = followMatch.group(1) ?? '';
-    if (!RegExp(r'[，。！？!?：:；;#]').hasMatch(prefix)) {
-      text = text.substring(followMatch.end).trim();
-    }
-  }
-  text = text
-      .replaceFirst(RegExp(r'\s*(?:展开|收起|全文|更多)\s*$'), '')
-      .replaceFirst(RegExp(r'\s*(?:点击|打开).{0,12}(?:App|APP|网页|原文)\s*$'), '')
-      .trim();
-  final aggressive = platform == '小红书' || platform == '抖音';
-  if (aggressive) {
-    final tagMatch = RegExp(r'\s#[^#]+').firstMatch(text);
-    if (tagMatch != null &&
-        text.substring(0, tagMatch.start).trim().length >= 4) {
-      text = text.substring(0, tagMatch.start).trim();
-    }
-  } else {
-    text = text.replaceFirst(RegExp(r'(?:\s*#[^\s#]+#?)+\s*$'), '').trim();
-  }
-  text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-  return text.isEmpty ? original : text;
+  return '';
+}
+
+String _externalLinkFooter(ChatComponentCard card) {
+  final platform = _externalLinkPlatformName(card);
+  return '点击打开${platform == '链接' ? '原' : platform}app/网页';
 }
 
 bool _isShareTextRepresentedByExternalLinkCard(

@@ -367,11 +367,7 @@ class _DailyLinkCard extends StatelessWidget {
     final imageUrl = link.imageUrl?.trim().isNotEmpty == true
         ? link.imageUrl!.trim()
         : link.componentCard.payload['image_url']?.toString().trim();
-    final body = _cleanExternalLinkCardText(
-      link.summary.isNotEmpty ? link.summary : link.description,
-      platform: link.platform,
-      author: link.author,
-    );
+    final body = _dailyLinkOriginalText(link);
     final isDark = AppColors.isDark(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,
@@ -429,33 +425,22 @@ class _DailyLinkCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      link.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: AppColors.text,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                        height: 1.18,
-                      ),
-                    ),
                     if (body.isNotEmpty) ...[
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 2),
                       Text(
                         body,
-                        maxLines: 2,
+                        maxLines: 4,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 12,
-                          height: 1.28,
+                          color: AppColors.text,
+                          fontSize: 13,
+                          height: 1.34,
                         ),
                       ),
                     ],
                     const SizedBox(height: 7),
                     Text(
-                      '打开原链接',
+                      '点击打开${link.platform}app/网页',
                       style: TextStyle(
                         color: accent,
                         fontSize: 11,
@@ -476,6 +461,21 @@ class _DailyLinkCard extends StatelessWidget {
     final hex = value.replaceFirst('#', '').trim();
     final parsed = hex.length == 6 ? int.tryParse(hex, radix: 16) : null;
     return parsed == null ? AppColors.accent : Color(0xFF000000 | parsed);
+  }
+
+  String _dailyLinkOriginalText(DailyShareLink link) {
+    for (final value in [
+      link.componentCard.payload['original_text'],
+      link.componentCard.payload['content_text'],
+      link.componentCard.body,
+      link.summary,
+      link.description,
+      link.title,
+    ]) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isNotEmpty) return text;
+    }
+    return '';
   }
 }
 
