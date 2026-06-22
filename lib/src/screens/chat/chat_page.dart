@@ -175,6 +175,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   _PendingLinkPreview? _pendingLinkPreview;
   bool _uploadingImage = false;
   String? _linkPreviewInFlightText;
+  String? _ignoredInputPromotionText;
   String _lastInputText = '';
   int _achievementDemoIndex = 0;
   bool _stationCardDocked = false;
@@ -415,6 +416,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       previous: previousText,
       current: currentText,
     );
+    final ignoredText = _ignoredInputPromotionText;
+    if (ignoredText != null) {
+      _ignoredInputPromotionText = null;
+      if (insertedText == ignoredText ||
+          currentText == ignoredText ||
+          currentText.contains(ignoredText)) {
+        return;
+      }
+    }
     final insertedMatch = _firstSupportedSharedLink(insertedText);
     final sourceText = insertedMatch == null ? currentText : insertedText;
     final match = insertedMatch ?? _firstSupportedSharedLink(currentText);
@@ -434,11 +444,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     String? linkText,
     String? stripText,
     bool stripFromInput = false,
+    bool showError = true,
+    bool requireAppPlatform = false,
   }) async {
     final match = linkText ?? _firstSupportedSharedLink(text);
     if (match == null || !mounted) return;
     if (_linkPreviewInFlightText != null) return;
     _linkPreviewInFlightText = match;
+    setState(() {
+      _historyError = null;
+      _panel = ComposerPanel.none;
+    });
     try {
       final preview = await widget.api.previewChatLink(
         conversationId: _conversationId,
@@ -446,6 +462,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         sourceApp: sourceApp,
       );
       if (!mounted) return;
+      if (requireAppPlatform && !_isSupportedAppLinkPreview(preview)) {
+        return;
+      }
       if (stripFromInput) {
         final currentText = _inputController.text;
         if (!_textContainsSharedLink(currentText, match)) return;
@@ -462,12 +481,46 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _inputFocus.requestFocus();
     } catch (error) {
       debugPrint('Link preview failed: $error');
-      if (mounted) setState(() => _historyError = _asMessage(error));
+      if (mounted && showError) {
+        setState(() => _historyError = _asMessage(error));
+      }
     } finally {
       if (_linkPreviewInFlightText == match) {
         _linkPreviewInFlightText = null;
+        if (mounted) setState(() {});
       }
     }
+  }
+
+  Future<bool> _handleComposerPasteText(String text) async {
+    if (!mounted || text.trim().isEmpty) return false;
+    final match = _firstSupportedSharedLink(text);
+    if (match == null) return false;
+    final before = _pendingLinkPreview;
+    await _stageSharedLinkText(
+      text,
+      sourceApp: 'manual_paste',
+      linkText: match,
+      showError: false,
+      requireAppPlatform: true,
+    );
+    final consumed =
+        mounted && _pendingLinkPreview != null && _pendingLinkPreview != before;
+    if (!consumed) {
+      _ignoredInputPromotionText = text;
+    }
+    return consumed;
+  }
+
+  bool _isSupportedAppLinkPreview(ChatLinkCardResponse preview) {
+    return const {
+      '小红书',
+      '微博',
+      '今日头条',
+      '抖音',
+      '知乎',
+      'B站',
+    }.contains(preview.platform.trim());
   }
 
   String? _firstSupportedSharedLink(String text) {
@@ -2068,6 +2121,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               height: composerHeight,
               activePanel: _panel,
               sending: _sending || _uploadingImage,
+              resolvingLink:
+                  _linkPreviewInFlightText != null &&
+                  _pendingLinkPreview == null,
               pendingImages: _pendingImages,
               pendingLink: _pendingLinkPreview,
               authToken: widget.api.authToken,
@@ -2080,6 +2136,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               onPreviewImage: _previewPendingImage,
               onRemoveLink: _removePendingLink,
               onPreviewLink: _openPendingLink,
+              onPasteText: _handleComposerPasteText,
             ),
           ),
           AnimatedPositioned(
