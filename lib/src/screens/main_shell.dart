@@ -282,7 +282,12 @@ class _MainShellState extends State<MainShell> with RouteAware {
         session: widget.session,
         onSendToChat: _sendDraftToChat,
       ),
-      OfflineInteractionPage(agentName: widget.session.agentName ?? '伴生'),
+      OfflineInteractionPage(
+        api: widget.api,
+        session: widget.session,
+        agentName: widget.session.agentName ?? '伴生',
+        active: _index == 2,
+      ),
       ProfilePage(
         api: widget.api,
         session: widget.session,
@@ -903,6 +908,16 @@ class _ProfilePageState extends State<ProfilePage>
     }
   }
 
+  Future<void> _openAdminPanel() async {
+    if (_deleting) return;
+    await Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) =>
+            AdminToolsPage(api: widget.api, session: widget.session),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
@@ -979,6 +994,12 @@ class _ProfilePageState extends State<ProfilePage>
                 ],
               ),
             ),
+            if (widget.session.role == UserRole.admin)
+              Positioned(
+                top: media.padding.top + 10,
+                right: 18,
+                child: _ProfileAdminButton(onTap: _openAdminPanel),
+              ),
           ],
         );
       },

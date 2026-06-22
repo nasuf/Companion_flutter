@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import 'models.dart';
+import 'offline_models.dart';
 
 class ApiException implements Exception {
   const ApiException(this.statusCode, this.message);
@@ -291,6 +292,159 @@ class CompanionApi {
         : '/users/me/profile-stats?$query';
     final json = await _request('GET', path) as Map<String, dynamic>;
     return ProfileStats.fromJson(json);
+  }
+
+  Future<bool> saveUserLocation({
+    double? latitude,
+    double? longitude,
+    String? city,
+    String? region,
+    String? country,
+    String permissionStatus = 'unknown',
+  }) async {
+    final json =
+        await _request(
+              'PUT',
+              '/users/me/location',
+              body: {
+                'latitude': latitude,
+                'longitude': longitude,
+                'city': city,
+                'region': region,
+                'country': country,
+                'source': 'device',
+                'permission_status': permissionStatus,
+              },
+            )
+            as Map<String, dynamic>;
+    return json['has_location'] == true;
+  }
+
+  Future<OfflineHome> fetchOfflineHome({String? workspaceId}) async {
+    final path = _pathWithWorkspace('/offline/home', workspaceId);
+    final json = await _request('GET', path) as Map<String, dynamic>;
+    return OfflineHome.fromJson(json);
+  }
+
+  Future<OfflineActivities> fetchOfflineActivities({
+    String? workspaceId,
+  }) async {
+    final path = _pathWithWorkspace('/offline/activities', workspaceId);
+    final json = await _request('GET', path) as Map<String, dynamic>;
+    return OfflineActivities.fromJson(json);
+  }
+
+  Future<OfflineActivity?> createOfflineActivityRecommendation({
+    String? workspaceId,
+  }) async {
+    final path = _pathWithWorkspace(
+      '/offline/activities/recommend',
+      workspaceId,
+    );
+    final json = await _request('POST', path);
+    if (json is! Map) return null;
+    return OfflineActivity.fromJson(Map<String, dynamic>.from(json));
+  }
+
+  Future<OfflineActivity> fetchOfflineActivity(String activityId) async {
+    final json =
+        await _request('GET', '/offline/activities/$activityId')
+            as Map<String, dynamic>;
+    return OfflineActivity.fromJson(json);
+  }
+
+  Future<OfflineActivity> acceptOfflineActivity(String activityId) async {
+    final json =
+        await _request('POST', '/offline/activities/$activityId/accept')
+            as Map<String, dynamic>;
+    return OfflineActivity.fromJson(json);
+  }
+
+  Future<OfflineActivity> ignoreOfflineActivity(String activityId) async {
+    final json =
+        await _request('POST', '/offline/activities/$activityId/ignore')
+            as Map<String, dynamic>;
+    return OfflineActivity.fromJson(json);
+  }
+
+  Future<OfflineActivity> completeOfflineActivity(
+    String activityId, {
+    required String text,
+    List<String> photoAttachmentIds = const [],
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/offline/activities/$activityId/complete',
+              body: {'text': text, 'photo_attachment_ids': photoAttachmentIds},
+            )
+            as Map<String, dynamic>;
+    return OfflineActivity.fromJson(json);
+  }
+
+  Future<GiftsHome> fetchOfflineGifts({String? workspaceId}) async {
+    final path = _pathWithWorkspace('/offline/gifts', workspaceId);
+    final json = await _request('GET', path) as Map<String, dynamic>;
+    return GiftsHome.fromJson(json);
+  }
+
+  Future<GiftAddress> fetchGiftAddress() async {
+    final json =
+        await _request('GET', '/offline/gifts/address') as Map<String, dynamic>;
+    return GiftAddress.fromJson(json);
+  }
+
+  Future<GiftAddress> saveGiftAddress({
+    required String recipientName,
+    required String phone,
+    required String province,
+    required String city,
+    required String district,
+    required String detail,
+  }) async {
+    final json =
+        await _request(
+              'PUT',
+              '/offline/gifts/address',
+              body: {
+                'recipient_name': recipientName,
+                'phone': phone,
+                'province': province,
+                'city': city,
+                'district': district,
+                'detail': detail,
+              },
+            )
+            as Map<String, dynamic>;
+    return GiftAddress.fromJson(json);
+  }
+
+  Future<RealWorldGift> fetchOfflineGift(String giftId) async {
+    final json =
+        await _request('GET', '/offline/gifts/$giftId') as Map<String, dynamic>;
+    return RealWorldGift.fromJson(json);
+  }
+
+  Future<GiftTracking> fetchGiftTracking(String giftId) async {
+    final json =
+        await _request('GET', '/offline/gifts/$giftId/tracking')
+            as Map<String, dynamic>;
+    return GiftTracking.fromJson(json);
+  }
+
+  Future<RealWorldGift> sendGiftThanks(
+    String giftId, {
+    required String message,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/offline/gifts/$giftId/thanks',
+              body: {'message': message},
+            )
+            as Map<String, dynamic>;
+    final gift = json['gift'];
+    return RealWorldGift.fromJson(Map<String, dynamic>.from(gift as Map));
   }
 
   Future<List<Conversation>> listConversations({
@@ -1177,5 +1331,11 @@ class CompanionApi {
     final month = value.month.toString().padLeft(2, '0');
     final day = value.day.toString().padLeft(2, '0');
     return '${value.year}-$month-$day';
+  }
+
+  String _pathWithWorkspace(String path, String? workspaceId) {
+    if (workspaceId == null || workspaceId.isEmpty) return path;
+    final query = Uri(queryParameters: {'workspace_id': workspaceId}).query;
+    return '$path?$query';
   }
 }
