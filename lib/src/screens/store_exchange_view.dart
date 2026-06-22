@@ -373,25 +373,19 @@ class _ExchangeProductIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final url = product.imageUrl;
-    if (url == null) {
+    final asset = product.imageAsset;
+    if (asset == null) {
       return _ExchangeProductIconFallback(product: product);
     }
     return SizedBox(
       width: 76,
       height: 76,
-      child: Image.network(
-        url,
+      child: Image.asset(
+        asset,
         fit: BoxFit.contain,
         filterQuality: FilterQuality.medium,
         errorBuilder: (_, __, ___) =>
             _ExchangeProductIconFallback(product: product),
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) {
-            return child;
-          }
-          return _ExchangeProductIconFallback(product: product);
-        },
       ),
     );
   }

@@ -54,7 +54,7 @@ class _StoreProduct {
     required this.price,
     required this.kind,
     this.yearlyPrice,
-    this.imageUrl,
+    this.imageAsset,
     this.badge,
     this.category,
   });
@@ -64,7 +64,7 @@ class _StoreProduct {
   final int price;
   final _StoreItemKind kind;
   final int? yearlyPrice;
-  final String? imageUrl;
+  final String? imageAsset;
   final String? badge;
   final _ExchangeCategory? category;
 }

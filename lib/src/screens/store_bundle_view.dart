@@ -554,7 +554,7 @@ class _BundleIconPlate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final imageUrl = product.imageUrl;
+    final imageAsset = product.imageAsset;
     final isDark = AppColors.isDark(context);
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -605,24 +605,18 @@ class _BundleIconPlate extends StatelessWidget {
               ),
             ),
           ),
-          if (imageUrl == null)
+          if (imageAsset == null)
             _BundleIconFallback(product: product, accent: accent)
           else
             SizedBox(
               width: 58,
               height: 58,
-              child: Image.network(
-                imageUrl,
+              child: Image.asset(
+                imageAsset,
                 fit: BoxFit.contain,
                 filterQuality: FilterQuality.medium,
                 errorBuilder: (_, __, ___) =>
                     _BundleIconFallback(product: product, accent: accent),
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) {
-                    return child;
-                  }
-                  return _BundleIconFallback(product: product, accent: accent);
-                },
               ),
             ),
         ],
