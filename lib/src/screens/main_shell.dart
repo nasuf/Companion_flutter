@@ -929,7 +929,7 @@ class _ProfilePageState extends State<ProfilePage>
     final agentName = _displayName(widget.session.agentName, fallback: '小芜');
     final hasAgent =
         widget.session.agentId != null && widget.session.agentId!.isNotEmpty;
-    final topPadding = media.padding.top + 48;
+    final topPadding = media.padding.top + 10;
     return AnimatedBuilder(
       animation: _motionController,
       builder: (context, _) {
@@ -946,60 +946,68 @@ class _ProfilePageState extends State<ProfilePage>
             SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
               padding: EdgeInsets.fromLTRB(18, topPadding, 18, 126),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              child: Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  _ProfileHeroV6(
-                    progress: motion,
-                    userName: userName,
-                    agentName: agentName,
-                    userAvatarUrl: widget.session.userAvatarUrl,
-                    agentAvatarUrl: widget.session.agentAvatarUrl,
-                    isDark: isDark,
-                  ),
-                  const SizedBox(height: 20),
-                  _ProfileStatusSectionV6(
-                    stats: _profileStats,
-                    loading: _profileStatsLoading,
-                    error: _profileStatsError,
-                  ),
-                  const SizedBox(height: 20),
-                  const _ProfileThemeSectionV6(),
-                  const SizedBox(height: 20),
-                  _ProfileSettingsSectionV6(
-                    hasAgent: hasAgent,
-                    deleting: _deleting,
-                    onDeleteAgent: _confirmDeleteAgent,
-                    onLogout: _confirmLogout,
-                  ),
-                  if (_deleting) ...[
-                    const SizedBox(height: 16),
-                    _DeleteProgressPanel(
-                      stage: _deleteStages[_deleteStage],
-                      stats: _deleteStats,
+                  Padding(
+                    padding: const EdgeInsets.only(top: 38),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _ProfileHeroV6(
+                          progress: motion,
+                          userName: userName,
+                          agentName: agentName,
+                          userAvatarUrl: widget.session.userAvatarUrl,
+                          agentAvatarUrl: widget.session.agentAvatarUrl,
+                          isDark: isDark,
+                        ),
+                        const SizedBox(height: 20),
+                        _ProfileStatusSectionV6(
+                          stats: _profileStats,
+                          loading: _profileStatsLoading,
+                          error: _profileStatsError,
+                        ),
+                        const SizedBox(height: 20),
+                        const _ProfileThemeSectionV6(),
+                        const SizedBox(height: 20),
+                        _ProfileSettingsSectionV6(
+                          hasAgent: hasAgent,
+                          deleting: _deleting,
+                          onDeleteAgent: _confirmDeleteAgent,
+                          onLogout: _confirmLogout,
+                        ),
+                        if (_deleting) ...[
+                          const SizedBox(height: 16),
+                          _DeleteProgressPanel(
+                            stage: _deleteStages[_deleteStage],
+                            stats: _deleteStats,
+                          ),
+                        ],
+                        if (_error != null) ...[
+                          const SizedBox(height: 14),
+                          Text(
+                            _error!,
+                            style: const TextStyle(
+                              color: Color(0xFFE35B6F),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
-                  if (_error != null) ...[
-                    const SizedBox(height: 14),
-                    Text(
-                      _error!,
-                      style: const TextStyle(
-                        color: Color(0xFFE35B6F),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0,
-                      ),
+                  ),
+                  if (widget.session.role == UserRole.admin)
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: _ProfileAdminButton(onTap: _openAdminPanel),
                     ),
-                  ],
                 ],
               ),
             ),
-            if (widget.session.role == UserRole.admin)
-              Positioned(
-                top: media.padding.top + 10,
-                right: 18,
-                child: _ProfileAdminButton(onTap: _openAdminPanel),
-              ),
           ],
         );
       },

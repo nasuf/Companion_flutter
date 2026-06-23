@@ -346,6 +346,14 @@ class CompanionApi {
     return OfflineActivity.fromJson(Map<String, dynamic>.from(json));
   }
 
+  Future<AdminActivityClearResult>
+  clearOfflineActivitiesForCurrentUser() async {
+    final json =
+        await _request('DELETE', '/offline/admin/activities')
+            as Map<String, dynamic>;
+    return AdminActivityClearResult.fromJson(json);
+  }
+
   Future<OfflineActivity> fetchOfflineActivity(String activityId) async {
     final json =
         await _request('GET', '/offline/activities/$activityId')

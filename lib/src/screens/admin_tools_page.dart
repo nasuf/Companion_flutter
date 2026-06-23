@@ -72,6 +72,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _motionController;
   bool _generatingActivity = false;
+  bool _clearingActivities = false;
 
   @override
   void initState() {
@@ -97,7 +98,10 @@ class _AdminToolsPageState extends State<AdminToolsPage>
       showCupertinoDialog<void>(
         context: context,
         barrierDismissible: false,
-        builder: (_) => const _AdminProgressDialog(),
+        builder: (_) => const _AdminProgressDialog(
+          title: '正在生成活动',
+          message: '正在搜索附近活动并生成推荐卡...',
+        ),
       ).whenComplete(() {
         progressOpen = false;
       }),
@@ -128,6 +132,64 @@ class _AdminToolsPageState extends State<AdminToolsPage>
       if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
       setState(() => _generatingActivity = false);
       await _showActivityResult(title: '生成失败', message: _asMessage(error));
+    }
+  }
+
+  Future<void> _clearActivities() async {
+    if (_clearingActivities) return;
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) {
+        return CupertinoAlertDialog(
+          title: const Text('清理所有活动？'),
+          content: const Text('这会删除当前登录用户下的全部线下活动推荐记录和完成反馈，无法撤销。'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('确认清理'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _clearingActivities = true);
+    var progressOpen = true;
+    unawaited(
+      showCupertinoDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const _AdminProgressDialog(
+          title: '正在清理活动',
+          message: '正在删除当前用户的活动推荐记录...',
+        ),
+      ).whenComplete(() {
+        progressOpen = false;
+      }),
+    );
+
+    try {
+      widget.api.authToken = widget.session.token;
+      final result = await widget.api.clearOfflineActivitiesForCurrentUser();
+      if (!mounted) return;
+      if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
+      setState(() => _clearingActivities = false);
+      await _showActivityResult(
+        title: '活动已清理',
+        message:
+            '已删除 ${result.deletedActivities} 条活动记录和 ${result.deletedFeedback} 条反馈记录。',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
+      setState(() => _clearingActivities = false);
+      await _showActivityResult(title: '清理失败', message: _asMessage(error));
     }
   }
 
@@ -241,8 +303,20 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                                   : '测试主动生成活动',
                               subtitle: '为当前登录用户生成一张线下活动推荐卡',
                               accent: const Color(0xFF2D73FF),
-                              enabled: !_generatingActivity,
+                              enabled:
+                                  !_generatingActivity && !_clearingActivities,
                               onTap: _triggerActivityGeneration,
+                            ),
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.trash_fill,
+                              title: _clearingActivities
+                                  ? '正在清理活动'
+                                  : '清理所有推荐活动',
+                              subtitle: '删除当前登录用户下的全部线下活动推荐记录',
+                              accent: const Color(0xFFE35B6F),
+                              enabled:
+                                  !_generatingActivity && !_clearingActivities,
+                              onTap: _clearActivities,
                             ),
                           ],
                         ),
@@ -260,19 +334,22 @@ class _AdminToolsPageState extends State<AdminToolsPage>
 }
 
 class _AdminProgressDialog extends StatelessWidget {
-  const _AdminProgressDialog();
+  const _AdminProgressDialog({required this.title, required this.message});
+
+  final String title;
+  final String message;
 
   @override
   Widget build(BuildContext context) {
-    return const CupertinoAlertDialog(
-      title: Text('正在生成活动'),
+    return CupertinoAlertDialog(
+      title: Text(title),
       content: Padding(
-        padding: EdgeInsets.only(top: 14),
+        padding: const EdgeInsets.only(top: 14),
         child: Column(
           children: [
-            CupertinoActivityIndicator(radius: 12),
-            SizedBox(height: 12),
-            Text('正在搜索附近活动并生成推荐卡...'),
+            const CupertinoActivityIndicator(radius: 12),
+            const SizedBox(height: 12),
+            Text(message),
           ],
         ),
       ),

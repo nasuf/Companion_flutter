@@ -58,6 +58,22 @@ class OfflineActivities {
       );
 }
 
+class AdminActivityClearResult {
+  const AdminActivityClearResult({
+    required this.deletedActivities,
+    required this.deletedFeedback,
+  });
+
+  final int deletedActivities;
+  final int deletedFeedback;
+
+  factory AdminActivityClearResult.fromJson(Map<String, dynamic> json) =>
+      AdminActivityClearResult(
+        deletedActivities: _asInt(json['deleted_activities']),
+        deletedFeedback: _asInt(json['deleted_feedback']),
+      );
+}
+
 class OfflineActivity {
   const OfflineActivity({
     required this.id,
