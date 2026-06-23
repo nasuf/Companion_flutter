@@ -40,6 +40,10 @@ class _ActivityDetailSheetShellState extends State<_ActivityDetailSheetShell> {
     return NotificationListener<DraggableScrollableNotification>(
       onNotification: (notification) {
         if (widget.fullscreen) return false;
+        if (_expanded && notification.extent < 0.90) {
+          Navigator.of(context).pop();
+          return true;
+        }
         final next = notification.extent >= 0.88;
         if (next != _expanded) {
           setState(() => _expanded = next);
@@ -183,6 +187,7 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
     final colors = AppColors.of(context);
     final task = widget.activity.easterEggTask;
     final canRespond = widget.activity.status == 'pending';
+    final canReaccept = widget.activity.status == 'ignored';
     final canComplete = widget.activity.status == 'accepted';
     final isCompleted = widget.activity.status == 'completed';
     final viewInsets = MediaQuery.viewInsetsOf(context);
@@ -231,6 +236,13 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    _ActivityImage(
+                      activity: widget.activity,
+                      height: 178,
+                      authToken: widget.api.authToken,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    const SizedBox(height: 18),
                     Text(
                       widget.activity.title,
                       style: _titleStyle(context, 24),
@@ -252,6 +264,12 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
                         working: _responding,
                         onAccept: _accept,
                         onIgnore: _ignore,
+                      ),
+                    ] else if (canReaccept) ...[
+                      const SizedBox(height: 22),
+                      _ActivityReacceptButton(
+                        working: _responding,
+                        onPressed: _accept,
                       ),
                     ],
                     if (canComplete) ...[
@@ -305,6 +323,36 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ActivityReacceptButton extends StatelessWidget {
+  const _ActivityReacceptButton({
+    required this.working,
+    required this.onPressed,
+  });
+
+  final bool working;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: CupertinoButton(
+        padding: EdgeInsets.zero,
+        borderRadius: BorderRadius.circular(18),
+        color: const Color(0xFF72CBE6),
+        onPressed: working ? null : onPressed,
+        child: Text(
+          working ? '处理中...' : '✨ 重新接受邀请',
+          style: const TextStyle(
+            fontWeight: FontWeight.w900,
+            decoration: TextDecoration.none,
+          ),
+        ),
       ),
     );
   }

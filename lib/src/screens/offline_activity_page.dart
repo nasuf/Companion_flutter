@@ -217,6 +217,7 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                                   if (latest != null)
                                     _ActivityHeroCard(
                                       activity: latest,
+                                      authToken: widget.api.authToken,
                                       working: _working,
                                       onAccept: () => _accept(latest),
                                       onIgnore: () => _ignore(latest),
@@ -255,6 +256,7 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                                 ),
                                 child: _ActivityMiniCard(
                                   activity: pending[index],
+                                  authToken: widget.api.authToken,
                                   onTap: () =>
                                       _showActivityDetail(pending[index]),
                                 ),
@@ -291,6 +293,7 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                                 ),
                                 child: _ActivityMiniCard(
                                   activity: accepted[index],
+                                  authToken: widget.api.authToken,
                                   onTap: () =>
                                       _showActivityDetail(accepted[index]),
                                 ),
@@ -327,6 +330,7 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                                 ),
                                 child: _ActivityMiniCard(
                                   activity: ignored[index],
+                                  authToken: widget.api.authToken,
                                   onTap: () =>
                                       _showActivityDetail(ignored[index]),
                                 ),
@@ -363,6 +367,7 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                                 ),
                                 child: _ActivityMiniCard(
                                   activity: completed[index],
+                                  authToken: widget.api.authToken,
                                   onTap: () =>
                                       _showActivityDetail(completed[index]),
                                 ),
@@ -630,6 +635,7 @@ class _ActivityInfoTile extends StatelessWidget {
 class _ActivityHeroCard extends StatelessWidget {
   const _ActivityHeroCard({
     required this.activity,
+    required this.authToken,
     required this.working,
     required this.onAccept,
     required this.onIgnore,
@@ -637,6 +643,7 @@ class _ActivityHeroCard extends StatelessWidget {
   });
 
   final OfflineActivity activity;
+  final String? authToken;
   final bool working;
   final VoidCallback onAccept;
   final VoidCallback onIgnore;
@@ -654,7 +661,14 @@ class _ActivityHeroCard extends StatelessWidget {
         children: [
           Stack(
             children: [
-              _ActivityImage(activity: activity, height: 176),
+              _ActivityImage(
+                activity: activity,
+                height: 176,
+                authToken: authToken,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(26),
+                ),
+              ),
               Positioned(
                 left: 16,
                 top: 14,
@@ -873,10 +887,17 @@ class _ActivityStateBadge extends StatelessWidget {
 }
 
 class _ActivityImage extends StatelessWidget {
-  const _ActivityImage({required this.activity, required this.height});
+  const _ActivityImage({
+    required this.activity,
+    required this.height,
+    required this.authToken,
+    this.borderRadius,
+  });
 
   final OfflineActivity activity;
   final double height;
+  final String? authToken;
+  final BorderRadius? borderRadius;
 
   @override
   Widget build(BuildContext context) {
@@ -884,7 +905,7 @@ class _ActivityImage extends StatelessWidget {
         ? activity.imageUrls.first
         : null;
     return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+      borderRadius: borderRadius ?? BorderRadius.circular(18),
       child: Container(
         height: height,
         width: double.infinity,
@@ -899,6 +920,7 @@ class _ActivityImage extends StatelessWidget {
             : Image.network(
                 image,
                 fit: BoxFit.cover,
+                headers: _mediaHeadersForUrl(image, authToken),
                 errorBuilder: (_, __, ___) => Center(
                   child: Text(
                     _categoryEmoji(activity.category),
@@ -936,9 +958,14 @@ class _MetaLine extends StatelessWidget {
 }
 
 class _ActivityMiniCard extends StatelessWidget {
-  const _ActivityMiniCard({required this.activity, required this.onTap});
+  const _ActivityMiniCard({
+    required this.activity,
+    required this.authToken,
+    required this.onTap,
+  });
 
   final OfflineActivity activity;
+  final String? authToken;
   final VoidCallback onTap;
 
   @override
@@ -951,20 +978,7 @@ class _ActivityMiniCard extends StatelessWidget {
         decoration: _softCardDecoration(context, radius: 20),
         child: Row(
           children: [
-            Container(
-              width: 58,
-              height: 58,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFE0C5),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Center(
-                child: Text(
-                  _categoryEmoji(activity.category),
-                  style: const TextStyle(fontSize: 26),
-                ),
-              ),
-            ),
+            _ActivityMiniThumb(activity: activity, authToken: authToken),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -993,6 +1007,51 @@ class _ActivityMiniCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ActivityMiniThumb extends StatelessWidget {
+  const _ActivityMiniThumb({required this.activity, required this.authToken});
+
+  final OfflineActivity activity;
+  final String? authToken;
+
+  @override
+  Widget build(BuildContext context) {
+    final image = activity.imageUrls.isNotEmpty
+        ? activity.imageUrls.first.trim()
+        : '';
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: 58,
+        height: 58,
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFE0C5),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: image.isEmpty
+            ? Center(
+                child: Text(
+                  _categoryEmoji(activity.category),
+                  style: const TextStyle(fontSize: 26),
+                ),
+              )
+            : Image.network(
+                image,
+                fit: BoxFit.cover,
+                width: 58,
+                height: 58,
+                headers: _mediaHeadersForUrl(image, authToken),
+                errorBuilder: (_, __, ___) => Center(
+                  child: Text(
+                    _categoryEmoji(activity.category),
+                    style: const TextStyle(fontSize: 26),
+                  ),
+                ),
+              ),
       ),
     );
   }
