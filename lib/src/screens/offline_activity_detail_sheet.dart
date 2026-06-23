@@ -26,6 +26,7 @@ class _ActivityDetailSheetShell extends StatefulWidget {
 
 class _ActivityDetailSheetShellState extends State<_ActivityDetailSheetShell> {
   late bool _expanded = widget.fullscreen;
+  bool _closing = false;
 
   @override
   void didUpdateWidget(covariant _ActivityDetailSheetShell oldWidget) {
@@ -39,9 +40,16 @@ class _ActivityDetailSheetShellState extends State<_ActivityDetailSheetShell> {
   Widget build(BuildContext context) {
     return NotificationListener<DraggableScrollableNotification>(
       onNotification: (notification) {
-        if (widget.fullscreen) return false;
+        if (widget.fullscreen || _closing) return false;
         if (_expanded && notification.extent < 0.90) {
-          Navigator.of(context).pop();
+          _closing = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            final navigator = Navigator.of(context);
+            if (navigator.canPop()) {
+              navigator.pop();
+            }
+          });
           return true;
         }
         final next = notification.extent >= 0.88;

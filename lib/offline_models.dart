@@ -164,6 +164,7 @@ class OfflineActivity {
       );
 
   OfflineActivity copyWith({
+    List<String>? imageUrls,
     OfflineActivityCompletionFeedback? completionFeedback,
   }) {
     return OfflineActivity(
@@ -179,7 +180,7 @@ class OfflineActivity {
       startsAt: startsAt,
       endsAt: endsAt,
       officialUrl: officialUrl,
-      imageUrls: imageUrls,
+      imageUrls: imageUrls ?? this.imageUrls,
       taskHint: taskHint,
       easterEggTask: easterEggTask,
       searchSources: searchSources,

@@ -117,8 +117,12 @@ class CompanionApi {
 
   OfflineActivity _normalizeOfflineActivity(OfflineActivity value) {
     final feedback = value.completionFeedback;
-    if (feedback == null) return value;
+    final imageUrls = value.imageUrls.map(_absoluteUrl).toList();
+    if (feedback == null) {
+      return value.copyWith(imageUrls: imageUrls);
+    }
     return value.copyWith(
+      imageUrls: imageUrls,
       completionFeedback: feedback.copyWith(
         photoAttachments: feedback.photoAttachments
             .map(_normalizeChatAttachment)
