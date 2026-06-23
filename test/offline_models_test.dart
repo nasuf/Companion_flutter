@@ -15,6 +15,19 @@ void main() {
         'search_sources': [
           {'title': 'source', 'url': 'https://example.com'},
         ],
+        'completion_feedback': {
+          'text': '今天很放松',
+          'photo_attachments': [
+            {
+              'id': 'p1',
+              'kind': 'image',
+              'mime': 'image/jpeg',
+              'size': 12,
+              'url': '/offline/media/p1.jpg',
+            },
+          ],
+          'created_at': '2026-06-21T11:00:00Z',
+        },
         'created_at': '2026-06-21T10:00:00Z',
         'updated_at': '2026-06-21T10:00:00Z',
       },
@@ -25,6 +38,11 @@ void main() {
     expect(data.latest?.id, 'a1');
     expect(data.latest?.imageUrls, ['https://example.com/a.png']);
     expect(data.latest?.easterEggTask?['title'], '拍一张照片');
+    expect(data.latest?.completionFeedback?.text, '今天很放松');
+    expect(
+      data.latest?.completionFeedback?.photoAttachments.single.url,
+      '/offline/media/p1.jpg',
+    );
   });
 
   test('gift home response parses address, shipping gift and tracking', () {

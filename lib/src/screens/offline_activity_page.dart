@@ -60,44 +60,73 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
     }
   }
 
-  Future<void> _accept(OfflineActivity activity) async {
+  Future<OfflineActivity?> _accept(
+    OfflineActivity activity, {
+    bool openDetail = true,
+  }) async {
     setState(() => _working = true);
     try {
       final updated = await widget.api.acceptOfflineActivity(activity.id);
       await _load();
       widget.onChanged?.call();
-      if (mounted) _showActivityDetail(updated);
+      if (mounted && openDetail) _showActivityDetail(updated);
+      return updated;
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
+      return null;
     } finally {
       if (mounted) setState(() => _working = false);
     }
   }
 
-  Future<void> _ignore(OfflineActivity activity) async {
+  Future<bool> _ignore(OfflineActivity activity) async {
     setState(() => _working = true);
     try {
       await widget.api.ignoreOfflineActivity(activity.id);
       await _load();
       widget.onChanged?.call();
+      return true;
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
+      return false;
     } finally {
       if (mounted) setState(() => _working = false);
     }
   }
 
   void _showActivityDetail(OfflineActivity activity) {
-    showCupertinoModalPopup<void>(
+    final fullscreen =
+        activity.status == 'accepted' || activity.status == 'completed';
+    final initialSize = fullscreen ? 1.0 : 0.58;
+    showModalBottomSheet<void>(
       context: context,
-      builder: (_) => _ActivityDetailSheet(
-        api: widget.api,
-        activity: activity,
-        onCompleted: () {
-          _load();
-          widget.onChanged?.call();
-        },
-      ),
+      isScrollControlled: true,
+      enableDrag: true,
+      useSafeArea: false,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.34),
+      builder: (sheetContext) {
+        return DraggableScrollableSheet(
+          initialChildSize: initialSize,
+          minChildSize: initialSize,
+          maxChildSize: 1.0,
+          snap: !fullscreen,
+          snapSizes: fullscreen ? null : const [0.58, 1.0],
+          expand: false,
+          builder: (context, scrollController) => _ActivityDetailSheetShell(
+            api: widget.api,
+            activity: activity,
+            scrollController: scrollController,
+            fullscreen: fullscreen,
+            onAccept: () => _accept(activity, openDetail: false),
+            onIgnore: () => _ignore(activity),
+            onCompleted: () {
+              _load();
+              widget.onChanged?.call();
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -120,13 +149,19 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
   Widget build(BuildContext context) {
     final data = _data;
     final latest = data?.latest;
-    final pending = (data?.pending ?? const <OfflineActivity>[])
+    final activeActivities = _dedupeActivities([
+      if (latest != null) latest,
+      ...(data?.pending ?? const <OfflineActivity>[]),
+    ]);
+    final pending = activeActivities
         .where((activity) => activity.status == 'pending')
         .where((activity) => activity.id != latest?.id)
         .toList();
+    final accepted = activeActivities
+        .where((activity) => activity.status == 'accepted')
+        .toList();
     final completed = data?.completed ?? const <OfflineActivity>[];
-    final hasAnyActivity =
-        latest != null || pending.isNotEmpty || completed.isNotEmpty;
+    final hasAnyActivity = activeActivities.isNotEmpty || completed.isNotEmpty;
     final colors = AppColors.of(context);
     return CupertinoPageScaffold(
       backgroundColor: colors.page,
@@ -225,6 +260,42 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                             child: Padding(
                               padding: const EdgeInsets.fromLTRB(20, 26, 20, 0),
                               child: _SectionTitle(
+                                title: '待出行',
+                                trailing: '${accepted.length}个',
+                              ),
+                            ),
+                          ),
+                          if (accepted.isEmpty)
+                            const SliverToBoxAdapter(
+                              child: Padding(
+                                padding: EdgeInsets.fromLTRB(20, 14, 20, 0),
+                                child: _SoftEmptyPanel(
+                                  icon: CupertinoIcons.location_solid,
+                                  title: '暂无待出行活动',
+                                  subtitle: '接受邀请后，我会在这里陪你等出发',
+                                ),
+                              ),
+                            )
+                          else
+                            SliverList.separated(
+                              itemCount: accepted.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 10),
+                              itemBuilder: (context, index) => Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                ),
+                                child: _ActivityMiniCard(
+                                  activity: accepted[index],
+                                  onTap: () =>
+                                      _showActivityDetail(accepted[index]),
+                                ),
+                              ),
+                            ),
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 26, 20, 0),
+                              child: _SectionTitle(
                                 title: '已完成',
                                 trailing: '${completed.length}个',
                               ),
@@ -267,6 +338,16 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
       ),
     );
   }
+}
+
+List<OfflineActivity> _dedupeActivities(List<OfflineActivity> activities) {
+  final seen = <String>{};
+  final deduped = <OfflineActivity>[];
+  for (final activity in activities) {
+    if (activity.id.isEmpty || !seen.add(activity.id)) continue;
+    deduped.add(activity);
+  }
+  return deduped;
 }
 
 class _ActivityEmptyLanding extends StatelessWidget {
@@ -523,9 +604,9 @@ class _ActivityHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     final isAccepted = activity.status == 'accepted';
     final isCompleted = activity.status == 'completed';
+    final canRespond = activity.status == 'pending';
     return Container(
       decoration: _softCardDecoration(context),
       child: Column(
@@ -544,8 +625,8 @@ class _ActivityHeroCard extends StatelessWidget {
                       ? '已完成'
                       : '待回复',
                   color: isAccepted || isCompleted
-                      ? const Color(0xFF70C995)
-                      : const Color(0xFFFFB66D),
+                      ? const Color(0xFF36A66A)
+                      : const Color(0xFFD88A42),
                 ),
               ),
             ],
@@ -589,79 +670,129 @@ class _ActivityHeroCard extends StatelessWidget {
                     ),
                   ),
                 ],
-                const SizedBox(height: 16),
-                if (isAccepted || isCompleted)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 9,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF70C995).withValues(alpha: 0.25),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        isCompleted ? '✅ 已完成活动' : '✅ 已接受邀请',
-                        style: const TextStyle(
-                          color: Color(0xFF358A5B),
-                          fontWeight: FontWeight.w900,
-                          decoration: TextDecoration.none,
-                        ),
-                      ),
-                    ),
-                  )
-                else
-                  Row(
-                    children: [
-                      Expanded(
-                        child: CupertinoButton(
-                          padding: EdgeInsets.zero,
-                          borderRadius: BorderRadius.circular(18),
-                          color: const Color(0xFF72CBE6),
-                          onPressed: working ? null : onAccept,
-                          child: const Text(
-                            '✨ 接受邀请',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w900,
-                              decoration: TextDecoration.none,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: CupertinoButton(
-                          padding: EdgeInsets.zero,
-                          borderRadius: BorderRadius.circular(18),
-                          color: colors.surfaceMuted,
-                          onPressed: working ? null : onIgnore,
-                          child: Text(
-                            '暂不考虑',
-                            style: TextStyle(
-                              color: colors.text,
-                              fontWeight: FontWeight.w800,
-                              decoration: TextDecoration.none,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                if (canRespond) ...[
+                  const SizedBox(height: 16),
+                  _ActivityResponseButtons(
+                    working: working,
+                    onAccept: onAccept,
+                    onIgnore: onIgnore,
                   ),
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: onOpen,
-                  child: const Text(
-                    '查看详情 →',
-                    style: TextStyle(decoration: TextDecoration.none),
-                  ),
-                ),
+                ],
+                const SizedBox(height: 14),
+                _ActivityDetailAction(onOpen: onOpen),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ActivityDetailAction extends StatelessWidget {
+  const _ActivityDetailAction({required this.onOpen});
+
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: Size.zero,
+      borderRadius: BorderRadius.circular(18),
+      onPressed: onOpen,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: colors.surfaceMuted.withValues(alpha: 0.78),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: colors.hairline.withValues(alpha: 0.72)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: colors.accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                CupertinoIcons.doc_text_search,
+                size: 17,
+                color: colors.accent,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '展开活动详情',
+                style: TextStyle(
+                  color: colors.text,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+            Icon(CupertinoIcons.chevron_right, size: 17, color: colors.muted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivityResponseButtons extends StatelessWidget {
+  const _ActivityResponseButtons({
+    required this.working,
+    required this.onAccept,
+    required this.onIgnore,
+  });
+
+  final bool working;
+  final VoidCallback onAccept;
+  final VoidCallback onIgnore;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    return Row(
+      children: [
+        Expanded(
+          child: CupertinoButton(
+            padding: EdgeInsets.zero,
+            borderRadius: BorderRadius.circular(18),
+            color: const Color(0xFF72CBE6),
+            onPressed: working ? null : onAccept,
+            child: const Text(
+              '✨ 接受邀请',
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: CupertinoButton(
+            padding: EdgeInsets.zero,
+            borderRadius: BorderRadius.circular(18),
+            color: colors.surfaceMuted,
+            onPressed: working ? null : onIgnore,
+            child: Text(
+              '暂不考虑',
+              style: TextStyle(
+                color: colors.text,
+                fontWeight: FontWeight.w800,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -677,13 +808,21 @@ class _ActivityStateBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.34),
+        color: color.withValues(alpha: 0.90),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.48)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: Color.lerp(color, AppColors.of(context).text, 0.35),
+          color: Colors.white.withValues(alpha: 0.96),
           fontSize: 12,
           fontWeight: FontWeight.w900,
           decoration: TextDecoration.none,
@@ -814,126 +953,6 @@ class _ActivityMiniCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _ActivityDetailSheet extends StatefulWidget {
-  const _ActivityDetailSheet({
-    required this.api,
-    required this.activity,
-    required this.onCompleted,
-  });
-
-  final CompanionApi api;
-  final OfflineActivity activity;
-  final VoidCallback onCompleted;
-
-  @override
-  State<_ActivityDetailSheet> createState() => _ActivityDetailSheetState();
-}
-
-class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
-  final _controller = TextEditingController();
-  bool _working = false;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _complete() async {
-    setState(() => _working = true);
-    try {
-      await widget.api.completeOfflineActivity(
-        widget.activity.id,
-        text: _controller.text.trim(),
-      );
-      widget.onCompleted();
-      if (mounted) Navigator.of(context).pop();
-    } finally {
-      if (mounted) setState(() => _working = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
-    final task = widget.activity.easterEggTask;
-    return _BottomSheetFrame(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _sheetGrabber(context),
-          Text(widget.activity.title, style: _titleStyle(context, 22)),
-          const SizedBox(height: 10),
-          Text(widget.activity.description, style: _mutedStyle(context, 15)),
-          const SizedBox(height: 14),
-          _MetaLine(activity: widget.activity),
-          if (task != null) ...[
-            const SizedBox(height: 18),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF3E1),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFE8BC72)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '🥚 ${task['title'] ?? '秘密彩蛋任务'}',
-                    style: const TextStyle(
-                      color: Color(0xFFB16B2A),
-                      fontSize: 17,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    (task['body'] ?? '').toString(),
-                    style: const TextStyle(
-                      color: Color(0xFF87562A),
-                      fontSize: 15,
-                      height: 1.45,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 18),
-          CupertinoTextField(
-            controller: _controller,
-            minLines: 2,
-            maxLines: 4,
-            placeholder: '分享一点完成情况、文字感想或照片说明...',
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: colors.surfaceMuted,
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: CupertinoButton(
-              borderRadius: BorderRadius.circular(18),
-              color: const Color(0xFFFFA83E),
-              onPressed: _working ? null : _complete,
-              child: Text(
-                _working ? '发送中...' : '📷 分享完成情况',
-                style: const TextStyle(fontWeight: FontWeight.w900),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

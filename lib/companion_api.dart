@@ -115,6 +115,42 @@ class CompanionApi {
     return value.copyWith(url: _absoluteUrl(value.url));
   }
 
+  OfflineActivity _normalizeOfflineActivity(OfflineActivity value) {
+    final feedback = value.completionFeedback;
+    if (feedback == null) return value;
+    return value.copyWith(
+      completionFeedback: feedback.copyWith(
+        photoAttachments: feedback.photoAttachments
+            .map(_normalizeChatAttachment)
+            .toList(),
+      ),
+    );
+  }
+
+  OfflineActivities _normalizeOfflineActivities(OfflineActivities value) {
+    return OfflineActivities(
+      latest: value.latest == null
+          ? null
+          : _normalizeOfflineActivity(value.latest!),
+      pending: value.pending.map(_normalizeOfflineActivity).toList(),
+      completed: value.completed.map(_normalizeOfflineActivity).toList(),
+    );
+  }
+
+  OfflineHome _normalizeOfflineHome(OfflineHome value) {
+    final latest = value.latestActivity;
+    return OfflineHome(
+      pendingActivityCount: value.pendingActivityCount,
+      completedActivityCount: value.completedActivityCount,
+      giftCount: value.giftCount,
+      shippingGiftCount: value.shippingGiftCount,
+      hasLocation: value.hasLocation,
+      tags: value.tags,
+      latestActivity: latest == null ? null : _normalizeOfflineActivity(latest),
+      giftSummary: value.giftSummary,
+    );
+  }
+
   ChatMessage _normalizeChatMessage(ChatMessage value) {
     final metadata = value.metadata;
     if (metadata == null) return value;
@@ -323,7 +359,7 @@ class CompanionApi {
   Future<OfflineHome> fetchOfflineHome({String? workspaceId}) async {
     final path = _pathWithWorkspace('/offline/home', workspaceId);
     final json = await _request('GET', path) as Map<String, dynamic>;
-    return OfflineHome.fromJson(json);
+    return _normalizeOfflineHome(OfflineHome.fromJson(json));
   }
 
   Future<OfflineActivities> fetchOfflineActivities({
@@ -331,7 +367,7 @@ class CompanionApi {
   }) async {
     final path = _pathWithWorkspace('/offline/activities', workspaceId);
     final json = await _request('GET', path) as Map<String, dynamic>;
-    return OfflineActivities.fromJson(json);
+    return _normalizeOfflineActivities(OfflineActivities.fromJson(json));
   }
 
   Future<OfflineActivity?> createOfflineActivityRecommendation({
@@ -343,7 +379,9 @@ class CompanionApi {
     );
     final json = await _request('POST', path);
     if (json is! Map) return null;
-    return OfflineActivity.fromJson(Map<String, dynamic>.from(json));
+    return _normalizeOfflineActivity(
+      OfflineActivity.fromJson(Map<String, dynamic>.from(json)),
+    );
   }
 
   Future<AdminActivityClearResult>
@@ -358,21 +396,21 @@ class CompanionApi {
     final json =
         await _request('GET', '/offline/activities/$activityId')
             as Map<String, dynamic>;
-    return OfflineActivity.fromJson(json);
+    return _normalizeOfflineActivity(OfflineActivity.fromJson(json));
   }
 
   Future<OfflineActivity> acceptOfflineActivity(String activityId) async {
     final json =
         await _request('POST', '/offline/activities/$activityId/accept')
             as Map<String, dynamic>;
-    return OfflineActivity.fromJson(json);
+    return _normalizeOfflineActivity(OfflineActivity.fromJson(json));
   }
 
   Future<OfflineActivity> ignoreOfflineActivity(String activityId) async {
     final json =
         await _request('POST', '/offline/activities/$activityId/ignore')
             as Map<String, dynamic>;
-    return OfflineActivity.fromJson(json);
+    return _normalizeOfflineActivity(OfflineActivity.fromJson(json));
   }
 
   Future<OfflineActivity> completeOfflineActivity(
@@ -387,7 +425,34 @@ class CompanionApi {
               body: {'text': text, 'photo_attachment_ids': photoAttachmentIds},
             )
             as Map<String, dynamic>;
-    return OfflineActivity.fromJson(json);
+    return _normalizeOfflineActivity(OfflineActivity.fromJson(json));
+  }
+
+  Future<ChatAttachment> uploadOfflineActivityImage({
+    required String activityId,
+    required String name,
+    required String mime,
+    required int size,
+    required int width,
+    required int height,
+    required String base64Data,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/offline/activities/$activityId/media',
+              body: {
+                'name': name,
+                'mime': mime,
+                'size': size,
+                'width': width,
+                'height': height,
+                'base64': base64Data,
+              },
+              debugLabel: 'offline.activity.media',
+            )
+            as Map<String, dynamic>;
+    return _normalizeChatAttachment(ChatAttachment.fromJson(json));
   }
 
   Future<GiftsHome> fetchOfflineGifts({String? workspaceId}) async {

@@ -1,3 +1,5 @@
+import 'models.dart';
+
 class OfflineHome {
   const OfflineHome({
     required this.pendingActivityCount,
@@ -96,6 +98,7 @@ class OfflineActivity {
     this.ignoredAt,
     this.completedAt,
     this.expiresAt,
+    this.completionFeedback,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -120,6 +123,7 @@ class OfflineActivity {
   final String? ignoredAt;
   final String? completedAt;
   final String? expiresAt;
+  final OfflineActivityCompletionFeedback? completionFeedback;
   final String createdAt;
   final String updatedAt;
 
@@ -147,9 +151,80 @@ class OfflineActivity {
         ignoredAt: _asString(json['ignored_at']),
         completedAt: _asString(json['completed_at']),
         expiresAt: _asString(json['expires_at']),
+        completionFeedback: json['completion_feedback'] is Map
+            ? OfflineActivityCompletionFeedback.fromJson(
+                Map<String, dynamic>.from(json['completion_feedback'] as Map),
+              )
+            : null,
         createdAt: json['created_at']?.toString() ?? '',
         updatedAt: json['updated_at']?.toString() ?? '',
       );
+
+  OfflineActivity copyWith({
+    OfflineActivityCompletionFeedback? completionFeedback,
+  }) {
+    return OfflineActivity(
+      id: id,
+      status: status,
+      title: title,
+      summary: summary,
+      description: description,
+      category: category,
+      city: city,
+      locationName: locationName,
+      address: address,
+      startsAt: startsAt,
+      endsAt: endsAt,
+      officialUrl: officialUrl,
+      imageUrls: imageUrls,
+      taskHint: taskHint,
+      easterEggTask: easterEggTask,
+      searchSources: searchSources,
+      acceptedAt: acceptedAt,
+      ignoredAt: ignoredAt,
+      completedAt: completedAt,
+      expiresAt: expiresAt,
+      completionFeedback: completionFeedback ?? this.completionFeedback,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+    );
+  }
+}
+
+class OfflineActivityCompletionFeedback {
+  const OfflineActivityCompletionFeedback({
+    required this.text,
+    required this.photoAttachments,
+    this.createdAt,
+  });
+
+  final String text;
+  final List<ChatAttachment> photoAttachments;
+  final DateTime? createdAt;
+
+  factory OfflineActivityCompletionFeedback.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    return OfflineActivityCompletionFeedback(
+      text: json['text']?.toString() ?? '',
+      photoAttachments: [
+        for (final item in (json['photo_attachments'] as List? ?? const []))
+          if (item is Map)
+            ChatAttachment.fromJson(Map<String, dynamic>.from(item)),
+      ],
+      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
+    );
+  }
+
+  OfflineActivityCompletionFeedback copyWith({
+    List<ChatAttachment>? photoAttachments,
+  }) {
+    return OfflineActivityCompletionFeedback(
+      text: text,
+      photoAttachments: photoAttachments ?? this.photoAttachments,
+      createdAt: createdAt,
+    );
+  }
 }
 
 class GiftAddress {
