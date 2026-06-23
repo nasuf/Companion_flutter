@@ -114,7 +114,9 @@ Map<String, String>? _mediaHeadersForUrl(String? url, String? authToken) {
   }
   final uri = Uri.tryParse(value);
   final path = uri?.path ?? value;
-  if (!path.startsWith('/chat/media/') && !path.startsWith('/offline/media/')) {
+  final mediaPath = path.startsWith('/api/') ? path.substring(4) : path;
+  if (!mediaPath.startsWith('/chat/media/') &&
+      !mediaPath.startsWith('/offline/media/')) {
     return null;
   }
   return {'Authorization': 'Bearer $authToken'};

@@ -133,6 +133,7 @@ class CompanionApi {
           ? null
           : _normalizeOfflineActivity(value.latest!),
       pending: value.pending.map(_normalizeOfflineActivity).toList(),
+      ignored: value.ignored.map(_normalizeOfflineActivity).toList(),
       completed: value.completed.map(_normalizeOfflineActivity).toList(),
     );
   }

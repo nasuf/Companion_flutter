@@ -160,8 +160,12 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
     final accepted = activeActivities
         .where((activity) => activity.status == 'accepted')
         .toList();
+    final ignored = data?.ignored ?? const <OfflineActivity>[];
     final completed = data?.completed ?? const <OfflineActivity>[];
-    final hasAnyActivity = activeActivities.isNotEmpty || completed.isNotEmpty;
+    final hasAnyActivity =
+        activeActivities.isNotEmpty ||
+        ignored.isNotEmpty ||
+        completed.isNotEmpty;
     final colors = AppColors.of(context);
     return CupertinoPageScaffold(
       backgroundColor: colors.page,
@@ -289,6 +293,42 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                                   activity: accepted[index],
                                   onTap: () =>
                                       _showActivityDetail(accepted[index]),
+                                ),
+                              ),
+                            ),
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 26, 20, 0),
+                              child: _SectionTitle(
+                                title: '暂不考虑',
+                                trailing: '${ignored.length}个',
+                              ),
+                            ),
+                          ),
+                          if (ignored.isEmpty)
+                            const SliverToBoxAdapter(
+                              child: Padding(
+                                padding: EdgeInsets.fromLTRB(20, 14, 20, 0),
+                                child: _SoftEmptyPanel(
+                                  icon: CupertinoIcons.archivebox,
+                                  title: '暂无暂不考虑活动',
+                                  subtitle: '你暂时跳过的活动会放在这里',
+                                ),
+                              ),
+                            )
+                          else
+                            SliverList.separated(
+                              itemCount: ignored.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 10),
+                              itemBuilder: (context, index) => Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                ),
+                                child: _ActivityMiniCard(
+                                  activity: ignored[index],
+                                  onTap: () =>
+                                      _showActivityDetail(ignored[index]),
                                 ),
                               ),
                             ),

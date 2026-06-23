@@ -32,6 +32,19 @@ void main() {
         'updated_at': '2026-06-21T10:00:00Z',
       },
       'pending': [],
+      'ignored': [
+        {
+          'id': 'a2',
+          'status': 'ignored',
+          'title': '暂不考虑的活动',
+          'summary': '',
+          'description': '之后再说',
+          'image_urls': [],
+          'search_sources': [],
+          'created_at': '2026-06-21T10:00:00Z',
+          'updated_at': '2026-06-21T10:00:00Z',
+        },
+      ],
       'completed': [],
     });
 
@@ -39,6 +52,7 @@ void main() {
     expect(data.latest?.imageUrls, ['https://example.com/a.png']);
     expect(data.latest?.easterEggTask?['title'], '拍一张照片');
     expect(data.latest?.completionFeedback?.text, '今天很放松');
+    expect(data.ignored.single.status, 'ignored');
     expect(
       data.latest?.completionFeedback?.photoAttachments.single.url,
       '/offline/media/p1.jpg',

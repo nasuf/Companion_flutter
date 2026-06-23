@@ -34,10 +34,12 @@ class _ExpandedSheetTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
-    return SafeArea(
-      bottom: false,
-      child: SizedBox(
-        height: 74,
+    final view = View.of(context);
+    final topInset = view.padding.top / view.devicePixelRatio;
+    return SizedBox(
+      height: topInset + 74,
+      child: Padding(
+        padding: EdgeInsets.only(top: topInset),
         child: Stack(
           alignment: Alignment.center,
           children: [

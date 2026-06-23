@@ -41,11 +41,13 @@ class OfflineActivities {
   const OfflineActivities({
     this.latest,
     required this.pending,
+    required this.ignored,
     required this.completed,
   });
 
   final OfflineActivity? latest;
   final List<OfflineActivity> pending;
+  final List<OfflineActivity> ignored;
   final List<OfflineActivity> completed;
 
   factory OfflineActivities.fromJson(Map<String, dynamic> json) =>
@@ -56,6 +58,7 @@ class OfflineActivities {
               )
             : null,
         pending: _activityList(json['pending']),
+        ignored: _activityList(json['ignored']),
         completed: _activityList(json['completed']),
       );
 }

@@ -196,19 +196,29 @@ class _ActivityCompletionFeedbackView extends StatelessWidget {
             runSpacing: 10,
             children: [
               for (final photo in photos)
-                ClipRRect(
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
                   borderRadius: BorderRadius.circular(18),
-                  child: Image.network(
-                    photo.url,
-                    width: 96,
-                    height: 96,
-                    fit: BoxFit.cover,
-                    headers: _mediaHeadersForUrl(photo.url, authToken),
-                    errorBuilder: (_, __, ___) => Container(
+                  onPressed: () => _showOfflineActivityImagePreview(
+                    context,
+                    url: photo.url,
+                    authToken: authToken,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: Image.network(
+                      photo.url,
                       width: 96,
                       height: 96,
-                      color: colors.surfaceMuted,
-                      child: Icon(CupertinoIcons.photo, color: colors.muted),
+                      fit: BoxFit.cover,
+                      headers: _mediaHeadersForUrl(photo.url, authToken),
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 96,
+                        height: 96,
+                        color: colors.surfaceMuted,
+                        child: Icon(CupertinoIcons.photo, color: colors.muted),
+                      ),
                     ),
                   ),
                 ),
@@ -218,4 +228,54 @@ class _ActivityCompletionFeedbackView extends StatelessWidget {
       ],
     );
   }
+}
+
+Future<void> _showOfflineActivityImagePreview(
+  BuildContext context, {
+  required String url,
+  required String? authToken,
+}) async {
+  await showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'activity-image-preview',
+    barrierColor: Colors.black.withValues(alpha: 0.86),
+    pageBuilder: (_, __, ___) {
+      final headers = _mediaHeadersForUrl(url, authToken);
+      return Material(
+        type: MaterialType.transparency,
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: InteractiveViewer(
+                    minScale: 0.7,
+                    maxScale: 4,
+                    child: Center(
+                      child: Image.network(
+                        url,
+                        fit: BoxFit.contain,
+                        headers: headers,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 12,
+                right: 12,
+                child: _RoundIconButton(
+                  tooltip: '关闭',
+                  icon: CupertinoIcons.xmark,
+                  onTap: () => Navigator.of(context).pop(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
 }
