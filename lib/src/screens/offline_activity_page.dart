@@ -671,79 +671,78 @@ class _ActivityHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isAccepted = activity.status == 'accepted';
-    final isCompleted = activity.status == 'completed';
     final canRespond = activity.status == 'pending';
     return Container(
       decoration: _softCardDecoration(context),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Stack(
-            children: [
-              _ActivityImage(
-                activity: activity,
-                height: 176,
-                authToken: authToken,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(26),
-                ),
-              ),
-              Positioned(
-                left: 16,
-                top: 14,
-                child: _ActivityStateBadge(
-                  label: isAccepted
-                      ? '已接受'
-                      : isCompleted
-                      ? '已完成'
-                      : '待确定',
-                  color: isAccepted || isCompleted
-                      ? const Color(0xFF36A66A)
-                      : const Color(0xFFD88A42),
-                ),
-              ),
-            ],
+          _ActivityImage(
+            activity: activity,
+            height: 176,
+            authToken: authToken,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
           ),
           Padding(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  activity.title,
-                  style: _titleStyle(context, 22),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  activity.summary.isEmpty
-                      ? activity.description
-                      : activity.summary,
-                  style: _mutedStyle(context, 14),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 14),
-                _MetaLine(activity: activity),
-                if ((activity.taskHint ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFEAD9),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Text(
-                      '🎁 ${activity.taskHint}',
-                      style: const TextStyle(
-                        color: Color(0xFFC57342),
-                        fontWeight: FontWeight.w800,
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onOpen,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              activity.title,
+                              style: _titleStyle(context, 22),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const _ActivityDetailCue(),
+                        ],
                       ),
-                    ),
+                      const SizedBox(height: 8),
+                      Text(
+                        activity.summary.isEmpty
+                            ? activity.description
+                            : activity.summary,
+                        style: _mutedStyle(context, 14),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 14),
+                      _MetaLine(activity: activity),
+                      if ((activity.taskHint ?? '').isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFEAD9),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Text(
+                            '🎁 ${activity.taskHint}',
+                            style: const TextStyle(
+                              color: Color(0xFFC57342),
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                ],
+                ),
                 if (canRespond) ...[
                   const SizedBox(height: 16),
                   _ActivityResponseButtons(
@@ -752,121 +751,11 @@ class _ActivityHeroCard extends StatelessWidget {
                     onIgnore: onIgnore,
                   ),
                 ],
-                const SizedBox(height: 14),
-                _ActivityDetailAction(onOpen: onOpen),
               ],
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _ActivityDetailAction extends StatelessWidget {
-  const _ActivityDetailAction({required this.onOpen});
-
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      minimumSize: Size.zero,
-      borderRadius: BorderRadius.circular(18),
-      onPressed: onOpen,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: colors.surfaceMuted.withValues(alpha: 0.78),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: colors.hairline.withValues(alpha: 0.72)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: colors.accent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                CupertinoIcons.doc_text_search,
-                size: 17,
-                color: colors.accent,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                '展开活动详情',
-                style: TextStyle(
-                  color: colors.text,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-            ),
-            Icon(CupertinoIcons.chevron_right, size: 17, color: colors.muted),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ActivityResponseButtons extends StatelessWidget {
-  const _ActivityResponseButtons({
-    required this.working,
-    required this.onAccept,
-    required this.onIgnore,
-  });
-
-  final bool working;
-  final VoidCallback onAccept;
-  final VoidCallback onIgnore;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
-    return Row(
-      children: [
-        Expanded(
-          child: CupertinoButton(
-            padding: EdgeInsets.zero,
-            borderRadius: BorderRadius.circular(18),
-            color: const Color(0xFF72CBE6),
-            onPressed: working ? null : onAccept,
-            child: const Text(
-              '✨ 接受邀请',
-              style: TextStyle(
-                fontWeight: FontWeight.w900,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: CupertinoButton(
-            padding: EdgeInsets.zero,
-            borderRadius: BorderRadius.circular(18),
-            color: colors.surfaceMuted,
-            onPressed: working ? null : onIgnore,
-            child: Text(
-              '暂不考虑',
-              style: TextStyle(
-                color: colors.text,
-                fontWeight: FontWeight.w800,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

@@ -112,12 +112,16 @@ class _ActivitySwipeDeckState extends State<_ActivitySwipeDeck> {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 628,
+          height: 574,
           child: Stack(
             clipBehavior: Clip.none,
             alignment: Alignment.topCenter,
             children: [
-              for (var index = widget.activities.length - 1; index >= 1; index--)
+              for (
+                var index = widget.activities.length - 1;
+                index >= 1;
+                index--
+              )
                 if (index < 3)
                   _ActivityDeckBackCard(
                     activity: widget.activities[index],
@@ -203,7 +207,7 @@ class _ActivityDeckBackCard extends StatelessWidget {
         child: Opacity(
           opacity: opacity,
           child: Container(
-            height: 586,
+            height: 530,
             decoration: _softCardDecoration(context).copyWith(
               boxShadow: [
                 BoxShadow(
@@ -249,9 +253,7 @@ class _SwipeIntentOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = accepting
-        ? const Color(0xFF4BCB84)
-        : const Color(0xFFE08A51);
+    final color = accepting ? const Color(0xFF4BCB84) : const Color(0xFFE08A51);
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(26),

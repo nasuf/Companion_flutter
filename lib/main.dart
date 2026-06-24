@@ -62,6 +62,7 @@ part 'src/screens/offline_activity_detail_components.dart';
 part 'src/screens/offline_activity_detail_media.dart';
 part 'src/screens/offline_activity_detail_sheet.dart';
 part 'src/screens/offline_activity_detail_shell.dart';
+part 'src/screens/offline_activity_action_buttons.dart';
 part 'src/screens/offline_activity_page.dart';
 part 'src/screens/offline_activity_swipe_deck.dart';
 part 'src/screens/offline_gift_page.dart';

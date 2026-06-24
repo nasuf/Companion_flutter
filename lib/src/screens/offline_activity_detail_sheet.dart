@@ -26,6 +26,7 @@ class _ActivityDetailSheetShell extends StatefulWidget {
 
 class _ActivityDetailSheetShellState extends State<_ActivityDetailSheetShell> {
   late bool _expanded = widget.fullscreen;
+  late bool _hasReachedFullscreen = widget.fullscreen;
   bool _closing = false;
 
   @override
@@ -33,6 +34,7 @@ class _ActivityDetailSheetShellState extends State<_ActivityDetailSheetShell> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.fullscreen != widget.fullscreen && widget.fullscreen) {
       _expanded = true;
+      _hasReachedFullscreen = true;
     }
   }
 
@@ -41,7 +43,12 @@ class _ActivityDetailSheetShellState extends State<_ActivityDetailSheetShell> {
     return NotificationListener<DraggableScrollableNotification>(
       onNotification: (notification) {
         if (widget.fullscreen || _closing) return false;
-        if (_expanded && notification.extent < 0.90) {
+        final extent = notification.extent;
+        final reachedFullscreen = extent >= 0.985;
+        if (reachedFullscreen && !_hasReachedFullscreen) {
+          _hasReachedFullscreen = true;
+        }
+        if (_hasReachedFullscreen && extent < 0.94) {
           _closing = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
@@ -52,7 +59,7 @@ class _ActivityDetailSheetShellState extends State<_ActivityDetailSheetShell> {
           });
           return true;
         }
-        final next = notification.extent >= 0.88;
+        final next = _hasReachedFullscreen || reachedFullscreen;
         if (next != _expanded) {
           setState(() => _expanded = next);
         }
@@ -453,18 +460,11 @@ class _ActivityReacceptButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      child: CupertinoButton(
-        padding: EdgeInsets.zero,
-        borderRadius: BorderRadius.circular(18),
-        color: const Color(0xFF72CBE6),
-        onPressed: working ? null : onPressed,
-        child: Text(
-          working ? '处理中...' : '✨ 重新接受邀请',
-          style: const TextStyle(
-            fontWeight: FontWeight.w900,
-            decoration: TextDecoration.none,
-          ),
-        ),
+      child: _PrimaryActivityPillButton(
+        label: working ? '处理中...' : '重新接受邀请',
+        icon: '✨',
+        enabled: !working,
+        onPressed: onPressed,
       ),
     );
   }

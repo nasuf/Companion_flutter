@@ -464,7 +464,7 @@ class _OfflineHero extends StatelessWidget {
           Positioned(
             left: 0,
             right: 0,
-            top: 128 - lowerContentLift,
+            top: 150 - lowerContentLift,
             child: Text(
               '看看有没有你感兴趣的',
               style: TextStyle(
@@ -479,7 +479,7 @@ class _OfflineHero extends StatelessWidget {
           ),
           Positioned(
             right: 0,
-            top: 172 - lowerContentLift,
+            top: 184 - lowerContentLift,
             child: SizedBox(
               width: 226,
               height: 122,
