@@ -97,18 +97,68 @@ class _ActivityDetailSheet extends StatefulWidget {
   State<_ActivityDetailSheet> createState() => _ActivityDetailSheetState();
 }
 
-class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
+class _ActivityDetailSheetState extends State<_ActivityDetailSheet>
+    with WidgetsBindingObserver {
   final _imagePicker = ImagePicker();
   final _controller = TextEditingController();
+  final _completionFocusNode = FocusNode();
+  final _completionComposerKey = GlobalKey();
+  Timer? _completionScrollTimer;
   final List<_ActivityCompletionImage> _photos = [];
   bool _working = false;
   bool _responding = false;
   bool _uploadingPhoto = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _completionFocusNode.addListener(_handleCompletionFocusChanged);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _completionScrollTimer?.cancel();
+    _completionFocusNode.removeListener(_handleCompletionFocusChanged);
+    _completionFocusNode.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    if (_completionFocusNode.hasFocus) {
+      _scheduleCompletionComposerIntoView();
+    }
+  }
+
+  void _handleCompletionFocusChanged() {
+    if (_completionFocusNode.hasFocus) {
+      _scheduleCompletionComposerIntoView(
+        delay: const Duration(milliseconds: 220),
+      );
+    }
+  }
+
+  void _scheduleCompletionComposerIntoView({
+    Duration delay = const Duration(milliseconds: 180),
+  }) {
+    _completionScrollTimer?.cancel();
+    _completionScrollTimer = Timer(delay, () {
+      if (!mounted || !_completionFocusNode.hasFocus) return;
+      final context = _completionComposerKey.currentContext;
+      if (context == null) return;
+      if (!context.mounted) return;
+      Scrollable.ensureVisible(
+        context,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        alignment: 0.12,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+      );
+    });
   }
 
   Future<void> _complete() async {
@@ -282,41 +332,16 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
                     ],
                     if (canComplete) ...[
                       const SizedBox(height: 20),
-                      CupertinoTextField(
+                      _CompletionComposer(
+                        key: _completionComposerKey,
                         controller: _controller,
-                        minLines: 3,
-                        maxLines: 5,
-                        placeholder: '分享一点完成情况、文字感想或照片说明...',
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: colors.surfaceMuted,
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _CompletionPhotoPicker(
+                        focusNode: _completionFocusNode,
                         photos: _photos,
                         uploading: _uploadingPhoto,
+                        working: _working,
                         onPick: _pickPhoto,
                         onRemove: _removePhoto,
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        child: CupertinoButton(
-                          borderRadius: BorderRadius.circular(18),
-                          color: const Color(0xFFFFA83E),
-                          onPressed: (_working || _uploadingPhoto)
-                              ? null
-                              : _complete,
-                          child: Text(
-                            _working ? '发送中...' : '分享完成情况',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w900,
-                              decoration: TextDecoration.none,
-                            ),
-                          ),
-                        ),
+                        onComplete: _complete,
                       ),
                     ] else if (isCompleted) ...[
                       const SizedBox(height: 18),
@@ -332,6 +357,85 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CompletionComposer extends StatelessWidget {
+  const _CompletionComposer({
+    super.key,
+    required this.controller,
+    required this.focusNode,
+    required this.photos,
+    required this.uploading,
+    required this.working,
+    required this.onPick,
+    required this.onRemove,
+    required this.onComplete,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final List<_ActivityCompletionImage> photos;
+  final bool uploading;
+  final bool working;
+  final VoidCallback onPick;
+  final ValueChanged<_ActivityCompletionImage> onRemove;
+  final VoidCallback onComplete;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AnimatedBuilder(
+          animation: focusNode,
+          builder: (context, child) {
+            return CupertinoTextField(
+              controller: controller,
+              focusNode: focusNode,
+              minLines: 3,
+              maxLines: 5,
+              placeholder: '分享一点完成情况、文字感想或照片说明...',
+              padding: const EdgeInsets.all(16),
+              textInputAction: TextInputAction.newline,
+              decoration: BoxDecoration(
+                color: colors.surfaceMuted,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: focusNode.hasFocus
+                      ? colors.accent.withValues(alpha: 0.24)
+                      : Colors.transparent,
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        _CompletionPhotoPicker(
+          photos: photos,
+          uploading: uploading,
+          onPick: onPick,
+          onRemove: onRemove,
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: CupertinoButton(
+            borderRadius: BorderRadius.circular(18),
+            color: const Color(0xFFFFA83E),
+            onPressed: (working || uploading) ? null : onComplete,
+            child: Text(
+              working ? '发送中...' : '分享完成情况',
+              style: const TextStyle(
+                fontWeight: FontWeight.w900,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
