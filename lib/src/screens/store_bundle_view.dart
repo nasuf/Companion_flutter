@@ -125,28 +125,23 @@ class _BundleCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                product.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: AppColors.text,
-                                  fontSize: 21,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 0,
-                                  decoration: TextDecoration.none,
-                                ),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              product.title,
+                              maxLines: 1,
+                              style: TextStyle(
+                                color: AppColors.text,
+                                fontSize: 21,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0,
+                                decoration: TextDecoration.none,
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            _BundleValueTag(
-                              label: selectedCycle.label,
-                              color: accent,
-                            ),
-                          ],
+                          ),
                         ),
                         const SizedBox(height: 7),
                         Text(
@@ -434,34 +429,6 @@ class _BundleBuyButton extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BundleValueTag extends StatelessWidget {
-  const _BundleValueTag({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0,
-          decoration: TextDecoration.none,
         ),
       ),
     );
