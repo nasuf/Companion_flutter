@@ -1433,6 +1433,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       case 'pending':
         setState(() => _sending = false);
         break;
+      case 'message':
+        _handleRealtimeMessageEvent(payload);
+        break;
       case 'reply':
       case 'proactive':
         final text = payload['text']?.toString() ?? '';
@@ -1591,6 +1594,78 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       default:
         break;
     }
+  }
+
+  void _handleRealtimeMessageEvent(Map<String, dynamic> payload) {
+    final role = payload['role']?.toString() ?? '';
+    if (role != 'user' && role != 'assistant') return;
+    final text = payload['text']?.toString() ?? '';
+    final rawComponentCard =
+        payload['component_card'] ?? payload['componentCard'];
+    final componentCard = rawComponentCard is Map
+        ? ChatComponentCard.fromJson(rawComponentCard)
+        : null;
+    final rawAttachments = payload['attachments'];
+    final attachments = rawAttachments is List
+        ? [
+            for (final item in rawAttachments)
+              if (item is Map)
+                ChatAttachment.fromJson(Map<String, dynamic>.from(item)),
+          ]
+        : const <ChatAttachment>[];
+    if (text.isEmpty && componentCard == null && attachments.isEmpty) return;
+
+    final messageId = payload['message_id']?.toString() ?? '';
+    if (messageId.isNotEmpty &&
+        _messages.any((message) => message.id == messageId)) {
+      return;
+    }
+    final wasNearBottom = _isNearBottomNow();
+    final shouldAutoScroll = widget.isActive && wasNearBottom;
+    final metadata = <String, dynamic>{
+      for (final key in const [
+        'real_world_type',
+        'source_id',
+        'trigger_type',
+        'client_id',
+      ])
+        if (payload[key] != null) key: payload[key],
+      if (componentCard != null) 'component_card': componentCard.toJson(),
+      if (attachments.isNotEmpty)
+        'attachments': attachments.map((item) => item.toJson()).toList(),
+    };
+    final createdAt =
+        DateTime.tryParse(payload['created_at']?.toString() ?? '') ??
+        DateTime.now();
+    setState(() {
+      _messages.add(
+        ChatMessage(
+          id: messageId.isEmpty
+              ? 'ws-${DateTime.now().microsecondsSinceEpoch}-${text.hashCode}'
+              : messageId,
+          conversationId:
+              payload['conversation_id']?.toString() ?? _conversationId,
+          role: role,
+          content: text,
+          createdAt: createdAt,
+          metadata: metadata.isEmpty ? null : metadata,
+          pending: false,
+          read: true,
+        ),
+      );
+      if (_isMusicStationCard(componentCard)) {
+        _adoptMusicStation(componentCard!, messageId);
+      }
+      if (!shouldAutoScroll && role == 'assistant') {
+        _newMessageCount += 1;
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (shouldAutoScroll) {
+        _scrollToBottom(animated: true);
+      }
+      _scheduleStationDockCheck();
+    });
   }
 
   void _showAchievementNotice(AchievementItem item) {
