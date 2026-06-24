@@ -3,6 +3,7 @@ import 'models.dart';
 class OfflineHome {
   const OfflineHome({
     required this.pendingActivityCount,
+    required this.acceptedActivityCount,
     required this.completedActivityCount,
     required this.giftCount,
     required this.shippingGiftCount,
@@ -13,6 +14,7 @@ class OfflineHome {
   });
 
   final int pendingActivityCount;
+  final int acceptedActivityCount;
   final int completedActivityCount;
   final int giftCount;
   final int shippingGiftCount;
@@ -23,6 +25,7 @@ class OfflineHome {
 
   factory OfflineHome.fromJson(Map<String, dynamic> json) => OfflineHome(
     pendingActivityCount: _asInt(json['pending_activity_count']),
+    acceptedActivityCount: _asInt(json['accepted_activity_count']),
     completedActivityCount: _asInt(json['completed_activity_count']),
     giftCount: _asInt(json['gift_count']),
     shippingGiftCount: _asInt(json['shipping_gift_count']),

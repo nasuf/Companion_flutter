@@ -146,6 +146,7 @@ class CompanionApi {
     final latest = value.latestActivity;
     return OfflineHome(
       pendingActivityCount: value.pendingActivityCount,
+      acceptedActivityCount: value.acceptedActivityCount,
       completedActivityCount: value.completedActivityCount,
       giftCount: value.giftCount,
       shippingGiftCount: value.shippingGiftCount,

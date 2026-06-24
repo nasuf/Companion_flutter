@@ -184,10 +184,12 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
   }
 
   String get _activitySubtitle {
-    final count = _home?.pendingActivityCount ?? 0;
-    if (count > 0) return '$count 个待确认邀请';
-    final latest = _home?.latestActivity;
-    if (latest != null) return latest.title;
+    final pendingCount = _home?.pendingActivityCount ?? 0;
+    if (pendingCount > 0) return '$pendingCount 个待确认邀请';
+    final acceptedCount = _home?.acceptedActivityCount ?? 0;
+    if (acceptedCount > 0) return '$acceptedCount 个待出行活动';
+    final completedCount = _home?.completedActivityCount ?? 0;
+    if (completedCount > 0) return '$completedCount 个已完成活动';
     return '周末一起出去走走';
   }
 }
@@ -464,7 +466,7 @@ class _OfflineHero extends StatelessWidget {
           Positioned(
             left: 0,
             right: 0,
-            top: 150 - lowerContentLift,
+            top: 164 - lowerContentLift,
             child: Text(
               '看看有没有你感兴趣的',
               style: TextStyle(
@@ -479,7 +481,7 @@ class _OfflineHero extends StatelessWidget {
           ),
           Positioned(
             right: 0,
-            top: 184 - lowerContentLift,
+            top: 198 - lowerContentLift,
             child: SizedBox(
               width: 226,
               height: 122,
