@@ -26,6 +26,7 @@ class _MessageList extends StatelessWidget {
     this.agentAvatarUrl,
     this.userAvatarUrl,
     this.authToken,
+    this.apiBaseUrl,
   });
 
   final ScrollController controller;
@@ -53,6 +54,7 @@ class _MessageList extends StatelessWidget {
   final String? agentAvatarUrl;
   final String? userAvatarUrl;
   final String? authToken;
+  final String? apiBaseUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -110,6 +112,7 @@ class _MessageList extends StatelessWidget {
           canGoMusicPrevious: canGoMusicPrevious,
           isMusicBusy: isMusicBusy,
           authToken: authToken,
+          apiBaseUrl: apiBaseUrl,
         );
         final keyedRow = KeyedSubtree(
           key: ValueKey('chat-message-${message.id}'),
@@ -144,6 +147,7 @@ class _MessageRow extends StatelessWidget {
     this.agentAvatarUrl,
     this.userAvatarUrl,
     this.authToken,
+    this.apiBaseUrl,
   });
 
   final ChatMessage message;
@@ -165,6 +169,7 @@ class _MessageRow extends StatelessWidget {
   final String? agentAvatarUrl;
   final String? userAvatarUrl;
   final String? authToken;
+  final String? apiBaseUrl;
   static const _avatarSize = 40.0;
   static const _avatarGap = 10.0;
 
@@ -219,6 +224,7 @@ class _MessageRow extends StatelessWidget {
             canGoMusicPrevious: canGoMusicPrevious,
             isMusicBusy: isMusicBusy,
             authToken: authToken,
+            apiBaseUrl: apiBaseUrl,
           ),
           if (message.isMine) ...[const SizedBox(width: _avatarGap), avatar],
         ],
@@ -471,6 +477,7 @@ class _Bubble extends StatelessWidget {
     required this.canGoMusicPrevious,
     required this.isMusicBusy,
     this.authToken,
+    this.apiBaseUrl,
   });
 
   final ChatMessage message;
@@ -489,6 +496,7 @@ class _Bubble extends StatelessWidget {
   final bool canGoMusicPrevious;
   final bool isMusicBusy;
   final String? authToken;
+  final String? apiBaseUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -550,6 +558,7 @@ class _Bubble extends StatelessWidget {
                   activeMusicMessageId == message.id && canGoMusicPrevious,
               isMusicBusy: isMusicBusy,
               authToken: authToken,
+              apiBaseUrl: apiBaseUrl,
             )
           else if (attachments.isNotEmpty) ...[
             _ImageAttachmentBubble(
@@ -742,6 +751,7 @@ class _ComponentCardBubble extends StatelessWidget {
     required this.canGoMusicPrevious,
     required this.isMusicBusy,
     this.authToken,
+    this.apiBaseUrl,
   });
 
   final ChatComponentCard card;
@@ -759,6 +769,7 @@ class _ComponentCardBubble extends StatelessWidget {
   final bool canGoMusicPrevious;
   final bool isMusicBusy;
   final String? authToken;
+  final String? apiBaseUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -778,6 +789,15 @@ class _ComponentCardBubble extends StatelessWidget {
         busyMusicFavoriteIds: busyMusicFavoriteIds,
         canGoPrevious: canGoMusicPrevious,
         isBusy: isMusicBusy,
+      );
+    }
+    if (card.type == 'offline_activity') {
+      return _OfflineActivityComponentCard(
+        card: card,
+        isMine: isMine,
+        onTap: onTap,
+        authToken: authToken,
+        apiBaseUrl: apiBaseUrl,
       );
     }
     final accent = _parseColor(card.accent);

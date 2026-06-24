@@ -97,6 +97,7 @@ part 'src/widgets/chat/chat_sidebar.dart';
 part 'src/widgets/chat/composer.dart';
 part 'src/widgets/chat/inline_banner.dart';
 part 'src/widgets/chat/message_widgets.dart';
+part 'src/widgets/chat/offline_activity_component_card.dart';
 part 'src/widgets/chat/panels.dart';
 
 final RouteObserver<PageRoute<dynamic>> appRouteObserver =

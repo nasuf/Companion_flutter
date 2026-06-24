@@ -6,12 +6,14 @@ class OfflineActivityPage extends StatefulWidget {
     required this.api,
     required this.session,
     required this.hasLocation,
+    this.initialActivityId,
     this.onChanged,
   });
 
   final CompanionApi api;
   final AuthSession session;
   final bool hasLocation;
+  final String? initialActivityId;
   final VoidCallback? onChanged;
 
   @override
@@ -24,6 +26,7 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
   bool _working = false;
   bool _hasLocation = false;
   bool _requestingLocation = false;
+  bool _initialActivityOpened = false;
   String? _error;
 
   @override
@@ -39,6 +42,10 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
     if (oldWidget.hasLocation != widget.hasLocation) {
       _hasLocation = widget.hasLocation;
     }
+    if (oldWidget.initialActivityId != widget.initialActivityId) {
+      _initialActivityOpened = false;
+      _scheduleInitialActivityOpen();
+    }
   }
 
   Future<void> _load() async {
@@ -52,12 +59,53 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
       );
       if (!mounted) return;
       setState(() => _data = data);
+      _scheduleInitialActivityOpen();
     } catch (error) {
       if (!mounted) return;
       setState(() => _error = error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  void _scheduleInitialActivityOpen() {
+    final activityId = widget.initialActivityId?.trim();
+    if (activityId == null || activityId.isEmpty || _initialActivityOpened) {
+      return;
+    }
+    _initialActivityOpened = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_openInitialActivity(activityId));
+    });
+  }
+
+  Future<void> _openInitialActivity(String activityId) async {
+    OfflineActivity? activity = _findLoadedActivity(activityId);
+    try {
+      activity ??= await widget.api.fetchOfflineActivity(activityId);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.toString());
+      return;
+    }
+    if (!mounted) return;
+    _showActivityDetail(activity);
+  }
+
+  OfflineActivity? _findLoadedActivity(String activityId) {
+    final data = _data;
+    if (data == null) return null;
+    final candidates = <OfflineActivity>[
+      if (data.latest != null) data.latest!,
+      ...data.pending,
+      ...data.ignored,
+      ...data.completed,
+    ];
+    for (final activity in candidates) {
+      if (activity.id == activityId) return activity;
+    }
+    return null;
   }
 
   Future<OfflineActivity?> _accept(

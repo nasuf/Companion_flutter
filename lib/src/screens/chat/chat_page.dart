@@ -769,6 +769,22 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _openComponentCard(ChatComponentCard card) async {
+    if (card.type == 'offline_activity') {
+      final activityId = card.payload['activity_id']?.toString();
+      if (activityId == null || activityId.isEmpty) return;
+      _dismissInputSurfaces();
+      await Navigator.of(context).push<void>(
+        CupertinoPageRoute<void>(
+          builder: (_) => OfflineActivityPage(
+            api: widget.api,
+            session: widget.session,
+            hasLocation: true,
+            initialActivityId: activityId,
+          ),
+        ),
+      );
+      return;
+    }
     if (card.type == 'external_link') {
       await _openExternalLinkPayload(card.payload);
       return;
@@ -2093,6 +2109,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           agentAvatarUrl: agentAvatarUrl,
                           userAvatarUrl: widget.session.userAvatarUrl,
                           authToken: widget.api.authToken,
+                          apiBaseUrl: widget.api.baseUrl,
                         ),
                 ),
               ),
