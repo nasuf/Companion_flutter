@@ -143,29 +143,25 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
   }
 
   void _showActivityDetail(OfflineActivity activity) {
-    final fullscreen =
-        activity.status == 'accepted' || activity.status == 'completed';
-    final initialSize = fullscreen ? 1.0 : 0.58;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      enableDrag: true,
+      enableDrag: false,
       useSafeArea: false,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.34),
       builder: (sheetContext) {
         return DraggableScrollableSheet(
-          initialChildSize: initialSize,
-          minChildSize: initialSize,
+          initialChildSize: 1.0,
+          minChildSize: 1.0,
           maxChildSize: 1.0,
-          snap: !fullscreen,
-          snapSizes: fullscreen ? null : const [0.58, 1.0],
+          snap: false,
           expand: false,
           builder: (context, scrollController) => _ActivityDetailSheetShell(
             api: widget.api,
             activity: activity,
             scrollController: scrollController,
-            fullscreen: fullscreen,
+            fullscreen: true,
             onAccept: () => _accept(activity, openDetail: false),
             onIgnore: () => _ignore(activity),
             onCompleted: () {

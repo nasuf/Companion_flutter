@@ -25,56 +25,17 @@ class _ActivityDetailSheetShell extends StatefulWidget {
 }
 
 class _ActivityDetailSheetShellState extends State<_ActivityDetailSheetShell> {
-  late bool _expanded = widget.fullscreen;
-  late bool _hasReachedFullscreen = widget.fullscreen;
-  bool _closing = false;
-
-  @override
-  void didUpdateWidget(covariant _ActivityDetailSheetShell oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.fullscreen != widget.fullscreen && widget.fullscreen) {
-      _expanded = true;
-      _hasReachedFullscreen = true;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    return NotificationListener<DraggableScrollableNotification>(
-      onNotification: (notification) {
-        if (widget.fullscreen || _closing) return false;
-        final extent = notification.extent;
-        final reachedFullscreen = extent >= 0.985;
-        if (reachedFullscreen && !_hasReachedFullscreen) {
-          _hasReachedFullscreen = true;
-        }
-        if (_hasReachedFullscreen && extent < 0.94) {
-          _closing = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            final navigator = Navigator.of(context);
-            if (navigator.canPop()) {
-              navigator.pop();
-            }
-          });
-          return true;
-        }
-        final next = _hasReachedFullscreen || reachedFullscreen;
-        if (next != _expanded) {
-          setState(() => _expanded = next);
-        }
-        return false;
-      },
-      child: _ActivityDetailSheet(
-        api: widget.api,
-        activity: widget.activity,
-        scrollController: widget.scrollController,
-        fullscreen: widget.fullscreen,
-        expanded: _expanded,
-        onAccept: widget.onAccept,
-        onIgnore: widget.onIgnore,
-        onCompleted: widget.onCompleted,
-      ),
+    return _ActivityDetailSheet(
+      api: widget.api,
+      activity: widget.activity,
+      scrollController: widget.scrollController,
+      fullscreen: true,
+      expanded: true,
+      onAccept: widget.onAccept,
+      onIgnore: widget.onIgnore,
+      onCompleted: widget.onCompleted,
     );
   }
 }
