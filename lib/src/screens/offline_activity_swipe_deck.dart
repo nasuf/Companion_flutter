@@ -112,7 +112,7 @@ class _ActivitySwipeDeckState extends State<_ActivitySwipeDeck> {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 616,
+          height: 628,
           child: Stack(
             clipBehavior: Clip.none,
             alignment: Alignment.topCenter,
@@ -184,25 +184,32 @@ class _ActivityDeckBackCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final offset = 12.0 * depth;
-    final scale = 1 - depth * 0.035;
+    final topOffset = depth == 1 ? 16.0 : 30.0;
+    final sideInset = depth == 1 ? 5.0 : 12.0;
+    final horizontalShift = depth == 1 ? 14.0 : -12.0;
+    final angle = depth == 1 ? 0.045 : -0.035;
+    final scale = depth == 1 ? 0.965 : 0.93;
+    final opacity = depth == 1 ? 0.64 : 0.34;
     return Positioned(
-      top: offset,
-      left: 8 + depth * 5,
-      right: 8 + depth * 5,
-      child: Transform.scale(
-        scale: scale,
+      top: topOffset,
+      left: -sideInset,
+      right: -sideInset,
+      child: Transform(
         alignment: Alignment.topCenter,
+        transform: Matrix4.identity()
+          ..translateByDouble(horizontalShift, 0, 0, 1)
+          ..rotateZ(angle)
+          ..scaleByDouble(scale, scale, 1, 1),
         child: Opacity(
-          opacity: depth == 1 ? 0.54 : 0.28,
+          opacity: opacity,
           child: Container(
             height: 586,
             decoration: _softCardDecoration(context).copyWith(
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 28,
-                  offset: const Offset(0, 16),
+                  color: Colors.black.withValues(alpha: 0.10),
+                  blurRadius: 34,
+                  offset: const Offset(0, 18),
                 ),
               ],
             ),
