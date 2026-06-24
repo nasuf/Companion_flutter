@@ -423,12 +423,19 @@ class CompanionApi {
     String activityId, {
     required String text,
     List<String> photoAttachmentIds = const [],
+    String? audioAttachmentId,
   }) async {
+    final body = <String, dynamic>{
+      'text': text,
+      'photo_attachment_ids': photoAttachmentIds,
+      if (audioAttachmentId != null && audioAttachmentId.isNotEmpty)
+        'audio_attachment_id': audioAttachmentId,
+    };
     final json =
         await _request(
               'POST',
               '/offline/activities/$activityId/complete',
-              body: {'text': text, 'photo_attachment_ids': photoAttachmentIds},
+              body: body,
             )
             as Map<String, dynamic>;
     return _normalizeOfflineActivity(OfflineActivity.fromJson(json));
@@ -448,6 +455,7 @@ class CompanionApi {
               'POST',
               '/offline/activities/$activityId/media',
               body: {
+                'kind': 'image',
                 'name': name,
                 'mime': mime,
                 'size': size,
@@ -459,6 +467,54 @@ class CompanionApi {
             )
             as Map<String, dynamic>;
     return _normalizeChatAttachment(ChatAttachment.fromJson(json));
+  }
+
+  Future<ChatAttachment> uploadOfflineActivityAudio({
+    required String activityId,
+    required String name,
+    required String mime,
+    required int size,
+    required int durationSeconds,
+    required String base64Data,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/offline/activities/$activityId/media',
+              body: {
+                'kind': 'audio',
+                'name': name,
+                'mime': mime,
+                'size': size,
+                'duration_seconds': durationSeconds,
+                'base64': base64Data,
+              },
+              debugLabel: 'offline.activity.media.audio',
+            )
+            as Map<String, dynamic>;
+    return _normalizeChatAttachment(ChatAttachment.fromJson(json));
+  }
+
+  Future<Uint8List> fetchAuthorizedBytes(String url) async {
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 8);
+    try {
+      final request = await client.getUrl(Uri.parse(_absoluteUrl(url)));
+      if (authToken != null && authToken!.isNotEmpty) {
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer $authToken',
+        );
+      }
+      final response = await request.close();
+      final bytes = await consolidateHttpClientResponseBytes(response);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw ApiException(response.statusCode, '媒体加载失败');
+      }
+      return bytes;
+    } finally {
+      client.close(force: true);
+    }
   }
 
   Future<GiftsHome> fetchOfflineGifts({String? workspaceId}) async {

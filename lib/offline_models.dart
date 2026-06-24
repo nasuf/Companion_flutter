@@ -202,11 +202,13 @@ class OfflineActivityCompletionFeedback {
   const OfflineActivityCompletionFeedback({
     required this.text,
     required this.photoAttachments,
+    this.audioAttachment,
     this.createdAt,
   });
 
   final String text;
   final List<ChatAttachment> photoAttachments;
+  final ChatAttachment? audioAttachment;
   final DateTime? createdAt;
 
   factory OfflineActivityCompletionFeedback.fromJson(
@@ -219,16 +221,23 @@ class OfflineActivityCompletionFeedback {
           if (item is Map)
             ChatAttachment.fromJson(Map<String, dynamic>.from(item)),
       ],
+      audioAttachment: json['audio_attachment'] is Map
+          ? ChatAttachment.fromJson(
+              Map<String, dynamic>.from(json['audio_attachment'] as Map),
+            )
+          : null,
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
     );
   }
 
   OfflineActivityCompletionFeedback copyWith({
     List<ChatAttachment>? photoAttachments,
+    ChatAttachment? audioAttachment,
   }) {
     return OfflineActivityCompletionFeedback(
       text: text,
       photoAttachments: photoAttachments ?? this.photoAttachments,
+      audioAttachment: audioAttachment ?? this.audioAttachment,
       createdAt: createdAt,
     );
   }

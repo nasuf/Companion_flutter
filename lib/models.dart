@@ -414,6 +414,7 @@ class ChatAttachment {
     this.name,
     this.width,
     this.height,
+    this.durationSeconds,
     this.visionStatus = 'pending',
     this.visionSummary,
     this.createdAt,
@@ -426,6 +427,7 @@ class ChatAttachment {
   final int size;
   final int? width;
   final int? height;
+  final int? durationSeconds;
   final String url;
   final String visionStatus;
   final String? visionSummary;
@@ -442,6 +444,7 @@ class ChatAttachment {
       size: (json['size'] as num?)?.round() ?? 0,
       width: (json['width'] as num?)?.round(),
       height: (json['height'] as num?)?.round(),
+      durationSeconds: (json['duration_seconds'] as num?)?.round(),
       url: json['url'] as String? ?? '',
       visionStatus: json['vision_status'] as String? ?? 'pending',
       visionSummary: json['vision_summary'] as String?,
@@ -458,6 +461,7 @@ class ChatAttachment {
       'size': size,
       'width': width,
       'height': height,
+      if (durationSeconds != null) 'duration_seconds': durationSeconds,
       'url': url,
       'vision_status': visionStatus,
       if (visionSummary != null && visionSummary!.isNotEmpty)
@@ -475,6 +479,7 @@ class ChatAttachment {
       size: size,
       width: width,
       height: height,
+      durationSeconds: durationSeconds,
       url: url ?? this.url,
       visionStatus: visionStatus,
       visionSummary: visionSummary,

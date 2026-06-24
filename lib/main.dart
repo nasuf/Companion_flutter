@@ -59,6 +59,8 @@ part 'src/screens/main_shell.dart';
 part 'src/screens/music_page.dart';
 part 'src/screens/movie_page.dart';
 part 'src/screens/offline_activity_detail_components.dart';
+part 'src/screens/offline_activity_detail_completion.dart';
+part 'src/screens/offline_activity_detail_feedback.dart';
 part 'src/screens/offline_activity_detail_media.dart';
 part 'src/screens/offline_activity_detail_sheet.dart';
 part 'src/screens/offline_activity_detail_shell.dart';

@@ -26,6 +26,14 @@ void main() {
               'url': '/offline/media/p1.jpg',
             },
           ],
+          'audio_attachment': {
+            'id': 'v1',
+            'kind': 'audio',
+            'mime': 'audio/mp4',
+            'size': 18,
+            'duration_seconds': 9,
+            'url': '/offline/media/v1.m4a',
+          },
           'created_at': '2026-06-21T11:00:00Z',
         },
         'created_at': '2026-06-21T10:00:00Z',
@@ -56,6 +64,11 @@ void main() {
     expect(
       data.latest?.completionFeedback?.photoAttachments.single.url,
       '/offline/media/p1.jpg',
+    );
+    expect(data.latest?.completionFeedback?.audioAttachment?.kind, 'audio');
+    expect(
+      data.latest?.completionFeedback?.audioAttachment?.durationSeconds,
+      9,
     );
   });
 

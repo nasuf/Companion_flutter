@@ -10,6 +10,18 @@ class _ActivityCompletionImage {
   final ChatAttachment attachment;
 }
 
+class _ActivityCompletionVoice {
+  const _ActivityCompletionVoice({
+    required this.localPath,
+    required this.attachment,
+    required this.durationSeconds,
+  });
+
+  final String localPath;
+  final ChatAttachment attachment;
+  final int durationSeconds;
+}
+
 Future<Size> _decodeActivityImageDimensions(Uint8List bytes) async {
   final codec = await instantiateImageCodec(bytes);
   final frame = await codec.getNextFrame();
@@ -22,4 +34,12 @@ String _activityMimeFromPath(String path) {
   if (lower.endsWith('.png')) return 'image/png';
   if (lower.endsWith('.webp')) return 'image/webp';
   return 'image/jpeg';
+}
+
+String _formatActivityDuration(int? seconds) {
+  final value = math.max(1, seconds ?? 1);
+  final minutes = value ~/ 60;
+  final rest = value % 60;
+  if (minutes <= 0) return '$rest 秒';
+  return '$minutes:${rest.toString().padLeft(2, '0')}';
 }

@@ -68,14 +68,25 @@ class _ActivityDetailSheet extends StatefulWidget {
 class _ActivityDetailSheetState extends State<_ActivityDetailSheet>
     with WidgetsBindingObserver {
   final _imagePicker = ImagePicker();
+  final _recorder = AudioRecorder();
   final _controller = TextEditingController();
   final _completionFocusNode = FocusNode();
   final _completionComposerKey = GlobalKey();
   Timer? _completionScrollTimer;
+  Timer? _recordTimer;
+  AudioPlayer? _audioPlayer;
   final List<_ActivityCompletionImage> _photos = [];
+  _ActivityCompletionVoice? _voice;
   bool _working = false;
   bool _responding = false;
   bool _uploadingPhoto = false;
+  bool _uploadingVoice = false;
+  bool _recording = false;
+  bool _voicePlaying = false;
+  int _recordSeconds = 0;
+
+  static const int _maxVoiceSeconds = 90;
+  static const int _maxVoiceBytes = 5 * 1024 * 1024;
 
   @override
   void initState() {
@@ -88,6 +99,9 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _completionScrollTimer?.cancel();
+    _recordTimer?.cancel();
+    _recorder.dispose();
+    _audioPlayer?.dispose();
     _completionFocusNode.removeListener(_handleCompletionFocusChanged);
     _completionFocusNode.dispose();
     _controller.dispose();
@@ -130,7 +144,7 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet>
   }
 
   Future<void> _complete() async {
-    if (_working || _uploadingPhoto) return;
+    if (_working || _uploadingPhoto || _uploadingVoice || _recording) return;
     setState(() => _working = true);
     try {
       await widget.api.completeOfflineActivity(
@@ -140,6 +154,7 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet>
             .map((photo) => photo.attachment.id)
             .where((id) => id.isNotEmpty)
             .toList(),
+        audioAttachmentId: _voice?.attachment.id,
       );
       widget.onCompleted();
       if (mounted) Navigator.of(context).pop();
@@ -148,13 +163,13 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet>
     }
   }
 
-  Future<void> _pickPhoto() async {
+  Future<void> _pickPhoto(ImageSource source) async {
     if (_photos.length >= 3 || _uploadingPhoto) {
       return;
     }
     try {
       final picked = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
+        source: source,
         maxWidth: 1600,
         maxHeight: 1600,
         imageQuality: 82,
@@ -181,6 +196,8 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet>
           ),
         );
       });
+    } on Exception {
+      _showToast(source == ImageSource.camera ? '需要相机权限才能拍照' : '需要相册权限才能选择照片');
     } finally {
       if (mounted) setState(() => _uploadingPhoto = false);
     }
@@ -188,6 +205,122 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet>
 
   void _removePhoto(_ActivityCompletionImage photo) {
     setState(() => _photos.remove(photo));
+  }
+
+  void _showToast(String message) {
+    if (!mounted) return;
+    _showActivityToast(context, message);
+  }
+
+  Future<void> _toggleRecord() async {
+    if (_uploadingVoice || _working) return;
+    if (_recording) {
+      await _stopRecord();
+      return;
+    }
+    final permitted = await _recorder.hasPermission();
+    if (!mounted) return;
+    if (!permitted) {
+      _showToast('需要麦克风权限才能录音');
+      return;
+    }
+    await _audioPlayer?.stop();
+    final dir = await getTemporaryDirectory();
+    final path =
+        '${dir.path}/offline_activity_voice_${DateTime.now().microsecondsSinceEpoch}.m4a';
+    await _recorder.start(
+      const RecordConfig(
+        encoder: AudioEncoder.aacLc,
+        bitRate: 32000,
+        sampleRate: 16000,
+        numChannels: 1,
+        noiseSuppress: true,
+      ),
+      path: path,
+    );
+    setState(() {
+      _voicePlaying = false;
+      _recording = true;
+      _recordSeconds = 0;
+    });
+    _recordTimer?.cancel();
+    _recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (!mounted || !_recording) {
+        timer.cancel();
+        return;
+      }
+      final next = _recordSeconds + 1;
+      setState(() => _recordSeconds = next);
+      if (next >= _maxVoiceSeconds) {
+        timer.cancel();
+        await _stopRecord();
+      }
+    });
+  }
+
+  Future<void> _stopRecord() async {
+    if (!_recording) return;
+    _recordTimer?.cancel();
+    final duration = math.max(1, _recordSeconds);
+    final path = await _recorder.stop();
+    if (!mounted) return;
+    setState(() {
+      _recording = false;
+      _uploadingVoice = true;
+    });
+    try {
+      if (path == null || path.isEmpty) return;
+      final file = File(path);
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      if (bytes.length > _maxVoiceBytes) {
+        _showToast('语音太长了，换一段短一点的吧');
+        return;
+      }
+      final attachment = await widget.api.uploadOfflineActivityAudio(
+        activityId: widget.activity.id,
+        name: 'activity-voice.m4a',
+        mime: 'audio/mp4',
+        size: bytes.length,
+        durationSeconds: duration,
+        base64Data: base64Encode(bytes),
+      );
+      if (!mounted) return;
+      setState(() {
+        _voice = _ActivityCompletionVoice(
+          localPath: path,
+          attachment: attachment,
+          durationSeconds: duration,
+        );
+      });
+    } finally {
+      if (mounted) setState(() => _uploadingVoice = false);
+    }
+  }
+
+  Future<void> _toggleVoicePlayback() async {
+    final voice = _voice;
+    if (voice == null) return;
+    final player = _audioPlayer ??= AudioPlayer();
+    if (_voicePlaying) {
+      await player.stop();
+      if (mounted) setState(() => _voicePlaying = false);
+      return;
+    }
+    await player.stop();
+    player.onPlayerComplete.first.then((_) {
+      if (mounted) setState(() => _voicePlaying = false);
+    });
+    await player.play(DeviceFileSource(voice.localPath));
+    if (mounted) setState(() => _voicePlaying = true);
+  }
+
+  void _removeVoice() {
+    _audioPlayer?.stop();
+    setState(() {
+      _voice = null;
+      _voicePlaying = false;
+    });
   }
 
   Future<void> _accept() async {
@@ -305,16 +438,26 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet>
                         controller: _controller,
                         focusNode: _completionFocusNode,
                         photos: _photos,
-                        uploading: _uploadingPhoto,
+                        voice: _voice,
+                        uploadingPhoto: _uploadingPhoto,
+                        uploadingVoice: _uploadingVoice,
+                        recording: _recording,
+                        recordSeconds: _recordSeconds,
+                        voicePlaying: _voicePlaying,
                         working: _working,
-                        onPick: _pickPhoto,
+                        onPickGallery: () => _pickPhoto(ImageSource.gallery),
+                        onTakePhoto: () => _pickPhoto(ImageSource.camera),
                         onRemove: _removePhoto,
+                        onToggleRecord: _toggleRecord,
+                        onToggleVoice: _toggleVoicePlayback,
+                        onRemoveVoice: _removeVoice,
                         onComplete: _complete,
                       ),
                     ] else if (isCompleted) ...[
                       const SizedBox(height: 18),
                       _ActivityCompletionFeedbackView(
                         feedback: widget.activity.completionFeedback,
+                        api: widget.api,
                         authToken: widget.api.authToken,
                       ),
                     ],
@@ -325,85 +468,6 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet>
           ),
         ],
       ),
-    );
-  }
-}
-
-class _CompletionComposer extends StatelessWidget {
-  const _CompletionComposer({
-    super.key,
-    required this.controller,
-    required this.focusNode,
-    required this.photos,
-    required this.uploading,
-    required this.working,
-    required this.onPick,
-    required this.onRemove,
-    required this.onComplete,
-  });
-
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final List<_ActivityCompletionImage> photos;
-  final bool uploading;
-  final bool working;
-  final VoidCallback onPick;
-  final ValueChanged<_ActivityCompletionImage> onRemove;
-  final VoidCallback onComplete;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        AnimatedBuilder(
-          animation: focusNode,
-          builder: (context, child) {
-            return CupertinoTextField(
-              controller: controller,
-              focusNode: focusNode,
-              minLines: 3,
-              maxLines: 5,
-              placeholder: '分享一点完成情况、文字感想或照片说明...',
-              padding: const EdgeInsets.all(16),
-              textInputAction: TextInputAction.newline,
-              decoration: BoxDecoration(
-                color: colors.surfaceMuted,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: focusNode.hasFocus
-                      ? colors.accent.withValues(alpha: 0.24)
-                      : Colors.transparent,
-                ),
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 12),
-        _CompletionPhotoPicker(
-          photos: photos,
-          uploading: uploading,
-          onPick: onPick,
-          onRemove: onRemove,
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: CupertinoButton(
-            borderRadius: BorderRadius.circular(18),
-            color: const Color(0xFFFFA83E),
-            onPressed: (working || uploading) ? null : onComplete,
-            child: Text(
-              working ? '发送中...' : '分享完成情况',
-              style: const TextStyle(
-                fontWeight: FontWeight.w900,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
