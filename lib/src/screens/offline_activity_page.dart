@@ -201,9 +201,8 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
       if (latest != null) latest,
       ...(data?.pending ?? const <OfflineActivity>[]),
     ]);
-    final pending = activeActivities
+    final pendingDeck = activeActivities
         .where((activity) => activity.status == 'pending')
-        .where((activity) => activity.id != latest?.id)
         .toList();
     final accepted = activeActivities
         .where((activity) => activity.status == 'accepted')
@@ -262,57 +261,30 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                                         _requestLocationFromEmptyCard,
                                   )
                                 else ...[
-                                  if (latest != null)
-                                    _ActivityHeroCard(
-                                      activity: latest,
+                                  if (pendingDeck.isNotEmpty)
+                                    _ActivitySwipeDeck(
+                                      activities: pendingDeck,
                                       authToken: widget.api.authToken,
                                       working: _working,
-                                      onAccept: () => _accept(latest),
-                                      onIgnore: () => _ignore(latest),
-                                      onOpen: () => _showActivityDetail(latest),
+                                      onAccept: (activity) =>
+                                          _accept(activity, openDetail: false),
+                                      onIgnore: _ignore,
+                                      onOpen: _showActivityDetail,
                                     ),
-                                  const SizedBox(height: 24),
-                                  _SectionTitle(
-                                    title: '待确定',
-                                    trailing: '${pending.length}个',
-                                  ),
                                 ],
                               ],
                             ),
                           ),
                         ),
                         if (hasAnyActivity) ...[
-                          if (pending.isEmpty)
-                            const SliverToBoxAdapter(
-                              child: Padding(
-                                padding: EdgeInsets.fromLTRB(20, 14, 20, 0),
-                                child: _SoftEmptyPanel(
-                                  icon: CupertinoIcons.doc_text,
-                                  title: '暂无待确定活动',
-                                  subtitle: '有活动我第一时间发给你',
-                                ),
-                              ),
-                            )
-                          else
-                            SliverList.separated(
-                              itemCount: pending.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 10),
-                              itemBuilder: (context, index) => Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                ),
-                                child: _ActivityMiniCard(
-                                  activity: pending[index],
-                                  authToken: widget.api.authToken,
-                                  onTap: () =>
-                                      _showActivityDetail(pending[index]),
-                                ),
-                              ),
-                            ),
                           SliverToBoxAdapter(
                             child: Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 26, 20, 0),
+                              padding: EdgeInsets.fromLTRB(
+                                20,
+                                pendingDeck.isEmpty ? 20 : 26,
+                                20,
+                                0,
+                              ),
                               child: _SectionTitle(
                                 title: '待出行',
                                 trailing: '${accepted.length}个',
@@ -725,7 +697,7 @@ class _ActivityHeroCard extends StatelessWidget {
                       ? '已接受'
                       : isCompleted
                       ? '已完成'
-                      : '待回复',
+                      : '待确定',
                   color: isAccepted || isCompleted
                       ? const Color(0xFF36A66A)
                       : const Color(0xFFD88A42),
