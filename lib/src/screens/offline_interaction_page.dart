@@ -481,7 +481,7 @@ class _OfflineHero extends StatelessWidget {
           ),
           Positioned(
             right: 0,
-            top: 198 - lowerContentLift,
+            top: 172 - lowerContentLift,
             child: SizedBox(
               width: 226,
               height: 122,
@@ -512,7 +512,7 @@ class _OfflineHero extends StatelessWidget {
                     ),
                     Positioned(
                       right: 12,
-                      bottom: 4,
+                      bottom: 18,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 13,
