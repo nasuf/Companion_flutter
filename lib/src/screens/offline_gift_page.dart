@@ -427,16 +427,9 @@ class _GiftDetailSheet extends StatefulWidget {
 }
 
 class _GiftDetailSheetState extends State<_GiftDetailSheet> {
-  final _thanks = TextEditingController();
   GiftTracking? _tracking;
   bool _loadingTracking = false;
   bool _sending = false;
-
-  @override
-  void dispose() {
-    _thanks.dispose();
-    super.dispose();
-  }
 
   Future<void> _loadTracking() async {
     setState(() => _loadingTracking = true);
@@ -449,11 +442,12 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
   }
 
   Future<void> _sendThanks() async {
-    final text = _thanks.text.trim();
-    if (text.isEmpty) return;
     setState(() => _sending = true);
     try {
-      await widget.api.sendGiftThanks(widget.gift.id, message: text);
+      await widget.api.sendGiftThanks(
+        widget.gift.id,
+        message: '我收到礼物啦，谢谢你',
+      );
       widget.onChanged();
       if (mounted) Navigator.of(context).pop();
     } finally {
@@ -512,18 +506,6 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
           if (_tracking != null) _TrackingTimeline(events: _tracking!.events),
           const SizedBox(height: 12),
           if (widget.gift.thanksSentAt == null) ...[
-            CupertinoTextField(
-              controller: _thanks,
-              placeholder: '输入你想对TA说的话...',
-              minLines: 2,
-              maxLines: 3,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: colors.surfaceMuted,
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: CupertinoButton(
@@ -592,6 +574,11 @@ class _AddressEditSheetState extends State<_AddressEditSheet> {
   }
 
   Future<void> _save() async {
+    final validationError = _validateAddress();
+    if (validationError != null) {
+      await _showAddressError(validationError);
+      return;
+    }
     setState(() => _saving = true);
     try {
       await widget.api.saveGiftAddress(
@@ -607,6 +594,38 @@ class _AddressEditSheetState extends State<_AddressEditSheet> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  String? _validateAddress() {
+    if (_name.text.trim().isEmpty) return '先填一下收件人。';
+    final phone = _phone.text.trim().replaceAll(RegExp(r'[\s-]+'), '');
+    if (!RegExp(r'^\+?\d{6,20}$').hasMatch(phone)) {
+      return '手机号格式看起来不太对。';
+    }
+    if (_city.text.trim().isEmpty) return '所在城市不能为空。';
+    if (_detail.text.trim().length < 3) return '详细地址再写具体一点。';
+    return null;
+  }
+
+  Future<void> _showAddressError(String message) {
+    return showCupertinoDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return CupertinoAlertDialog(
+          title: const Text('地址还没填完整'),
+          content: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(message),
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('知道了'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
