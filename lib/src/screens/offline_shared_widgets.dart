@@ -171,27 +171,58 @@ class _OfflineErrorBlock extends StatelessWidget {
 }
 
 class _BottomSheetFrame extends StatelessWidget {
-  const _BottomSheetFrame({required this.child});
+  const _BottomSheetFrame({
+    required this.child,
+    this.expandWhenKeyboardVisible = false,
+  });
 
   final Widget child;
+  final bool expandWhenKeyboardVisible;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.86,
+    final media = MediaQuery.of(context);
+    final keyboardHeight = media.viewInsets.bottom;
+    final availableHeight = media.size.height -
+        keyboardHeight -
+        media.padding.top -
+        12;
+    final maxSheetHeight = math.min(
+      media.size.height * 0.86,
+      math.max(260.0, availableHeight),
+    );
+    final shouldExpand = expandWhenKeyboardVisible && keyboardHeight > 0;
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      padding: EdgeInsets.only(bottom: keyboardHeight),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          height: shouldExpand ? maxSheetHeight : null,
+          constraints: BoxConstraints(maxHeight: maxSheetHeight),
+          padding: EdgeInsets.fromLTRB(
+            22,
+            10,
+            22,
+            media.padding.bottom + 18,
+          ),
+          decoration: BoxDecoration(
+            color: AppColors.of(context).surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.only(bottom: keyboardHeight > 0 ? 24 : 0),
+            child: child,
+          ),
+        ),
       ),
-      padding: EdgeInsets.fromLTRB(
-        22,
-        10,
-        22,
-        MediaQuery.paddingOf(context).bottom + 18,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.of(context).surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: SingleChildScrollView(child: child),
     );
   }
 }

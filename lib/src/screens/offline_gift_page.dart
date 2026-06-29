@@ -459,6 +459,7 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     return _BottomSheetFrame(
+      expandWhenKeyboardVisible: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -631,6 +632,7 @@ class _AddressEditSheetState extends State<_AddressEditSheet> {
   @override
   Widget build(BuildContext context) {
     return _BottomSheetFrame(
+      expandWhenKeyboardVisible: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,

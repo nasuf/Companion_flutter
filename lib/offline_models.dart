@@ -329,6 +329,12 @@ class RealWorldGift {
     this.giftReason,
     this.giftNote,
     this.productImageUrl,
+    this.provider = 'mock',
+    this.providerProductId,
+    this.providerOrderId,
+    this.productUrl,
+    this.logisticsProvider,
+    this.lastTrackingSyncedAt,
     required this.paidAmountCents,
     this.trackingNumber,
     this.thanksSentAt,
@@ -346,6 +352,12 @@ class RealWorldGift {
   final String? giftReason;
   final String? giftNote;
   final String? productImageUrl;
+  final String provider;
+  final String? providerProductId;
+  final String? providerOrderId;
+  final String? productUrl;
+  final String? logisticsProvider;
+  final String? lastTrackingSyncedAt;
   final int paidAmountCents;
   final String? trackingNumber;
   final String? thanksSentAt;
@@ -363,6 +375,12 @@ class RealWorldGift {
     giftReason: _asString(json['gift_reason']),
     giftNote: _asString(json['gift_note']),
     productImageUrl: _asString(json['product_image_url']),
+    provider: json['provider']?.toString() ?? 'mock',
+    providerProductId: _asString(json['provider_product_id']),
+    providerOrderId: _asString(json['provider_order_id']),
+    productUrl: _asString(json['product_url']),
+    logisticsProvider: _asString(json['logistics_provider']),
+    lastTrackingSyncedAt: _asString(json['last_tracking_synced_at']),
     paidAmountCents: _asInt(json['paid_amount_cents']),
     trackingNumber: _asString(json['tracking_number']),
     thanksSentAt: _asString(json['thanks_sent_at']),
