@@ -398,6 +398,23 @@ class CompanionApi {
     return AdminActivityClearResult.fromJson(json);
   }
 
+  /// 管理员测试：为当前用户注入一份走 mock 链路的礼物（含物流轨迹）。
+  /// [delivered] 为 true 时直接注入「已送达」礼物并推送送达消息。
+  Future<RealWorldGift> createMockGift({
+    String? workspaceId,
+    bool delivered = false,
+  }) async {
+    final params = <String, String>{'delivered': delivered.toString()};
+    if (workspaceId != null && workspaceId.isNotEmpty) {
+      params['workspace_id'] = workspaceId;
+    }
+    final query = Uri(queryParameters: params).query;
+    final json =
+        await _request('POST', '/offline/admin/gifts/mock?$query')
+            as Map<String, dynamic>;
+    return RealWorldGift.fromJson(json);
+  }
+
   Future<OfflineActivity> fetchOfflineActivity(String activityId) async {
     final json =
         await _request('GET', '/offline/activities/$activityId')

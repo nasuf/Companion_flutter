@@ -73,6 +73,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
   late final AnimationController _motionController;
   bool _generatingActivity = false;
   bool _clearingActivities = false;
+  bool _injectingGift = false;
 
   @override
   void initState() {
@@ -191,6 +192,83 @@ class _AdminToolsPageState extends State<AdminToolsPage>
       setState(() => _clearingActivities = false);
       await _showActivityResult(title: '清理失败', message: _asMessage(error));
     }
+  }
+
+  Future<void> _injectMockGift({required bool delivered}) async {
+    if (_injectingGift) return;
+    setState(() => _injectingGift = true);
+
+    var progressOpen = true;
+    unawaited(
+      showCupertinoDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _AdminProgressDialog(
+          title: delivered ? '正在注入已送达礼物' : '正在注入运输中礼物',
+          message: '正在走 mock 链路下单并生成物流轨迹...',
+        ),
+      ).whenComplete(() {
+        progressOpen = false;
+      }),
+    );
+
+    try {
+      widget.api.authToken = widget.session.token;
+      final gift = await widget.api.createMockGift(
+        workspaceId: widget.session.workspaceId,
+        delivered: delivered,
+      );
+      if (!mounted) return;
+      if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
+      setState(() => _injectingGift = false);
+      await _showGiftResult(
+        title: '测试礼物已注入',
+        message: delivered
+            ? '已生成「${gift.giftName}」并标记为已送达，可去赠礼页查看历史礼物分组与感谢交互。'
+            : '已生成「${gift.giftName}」（运输中），可去赠礼页查看礼物卡与物流时间线。',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
+      setState(() => _injectingGift = false);
+      await _showGiftResult(title: '注入失败', message: _asMessage(error));
+    }
+  }
+
+  Future<void> _showGiftResult({
+    required String title,
+    required String message,
+  }) async {
+    if (!mounted) return;
+    final action = await showCupertinoDialog<String>(
+      context: context,
+      builder: (context) {
+        return CupertinoAlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop('ok'),
+              child: const Text('知道了'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () => Navigator.of(context).pop('open'),
+              child: const Text('去赠礼页'),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted || action != 'open') return;
+    await Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => OfflineGiftPage(
+          api: widget.api,
+          session: widget.session,
+        ),
+      ),
+    );
   }
 
   Future<void> _showActivityResult({
@@ -317,6 +395,35 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                               enabled:
                                   !_generatingActivity && !_clearingActivities,
                               onTap: _clearActivities,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _ProfileSectionV6(
+                        title: '礼物 / 快递测试',
+                        trailing: '走 mock 链路',
+                        child: Column(
+                          children: [
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.gift_fill,
+                              title: _injectingGift
+                                  ? '正在注入礼物'
+                                  : '注入运输中礼物',
+                              subtitle: '为当前用户生成一份礼物卡，附 mock 物流轨迹',
+                              accent: const Color(0xFF2D73FF),
+                              enabled: !_injectingGift,
+                              onTap: () => _injectMockGift(delivered: false),
+                            ),
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.cube_box_fill,
+                              title: _injectingGift
+                                  ? '正在注入礼物'
+                                  : '注入已送达礼物',
+                              subtitle: '生成一份已送达礼物并推送送达消息，验证感谢交互',
+                              accent: const Color(0xFF1FA97A),
+                              enabled: !_injectingGift,
+                              onTap: () => _injectMockGift(delivered: true),
                             ),
                           ],
                         ),
