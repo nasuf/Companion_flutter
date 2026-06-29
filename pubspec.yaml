@@ -87,6 +87,7 @@ flutter:
     - assets/prototype/games/
     - assets/achievements/
     - assets/store/icons/
+    - assets/data/china_regions.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

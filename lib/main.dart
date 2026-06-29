@@ -67,6 +67,8 @@ part 'src/screens/offline_activity_detail_shell.dart';
 part 'src/screens/offline_activity_action_buttons.dart';
 part 'src/screens/offline_activity_page.dart';
 part 'src/screens/offline_activity_swipe_deck.dart';
+part 'src/data/china_regions.dart';
+part 'src/screens/offline_gift_address_sheet.dart';
 part 'src/screens/offline_gift_page.dart';
 part 'src/screens/offline_interaction_page.dart';
 part 'src/screens/offline_shared_widgets.dart';
