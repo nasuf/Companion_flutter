@@ -5,12 +5,17 @@ class OfflineGiftPage extends StatefulWidget {
     super.key,
     required this.api,
     required this.session,
+    this.initialGiftId,
     this.onChanged,
+    this.onThanksSent,
   });
 
   final CompanionApi api;
   final AuthSession session;
+  final String? initialGiftId;
   final VoidCallback? onChanged;
+  final void Function(RealWorldGift gift, String message, String clientId)?
+  onThanksSent;
 
   @override
   State<OfflineGiftPage> createState() => _OfflineGiftPageState();
@@ -20,6 +25,7 @@ class _OfflineGiftPageState extends State<OfflineGiftPage> {
   GiftsHome? _data;
   bool _loading = true;
   String? _error;
+  bool _initialGiftOpened = false;
 
   @override
   void initState() {
@@ -38,6 +44,7 @@ class _OfflineGiftPageState extends State<OfflineGiftPage> {
       );
       if (!mounted) return;
       setState(() => _data = data);
+      _scheduleInitialGiftOpen(data);
     } catch (error) {
       if (!mounted) return;
       setState(() => _error = error.toString());
@@ -66,12 +73,46 @@ class _OfflineGiftPageState extends State<OfflineGiftPage> {
       builder: (_) => _GiftDetailSheet(
         api: widget.api,
         gift: gift,
+        onThanksSent: widget.onThanksSent,
         onChanged: () {
           _load();
           widget.onChanged?.call();
         },
       ),
     );
+  }
+
+  void _scheduleInitialGiftOpen(GiftsHome data) {
+    final giftId = widget.initialGiftId?.trim();
+    if (_initialGiftOpened || giftId == null || giftId.isEmpty) return;
+    _initialGiftOpened = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      var gift = _findGift(data, giftId);
+      gift ??= await _fetchInitialGift(giftId);
+      if (!mounted || gift == null) return;
+      _showGift(gift);
+    });
+  }
+
+  RealWorldGift? _findGift(GiftsHome data, String giftId) {
+    final shipping = data.shippingGift;
+    if (shipping?.id == giftId) return shipping;
+    for (final group in data.groups) {
+      for (final gift in group.gifts) {
+        if (gift.id == giftId) return gift;
+      }
+    }
+    return null;
+  }
+
+  Future<RealWorldGift?> _fetchInitialGift(String giftId) async {
+    try {
+      return await widget.api.fetchOfflineGift(giftId);
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+      return null;
+    }
   }
 
   @override
@@ -472,11 +513,14 @@ class _GiftDetailSheet extends StatefulWidget {
     required this.api,
     required this.gift,
     required this.onChanged,
+    this.onThanksSent,
   });
 
   final CompanionApi api;
   final RealWorldGift gift;
   final VoidCallback onChanged;
+  final void Function(RealWorldGift gift, String message, String clientId)?
+  onThanksSent;
 
   @override
   State<_GiftDetailSheet> createState() => _GiftDetailSheetState();
@@ -504,9 +548,25 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
   }
 
   Future<void> _sendThanks() async {
+    if (_sending) return;
+    final message = '我收到礼物啦，谢谢你';
+    final clientId =
+        'gift-thanks-${widget.gift.id}-${DateTime.now().microsecondsSinceEpoch}';
+    final onThanksSent = widget.onThanksSent;
+    if (onThanksSent != null) {
+      setState(() => _sending = true);
+      onThanksSent(widget.gift, message, clientId);
+      widget.onChanged();
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
     setState(() => _sending = true);
     try {
-      await widget.api.sendGiftThanks(widget.gift.id, message: '我收到礼物啦，谢谢你');
+      await widget.api.sendGiftThanks(
+        widget.gift.id,
+        message: message,
+        clientId: clientId,
+      );
       widget.onChanged();
       if (mounted) Navigator.of(context).pop();
     } finally {
@@ -713,17 +773,25 @@ class _ShippingStateChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
+    final background = isDark
+        ? const Color(0x1F70C4E2)
+        : const Color(0xFFE7F6FC);
+    final border = isDark ? const Color(0x557EC5E1) : const Color(0x667EC5E1);
+    final foreground = isDark
+        ? const Color(0xFF8DD9F1)
+        : const Color(0xFF4C9DBC);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFE7F6FC),
+        color: background,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0x667EC5E1)),
+        border: Border.all(color: border),
       ),
       child: Text(
         text,
-        style: const TextStyle(
-          color: Color(0xFF4C9DBC),
+        style: TextStyle(
+          color: foreground,
           fontSize: 12,
           fontWeight: FontWeight.w900,
           decoration: TextDecoration.none,
@@ -743,12 +811,13 @@ class _GiftThumb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final url = gift.productImageUrl;
+    final isDark = AppColors.isDark(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: Container(
         width: wide ? double.infinity : size,
         height: size,
-        color: const Color(0xFFEAF5FB),
+        color: isDark ? const Color(0xFF162536) : const Color(0xFFEAF5FB),
         child: url == null
             ? const Center(child: Text('🎁', style: TextStyle(fontSize: 32)))
             : Image.network(
@@ -771,15 +840,18 @@ class _TrackingTimeline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     final visibleEvents = compact
         ? events.reversed.take(3).toList(growable: false)
         : events.reversed.toList(growable: false);
     return Container(
       padding: EdgeInsets.all(compact ? 12 : 14),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF7FC),
+        color: isDark ? const Color(0xFF102031) : const Color(0xFFEFF7FC),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0x227EC5E1)),
+        border: Border.all(
+          color: isDark ? const Color(0x334BB6D8) : const Color(0x227EC5E1),
+        ),
       ),
       child: Column(
         children: [
@@ -813,9 +885,16 @@ class _TrackingTimelineRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     final dotColor = isLatest
-        ? const Color(0xFF57BEE0)
-        : const Color(0xFF9ED3E8);
+        ? (isDark ? const Color(0xFF74D5F0) : const Color(0xFF57BEE0))
+        : (isDark ? const Color(0xFF4A8CA7) : const Color(0xFF9ED3E8));
+    final dotBorderColor = isDark
+        ? const Color(0xFF102031)
+        : CupertinoColors.white;
+    final lineColor = isDark
+        ? const Color(0x554BB6D8)
+        : const Color(0x557EC5E1);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -830,13 +909,15 @@ class _TrackingTimelineRow extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: dotColor,
-                  border: Border.all(color: CupertinoColors.white, width: 2),
+                  border: Border.all(color: dotBorderColor, width: 2),
                   boxShadow: isLatest
-                      ? const [
+                      ? [
                           BoxShadow(
-                            color: Color(0x337EC5E1),
+                            color: const Color(
+                              0xFF7EC5E1,
+                            ).withValues(alpha: isDark ? 0.32 : 0.20),
                             blurRadius: 10,
-                            offset: Offset(0, 4),
+                            offset: const Offset(0, 4),
                           ),
                         ]
                       : null,
@@ -848,7 +929,7 @@ class _TrackingTimelineRow extends StatelessWidget {
                   height: 32,
                   margin: const EdgeInsets.only(top: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0x557EC5E1),
+                    color: lineColor,
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -901,11 +982,12 @@ class _TrackingLoadingBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF7FC),
+        color: isDark ? const Color(0xFF102031) : const Color(0xFFEFF7FC),
         borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
@@ -924,11 +1006,12 @@ class _TrackingEmptyBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF7FC),
+        color: isDark ? const Color(0xFF102031) : const Color(0xFFEFF7FC),
         borderRadius: BorderRadius.circular(18),
       ),
       child: Text('暂时还没有物流更新', style: _mutedStyle(context, 13)),
@@ -943,11 +1026,18 @@ class _TrackingErrorBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
+    final retryBackground = isDark
+        ? const Color(0x332F1510)
+        : const Color(0xFFFFE2D7);
+    final retryText = isDark
+        ? const Color(0xFFFFA681)
+        : const Color(0xFFB96542);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF5F1),
+        color: isDark ? const Color(0xFF2A1815) : const Color(0xFFFFF5F1),
         borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
@@ -957,12 +1047,12 @@ class _TrackingErrorBlock extends StatelessWidget {
             minimumSize: Size.zero,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             borderRadius: BorderRadius.circular(999),
-            color: const Color(0xFFFFE2D7),
+            color: retryBackground,
             onPressed: onRetry,
-            child: const Text(
+            child: Text(
               '重试',
               style: TextStyle(
-                color: Color(0xFFB96542),
+                color: retryText,
                 fontSize: 12,
                 fontWeight: FontWeight.w900,
                 decoration: TextDecoration.none,

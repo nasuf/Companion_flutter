@@ -587,12 +587,17 @@ class CompanionApi {
   Future<RealWorldGift> sendGiftThanks(
     String giftId, {
     required String message,
+    String? clientId,
   }) async {
     final json =
         await _request(
               'POST',
               '/offline/gifts/$giftId/thanks',
-              body: {'message': message},
+              body: {
+                'message': message,
+                if (clientId != null && clientId.isNotEmpty)
+                  'client_id': clientId,
+              },
             )
             as Map<String, dynamic>;
     final gift = json['gift'];

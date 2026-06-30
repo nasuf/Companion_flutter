@@ -785,6 +785,22 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       return;
     }
+    if (card.type == 'offline_gift') {
+      final giftId = card.payload['gift_id']?.toString();
+      if (giftId == null || giftId.isEmpty) return;
+      _dismissInputSurfaces();
+      await Navigator.of(context).push<void>(
+        CupertinoPageRoute<void>(
+          builder: (_) => OfflineGiftPage(
+            api: widget.api,
+            session: widget.session,
+            initialGiftId: giftId,
+            onThanksSent: _sendGiftThanksFromChat,
+          ),
+        ),
+      );
+      return;
+    }
     if (card.type == 'external_link') {
       await _openExternalLinkPayload(card.payload);
       return;
@@ -1616,10 +1632,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (text.isEmpty && componentCard == null && attachments.isEmpty) return;
 
     final messageId = payload['message_id']?.toString() ?? '';
-    if (messageId.isNotEmpty &&
-        _messages.any((message) => message.id == messageId)) {
-      return;
-    }
+    final clientId = payload['client_id']?.toString() ?? '';
     final wasNearBottom = _isNearBottomNow();
     final shouldAutoScroll = widget.isActive && wasNearBottom;
     final metadata = <String, dynamic>{
@@ -1637,6 +1650,41 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final createdAt =
         DateTime.tryParse(payload['created_at']?.toString() ?? '') ??
         DateTime.now();
+    if (clientId.isNotEmpty) {
+      final draftIndex = _messages.indexWhere(
+        (message) => message.id == clientId || message.clientId == clientId,
+      );
+      if (draftIndex != -1) {
+        setState(() {
+          _messages[draftIndex] = ChatMessage(
+            id: messageId.isEmpty ? _messages[draftIndex].id : messageId,
+            conversationId:
+                payload['conversation_id']?.toString() ?? _conversationId,
+            role: role,
+            content: text,
+            createdAt: createdAt,
+            metadata: metadata.isEmpty ? null : metadata,
+            pending: false,
+            read: true,
+          );
+          _sending = false;
+          if (_isMusicStationCard(componentCard)) {
+            _adoptMusicStation(componentCard!, messageId);
+          }
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (shouldAutoScroll) {
+            _scrollToBottom(animated: true);
+          }
+          _scheduleStationDockCheck();
+        });
+        return;
+      }
+    }
+    if (messageId.isNotEmpty &&
+        _messages.any((message) => message.id == messageId)) {
+      return;
+    }
     setState(() {
       _messages.add(
         ChatMessage(
@@ -1666,6 +1714,77 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
       _scheduleStationDockCheck();
     });
+  }
+
+  void _sendGiftThanksFromChat(
+    RealWorldGift gift,
+    String message,
+    String clientId,
+  ) {
+    final content = _giftThanksChatContent(gift, message);
+    final draft = ChatMessage.draft(
+      conversationId: _conversationId,
+      role: 'user',
+      content: content,
+      clientId: clientId,
+      metadata: {
+        'real_world_type': 'gift',
+        'source_id': gift.id,
+        'trigger_type': 'gift_thanks',
+      },
+    );
+    setState(() {
+      _messages.add(draft);
+      _panel = ComposerPanel.none;
+      _sending = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottom(animated: true);
+      _scheduleStationDockCheck();
+    });
+    unawaited(_submitGiftThanks(gift, message, clientId));
+  }
+
+  Future<void> _submitGiftThanks(
+    RealWorldGift gift,
+    String message,
+    String clientId,
+  ) async {
+    try {
+      await widget.api.sendGiftThanks(
+        gift.id,
+        message: message,
+        clientId: clientId,
+      );
+      if (!mounted) return;
+      setState(() {
+        for (var i = 0; i < _messages.length; i += 1) {
+          final item = _messages[i];
+          if (item.id == clientId || item.clientId == clientId) {
+            _messages[i] = item.copyWith(pending: false, read: true);
+            break;
+          }
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _historyError = _asMessage(error);
+        for (var i = 0; i < _messages.length; i += 1) {
+          final item = _messages[i];
+          if (item.id == clientId || item.clientId == clientId) {
+            _messages[i] = item.copyWith(pending: false, read: false);
+            break;
+          }
+        }
+      });
+    }
+  }
+
+  String _giftThanksChatContent(RealWorldGift gift, String message) {
+    final name = gift.giftName.trim();
+    final prefix = name.isEmpty ? '我收到礼物啦' : '我收到了「$name」';
+    return '$prefix，想说：$message';
   }
 
   void _showAchievementNotice(AchievementItem item) {

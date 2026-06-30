@@ -183,10 +183,8 @@ class _BottomSheetFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final keyboardHeight = media.viewInsets.bottom;
-    final availableHeight = media.size.height -
-        keyboardHeight -
-        media.padding.top -
-        12;
+    final availableHeight =
+        media.size.height - keyboardHeight - media.padding.top - 12;
     final maxSheetHeight = math.min(
       media.size.height * 0.86,
       math.max(260.0, availableHeight),
@@ -205,12 +203,7 @@ class _BottomSheetFrame extends StatelessWidget {
           curve: Curves.easeOutCubic,
           height: shouldExpand ? maxSheetHeight : null,
           constraints: BoxConstraints(maxHeight: maxSheetHeight),
-          padding: EdgeInsets.fromLTRB(
-            22,
-            10,
-            22,
-            media.padding.bottom + 18,
-          ),
+          padding: EdgeInsets.fromLTRB(22, 10, 22, media.padding.bottom + 18),
           decoration: BoxDecoration(
             color: AppColors.of(context).surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -234,18 +227,22 @@ class _SoftSuccessBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 13),
       decoration: BoxDecoration(
-        color: const Color(0xFFE9F8EC),
+        color: isDark ? const Color(0xFF173224) : const Color(0xFFE9F8EC),
         borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark ? const Color(0x553AAF69) : const Color(0x00000000),
+        ),
       ),
       child: Text(
         text,
         textAlign: TextAlign.center,
-        style: const TextStyle(
-          color: Color(0xFF62A36E),
+        style: TextStyle(
+          color: isDark ? const Color(0xFF85D796) : const Color(0xFF62A36E),
           fontWeight: FontWeight.w900,
         ),
       ),

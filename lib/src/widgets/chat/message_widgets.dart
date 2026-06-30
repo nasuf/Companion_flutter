@@ -800,6 +800,15 @@ class _ComponentCardBubble extends StatelessWidget {
         apiBaseUrl: apiBaseUrl,
       );
     }
+    if (card.type == 'offline_gift') {
+      return _OfflineGiftComponentCard(
+        card: card,
+        isMine: isMine,
+        onTap: onTap,
+        authToken: authToken,
+        apiBaseUrl: apiBaseUrl,
+      );
+    }
     final accent = _parseColor(card.accent);
     final isTimeCapsule = card.type == 'time_capsule';
     final timeCapsuleContent = _timeCapsuleContent(card);
