@@ -7,6 +7,7 @@ class _ExchangeStoreView extends StatelessWidget {
     required this.onCategoryChanged,
     required this.onRechargePoints,
     required this.onExchange,
+    required this.isExchanging,
     required this.bottomSpace,
   });
 
@@ -15,6 +16,7 @@ class _ExchangeStoreView extends StatelessWidget {
   final ValueChanged<_ExchangeCategory> onCategoryChanged;
   final VoidCallback onRechargePoints;
   final ValueChanged<_StoreProduct> onExchange;
+  final bool Function(_StoreProduct product) isExchanging;
   final double bottomSpace;
 
   @override
@@ -49,6 +51,7 @@ class _ExchangeStoreView extends StatelessWidget {
                 affordable: product.price <= points,
                 onTap: () => onExchange(product),
                 onRechargePoints: onRechargePoints,
+                busy: isExchanging(product),
               );
             },
           ),
@@ -69,7 +72,31 @@ class _ExchangeCategoryBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selectedIndex = _ExchangeCategory.values.indexOf(selected);
+    return _StoreSegmentedLabelBar<_ExchangeCategory>(
+      values: _ExchangeCategory.values,
+      selected: selected,
+      labelFor: (category) => category.label,
+      onSelected: onSelected,
+    );
+  }
+}
+
+class _StoreSegmentedLabelBar<T> extends StatelessWidget {
+  const _StoreSegmentedLabelBar({
+    required this.values,
+    required this.selected,
+    required this.labelFor,
+    required this.onSelected,
+  });
+
+  final List<T> values;
+  final T selected;
+  final String Function(T value) labelFor;
+  final ValueChanged<T> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedIndex = math.max(0, values.indexOf(selected));
     final isDark = AppColors.isDark(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(23),
@@ -84,8 +111,7 @@ class _ExchangeCategoryBar extends StatelessWidget {
           ),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final width =
-                  constraints.maxWidth / _ExchangeCategory.values.length;
+              final width = constraints.maxWidth / values.length;
               return Stack(
                 children: [
                   AnimatedPositioned(
@@ -113,16 +139,16 @@ class _ExchangeCategoryBar extends StatelessWidget {
                   ),
                   Row(
                     children: [
-                      for (final category in _ExchangeCategory.values)
+                      for (final value in values)
                         Expanded(
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
-                            onTap: () => onSelected(category),
+                            onTap: () => onSelected(value),
                             child: Center(
                               child: Text(
-                                category.label,
+                                labelFor(value),
                                 style: TextStyle(
-                                  color: category == selected
+                                  color: value == selected
                                       ? AppColors.text
                                       : (isDark
                                             ? AppColors.muted
@@ -152,14 +178,22 @@ class _ExchangeProductCard extends StatelessWidget {
   const _ExchangeProductCard({
     required this.product,
     required this.affordable,
-    required this.onTap,
-    required this.onRechargePoints,
+    this.onTap,
+    this.onRechargePoints,
+    this.busy = false,
+    this.compact = false,
+    this.showPrice = true,
+    this.quantity,
   });
 
   final _StoreProduct product;
   final bool affordable;
-  final VoidCallback onTap;
-  final VoidCallback onRechargePoints;
+  final VoidCallback? onTap;
+  final VoidCallback? onRechargePoints;
+  final bool busy;
+  final bool compact;
+  final bool showPrice;
+  final int? quantity;
 
   @override
   Widget build(BuildContext context) {
@@ -181,9 +215,13 @@ class _ExchangeProductCard extends StatelessWidget {
         : (isDark
               ? AppColors.muted.withValues(alpha: 0.76)
               : const Color(0xFF7B8792));
+    final iconHaloSize = compact ? 58.0 : 100.0;
+    final iconSize = compact ? 42.0 : 76.0;
     return _GlassCard(
-      padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
-      radius: 18,
+      padding: compact
+          ? const EdgeInsets.fromLTRB(10, 12, 10, 10)
+          : const EdgeInsets.fromLTRB(12, 14, 12, 12),
+      radius: compact ? 16 : 18,
       child: Column(
         children: [
           Expanded(
@@ -192,8 +230,8 @@ class _ExchangeProductCard extends StatelessWidget {
               alignment: Alignment.center,
               children: [
                 Container(
-                  width: 100,
-                  height: 100,
+                  width: iconHaloSize,
+                  height: iconHaloSize,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: AppColors.subtleFill(context, light: 0.82),
@@ -204,8 +242,8 @@ class _ExchangeProductCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                _ExchangeProductIcon(product: product),
-                if (product.badge != null)
+                _ExchangeProductIcon(product: product, size: iconSize),
+                if (product.badge != null && !compact)
                   Positioned(
                     top: 4,
                     left: 6,
@@ -233,89 +271,93 @@ class _ExchangeProductCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: compact ? 8 : 10),
           Text(
             product.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: AppColors.text,
-              fontSize: 15,
+              fontSize: compact ? 13 : 15,
               fontWeight: FontWeight.w900,
               letterSpacing: 0,
               decoration: TextDecoration.none,
             ),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: compact ? 3 : 4),
           Text(
-            product.subtitle,
+            compact && quantity != null ? 'x$quantity' : product.subtitle,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: isDark ? AppColors.muted : const Color(0xFF6A7784),
-              fontSize: 11,
+              fontSize: compact ? 12 : 11,
               fontWeight: FontWeight.w700,
               letterSpacing: 0,
               decoration: TextDecoration.none,
             ),
           ),
-          const SizedBox(height: 10),
-          CupertinoButton(
-            minimumSize: Size.zero,
-            padding: EdgeInsets.zero,
-            onPressed: affordable ? onTap : onRechargePoints,
-            child: Container(
-              height: 36,
-              decoration: BoxDecoration(
-                color: priceBackground,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: priceBorder),
-                boxShadow: [
-                  if (affordable)
-                    BoxShadow(
-                      color: AppColors.accent.withValues(
-                        alpha: isDark ? 0.18 : 0.10,
-                      ),
-                      blurRadius: 14,
-                      offset: const Offset(0, 7),
-                    ),
-                ],
-              ),
-              child: Center(
-                child: product.price == 0
-                    ? Text(
-                        '免费',
-                        style: TextStyle(
-                          color: priceTextColor,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0,
-                          decoration: TextDecoration.none,
+          if (showPrice) ...[
+            const SizedBox(height: 10),
+            CupertinoButton(
+              minimumSize: Size.zero,
+              padding: EdgeInsets.zero,
+              onPressed: busy ? null : (affordable ? onTap : onRechargePoints),
+              child: Container(
+                height: 36,
+                decoration: BoxDecoration(
+                  color: priceBackground,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: priceBorder),
+                  boxShadow: [
+                    if (affordable)
+                      BoxShadow(
+                        color: AppColors.accent.withValues(
+                          alpha: isDark ? 0.18 : 0.10,
                         ),
-                      )
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const _CurrencyIcon(
-                            currency: _StoreCurrency.point,
-                            size: 16,
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            '${product.price}',
-                            style: TextStyle(
-                              color: priceTextColor,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0,
-                              decoration: TextDecoration.none,
-                            ),
-                          ),
-                        ],
+                        blurRadius: 14,
+                        offset: const Offset(0, 7),
                       ),
+                  ],
+                ),
+                child: Center(
+                  child: busy
+                      ? CupertinoActivityIndicator(color: priceTextColor)
+                      : product.price == 0
+                      ? Text(
+                          '免费',
+                          style: TextStyle(
+                            color: priceTextColor,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0,
+                            decoration: TextDecoration.none,
+                          ),
+                        )
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const _CurrencyIcon(
+                              currency: _StoreCurrency.point,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              '${product.price}',
+                              style: TextStyle(
+                                color: priceTextColor,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -367,9 +409,10 @@ class _ExchangeCategoryHeaderDelegate extends SliverPersistentHeaderDelegate {
 }
 
 class _ExchangeProductIcon extends StatelessWidget {
-  const _ExchangeProductIcon({required this.product});
+  const _ExchangeProductIcon({required this.product, this.size = 76});
 
   final _StoreProduct product;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -378,28 +421,29 @@ class _ExchangeProductIcon extends StatelessWidget {
       return _ExchangeProductIconFallback(product: product);
     }
     return SizedBox(
-      width: 76,
-      height: 76,
+      width: size,
+      height: size,
       child: Image.asset(
         asset,
         fit: BoxFit.contain,
         filterQuality: FilterQuality.medium,
         errorBuilder: (_, __, ___) =>
-            _ExchangeProductIconFallback(product: product),
+            _ExchangeProductIconFallback(product: product, size: size),
       ),
     );
   }
 }
 
 class _ExchangeProductIconFallback extends StatelessWidget {
-  const _ExchangeProductIconFallback({required this.product});
+  const _ExchangeProductIconFallback({required this.product, this.size = 70});
 
   final _StoreProduct product;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      size: const Size(70, 70),
+      size: Size(size, size),
       painter: _StoreItemIconPainter(
         kind: product.kind,
         accent: AppColors.accent,

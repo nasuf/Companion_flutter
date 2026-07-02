@@ -812,10 +812,8 @@ class _ProfilePageState extends State<ProfilePage>
       context: context,
       builder: (context) {
         return CupertinoAlertDialog(
-          title: const Text('删除 Agent'),
-          content: Text(
-            '确定要彻底删除「$agentName」的全部数据吗？\n\n包括所有对话、消息、记忆、画像等，此操作不可恢复。',
-          ),
+          title: const Text('删除好友'),
+          content: Text('确定要删除「$agentName」吗？\n\n该操作将永久删除所有聊天记录、关系数据和记忆，且无法恢复。'),
           actions: [
             CupertinoDialogAction(
               onPressed: () => Navigator.of(context).pop(false),
@@ -842,16 +840,16 @@ class _ProfilePageState extends State<ProfilePage>
       builder: (context) {
         return CupertinoAlertDialog(
           title: const Text('退出登录'),
-          content: const Text('确定要退出当前账号吗？'),
+          content: const Text('退出后不会删除您的数据和AI伙伴，但需要重新登录。'),
           actions: [
             CupertinoDialogAction(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
+              child: const Text('再想想'),
             ),
             CupertinoDialogAction(
               isDestructiveAction: true,
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('退出'),
+              child: const Text('退出登录'),
             ),
           ],
         );
@@ -918,94 +916,338 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
+  Future<void> _pushPage(
+    Widget page, {
+    bool refreshStatsOnReturn = false,
+  }) async {
+    if (_deleting) return;
+    await Navigator.of(
+      context,
+    ).push(CupertinoPageRoute<void>(builder: (_) => page));
+    if (refreshStatsOnReturn && mounted) {
+      await _loadProfileStats();
+    }
+  }
+
+  Future<void> _showMemberInfo() async {
+    await _pushPage(
+      StorePage(api: widget.api, session: widget.session),
+      refreshStatsOnReturn: true,
+    );
+  }
+
+  Future<void> _showVersionDialog() async {
+    await showCupertinoDialog<void>(
+      context: context,
+      builder: (context) {
+        return CupertinoAlertDialog(
+          title: const Text('版本信息'),
+          content: const Text('当前版本 v0.1.8\n已经是最新版本。'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('知道了'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showClearChatDialog() async {
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) {
+        return CupertinoAlertDialog(
+          title: const Text('清空所有聊天记录'),
+          content: const Text('确认后会清空当前伴生对象下的聊天记录。这个操作不会删除账号、AI伙伴或背包数据。'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('确认清空'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) return;
+    try {
+      final result = await widget.api.clearChatRecords(
+        workspaceId: widget.session.workspaceId,
+      );
+      if (!mounted) return;
+      await _loadProfileStats();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已清空 ${result.clearedConversations} 条会话记录'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      await _showPlainDialog(
+        title: '清空失败',
+        message: _asMessage(error),
+        confirmText: '知道了',
+        destructive: true,
+      );
+    }
+  }
+
+  Future<void> _showDeleteAccountDialog() async {
+    await _showPlainDialog(
+      title: '注销账号',
+      message: '账号注销会永久删除账号、AI伙伴及关系记录。该能力暂未开放，请先通过意见反馈联系我们处理。',
+      confirmText: '知道了',
+      destructive: true,
+    );
+  }
+
+  Future<void> _showPlainDialog({
+    required String title,
+    required String message,
+    required String confirmText,
+    bool destructive = false,
+  }) async {
+    await showCupertinoDialog<void>(
+      context: context,
+      builder: (context) {
+        return CupertinoAlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            CupertinoDialogAction(
+              isDestructiveAction: destructive,
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(confirmText),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final userName = _displayName(
       widget.session.userDisplayName ?? widget.session.username,
-      fallback: '山木',
+      fallback: '小星辰',
     );
-    final agentName = _displayName(widget.session.agentName, fallback: '小芜');
-    final hasAgent =
-        widget.session.agentId != null && widget.session.agentId!.isNotEmpty;
-    final topPadding = media.padding.top + 10;
+    final agentName = _displayName(widget.session.agentName, fallback: '小明');
+    final topPadding = media.padding.top + 14;
     return AnimatedBuilder(
       animation: _motionController,
       builder: (context, _) {
         final motion = _motionController.value;
+        final mode = AppThemeScope.of(context).mode;
         return Stack(
           fit: StackFit.expand,
           children: [
-            CustomPaint(
-              painter: _ProfileBackgroundPainter(
-                progress: motion,
-                isDark: isDark,
-              ),
-            ),
-            SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: EdgeInsets.fromLTRB(18, topPadding, 18, 126),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 38),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _ProfileHeroV6(
-                          progress: motion,
-                          userName: userName,
-                          agentName: agentName,
-                          userAvatarUrl: widget.session.userAvatarUrl,
-                          agentAvatarUrl: widget.session.agentAvatarUrl,
-                          isDark: isDark,
-                        ),
-                        const SizedBox(height: 20),
-                        _ProfileStatusSectionV6(
-                          stats: _profileStats,
-                          loading: _profileStatsLoading,
-                          error: _profileStatsError,
-                        ),
-                        const SizedBox(height: 20),
-                        const _ProfileThemeSectionV6(),
-                        const SizedBox(height: 20),
-                        _ProfileSettingsSectionV6(
-                          hasAgent: hasAgent,
-                          deleting: _deleting,
-                          onDeleteAgent: _confirmDeleteAgent,
-                          onLogout: _confirmLogout,
-                        ),
-                        if (_deleting) ...[
-                          const SizedBox(height: 16),
-                          _DeleteProgressPanel(
-                            stage: _deleteStages[_deleteStage],
-                            stats: _deleteStats,
+            ColoredBox(color: _SettingsColors.page),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              // 让内容视口在浮动导航栏上方截止，滚动内容不再显示在导航栏后面。
+              bottom: math.max(10, media.padding.bottom - 2) + 74,
+              child: ClipRect(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _SettingsRelationHeader(
+                            progress: motion,
+                            topPadding: topPadding,
+                            userName: userName,
+                            agentName: agentName,
+                            userAvatarUrl: widget.session.userAvatarUrl,
+                            agentAvatarUrl: widget.session.agentAvatarUrl,
+                            memberActive:
+                                _profileStats?.memberIsActive ?? false,
+                            onUserTap: () => _pushPage(
+                              _ProfileInfoPage(session: widget.session),
+                            ),
+                            onAgentTap: () => _pushPage(
+                              _AiAppearancePage(
+                                agentName: agentName,
+                                agentAvatarUrl: widget.session.agentAvatarUrl,
+                              ),
+                            ),
                           ),
-                        ],
-                        if (_error != null) ...[
-                          const SizedBox(height: 14),
-                          Text(
-                            _error!,
-                            style: const TextStyle(
-                              color: Color(0xFFE35B6F),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0,
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _SettingsDashboardGrid(
+                                  stats: _profileStats,
+                                  loading: _profileStatsLoading,
+                                  error: _profileStatsError,
+                                ),
+                                const SizedBox(height: 14),
+                                _SettingsBackpackCard(
+                                  count: _profileStats?.backpackCount ?? 0,
+                                  onTap: () => _pushPage(
+                                    _BackpackPage(
+                                      api: widget.api,
+                                      session: widget.session,
+                                    ),
+                                    refreshStatsOnReturn: true,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                _SettingsMemberCard(
+                                  stats: _profileStats,
+                                  onTap: _showMemberInfo,
+                                ),
+                                const SizedBox(height: 18),
+                                _SettingsSectionCard(
+                                  label: '消息与互动',
+                                  rows: [
+                                    _SettingsRowData(
+                                      icon: '🔔',
+                                      title: '通知设置',
+                                      onTap: () => _pushPage(
+                                        _NotificationSettingsPage(
+                                          api: widget.api,
+                                          session: widget.session,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 14),
+                                _SettingsSectionCard(
+                                  label: '个性化与显示',
+                                  rows: [
+                                    _SettingsRowData(
+                                      icon: '🎨',
+                                      title: '皮肤设置',
+                                      onTap: () =>
+                                          _pushPage(const _SkinSettingsPage()),
+                                    ),
+                                    _SettingsRowData(
+                                      icon: '🔤',
+                                      title: '字体与大小',
+                                      onTap: () =>
+                                          _pushPage(const _FontSettingsPage()),
+                                    ),
+                                    _SettingsRowData(
+                                      icon: '🌙',
+                                      title: '深色模式',
+                                      value: _themeModeLabel(mode),
+                                      trailing: CupertinoSwitch(
+                                        value: mode == ThemeMode.dark,
+                                        activeTrackColor:
+                                            _SettingsColors.blueDark,
+                                        onChanged: (value) =>
+                                            AppThemeScope.of(context).setMode(
+                                              value
+                                                  ? ThemeMode.dark
+                                                  : ThemeMode.light,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 14),
+                                _SettingsSectionCard(
+                                  label: '隐私与安全',
+                                  rows: [
+                                    _SettingsRowData(
+                                      icon: '🔒',
+                                      title: '隐私与安全中心',
+                                      onTap: () => _pushPage(
+                                        _PrivacySecurityPage(
+                                          username: widget.session.username,
+                                          stats: _profileStats,
+                                          onClearChat: _showClearChatDialog,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 14),
+                                _SettingsSectionCard(
+                                  label: '其他与信息',
+                                  rows: [
+                                    _SettingsRowData(
+                                      icon: '🗂',
+                                      title: '缓存清理',
+                                      onTap: () =>
+                                          _pushPage(const _CacheCleanupPage()),
+                                    ),
+                                    _SettingsRowData(
+                                      icon: 'ℹ️',
+                                      title: '关于我们',
+                                      onTap: () => _pushPage(
+                                        _AboutCompanionPage(
+                                          onContact: () => _pushPage(
+                                            const _ContactFeedbackPage(),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    _SettingsRowData(
+                                      icon: '📦',
+                                      title: '版本信息',
+                                      value: 'v0.1.8',
+                                      secondaryAction: '检查更新',
+                                      onTap: _showVersionDialog,
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 18),
+                                _SettingsAccountActions(
+                                  onLogout: _confirmLogout,
+                                  onDeleteFriend: _confirmDeleteAgent,
+                                  onDeleteAccount: _showDeleteAccountDialog,
+                                ),
+                                if (_deleting) ...[
+                                  const SizedBox(height: 16),
+                                  _DeleteProgressPanel(
+                                    stage: _deleteStages[_deleteStage],
+                                    stats: _deleteStats,
+                                  ),
+                                ],
+                                if (_error != null) ...[
+                                  const SizedBox(height: 14),
+                                  Text(
+                                    _error!,
+                                    style: TextStyle(
+                                      color: _SettingsColors.red,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0,
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
                         ],
-                      ],
-                    ),
+                      ),
+                      if (widget.session.role == UserRole.admin)
+                        Positioned(
+                          top: topPadding,
+                          right: 18,
+                          child: _ProfileAdminButton(onTap: _openAdminPanel),
+                        ),
+                    ],
                   ),
-                  if (widget.session.role == UserRole.admin)
-                    Positioned(
-                      top: 0,
-                      right: 0,
-                      child: _ProfileAdminButton(onTap: _openAdminPanel),
-                    ),
-                ],
+                ),
               ),
             ),
           ],
@@ -1019,119 +1261,181 @@ class _ProfilePageState extends State<ProfilePage>
     if (trimmed == null || trimmed.isEmpty) return fallback;
     return trimmed;
   }
+
+  static String _themeModeLabel(ThemeMode mode) {
+    return switch (mode) {
+      ThemeMode.dark => '深色',
+      ThemeMode.light => '浅色',
+      ThemeMode.system => '跟随系统',
+    };
+  }
 }
 
-class _ProfileHeroV6 extends StatelessWidget {
-  const _ProfileHeroV6({
+class _SettingsColors {
+  const _SettingsColors._();
+
+  static bool get isDark => AppColors.current.page == AppColors.dark.page;
+
+  static Color get page =>
+      isDark ? const Color(0xFF080D14) : const Color(0xFFE8ECF1);
+  static Color get bg =>
+      isDark ? const Color(0xFF0D141D) : const Color(0xFFF0F4F8);
+  static Color get headerA =>
+      isDark ? const Color(0xFF101B27) : const Color(0xFFE3F0FA);
+  static Color get headerB =>
+      isDark ? const Color(0xFF261D1B) : const Color(0xFFFFF7F2);
+  static Color get headerC =>
+      isDark ? const Color(0xFF1A1721) : const Color(0xFFFDF0E8);
+  static Color get card =>
+      isDark ? const Color(0xFF101820) : const Color(0xFFFFFFFF);
+  static Color get text =>
+      isDark ? const Color(0xFFF2F7FB) : const Color(0xFF1C1C1E);
+  static Color get tertiary =>
+      isDark ? const Color(0xFF9AA8B8) : const Color(0xFF8E8E93);
+  static Color get separator =>
+      isDark ? const Color(0xFF263445) : const Color(0xFFE5E5EA);
+  static Color get blueLight =>
+      isDark ? const Color(0xFF17324C) : const Color(0xFFE8F2FB);
+  static Color get blue =>
+      isDark ? const Color(0xFF4BA3FF) : const Color(0xFF7AB8E0);
+  static Color get blueDark =>
+      isDark ? const Color(0xFF6CB6FF) : const Color(0xFF5A9CC8);
+  static Color get orangeLight =>
+      isDark ? const Color(0xFF3B2A21) : const Color(0xFFFFF0E8);
+  static Color get orange =>
+      isDark ? const Color(0xFFF3A66E) : const Color(0xFFF5B78A);
+  static Color get orangeDark =>
+      isDark ? const Color(0xFFFFB783) : const Color(0xFFE8945C);
+  static Color get gold =>
+      isDark ? const Color(0xFFF1C864) : const Color(0xFFD4A843);
+  static Color get goldLight =>
+      isDark ? const Color(0xFF3D3218) : const Color(0xFFFDF3D0);
+  static Color get red =>
+      isDark ? const Color(0xFFFF7777) : const Color(0xFFE8553D);
+}
+
+BoxDecoration _settingsCardDecoration({double radius = 16}) {
+  return BoxDecoration(
+    color: _SettingsColors.card,
+    borderRadius: BorderRadius.circular(radius),
+    border: Border.all(
+      color: _SettingsColors.isDark
+          ? Colors.white.withValues(alpha: 0.07)
+          : Colors.transparent,
+    ),
+    boxShadow: [
+      BoxShadow(
+        color: Colors.black.withValues(
+          alpha: _SettingsColors.isDark ? 0.30 : 0.06,
+        ),
+        blurRadius: _SettingsColors.isDark ? 10 : 3,
+        offset: Offset(0, _SettingsColors.isDark ? 5 : 1),
+      ),
+    ],
+  );
+}
+
+class _SettingsRelationHeader extends StatelessWidget {
+  const _SettingsRelationHeader({
     required this.progress,
+    required this.topPadding,
     required this.userName,
     required this.agentName,
-    required this.isDark,
+    required this.onUserTap,
+    required this.onAgentTap,
     this.userAvatarUrl,
     this.agentAvatarUrl,
+    this.memberActive = false,
   });
 
   final double progress;
+  final double topPadding;
   final String userName;
   final String agentName;
-  final bool isDark;
   final String? userAvatarUrl;
   final String? agentAvatarUrl;
+  final bool memberActive;
+  final VoidCallback onUserTap;
+  final VoidCallback onAgentTap;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 330,
-      child: Stack(
-        clipBehavior: Clip.none,
+    return Container(
+      height: topPadding + 214,
+      padding: EdgeInsets.fromLTRB(16, topPadding + 30, 16, 20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _SettingsColors.headerA,
+            _SettingsColors.headerB,
+            _SettingsColors.headerC,
+            _SettingsColors.headerB,
+            _SettingsColors.headerA,
+          ],
+          stops: [0, 0.25, 0.5, 0.75, 1],
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
+        boxShadow: [
+          BoxShadow(
+            color: _SettingsColors.isDark
+                ? Colors.black.withValues(alpha: 0.34)
+                : const Color(0x1A7AB8E0),
+            blurRadius: _SettingsColors.isDark ? 18 : 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
         children: [
-          _ProfileFloatingBlob(
-            progress: progress,
-            right: -52,
-            top: 4,
-            width: 218,
-            height: 174,
-            radius: 58,
-            phase: 0,
-            rotate: 12,
-            xAmplitude: -20,
-            yAmplitude: 17,
-            begin: const Color(0x851F6FFF),
-            end: const Color(0x2E18C6C0),
-            highlight: true,
-          ),
-          _ProfileFloatingBlob(
-            progress: progress,
-            left: -34,
-            bottom: 8,
-            width: 156,
-            height: 120,
-            radius: 42,
-            phase: 0.34,
-            rotate: -10,
-            xAmplitude: 14,
-            yAmplitude: -12,
-            begin: const Color(0x33FF8A3D),
-            end: const Color(0x1A7C3CFF),
-          ),
-          Positioned(
-            top: 54,
-            left: 2,
-            right: 112,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'personal space',
-                  style: TextStyle(
-                    color: Color(0xFF1F6FFF),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.2,
-                    height: 1,
-                  ),
+          const Spacer(),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: _SettingsAvatarColumn(
+                  progress: progress,
+                  phase: 0,
+                  name: agentName,
+                  assetPath: 'assets/prototype/agent-avatar.png',
+                  imageUrl: agentAvatarUrl,
+                  accent: _SettingsColors.orangeDark,
+                  onTap: onAgentTap,
                 ),
-                const SizedBox(height: 14),
-                Text(
-                  '$userName和$agentName',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: isDark ? AppColors.text : const Color(0xFF12171B),
-                    fontSize: 34,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
-                    height: 1.04,
-                  ),
+              ),
+              SizedBox(
+                width: 58,
+                height: 64,
+                child: _SettingsConnectionBridge(progress: progress),
+              ),
+              Expanded(
+                child: _SettingsAvatarColumn(
+                  progress: progress,
+                  phase: 0.28,
+                  name: userName,
+                  assetPath: 'assets/prototype/user-avatar-shanmu.jpg',
+                  imageUrl: userAvatarUrl,
+                  accent: memberActive
+                      ? _SettingsColors.gold
+                      : _SettingsColors.blueDark,
+                  showCrown: memberActive,
+                  onTap: onUserTap,
                 ),
-                const SizedBox(height: 13),
-                Text(
-                  '我们一起走过的时光，都在这里慢慢沉淀。',
-                  style: TextStyle(
-                    color: isDark
-                        ? const Color(0x9EEBF2EE)
-                        : const Color(0x94182026),
-                    fontSize: 13.2,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0,
-                    height: 1.7,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-          Positioned(
-            right: 8,
-            bottom: 36,
-            width: 204,
-            height: 132,
-            child: _ProfileOrbitV6(
-              progress: progress,
-              userName: userName,
-              agentName: agentName,
-              userAvatarUrl: userAvatarUrl,
-              agentAvatarUrl: agentAvatarUrl,
-              isDark: isDark,
+          const SizedBox(height: 14),
+          Text(
+            '✦ 故事从这里开始 ✦',
+            style: TextStyle(
+              color: _SettingsColors.isDark
+                  ? _SettingsColors.orangeDark
+                  : const Color(0xFF9A8C82),
+              fontSize: 14,
+              fontStyle: FontStyle.italic,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
             ),
           ),
         ],
@@ -1140,269 +1444,92 @@ class _ProfileHeroV6 extends StatelessWidget {
   }
 }
 
-class _ProfileFloatingBlob extends StatelessWidget {
-  const _ProfileFloatingBlob({
+class _SettingsAvatarColumn extends StatelessWidget {
+  const _SettingsAvatarColumn({
     required this.progress,
-    required this.width,
-    required this.height,
-    required this.radius,
-    required this.rotate,
-    required this.xAmplitude,
-    required this.yAmplitude,
-    required this.begin,
-    required this.end,
-    this.left,
-    this.top,
-    this.right,
-    this.bottom,
-    this.phase = 0,
-    this.highlight = false,
-  });
-
-  final double progress;
-  final double width;
-  final double height;
-  final double radius;
-  final double rotate;
-  final double xAmplitude;
-  final double yAmplitude;
-  final Color begin;
-  final Color end;
-  final double? left;
-  final double? top;
-  final double? right;
-  final double? bottom;
-  final double phase;
-  final bool highlight;
-
-  @override
-  Widget build(BuildContext context) {
-    final wave = (math.sin((progress + phase) * math.pi * 2) + 1) / 2;
-    final turn = rotate + (highlight ? 5 : -5) * wave;
-    return Positioned(
-      left: left,
-      top: top,
-      right: right,
-      bottom: bottom,
-      child: Transform.translate(
-        offset: Offset(xAmplitude * wave, yAmplitude * wave),
-        child: Transform.rotate(
-          angle: turn * math.pi / 180,
-          child: Transform.scale(
-            scale: 1 + 0.04 * wave,
-            child: Opacity(
-              opacity: highlight ? 0.68 : 1,
-              child: Container(
-                width: width,
-                height: height,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(radius),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [begin, end],
-                  ),
-                ),
-                child: highlight
-                    ? Align(
-                        alignment: const Alignment(-0.34, -0.52),
-                        child: Container(
-                          width: 38,
-                          height: 38,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withValues(alpha: 0.78),
-                          ),
-                        ),
-                      )
-                    : null,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileOrbitV6 extends StatelessWidget {
-  const _ProfileOrbitV6({
-    required this.progress,
-    required this.userName,
-    required this.agentName,
-    required this.isDark,
-    this.userAvatarUrl,
-    this.agentAvatarUrl,
-  });
-
-  final double progress;
-  final String userName;
-  final String agentName;
-  final bool isDark;
-  final String? userAvatarUrl;
-  final String? agentAvatarUrl;
-
-  @override
-  Widget build(BuildContext context) {
-    final userDrift = -4 * _wave(progress, 0);
-    final agentWave = _wave(progress, -0.36);
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Positioned(
-          left: 58,
-          top: 56,
-          child: _ProfileLinkV6(progress: progress),
-        ),
-        Positioned(
-          left: 0,
-          bottom: 8 + userDrift,
-          child: _ProfilePersonV6(
-            progress: progress,
-            label: userName,
-            assetPath: 'assets/prototype/user-avatar-shanmu.jpg',
-            imageUrl: userAvatarUrl,
-            size: 72,
-            radius: 24,
-            isDark: isDark,
-          ),
-        ),
-        Positioned(
-          right: 0,
-          top: agentWave * 3,
-          child: Transform.translate(
-            offset: Offset(agentWave * 2, 0),
-            child: _ProfilePersonV6(
-              progress: progress,
-              label: agentName,
-              assetPath: 'assets/prototype/agent-avatar.png',
-              imageUrl: agentAvatarUrl,
-              size: 82,
-              radius: 28,
-              delay: -0.26,
-              isDark: isDark,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  static double _wave(double value, double phase) {
-    return (math.sin((value + phase) * math.pi * 2) + 1) / 2;
-  }
-}
-
-class _ProfileLinkV6 extends StatelessWidget {
-  const _ProfileLinkV6({required this.progress});
-
-  final double progress;
-
-  @override
-  Widget build(BuildContext context) {
-    final wave = (math.sin(progress * math.pi * 2) + 1) / 2;
-    return Transform.translate(
-      offset: Offset(2 * wave, -2 * wave),
-      child: Transform.rotate(
-        angle: (-18 + 2 * wave) * math.pi / 180,
-        child: Transform.scale(
-          scaleX: 1 + 0.035 * wave,
-          child: CustomPaint(
-            size: const Size(78, 34),
-            painter: _ProfileLinkPainter(progress),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfilePersonV6 extends StatelessWidget {
-  const _ProfilePersonV6({
-    required this.progress,
-    required this.label,
+    required this.phase,
+    required this.name,
     required this.assetPath,
-    required this.size,
-    required this.radius,
-    required this.isDark,
+    required this.accent,
+    required this.onTap,
     this.imageUrl,
-    this.delay = 0,
+    this.showCrown = false,
   });
 
   final double progress;
-  final String label;
+  final double phase;
+  final String name;
   final String assetPath;
   final String? imageUrl;
-  final double size;
-  final double radius;
-  final double delay;
-  final bool isDark;
+  final Color accent;
+  final bool showCrown;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final breath = (math.sin((progress + delay) * math.pi * 2 * 2) + 1) / 2;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Transform.scale(
-          scale: 1 + 0.025 * breath,
-          child: _ProfilePhotoV6(
-            assetPath: assetPath,
-            imageUrl: imageUrl,
-            size: size,
-            radius: radius,
-          ),
-        ),
-        const SizedBox(height: 7),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.08)
-                : Colors.white.withValues(alpha: 0.68),
-            borderRadius: BorderRadius.circular(999),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF485F78).withValues(alpha: 0.08),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
+    final lift = math.sin((progress + phase) * math.pi * 2) * 4;
+    final breath = (math.sin((progress + phase) * math.pi * 4) + 1) / 2;
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      onPressed: onTap,
+      child: Transform.translate(
+        offset: Offset(0, lift),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Transform.scale(
+              scale: 1 + breath * 0.018,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  _SettingsAvatarImage(
+                    assetPath: assetPath,
+                    imageUrl: imageUrl,
+                    accent: accent,
+                  ),
+                  const Positioned(
+                    right: -3,
+                    bottom: 0,
+                    child: _AvatarEditDot(),
+                  ),
+                  if (showCrown)
+                    const Positioned(
+                      right: -5,
+                      top: -12,
+                      child: Text('👑', style: TextStyle(fontSize: 18)),
+                    ),
+                ],
               ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: Text(
-              label,
+            ),
+            const SizedBox(height: 7),
+            Text(
+              name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: isDark
-                    ? const Color(0xB3EBF2EE)
-                    : const Color(0xAD12171B),
-                fontSize: 10.5,
-                fontWeight: FontWeight.w800,
+                color: _SettingsColors.text,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
                 letterSpacing: 0,
-                height: 1,
               ),
             ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
 
-class _ProfilePhotoV6 extends StatelessWidget {
-  const _ProfilePhotoV6({
+class _SettingsAvatarImage extends StatelessWidget {
+  const _SettingsAvatarImage({
     required this.assetPath,
-    required this.size,
-    required this.radius,
+    required this.accent,
     this.imageUrl,
   });
 
   final String assetPath;
   final String? imageUrl;
-  final double size;
-  final double radius;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
@@ -1415,39 +1542,156 @@ class _ProfilePhotoV6 extends StatelessWidget {
             fit: BoxFit.cover,
             gaplessPlayback: true,
             errorBuilder: (_, __, ___) => fallback,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
+            loadingBuilder: (context, child, progress) {
+              if (progress == null) return child;
               return fallback;
             },
           );
     return Container(
-      width: size,
-      height: size,
+      width: 64,
+      height: 64,
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: const Color(0xFFDCEFED),
-        borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.82)),
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            accent.withValues(alpha: _SettingsColors.isDark ? 0.64 : 0.72),
+            _SettingsColors.isDark ? _SettingsColors.card : Colors.white,
+          ],
+        ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF485F78).withValues(alpha: 0.16),
-            blurRadius: 42,
-            offset: const Offset(0, 22),
-          ),
-          BoxShadow(
-            color: Colors.white.withValues(alpha: 0.88),
-            blurRadius: 1,
-            offset: const Offset(0, 1),
+            color: accent.withValues(alpha: 0.24),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
-      clipBehavior: Clip.antiAlias,
-      child: image,
+      child: ClipOval(child: image),
     );
   }
 }
 
-class _ProfileStatusSectionV6 extends StatelessWidget {
-  const _ProfileStatusSectionV6({
+class _AvatarEditDot extends StatelessWidget {
+  const _AvatarEditDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 23,
+      height: 23,
+      decoration: BoxDecoration(
+        color: _SettingsColors.isDark ? _SettingsColors.card : Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(
+              alpha: _SettingsColors.isDark ? 0.24 : 0.08,
+            ),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: Icon(
+        CupertinoIcons.pencil,
+        size: 12,
+        color: _SettingsColors.blueDark,
+      ),
+    );
+  }
+}
+
+class _SettingsConnectionBridge extends StatelessWidget {
+  const _SettingsConnectionBridge({required this.progress});
+
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final rotation = progress * math.pi * 2;
+    final pulse = 1 + math.sin(progress * math.pi * 4) * 0.08;
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Transform.rotate(
+          angle: rotation,
+          child: CustomPaint(
+            size: const Size(40, 40),
+            painter: _DashedOrbitPainter(
+              color:
+                  (_SettingsColors.isDark
+                          ? _SettingsColors.orangeDark
+                          : const Color(0xFFE0C8B0))
+                      .withValues(alpha: 0.82),
+            ),
+          ),
+        ),
+        Transform.rotate(
+          angle: rotation,
+          child: Transform.translate(
+            offset: const Offset(0, -18),
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: _SettingsColors.orange,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        ),
+        Transform.scale(
+          scale: pulse,
+          child: Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            child: const Text('💫', style: TextStyle(fontSize: 20)),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DashedOrbitPainter extends CustomPainter {
+  const _DashedOrbitPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.butt;
+    const dashCount = 12;
+    const sweep = math.pi / 12;
+    for (var i = 0; i < dashCount; i += 1) {
+      canvas.drawArc(
+        rect.deflate(2),
+        i * math.pi * 2 / dashCount,
+        sweep,
+        false,
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedOrbitPainter oldDelegate) {
+    return oldDelegate.color != color;
+  }
+}
+
+class _SettingsDashboardGrid extends StatelessWidget {
+  const _SettingsDashboardGrid({
     required this.stats,
     required this.loading,
     required this.error,
@@ -1459,545 +1703,1912 @@ class _ProfileStatusSectionV6 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rows = [
-      (
-        '亲密阶段',
-        stats?.intimacyStage ?? (loading ? '...' : '--'),
-        stats?.intimacyStageLabel ?? (loading ? '同步中' : '暂无数据'),
-      ),
-      (
-        '陪伴天数',
-        stats == null
+    final cards = [
+      _DashboardCardData(
+        icon: '💛',
+        label: '亲密度',
+        accent: _SettingsColors.orange,
+        value: stats == null
             ? (loading ? '...' : '--')
-            : _formatCount(stats!.companionDays),
-        '天',
+            : stats!.topicIntimacy.round().toString(),
+        subtext: stats?.intimacySubtitle ?? (loading ? '同步中' : '暂无数据'),
       ),
-      (
-        '累计聊天',
-        stats == null
+      _DashboardCardData(
+        icon: '📅',
+        label: '相识时间',
+        accent: _SettingsColors.blue,
+        value: stats == null
             ? (loading ? '...' : '--')
-            : _formatCount(stats!.chatHours),
-        '小时',
+            : stats!.companionDays.toString(),
+        subtext: stats?.companionStartedOn == null
+            ? (loading ? '后台同步中' : '暂无开始日期')
+            : '始于 ${stats!.companionStartedOn}',
       ),
-      (
-        '消息总数',
-        stats == null
+      _DashboardCardData(
+        icon: '⏱',
+        label: '相处时光',
+        accent: const Color(0xFFA0C8E8),
+        value: stats == null
             ? (loading ? '...' : '--')
-            : _formatCount(stats!.messageCount),
-        '条',
+            : stats!.chatDurationLabel,
+        subtext: stats?.chatDurationSubtitle ?? '累计聊天时长',
+      ),
+      _DashboardCardData(
+        icon: '💬',
+        label: '讯息总数',
+        accent: const Color(0xFFD4B89C),
+        value: stats == null
+            ? (loading ? '...' : '--')
+            : stats!.messageCount.toString(),
+        subtext: stats?.recent7dMessageLabel ?? '来自后台真实数据',
       ),
     ];
-    return _ProfileSectionV6(
-      title: '我们的时光',
-      trailing:
-          stats?.companionSummary ?? (error == null ? '正在同步后台数据' : '后台数据暂不可用'),
-      child: Padding(
-        padding: const EdgeInsets.only(top: 14, bottom: 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (var i = 0; i < rows.length; i += 1)
-              Expanded(
-                child: _ProfileStatV6(
-                  label: rows[i].$1,
-                  value: rows[i].$2,
-                  unit: rows[i].$3,
-                  first: i == 0,
-                ),
-              ),
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GridView.builder(
+          padding: EdgeInsets.zero,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: cards.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            childAspectRatio: 1.72,
+          ),
+          itemBuilder: (context, index) => _SettingsDashboardCard(cards[index]),
         ),
-      ),
+        if (error != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            '后台数据暂不可用：$error',
+            style: TextStyle(
+              color: _SettingsColors.red,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0,
+            ),
+          ),
+        ],
+      ],
     );
-  }
-
-  static String _formatCount(int value) {
-    final text = value.toString();
-    final buffer = StringBuffer();
-    for (var i = 0; i < text.length; i += 1) {
-      if (i > 0 && (text.length - i) % 3 == 0) {
-        buffer.write(',');
-      }
-      buffer.write(text[i]);
-    }
-    return buffer.toString();
   }
 }
 
-class _ProfileStatV6 extends StatelessWidget {
-  const _ProfileStatV6({
+class _DashboardCardData {
+  const _DashboardCardData({
+    required this.icon,
     required this.label,
+    required this.accent,
     required this.value,
-    required this.unit,
-    required this.first,
+    required this.subtext,
   });
 
+  final String icon;
   final String label;
+  final Color accent;
   final String value;
-  final String unit;
-  final bool first;
+  final String subtext;
+}
+
+class _SettingsDashboardCard extends StatelessWidget {
+  const _SettingsDashboardCard(this.data);
+
+  final _DashboardCardData data;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(
-          left: BorderSide(
-            color: first ? Colors.transparent : const Color(0x14181F2A),
+    return Container(
+      constraints: const BoxConstraints(minHeight: 78),
+      decoration: _settingsCardDecoration(),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _SettingsDashboardLeftBorderPainter(color: data.accent),
+            ),
           ),
-        ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 13, 11),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(data.icon, style: const TextStyle(fontSize: 17)),
+                    const Spacer(),
+                    Text(
+                      data.value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _SettingsColors.isDark
+                            ? _SettingsColors.text
+                            : const Color(0xFF2A2A2C),
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  data.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: _SettingsColors.tertiary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                    height: 1.2,
+                    letterSpacing: 0,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  data.subtext,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: _SettingsColors.orangeDark,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    height: 1.2,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
-      child: Padding(
-        padding: EdgeInsets.only(left: first ? 2 : 10, right: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              height: 26,
+    );
+  }
+}
+
+class _SettingsDashboardLeftBorderPainter extends CustomPainter {
+  const _SettingsDashboardLeftBorderPainter({required this.color});
+
+  final Color color;
+
+  // 与卡片圆角一致，让彩色沿着卡片左侧圆角边缘走。
+  static const double _radius = 16;
+  // 描边宽度（对齐 HTML `border-left: 3px`）。
+  static const double _strokeWidth = 3;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.height <= 0 || size.width <= 0) return;
+    final r = math.min(_radius, size.height / 2);
+    const half = _strokeWidth / 2;
+    final effectiveRadius = r - half;
+    final topCenter = Offset(r, r);
+    final bottomCenter = Offset(r, size.height - r);
+
+    // 完整包住左上/左下圆角：从上切点绕左侧到下切点，
+    // 对齐 CSS 单边圆角 border 的走向（沿边缘、在两端绕角）。
+    final path = Path()
+      ..moveTo(r, half)
+      ..arcTo(
+        Rect.fromCircle(center: topCenter, radius: effectiveRadius),
+        -math.pi / 2,
+        -math.pi / 2,
+        false,
+      )
+      ..lineTo(half, size.height - r)
+      ..arcTo(
+        Rect.fromCircle(center: bottomCenter, radius: effectiveRadius),
+        math.pi,
+        -math.pi / 2,
+        false,
+      );
+
+    // 竖直渐变：中段实色最粗，越靠近上下两端（绕角处）越淡直至透明，
+    // 还原 HTML 的"由粗到细直至消失"。
+    final shader = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        color.withValues(alpha: 0),
+        color,
+        color,
+        color.withValues(alpha: 0),
+      ],
+      stops: const [0.0, 0.10, 0.90, 1.0],
+    ).createShader(Offset.zero & size);
+
+    final paint = Paint()
+      ..shader = shader
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..isAntiAlias = true;
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(
+    covariant _SettingsDashboardLeftBorderPainter oldDelegate,
+  ) {
+    return oldDelegate.color != color;
+  }
+}
+
+class _SettingsBackpackCard extends StatelessWidget {
+  const _SettingsBackpackCard({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsTappableCard(
+      onTap: onTap,
+      child: Row(
+        children: [
+          _SettingsIconBadge(icon: '🎒', background: _SettingsColors.blueLight),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '我的背包',
+                  style: TextStyle(
+                    color: _SettingsColors.text,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  '查看已获得的道具',
+                  style: TextStyle(
+                    color: _SettingsColors.tertiary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            constraints: const BoxConstraints(minWidth: 30),
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            decoration: BoxDecoration(
+              color: _SettingsColors.orange,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              count.toString(),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          const _SettingsArrow(),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsMemberCard extends StatelessWidget {
+  const _SettingsMemberCard({required this.stats, required this.onTap});
+
+  final ProfileStats? stats;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = stats?.memberIsActive ?? false;
+    final expiresOn = stats?.memberExpiresOn;
+    final status = active && expiresOn != null && expiresOn.isNotEmpty
+        ? '到期时间： $expiresOn'
+        : '成为会员';
+    return _SettingsTappableCard(
+      onTap: onTap,
+      decoration: BoxDecoration(
+        color: _SettingsColors.goldLight.withValues(
+          alpha: active ? 0.72 : 0.38,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _SettingsColors.gold.withValues(alpha: active ? 0.35 : 0.18),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(
+              alpha: _SettingsColors.isDark ? 0.24 : 0.05,
+            ),
+            blurRadius: 3,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          _SettingsIconBadge(icon: '💎', background: _SettingsColors.goldLight),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '我的会员 · 尊享特权',
+              style: TextStyle(
+                color: _SettingsColors.isDark
+                    ? _SettingsColors.gold
+                    : const Color(0xFF8A6D2B),
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+          Text(
+            status,
+            style: TextStyle(
+              color: active ? const Color(0xFFA89050) : _SettingsColors.gold,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(width: 8),
+          const _SettingsArrow(),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsSectionCard extends StatelessWidget {
+  const _SettingsSectionCard({required this.label, required this.rows});
+
+  final String label;
+  final List<_SettingsRowData> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: _settingsCardDecoration(radius: 22),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 13, 14, 5),
+            child: Align(
+              alignment: Alignment.centerLeft,
               child: Text(
                 label,
                 style: TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
+                  color: _SettingsColors.tertiary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 0,
-                  height: 1.25,
                 ),
               ),
             ),
-            const SizedBox(height: 7),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFF55746F),
-                fontSize: 21,
-                fontWeight: FontWeight.w900,
+          ),
+          for (var i = 0; i < rows.length; i += 1)
+            _SettingsRow(data: rows[i], showDivider: i < rows.length - 1),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsRowData {
+  const _SettingsRowData({
+    required this.icon,
+    required this.title,
+    this.value,
+    this.secondaryAction,
+    this.trailing,
+    this.onTap,
+  });
+
+  final String icon;
+  final String title;
+  final String? value;
+  final String? secondaryAction;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+}
+
+class _SettingsRow extends StatelessWidget {
+  const _SettingsRow({required this.data, required this.showDivider});
+
+  final _SettingsRowData data;
+  final bool showDivider;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Container(
+      constraints: const BoxConstraints(minHeight: 54),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        border: showDivider
+            ? Border(
+                bottom: BorderSide(
+                  color: _SettingsColors.separator,
+                  width: 0.8,
+                ),
+              )
+            : null,
+      ),
+      child: Row(
+        children: [
+          Text(data.icon, style: const TextStyle(fontSize: 19)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              data.title,
+              style: TextStyle(
+                color: _SettingsColors.text,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
                 letterSpacing: 0,
-                height: 1,
-                fontFeatures: [FontFeature.tabularFigures()],
               ),
             ),
-            const SizedBox(height: 4),
+          ),
+          if (data.value != null) ...[
             Text(
-              unit,
-              style: const TextStyle(
-                color: Color(0x70182026),
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
+              data.value!,
+              style: TextStyle(
+                color: _SettingsColors.tertiary,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
                 letterSpacing: 0,
-                height: 1,
               ),
             ),
+            const SizedBox(width: 8),
           ],
+          if (data.secondaryAction != null)
+            Text(
+              data.secondaryAction!,
+              style: TextStyle(
+                color: _SettingsColors.blueDark,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+              ),
+            )
+          else if (data.trailing != null)
+            data.trailing!
+          else
+            const _SettingsArrow(),
+        ],
+      ),
+    );
+    if (data.onTap == null) return content;
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      borderRadius: BorderRadius.zero,
+      onPressed: data.onTap,
+      child: content,
+    );
+  }
+}
+
+class _SettingsAccountActions extends StatelessWidget {
+  const _SettingsAccountActions({
+    required this.onLogout,
+    required this.onDeleteFriend,
+    required this.onDeleteAccount,
+  });
+
+  final VoidCallback onLogout;
+  final VoidCallback onDeleteFriend;
+  final VoidCallback onDeleteAccount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _SettingsActionButton(label: '退出登录', onTap: onLogout),
+        const SizedBox(height: 10),
+        _SettingsActionButton(
+          label: '删除好友',
+          destructive: true,
+          onTap: onDeleteFriend,
+        ),
+        const SizedBox(height: 10),
+        _SettingsActionButton(
+          label: '注销账号',
+          destructive: true,
+          onTap: onDeleteAccount,
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingsActionButton extends StatelessWidget {
+  const _SettingsActionButton({
+    required this.label,
+    required this.onTap,
+    this.destructive = false,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      borderRadius: BorderRadius.circular(14),
+      onPressed: onTap,
+      child: Container(
+        width: double.infinity,
+        height: 50,
+        alignment: Alignment.center,
+        decoration: destructive
+            ? _settingsDangerButtonDecoration(radius: 14)
+            : _settingsCardDecoration(radius: 14),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: destructive
+                ? (_SettingsColors.isDark
+                      ? const Color(0xFFFF8F8A)
+                      : const Color(0xFFD43D2E))
+                : _SettingsColors.blueDark,
+            fontSize: 15,
+            fontWeight: destructive ? FontWeight.w800 : FontWeight.w700,
+            letterSpacing: 0,
+          ),
         ),
       ),
     );
   }
 }
 
-class _ProfileThemeSectionV6 extends StatelessWidget {
-  const _ProfileThemeSectionV6();
+BoxDecoration _settingsDangerButtonDecoration({double radius = 16}) {
+  final isDark = _SettingsColors.isDark;
+  return BoxDecoration(
+    color: isDark ? const Color(0xFF331618) : const Color(0xFFFFF5F5),
+    borderRadius: BorderRadius.circular(radius),
+    border: Border.all(
+      color: isDark
+          ? const Color(0xFFFF7777).withValues(alpha: 0.24)
+          : const Color(0xFFFFD6D2),
+    ),
+    boxShadow: [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.05),
+        blurRadius: isDark ? 10 : 3,
+        offset: Offset(0, isDark ? 5 : 1),
+      ),
+    ],
+  );
+}
+
+class _SettingsTappableCard extends StatelessWidget {
+  const _SettingsTappableCard({
+    required this.onTap,
+    required this.child,
+    this.decoration,
+  });
+
+  final VoidCallback onTap;
+  final Widget child;
+  final BoxDecoration? decoration;
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      borderRadius: BorderRadius.circular(16),
+      onPressed: onTap,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 60),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: decoration ?? _settingsCardDecoration(),
+        child: child,
+      ),
+    );
+  }
+}
+
+class _SettingsIconBadge extends StatelessWidget {
+  const _SettingsIconBadge({required this.icon, required this.background});
+
+  final String icon;
+  final Color background;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      alignment: Alignment.center,
+      child: Text(icon, style: const TextStyle(fontSize: 19)),
+    );
+  }
+}
+
+class _SettingsArrow extends StatelessWidget {
+  const _SettingsArrow();
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      '›',
+      style: TextStyle(
+        color: _SettingsColors.isDark
+            ? const Color(0xFF5F6F82)
+            : const Color(0xFFC7C7CC),
+        fontSize: 24,
+        fontWeight: FontWeight.w400,
+        letterSpacing: 0,
+        height: 1,
+      ),
+    );
+  }
+}
+
+class _SettingsSubScaffold extends StatelessWidget {
+  const _SettingsSubScaffold({
+    required this.title,
+    required this.child,
+    this.trailing,
+  });
+
+  final String title;
+  final Widget child;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final padding = MediaQuery.of(context).padding;
+    return Scaffold(
+      backgroundColor: _SettingsColors.page,
+      body: Column(
+        children: [
+          ClipRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: Container(
+                height: padding.top + 56,
+                padding: EdgeInsets.only(top: padding.top),
+                decoration: BoxDecoration(
+                  color: _SettingsColors.bg.withValues(alpha: 0.88),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: _SettingsColors.isDark
+                          ? Colors.white.withValues(alpha: 0.06)
+                          : Colors.black.withValues(alpha: 0.04),
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    CupertinoButton(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      minimumSize: const Size(44, 44),
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Icon(
+                        CupertinoIcons.chevron_left,
+                        color: _SettingsColors.blueDark,
+                        size: 26,
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: _SettingsColors.text,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 84,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 16),
+                          child: trailing ?? const SizedBox.shrink(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Expanded(child: child),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubPageContent extends StatelessWidget {
+  const _SubPageContent({required this.children, this.center = false});
+
+  final List<Widget> children;
+  final bool center;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 36),
+      children: [
+        if (center)
+          Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: children),
+          )
+        else
+          ...children,
+      ],
+    );
+  }
+}
+
+class _SubCard extends StatelessWidget {
+  const _SubCard({required this.children, this.padding});
+
+  final List<Widget> children;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: padding ?? const EdgeInsets.all(15),
+      decoration: _settingsCardDecoration(),
+      child: Column(children: children),
+    );
+  }
+}
+
+class _SubCardRow extends StatelessWidget {
+  const _SubCardRow({
+    required this.label,
+    this.value,
+    this.trailing,
+    this.onTap,
+    this.destructive = false,
+    this.showDivider = true,
+  });
+
+  final String label;
+  final String? value;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+  final bool destructive;
+  final bool showDivider;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Container(
+      constraints: const BoxConstraints(minHeight: 50),
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      decoration: BoxDecoration(
+        border: showDivider
+            ? Border(
+                bottom: BorderSide(
+                  color: _SettingsColors.separator,
+                  width: 0.8,
+                ),
+              )
+            : null,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: destructive ? _SettingsColors.red : _SettingsColors.text,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+          if (value != null)
+            Text(
+              value!,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: _SettingsColors.tertiary,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0,
+              ),
+            ),
+          if (trailing != null) trailing!,
+        ],
+      ),
+    );
+    if (onTap == null) return content;
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      borderRadius: BorderRadius.zero,
+      onPressed: onTap,
+      child: content,
+    );
+  }
+}
+
+class _SubSectionHeader extends StatelessWidget {
+  const _SubSectionHeader(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 4),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          text,
+          style: TextStyle(
+            color: _SettingsColors.text,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileInfoPage extends StatelessWidget {
+  const _ProfileInfoPage({required this.session});
+
+  final AuthSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final displayName = _ProfilePageState._displayName(
+      session.userDisplayName ?? session.username,
+      fallback: '小星辰',
+    );
+    return _SettingsSubScaffold(
+      title: '个人资料',
+      child: _SubPageContent(
+        children: [
+          _SubCard(
+            children: [
+              _SubCardRow(
+                label: '头像',
+                trailing: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: _SettingsAvatarImage(
+                    assetPath: 'assets/prototype/user-avatar-shanmu.jpg',
+                    imageUrl: session.userAvatarUrl,
+                    accent: _SettingsColors.blueDark,
+                  ),
+                ),
+              ),
+              _SubCardRow(label: '昵称', value: displayName),
+              _SubCardRow(label: '登录账号', value: session.username),
+              _SubCardRow(
+                label: '微信头像',
+                value: session.userAvatarUrl?.trim().isNotEmpty == true
+                    ? '已同步'
+                    : '未同步',
+              ),
+              _SubCardRow(
+                label: '用户ID',
+                value: session.userId,
+                showDivider: false,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AiAppearancePage extends StatelessWidget {
+  const _AiAppearancePage({required this.agentName, this.agentAvatarUrl});
+
+  final String agentName;
+  final String? agentAvatarUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsSubScaffold(
+      title: '$agentName形象',
+      child: _SubPageContent(
+        children: [
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 18),
+              child: _SettingsAvatarImage(
+                assetPath: 'assets/prototype/agent-avatar.png',
+                imageUrl: agentAvatarUrl,
+                accent: _SettingsColors.orangeDark,
+              ),
+            ),
+          ),
+          _SubCard(
+            children: [
+              _SubCardRow(label: '名称', value: agentName),
+              _SubCardRow(
+                label: '头像来源',
+                value: agentAvatarUrl?.trim().isNotEmpty == true
+                    ? '后台头像'
+                    : '默认头像',
+              ),
+              const _SubCardRow(
+                label: '形象编辑',
+                value: '等待素材与保存接口',
+                showDivider: false,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BackpackPage extends StatefulWidget {
+  const _BackpackPage({required this.api, required this.session});
+
+  final CompanionApi api;
+  final AuthSession session;
+
+  @override
+  State<_BackpackPage> createState() => _BackpackPageState();
+}
+
+class _BackpackPageState extends State<_BackpackPage> {
+  late Future<StoreInventoryResponse> _future;
+  _BackpackFilter _selectedFilter = _BackpackFilter.all;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<StoreInventoryResponse> _load() => widget.api.listStoreInventory();
+
+  void _retry() {
+    setState(() => _future = _load());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<StoreInventoryResponse>(
+      future: _future,
+      builder: (context, snapshot) {
+        final data = snapshot.data;
+        final inventory = {
+          for (final item in data?.items ?? const <StoreInventoryItem>[])
+            if (item.productKind.isNotEmpty && item.quantity > 0)
+              item.productKind: item,
+        };
+        final ownedProducts = [
+          for (final product in _exchangeProducts)
+            if (inventory.containsKey(product.kind.name)) product,
+        ];
+        final visibleProducts = _selectedFilter.category == null
+            ? ownedProducts
+            : ownedProducts
+                  .where((item) => item.category == _selectedFilter.category)
+                  .toList();
+        final totalCount = ownedProducts.fold<int>(
+          0,
+          (sum, product) => sum + inventory[product.kind.name]!.quantity,
+        );
+        return _SettingsSubScaffold(
+          title: '我的背包',
+          trailing: Text(
+            snapshot.connectionState == ConnectionState.done
+                ? '共$totalCount件'
+                : '同步中',
+            style: TextStyle(
+              color: _SettingsColors.tertiary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0,
+            ),
+          ),
+          child: Builder(
+            builder: (context) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return Center(
+                  child: CupertinoActivityIndicator(
+                    color: _SettingsColors.blueDark,
+                  ),
+                );
+              }
+              if (snapshot.hasError) {
+                return _SubPageContent(
+                  center: true,
+                  children: [
+                    Text(
+                      '背包同步失败：${snapshot.error}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: _SettingsColors.red,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    CupertinoButton(
+                      color: _SettingsColors.blueDark,
+                      borderRadius: BorderRadius.circular(14),
+                      onPressed: _retry,
+                      child: const Text('重新同步'),
+                    ),
+                  ],
+                );
+              }
+              return _SubPageContent(
+                children: [
+                  _StoreSegmentedLabelBar<_BackpackFilter>(
+                    values: _BackpackFilter.values,
+                    selected: _selectedFilter,
+                    labelFor: (filter) => filter.label,
+                    onSelected: (filter) {
+                      setState(() => _selectedFilter = filter);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  if (visibleProducts.isEmpty)
+                    _SubCard(
+                      padding: const EdgeInsets.fromLTRB(20, 34, 20, 34),
+                      children: [
+                        Text(
+                          totalCount == 0 ? '还没有获得物品' : '这个分类还没有物品',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: _SettingsColors.tertiary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    GridView.builder(
+                      shrinkWrap: true,
+                      padding: EdgeInsets.zero,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: visibleProducts.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            childAspectRatio: 0.82,
+                          ),
+                      itemBuilder: (context, index) {
+                        final product = visibleProducts[index];
+                        final item = inventory[product.kind.name]!;
+                        return _ExchangeProductCard(
+                          product: product,
+                          affordable: true,
+                          compact: true,
+                          showPrice: false,
+                          quantity: item.quantity,
+                        );
+                      },
+                    ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+enum _BackpackFilter {
+  all('全部', null),
+  gift('礼物', _ExchangeCategory.gift),
+  outfit('装扮', _ExchangeCategory.outfit),
+  tool('道具', _ExchangeCategory.tool);
+
+  const _BackpackFilter(this.label, this.category);
+
+  final String label;
+  final _ExchangeCategory? category;
+}
+
+class _NotificationSettingsPage extends StatefulWidget {
+  const _NotificationSettingsPage({required this.api, required this.session});
+
+  final CompanionApi api;
+  final AuthSession session;
+
+  @override
+  State<_NotificationSettingsPage> createState() =>
+      _NotificationSettingsPageState();
+}
+
+class _NotificationSettingsPageState extends State<_NotificationSettingsPage> {
+  bool _messageEnabled = true;
+  bool _busy = false;
+
+  Future<void> _toggleMessageNotifications(bool enabled) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      if (enabled) {
+        await PushNotificationService.instance.configure(
+          widget.api,
+          widget.session,
+        );
+      } else {
+        await PushNotificationService.instance.clear();
+      }
+      if (!mounted) return;
+      setState(() => _messageEnabled = enabled);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(enabled ? '已开启新消息提醒' : '已关闭新消息提醒'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(milliseconds: 1200),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('通知设置失败：$error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsSubScaffold(
+      title: '通知设置',
+      child: _SubPageContent(
+        children: [
+          _SubCard(
+            children: [
+              _SubCardRow(
+                label: '新消息提醒',
+                trailing: CupertinoSwitch(
+                  value: _messageEnabled,
+                  activeTrackColor: _SettingsColors.blueDark,
+                  onChanged: _busy ? null : _toggleMessageNotifications,
+                ),
+              ),
+              _SubCardRow(
+                label: '提醒状态',
+                value: _busy
+                    ? '同步中'
+                    : (_messageEnabled ? '声音 · 振动 · 通知栏' : '已关闭'),
+              ),
+              const _SubCardRow(
+                label: '提示铃声',
+                value: '系统默认',
+                showDivider: false,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SkinSettingsPage extends StatelessWidget {
+  const _SkinSettingsPage();
 
   @override
   Widget build(BuildContext context) {
     final controller = AppThemeScope.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final selectedMode = controller.mode;
-    final isLightSelected =
-        selectedMode == ThemeMode.light ||
-        (selectedMode == ThemeMode.system && !isDark);
-    final isDarkSelected =
-        selectedMode == ThemeMode.dark ||
-        (selectedMode == ThemeMode.system && isDark);
-    return _ProfileSectionV6(
-      title: '界面风格',
-      trailing: isDark ? '当前 深色' : '当前 浅色',
-      child: Padding(
-        padding: const EdgeInsets.only(top: 14),
-        child: Row(
-          children: [
-            Expanded(
-              child: _ProfileThemeModeCardV6(
-                label: '浅色',
-                caption: '清透明亮',
-                icon: CupertinoIcons.sun_max_fill,
-                selected: isLightSelected,
-                brightness: Brightness.light,
-                mode: ThemeMode.light,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _ProfileThemeModeCardV6(
-                label: '深色',
-                caption: '安静沉浸',
-                icon: CupertinoIcons.moon_stars_fill,
-                selected: isDarkSelected,
-                brightness: Brightness.dark,
-                mode: ThemeMode.dark,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileThemePaletteV6 {
-  const _ProfileThemePaletteV6({
-    required this.page,
-    required this.surface,
-    required this.hairline,
-    required this.text,
-    required this.muted,
-    required this.accent,
-    required this.accentDeep,
-    required this.accentSoft,
-    required this.accentCyan,
-  });
-
-  final Color page;
-  final Color surface;
-  final Color hairline;
-  final Color text;
-  final Color muted;
-  final Color accent;
-  final Color accentDeep;
-  final Color accentSoft;
-  final Color accentCyan;
-
-  static const light = _ProfileThemePaletteV6(
-    page: Color(0xFFF7FAFF),
-    surface: Color(0xFFFFFFFF),
-    hairline: Color(0xFFE1E9F6),
-    text: Color(0xFF101418),
-    muted: Color(0xFF7D8790),
-    accent: Color(0xFF0A84FF),
-    accentDeep: Color(0xFF1F6FFF),
-    accentSoft: Color(0xFFE8F3FF),
-    accentCyan: Color(0xFF18C6C0),
-  );
-
-  static const dark = _ProfileThemePaletteV6(
-    page: Color(0xFF080D14),
-    surface: Color(0xFF101820),
-    hairline: Color(0xFF263445),
-    text: Color(0xFFF2F7FB),
-    muted: Color(0xFF9AA8B8),
-    accent: Color(0xFF4BA3FF),
-    accentDeep: Color(0xFF5C93FF),
-    accentSoft: Color(0xFF17324C),
-    accentCyan: Color(0xFF2DD8D2),
-  );
-
-  static _ProfileThemePaletteV6 forBrightness(Brightness brightness) {
-    return brightness == Brightness.dark ? dark : light;
-  }
-}
-
-class _ProfileThemeModeCardV6 extends StatelessWidget {
-  const _ProfileThemeModeCardV6({
-    required this.label,
-    required this.caption,
-    required this.icon,
-    required this.selected,
-    required this.brightness,
-    required this.mode,
-  });
-
-  final String label;
-  final String caption;
-  final IconData icon;
-  final bool selected;
-  final Brightness brightness;
-  final ThemeMode mode;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardSurface = isDark ? const Color(0xFF101820) : Colors.white;
-    final hairline = isDark
-        ? Colors.white.withValues(alpha: 0.12)
-        : const Color(0xFFE1E9F6);
-    final textColor = isDark ? AppColors.text : const Color(0xFF101418);
-    final mutedColor = isDark
-        ? Colors.white.withValues(alpha: 0.56)
-        : const Color(0xFF7D8790);
-    final shadowColor = isDark
-        ? Colors.black.withValues(alpha: 0.34)
-        : const Color(0xFF315B88).withValues(alpha: 0.10);
-    final preview = _ProfileThemePaletteV6.forBrightness(brightness);
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      borderRadius: BorderRadius.circular(24),
-      onPressed: () => AppThemeScope.of(context).setMode(mode),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: selected
-              ? Color.lerp(cardSurface, preview.accentSoft, 0.36)
-              : cardSurface.withValues(alpha: 0.56),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: selected
-                ? preview.accent.withValues(alpha: 0.74)
-                : hairline.withValues(alpha: 0.82),
-            width: selected ? 1.4 : 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: selected
-                  ? preview.accent.withValues(alpha: 0.16)
-                  : shadowColor,
-              blurRadius: selected ? 24 : 16,
-              offset: const Offset(0, 12),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _ProfileThemePreviewV6(colors: preview),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: preview.accent.withValues(alpha: 0.13),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(icon, color: preview.accent, size: 15),
-                ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: textColor,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0,
-                          height: 1,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        caption,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: mutedColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0,
-                          height: 1,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  width: 18,
-                  height: 18,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: selected ? preview.accent : Colors.transparent,
-                    border: Border.all(
-                      color: selected
-                          ? preview.accent
-                          : mutedColor.withValues(alpha: 0.34),
-                      width: 1.3,
-                    ),
-                  ),
-                  child: selected
-                      ? const Icon(
-                          CupertinoIcons.check_mark,
-                          size: 12,
-                          color: Colors.white,
-                        )
-                      : null,
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileThemePreviewV6 extends StatelessWidget {
-  const _ProfileThemePreviewV6({required this.colors});
-
-  final _ProfileThemePaletteV6 colors;
-
-  @override
-  Widget build(BuildContext context) {
-    return AspectRatio(
-      aspectRatio: 1.9,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colors.page,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: colors.hairline),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    final current = controller.mode;
+    return _SettingsSubScaffold(
+      title: '皮肤设置',
+      child: _SubPageContent(
+        children: [
+          _SkinPreview(label: controller.currentLabel),
+          const SizedBox(height: 12),
+          _SubCard(
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 18,
-                    height: 18,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [colors.accentDeep, colors.accentCyan],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: colors.text.withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                ],
+              _ThemeModeRow(
+                label: '跟随系统',
+                selected: current == ThemeMode.system,
+                onTap: () => controller.setMode(ThemeMode.system),
               ),
-              const Spacer(),
-              Container(
-                height: 20,
-                decoration: BoxDecoration(
-                  color: colors.surface,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: colors.hairline),
-                ),
+              _ThemeModeRow(
+                label: '浅色',
+                selected: current == ThemeMode.light,
+                onTap: () => controller.setMode(ThemeMode.light),
               ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: colors.muted.withValues(alpha: 0.24),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: colors.accent.withValues(alpha: 0.34),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                ],
+              _ThemeModeRow(
+                label: '深色',
+                selected: current == ThemeMode.dark,
+                showDivider: false,
+                onTap: () => controller.setMode(ThemeMode.dark),
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          _SubCard(
+            padding: const EdgeInsets.all(15),
+            children: [
+              Text(
+                '主题模式会立即应用，并保存到本机安全存储。',
+                style: TextStyle(
+                  color: _SettingsColors.isDark
+                      ? _SettingsColors.tertiary
+                      : const Color(0xFF999999),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SkinPreview extends StatelessWidget {
+  const _SkinPreview({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 84,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [_SettingsColors.headerA, _SettingsColors.headerC],
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        '当前主题 · $label',
+        style: TextStyle(
+          color: _SettingsColors.blueDark,
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0,
         ),
       ),
     );
   }
 }
 
-class _ProfileSettingsSectionV6 extends StatelessWidget {
-  const _ProfileSettingsSectionV6({
-    required this.hasAgent,
-    required this.deleting,
-    required this.onDeleteAgent,
-    required this.onLogout,
+class _ThemeModeRow extends StatelessWidget {
+  const _ThemeModeRow({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.showDivider = true,
   });
 
-  final bool hasAgent;
-  final bool deleting;
-  final VoidCallback onDeleteAgent;
-  final VoidCallback onLogout;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final bool showDivider;
 
   @override
   Widget build(BuildContext context) {
-    return _ProfileSectionV6(
-      title: '系统设置',
-      trailing: '通知、隐私、订阅和数据',
-      child: Column(
+    return _SubCardRow(
+      label: label,
+      value: selected ? '✓' : null,
+      onTap: onTap,
+      showDivider: showDivider,
+    );
+  }
+}
+
+class _SubTitle extends StatelessWidget {
+  const _SubTitle(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        text,
+        style: TextStyle(
+          color: _SettingsColors.text,
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0,
+        ),
+      ),
+    );
+  }
+}
+
+class _FontSettingsPage extends StatelessWidget {
+  const _FontSettingsPage();
+
+  @override
+  Widget build(BuildContext context) {
+    final textScale = MediaQuery.textScalerOf(context).scale(16) / 16;
+    return _SettingsSubScaffold(
+      title: '字体与大小',
+      child: _SubPageContent(
         children: [
-          const SizedBox(height: 2),
-          const _ProfileSettingRowV6(
-            icon: CupertinoIcons.envelope_fill,
-            title: '通知提醒',
-            subtitle: '主动消息、任务提醒、免打扰时段',
-            accent: Color(0xFF1F6FFF),
+          Container(
+            height: 78,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _SettingsColors.card,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              'Aa 预览文本 · 你好，今天过得怎么样？',
+              style: TextStyle(
+                color: _SettingsColors.text,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+              ),
+            ),
           ),
-          const _ProfileSettingRowV6(
-            icon: CupertinoIcons.location_solid,
-            title: '隐私与安全',
-            subtitle: '本机加密、登录设备、敏感内容保护',
-            accent: Color(0xFF18C6C0),
-          ),
-          const _ProfileSettingRowV6(
-            icon: CupertinoIcons.bag_fill,
-            title: '订阅与账单',
-            subtitle: 'VIP 至 2026/06/19，发票与续费',
-            accent: Color(0xFFFF8A3D),
-          ),
-          const _ProfileSettingRowV6(
-            icon: CupertinoIcons.check_mark,
-            title: '字体与系统',
-            subtitle: '字体大小、语言、缓存、帮助与反馈',
-            accent: Color(0xFF22C66B),
-          ),
-          const _ProfileSettingRowV6(
-            icon: CupertinoIcons.archivebox_fill,
-            title: '数据导出',
-            subtitle: '聊天记录与个人资料可随时导出',
-            accent: Color(0xFF7C3CFF),
-          ),
-          _ProfileSettingRowV6(
-            icon: CupertinoIcons.archivebox_fill,
-            title: deleting ? '正在删除当前 agent' : '删除当前 agent',
-            subtitle: '删除后才可以重新创建新的伴生对象',
-            accent: const Color(0xFFE35B6F),
-            danger: true,
-            enabled: hasAgent && !deleting,
-            onTap: onDeleteAgent,
-          ),
-          _ProfileSettingRowV6(
-            icon: CupertinoIcons.square_arrow_right,
-            title: '退出登录',
-            subtitle: '退出当前账号，回到登录页',
-            accent: const Color(0xFF5F6D7A),
-            danger: true,
-            enabled: !deleting,
-            onTap: onLogout,
+          const SizedBox(height: 12),
+          _SubCard(
+            children: [
+              const _SubCardRow(label: '字体', value: '系统默认'),
+              _SubCardRow(
+                label: '系统文字缩放',
+                value: '${(textScale * 100).round()}%',
+                showDivider: false,
+              ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PrivacySecurityPage extends StatelessWidget {
+  const _PrivacySecurityPage({
+    required this.username,
+    required this.stats,
+    required this.onClearChat,
+  });
+
+  final String username;
+  final ProfileStats? stats;
+  final VoidCallback onClearChat;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsSubScaffold(
+      title: '隐私与安全中心',
+      child: _SubPageContent(
+        children: [
+          _SubCard(
+            children: [
+              const _SubSectionHeader('绑定信息'),
+              _SubCardRow(label: '绑定手机', value: _maskedPhone(username)),
+              const _SubCardRow(label: '绑定微信', value: '未绑定 ›'),
+              const _SubCardRow(label: '绑定QQ', value: '未绑定 ›'),
+              const _SubCardRow(
+                label: '绑定邮箱',
+                value: '未绑定 ›',
+                showDivider: false,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const _SubCard(
+            children: [
+              _SubSectionHeader('账户安全'),
+              _SubCardRow(label: '修改密码', value: '›', showDivider: false),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const _SubCard(
+            children: [
+              _SubSectionHeader('实名认证'),
+              _SubCardRow(label: '认证状态', value: '未认证'),
+              _SubCardRow(label: '姓名', value: '未填写'),
+              _SubCardRow(label: '身份证号', value: '未填写', showDivider: false),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const _SubCard(
+            children: [
+              _SubSectionHeader('适龄验证'),
+              _SubCardRow(label: '适龄状态', value: '成年人（18+）', showDivider: false),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _SubCard(
+            children: [
+              const _SubSectionHeader('聊天记录管理'),
+              _SubCardRow(
+                label: '当前消息数',
+                value: '${stats?.messageCount ?? 0} 条',
+              ),
+              _SubCardRow(
+                label: '一键清空所有聊天记录',
+                destructive: true,
+                onTap: onClearChat,
+              ),
+              const _SubCardRow(label: '设备迁移', value: '›', showDivider: false),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _maskedPhone(String username) {
+    final digits = username.replaceAll(RegExp(r'\D'), '');
+    if (digits.length < 7) return '未绑定 ›';
+    return '${digits.substring(0, 3)}****${digits.substring(digits.length - 4)} ›';
+  }
+}
+
+class _CacheCleanupPage extends StatefulWidget {
+  const _CacheCleanupPage();
+
+  @override
+  State<_CacheCleanupPage> createState() => _CacheCleanupPageState();
+}
+
+class _CacheCleanupPageState extends State<_CacheCleanupPage> {
+  late Future<int> _sizeFuture = _loadCacheSize();
+  bool _cleaning = false;
+
+  Future<int> _loadCacheSize() async {
+    var total = 0;
+    total += PaintingBinding.instance.imageCache.currentSizeBytes;
+    final dirs = <Directory>[];
+    try {
+      dirs.add(await getTemporaryDirectory());
+    } catch (_) {}
+    try {
+      dirs.add(await getApplicationCacheDirectory());
+    } catch (_) {}
+    for (final dir in dirs) {
+      total += await _directorySize(dir);
+    }
+    return total;
+  }
+
+  Future<int> _directorySize(Directory directory) async {
+    if (!await directory.exists()) return 0;
+    var total = 0;
+    try {
+      await for (final entity in directory.list(recursive: true)) {
+        if (entity is File) {
+          try {
+            total += await entity.length();
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+    return total;
+  }
+
+  Future<void> _clearCache() async {
+    if (_cleaning) return;
+    setState(() => _cleaning = true);
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    final dirs = <Directory>[];
+    try {
+      dirs.add(await getTemporaryDirectory());
+    } catch (_) {}
+    try {
+      dirs.add(await getApplicationCacheDirectory());
+    } catch (_) {}
+    for (final dir in dirs) {
+      if (!await dir.exists()) continue;
+      try {
+        await for (final entity in dir.list()) {
+          await entity.delete(recursive: true);
+        }
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    setState(() {
+      _cleaning = false;
+      _sizeFuture = _loadCacheSize();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('缓存已清理'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(milliseconds: 1200),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsSubScaffold(
+      title: '缓存清理',
+      child: FutureBuilder<int>(
+        future: _sizeFuture,
+        builder: (context, snapshot) {
+          final sizeLabel = snapshot.hasData
+              ? _formatBytes(snapshot.data!)
+              : '计算中';
+          return _SubPageContent(
+            children: [
+              _SubCard(
+                children: [
+                  _SubCardRow(label: '缓存大小', value: sizeLabel),
+                  _SubCardRow(
+                    label: _cleaning ? '清理中' : '清理缓存',
+                    value: '›',
+                    showDivider: false,
+                    onTap: _cleaning ? null : _clearCache,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Center(
+                child: Text(
+                  '清理后不会影响聊天记录和账号数据',
+                  style: TextStyle(
+                    color: _SettingsColors.isDark
+                        ? _SettingsColors.tertiary
+                        : const Color(0xFF999999),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  static String _formatBytes(int bytes) {
+    if (bytes < 1024) return '${bytes}B';
+    final kb = bytes / 1024;
+    if (kb < 1024) return '${kb.toStringAsFixed(kb < 10 ? 1 : 0)}KB';
+    final mb = kb / 1024;
+    if (mb < 1024) return '${mb.toStringAsFixed(mb < 10 ? 1 : 0)}MB';
+    final gb = mb / 1024;
+    return '${gb.toStringAsFixed(1)}GB';
+  }
+}
+
+class _AboutCompanionPage extends StatelessWidget {
+  const _AboutCompanionPage({required this.onContact});
+
+  final VoidCallback onContact;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsSubScaffold(
+      title: '关于我们',
+      child: _SubPageContent(
+        center: true,
+        children: [
+          const SizedBox(height: 18),
+          const _DualPlanetLogo(),
+          const SizedBox(height: 10),
+          Text(
+            '伴生·SoulMate',
+            style: TextStyle(
+              color: _SettingsColors.text,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            '让每一次陪伴都有温度',
+            style: TextStyle(
+              color: _SettingsColors.tertiary,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SubCard(
+            children: [
+              const _SubCardRow(label: '开发者团队', value: '启序科技'),
+              _SubCardRow(label: '联系我们/意见反馈', value: '›', onTap: onContact),
+              _SubCardRow(
+                label: '用户协议',
+                value: '›',
+                onTap: () => Navigator.of(context).push(
+                  CupertinoPageRoute<void>(
+                    builder: (_) => const _LegalDocumentPage(
+                      title: '用户协议',
+                      assetPath: 'assets/legal/service_agreement.txt',
+                    ),
+                  ),
+                ),
+              ),
+              _SubCardRow(
+                label: '隐私政策',
+                value: '›',
+                showDivider: false,
+                onTap: () => Navigator.of(context).push(
+                  CupertinoPageRoute<void>(
+                    builder: (_) => const _LegalDocumentPage(
+                      title: '隐私政策',
+                      assetPath: 'assets/legal/privacy_policy.txt',
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '© 2026 启序科技',
+            style: TextStyle(
+              color: _SettingsColors.isDark
+                  ? const Color(0xFF687789)
+                  : const Color(0xFFBBBBBB),
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DualPlanetLogo extends StatelessWidget {
+  const _DualPlanetLogo();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 88,
+      height: 70,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [_SettingsColors.blue, _SettingsColors.blueLight],
+              ),
+            ),
+          ),
+          Positioned(
+            right: 8,
+            bottom: 6,
+            child: Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [_SettingsColors.orange, _SettingsColors.orangeLight],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContactFeedbackPage extends StatelessWidget {
+  const _ContactFeedbackPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsSubScaffold(
+      title: '联系我们/意见反馈',
+      child: _SubPageContent(
+        children: [
+          const _SubCard(
+            padding: EdgeInsets.all(16),
+            children: [
+              _SubTitle('问题与意见 *'),
+              SizedBox(height: 10),
+              _FeedbackInputBox(text: '请详细描述您的问题或建议...'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const _SubCard(
+            padding: EdgeInsets.all(16),
+            children: [
+              _SubTitle('上传图片（选填）'),
+              SizedBox(height: 10),
+              _DashedUploadBox(),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const _SubCard(
+            children: [
+              _SubCardRow(label: '问题发生时间', value: '如：2026-06-22'),
+              _SubCardRow(
+                label: '联系方式 *',
+                value: '请留下您的邮箱',
+                showDivider: false,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          CupertinoButton(
+            color: _SettingsColors.blueDark,
+            borderRadius: BorderRadius.circular(16),
+            onPressed: () {},
+            child: const Text(
+              '提交反馈',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeedbackInputBox extends StatelessWidget {
+  const _FeedbackInputBox({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 108,
+      alignment: Alignment.topLeft,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _SettingsColors.page,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: _SettingsColors.tertiary,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          letterSpacing: 0,
+        ),
+      ),
+    );
+  }
+}
+
+class _DashedUploadBox extends StatelessWidget {
+  const _DashedUploadBox();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _SettingsColors.isDark
+              ? _SettingsColors.separator
+              : const Color(0xFFD0D0D8),
+        ),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        '📷 点击上传截图（最多3张）',
+        style: TextStyle(
+          color: _SettingsColors.tertiary,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0,
+        ),
+      ),
+    );
+  }
+}
+
+class _LegalDocumentPage extends StatefulWidget {
+  const _LegalDocumentPage({required this.title, required this.assetPath});
+
+  final String title;
+  final String assetPath;
+
+  @override
+  State<_LegalDocumentPage> createState() => _LegalDocumentPageState();
+}
+
+class _LegalDocumentPageState extends State<_LegalDocumentPage> {
+  late final Future<String> _textFuture = services.rootBundle.loadString(
+    widget.assetPath,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsSubScaffold(
+      title: widget.title,
+      child: FutureBuilder<String>(
+        future: _textFuture,
+        builder: (context, snapshot) {
+          final text = snapshot.data;
+          if (text == null) {
+            return Center(
+              child: CupertinoActivityIndicator(
+                color: _SettingsColors.blueDark,
+              ),
+            );
+          }
+          return ListView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 36),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: _settingsCardDecoration(),
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    color: _SettingsColors.text,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0,
+                    height: 1.62,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -2077,7 +3688,6 @@ class _ProfileSettingRowV6 extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.accent,
-    this.danger = false,
     this.enabled = true,
     this.onTap,
   });
@@ -2086,7 +3696,6 @@ class _ProfileSettingRowV6 extends StatelessWidget {
   final String title;
   final String subtitle;
   final Color accent;
-  final bool danger;
   final bool enabled;
   final VoidCallback? onTap;
 
@@ -2132,11 +3741,9 @@ class _ProfileSettingRowV6 extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: danger
-                              ? const Color(0xFFE35B6F)
-                              : (isDark
-                                    ? AppColors.text
-                                    : const Color(0xFF12171B)),
+                          color: isDark
+                              ? AppColors.text
+                              : const Color(0xFF12171B),
                           fontSize: 14.5,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 0,
@@ -2165,11 +3772,9 @@ class _ProfileSettingRowV6 extends StatelessWidget {
                 Text(
                   '›',
                   style: TextStyle(
-                    color: danger
-                        ? const Color(0xFFE35B6F)
-                        : (isDark
-                              ? Colors.white.withValues(alpha: 0.32)
-                              : const Color(0x52182026)),
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.32)
+                        : const Color(0x52182026),
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
                     height: 1,
@@ -2269,45 +3874,6 @@ class _ProfileBackgroundPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _ProfileBackgroundPainter oldDelegate) {
     return progress != oldDelegate.progress || isDark != oldDelegate.isDark;
-  }
-}
-
-class _ProfileLinkPainter extends CustomPainter {
-  const _ProfileLinkPainter(this.progress);
-
-  final double progress;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final linePaint = Paint()
-      ..color = const Color(0x421F6FFF)
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
-    canvas.drawLine(const Offset(0, 0.75), Offset(size.width, 0.75), linePaint);
-
-    const nodes = [
-      (Offset(0, 0.75), Color(0xFF18C6C0), 0.0),
-      (Offset(34, 0.75), Color(0xFFFFBE3D), -0.32),
-      (Offset(78, 0.75), Color(0xFF7C3CFF), -0.64),
-    ];
-    for (final node in nodes) {
-      final wave = (math.sin((progress + node.$3) * math.pi * 2 * 2) + 1) / 2;
-      final center = node.$1 + const Offset(0, -0.75);
-      final radius = 4 * (0.92 + 0.22 * wave);
-      canvas.drawCircle(
-        center,
-        radius,
-        Paint()
-          ..color = node.$2
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.8),
-      );
-      canvas.drawCircle(center, radius, Paint()..color = node.$2);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _ProfileLinkPainter oldDelegate) {
-    return progress != oldDelegate.progress;
   }
 }
 

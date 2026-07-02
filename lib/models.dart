@@ -126,31 +126,97 @@ class ProfileStats {
     required this.intimacyStage,
     required this.intimacyStageLabel,
     required this.topicIntimacy,
+    required this.intimacySubtitle,
     required this.companionDays,
+    required this.companionStartedOn,
     required this.chatHours,
+    required this.chatMinutes,
+    required this.chatDurationLabel,
+    required this.chatDurationSubtitle,
     required this.messageCount,
+    required this.recent7dMessageCount,
+    required this.recent7dMessageLabel,
     required this.companionSummary,
+    required this.backpackCount,
+    required this.memberIsActive,
+    required this.memberExpiresOn,
   });
 
   final String workspaceId;
   final String intimacyStage;
   final String intimacyStageLabel;
   final double topicIntimacy;
+  final String intimacySubtitle;
   final int companionDays;
+  final String? companionStartedOn;
   final int chatHours;
+  final int chatMinutes;
+  final String chatDurationLabel;
+  final String chatDurationSubtitle;
   final int messageCount;
+  final int recent7dMessageCount;
+  final String recent7dMessageLabel;
   final String companionSummary;
+  final int backpackCount;
+  final bool memberIsActive;
+  final String? memberExpiresOn;
 
   factory ProfileStats.fromJson(Map<String, dynamic> json) {
+    final companionDays = (json['companion_days'] as num?)?.round() ?? 0;
+    final chatHours = (json['chat_hours'] as num?)?.round() ?? 0;
+    final chatMinutes =
+        (json['chat_minutes'] as num?)?.round() ?? chatHours * 60;
+    final recent7d = (json['recent_7d_message_count'] as num?)?.round() ?? 0;
     return ProfileStats(
       workspaceId: json['workspace_id'] as String? ?? '',
       intimacyStage: json['intimacy_stage'] as String? ?? 'P1',
       intimacyStageLabel: json['intimacy_stage_label'] as String? ?? '初见陪伴',
       topicIntimacy: (json['topic_intimacy'] as num?)?.toDouble() ?? 0,
-      companionDays: (json['companion_days'] as num?)?.round() ?? 0,
-      chatHours: (json['chat_hours'] as num?)?.round() ?? 0,
+      intimacySubtitle: json['intimacy_subtitle'] as String? ?? '故事刚刚开始',
+      companionDays: companionDays,
+      companionStartedOn: json['companion_started_on'] as String?,
+      chatHours: chatHours,
+      chatMinutes: chatMinutes,
+      chatDurationLabel:
+          json['chat_duration_label'] as String? ??
+          _formatDuration(chatMinutes),
+      chatDurationSubtitle:
+          json['chat_duration_subtitle'] as String? ?? '累计聊天时长',
       messageCount: (json['message_count'] as num?)?.round() ?? 0,
+      recent7dMessageCount: recent7d,
+      recent7dMessageLabel:
+          json['recent_7d_message_label'] as String? ?? '近7天 +$recent7d条',
       companionSummary: json['companion_summary'] as String? ?? '唯一伴生对象',
+      backpackCount: (json['backpack_count'] as num?)?.round() ?? 0,
+      memberIsActive: json['member_is_active'] as bool? ?? false,
+      memberExpiresOn: json['member_expires_on'] as String?,
+    );
+  }
+
+  static String _formatDuration(int minutes) {
+    if (minutes <= 0) return '0m';
+    final hours = minutes ~/ 60;
+    final remainder = minutes % 60;
+    if (hours > 0 && remainder > 0) return '${hours}h${remainder}m';
+    if (hours > 0) return '${hours}h';
+    return '${remainder}m';
+  }
+}
+
+class ChatRecordsClearResult {
+  const ChatRecordsClearResult({
+    required this.workspaceId,
+    required this.clearedConversations,
+  });
+
+  final String workspaceId;
+  final int clearedConversations;
+
+  factory ChatRecordsClearResult.fromJson(Map<String, dynamic> json) {
+    return ChatRecordsClearResult(
+      workspaceId: json['workspace_id'] as String? ?? '',
+      clearedConversations:
+          (json['cleared_conversations'] as num?)?.round() ?? 0,
     );
   }
 }
@@ -877,6 +943,68 @@ class WalletBalance {
       pointBalance: (json['point_balance'] as num?)?.round() ?? 0,
       achievementPointsSynced:
           (json['achievement_points_synced'] as num?)?.round() ?? 0,
+    );
+  }
+}
+
+class StoreInventoryItem {
+  const StoreInventoryItem({
+    required this.productKind,
+    required this.quantity,
+    this.acquiredAt,
+    this.updatedAt,
+  });
+
+  final String productKind;
+  final int quantity;
+  final DateTime? acquiredAt;
+  final DateTime? updatedAt;
+
+  factory StoreInventoryItem.fromJson(Map<String, dynamic> json) {
+    return StoreInventoryItem(
+      productKind: json['product_kind']?.toString() ?? '',
+      quantity: (json['quantity'] as num?)?.round() ?? 0,
+      acquiredAt: DateTime.tryParse(json['acquired_at']?.toString() ?? ''),
+      updatedAt: DateTime.tryParse(json['updated_at']?.toString() ?? ''),
+    );
+  }
+}
+
+class StoreInventoryResponse {
+  const StoreInventoryResponse({required this.items});
+
+  final List<StoreInventoryItem> items;
+
+  factory StoreInventoryResponse.fromJson(Map<String, dynamic> json) {
+    return StoreInventoryResponse(
+      items: (json['items'] as List? ?? const [])
+          .whereType<Map>()
+          .map(
+            (item) =>
+                StoreInventoryItem.fromJson(Map<String, dynamic>.from(item)),
+          )
+          .toList(),
+    );
+  }
+}
+
+class StoreExchangeResponse {
+  const StoreExchangeResponse({
+    required this.wallet,
+    required this.inventoryItem,
+  });
+
+  final WalletBalance wallet;
+  final StoreInventoryItem inventoryItem;
+
+  factory StoreExchangeResponse.fromJson(Map<String, dynamic> json) {
+    return StoreExchangeResponse(
+      wallet: WalletBalance.fromJson(
+        Map<String, dynamic>.from(json['wallet'] as Map? ?? const {}),
+      ),
+      inventoryItem: StoreInventoryItem.fromJson(
+        Map<String, dynamic>.from(json['inventory_item'] as Map? ?? const {}),
+      ),
     );
   }
 }

@@ -16,6 +16,7 @@ class _StorePageState extends State<StorePage> {
   _StoreCurrency _rechargeCurrency = _StoreCurrency.ticket;
   int _selectedPlan = 1;
   int _selectedRecharge = 0;
+  final Set<_StoreItemKind> _exchangingKinds = {};
   late final PageController _sectionController;
   late Future<WalletBalance> _walletFuture;
 
@@ -257,6 +258,7 @@ class _StorePageState extends State<StorePage> {
         onCategoryChanged: (value) => setState(() => _exchangeCategory = value),
         onRechargePoints: _openRechargePoints,
         onExchange: _handleExchangeProduct,
+        isExchanging: (product) => _exchangingKinds.contains(product.kind),
         bottomSpace: bottomSpace,
       ),
       _StoreSection.recharge => _RechargeStoreView(
@@ -278,22 +280,30 @@ class _StorePageState extends State<StorePage> {
     };
   }
 
-  void _handleExchangeProduct(_StoreProduct product) {
-    if (product.category == _ExchangeCategory.outfit) {
-      _showOutfitPicker(product);
+  Future<void> _handleExchangeProduct(_StoreProduct product) async {
+    if (_exchangingKinds.contains(product.kind)) {
       return;
     }
-    _showComingSoon(product.title);
-  }
-
-  void _showOutfitPicker(_StoreProduct product) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) {
-        return _OutfitPickerSheet(product: product);
-      },
-    );
+    setState(() => _exchangingKinds.add(product.kind));
+    try {
+      final result = await widget.api.exchangeStoreProduct(
+        productKind: product.kind.name,
+      );
+      if (!mounted) return;
+      setState(() => _walletFuture = Future.value(result.wallet));
+      _showToast('已放入背包：${product.title} x${result.inventoryItem.quantity}');
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      if (error.statusCode == 409) {
+        _showToast('积分不足，请先兑换积分');
+        _openRechargePoints();
+        return;
+      }
+      _showToast('兑换失败：${error.message}');
+    } finally {
+      if (mounted) {
+        setState(() => _exchangingKinds.remove(product.kind));
+      }
+    }
   }
 }

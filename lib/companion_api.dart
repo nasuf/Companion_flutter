@@ -336,6 +336,21 @@ class CompanionApi {
     return ProfileStats.fromJson(json);
   }
 
+  Future<ChatRecordsClearResult> clearChatRecords({String? workspaceId}) async {
+    final params = <String, String>{};
+    if (workspaceId != null && workspaceId.isNotEmpty) {
+      params['workspace_id'] = workspaceId;
+    }
+    final query = Uri(queryParameters: params).query;
+    final path = query.isEmpty
+        ? '/users/me/chat-records'
+        : '/users/me/chat-records?$query';
+    final json =
+        await _request('DELETE', path, debugLabel: 'users.chatRecords.clear')
+            as Map<String, dynamic>;
+    return ChatRecordsClearResult.fromJson(json);
+  }
+
   Future<bool> saveUserLocation({
     double? latitude,
     double? longitude,
@@ -1002,6 +1017,27 @@ class CompanionApi {
             )
             as Map<String, dynamic>;
     return WalletBalance.fromJson(json);
+  }
+
+  Future<StoreInventoryResponse> listStoreInventory() async {
+    final json =
+        await _request('GET', '/store/inventory', debugLabel: 'store.inventory')
+            as Map<String, dynamic>;
+    return StoreInventoryResponse.fromJson(json);
+  }
+
+  Future<StoreExchangeResponse> exchangeStoreProduct({
+    required String productKind,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/store/exchange',
+              body: {'product_kind': productKind},
+              debugLabel: 'store.exchange',
+            )
+            as Map<String, dynamic>;
+    return StoreExchangeResponse.fromJson(json);
   }
 
   Future<RemindersResponse> listReminders({
