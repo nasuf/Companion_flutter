@@ -6,6 +6,12 @@ import 'models.dart';
 
 enum ChatSocketStatus { disconnected, connecting, open, closed, error }
 
+/// Close codes that reconnecting cannot fix — stop the backoff loop instead of
+/// showing "重连中" forever. Mirrors app/api/realtime/ws.py close codes:
+///   4401 auth_required (missing/invalid token) · 4403 forbidden (not owner)
+///   4004 conversation not found
+const Set<int> _authFatalCloseCodes = {4401, 4403, 4004};
+
 class ChatSocketState {
   const ChatSocketState(this.status, {this.code, this.reason});
 
@@ -130,13 +136,20 @@ class ChatSocket {
     if (_socket != socket) return;
     _stopKeepalive();
     _socket = null;
+    final code = socket.closeCode;
     _states.add(
       ChatSocketState(
         ChatSocketStatus.closed,
-        code: socket.closeCode,
+        code: code,
         reason: socket.closeReason,
       ),
     );
+    // Auth-fatal closes won't fix themselves by reconnecting — stop the loop so
+    // the UI can surface a re-login hint instead of spinning "重连中".
+    if (code != null && _authFatalCloseCodes.contains(code)) {
+      _intentionalClose = true;
+      return;
+    }
     if (!_intentionalClose) _scheduleReconnect();
   }
 
