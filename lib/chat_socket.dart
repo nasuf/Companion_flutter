@@ -15,10 +15,19 @@ class ChatSocketState {
 }
 
 class ChatSocket {
-  ChatSocket({required this.baseUrl, required this.conversationId});
+  ChatSocket({
+    required this.baseUrl,
+    required this.conversationId,
+    this.token,
+  });
 
   final String baseUrl;
   final String conversationId;
+
+  /// JWT for the current session. conversation_id is not a capability token;
+  /// the backend requires a valid JWT owner. Sent as the `token` query param
+  /// (WebSocket handshakes cannot carry custom headers uniformly).
+  final String? token;
 
   final _events = StreamController<WsEnvelope>.broadcast();
   final _states = StreamController<ChatSocketState>.broadcast();
@@ -36,7 +45,10 @@ class ChatSocket {
 
   Uri _wsUri() {
     final normalized = baseUrl.replaceFirst(RegExp('^http'), 'ws');
-    return Uri.parse('$normalized/ws/$conversationId');
+    final base = '$normalized/ws/$conversationId';
+    final t = token;
+    if (t == null || t.isEmpty) return Uri.parse(base);
+    return Uri.parse('$base?token=${Uri.encodeQueryComponent(t)}');
   }
 
   Future<void> connect() async {

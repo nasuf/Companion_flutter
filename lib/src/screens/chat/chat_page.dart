@@ -355,6 +355,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final socket = ChatSocket(
       baseUrl: widget.api.baseUrl,
       conversationId: _conversationId,
+      token: widget.api.authToken,
     );
     _socket = socket;
     _stateSub = socket.states.listen((state) {
