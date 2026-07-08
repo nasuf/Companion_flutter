@@ -122,9 +122,16 @@ class WeChatLoginService {
   Future<AuthSession> login({
     required CompanionApi api,
     required String platform,
+    String? osVersion,
+    String? appVersion,
   }) async {
     final code = await requestAuthCode();
-    return api.wechatMobileLogin(code, platform: platform);
+    return api.wechatMobileLogin(
+      code,
+      platform: platform,
+      osVersion: osVersion,
+      appVersion: appVersion,
+    );
   }
 
   Future<String> requestAuthCode() async {

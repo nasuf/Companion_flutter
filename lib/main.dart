@@ -30,6 +30,7 @@ import 'chat_socket.dart';
 import 'companion_api.dart';
 import 'models.dart';
 import 'offline_models.dart';
+import 'src/services/client_info.dart';
 
 part 'src/app/auth_gate.dart';
 part 'src/app/auth_session_store.dart';

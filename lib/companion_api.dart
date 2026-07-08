@@ -273,14 +273,25 @@ class CompanionApi {
     return session;
   }
 
-  Future<AuthSession> register(String username, String password) async {
-    final json =
-        await _request(
-              'POST',
-              '/auth/register',
-              body: {'username': username, 'password': password},
-            )
-            as Map<String, dynamic>;
+  Future<AuthSession> register(
+    String username,
+    String password, {
+    String? platform,
+    String? osVersion,
+    String? appVersion,
+  }) async {
+    // channel marks the signup origin (users.signup_source = "password_app");
+    // device fields are optional analytics extras collected best-effort.
+    final body = <String, dynamic>{
+      'username': username,
+      'password': password,
+      'channel': 'app',
+    };
+    if (platform != null) body['platform'] = platform;
+    if (osVersion != null) body['os_version'] = osVersion;
+    if (appVersion != null) body['app_version'] = appVersion;
+    final json = await _request('POST', '/auth/register', body: body)
+        as Map<String, dynamic>;
     final session = _normalizeAuthSession(AuthSession.fromJson(json));
     authToken = session.token;
     return session;
@@ -289,14 +300,14 @@ class CompanionApi {
   Future<AuthSession> wechatMobileLogin(
     String code, {
     required String platform,
+    String? osVersion,
+    String? appVersion,
   }) async {
-    final json =
-        await _request(
-              'POST',
-              '/auth/wechat/mobile',
-              body: {'code': code, 'platform': platform},
-            )
-            as Map<String, dynamic>;
+    final body = <String, dynamic>{'code': code, 'platform': platform};
+    if (osVersion != null) body['os_version'] = osVersion;
+    if (appVersion != null) body['app_version'] = appVersion;
+    final json = await _request('POST', '/auth/wechat/mobile', body: body)
+        as Map<String, dynamic>;
     final session = _normalizeAuthSession(AuthSession.fromJson(json));
     authToken = session.token;
     return session;

@@ -73,9 +73,14 @@ class _LoginPageState extends State<LoginPage>
     });
     try {
       final api = CompanionApi(baseUrl: baseUrl);
+      // Device metadata lets the backend tag first-time logins with the
+      // signup source (users.signup_* columns); best-effort, never blocking.
+      final clientInfo = await ClientInfo.load();
       final loggedIn = await _wechatLoginService.login(
         api: api,
-        platform: currentWechatPlatform(),
+        platform: clientInfo.platform,
+        osVersion: clientInfo.osVersion,
+        appVersion: clientInfo.appVersion,
       );
       final session = await api.ensureConversation(loggedIn);
       if (!mounted) return;
@@ -843,9 +848,19 @@ class _BackendLoginSheetState extends State<_BackendLoginSheet> {
     });
     try {
       final api = CompanionApi(baseUrl: baseUrl);
-      final loggedIn = _mode == _BackendAuthMode.register
-          ? await api.register(account, password)
-          : await api.login(account, password);
+      AuthSession loggedIn;
+      if (_mode == _BackendAuthMode.register) {
+        final clientInfo = await ClientInfo.load();
+        loggedIn = await api.register(
+          account,
+          password,
+          platform: clientInfo.platform,
+          osVersion: clientInfo.osVersion,
+          appVersion: clientInfo.appVersion,
+        );
+      } else {
+        loggedIn = await api.login(account, password);
+      }
       final session = await api.ensureConversation(loggedIn);
       if (!mounted) return;
       final onAuthenticated = widget.onAuthenticated;
