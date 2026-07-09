@@ -313,7 +313,7 @@ class CapsuleEditorPage extends StatefulWidget {
 }
 
 class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
-  static const _maxImageBytes = 2 * 1024 * 1024;
+  static const _maxImageBytes = 10 * 1024 * 1024;
   static const _maxVoiceSeconds = 20;
   static const _maxVoiceBytes = 512 * 1024;
 
@@ -880,7 +880,7 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
       if (picked == null) return;
       final bytes = await picked.readAsBytes();
       if (bytes.length > _maxImageBytes) {
-        setState(() => _error = '图片需要小于 2MB。');
+        setState(() => _error = '图片需要小于 10MB。');
         return;
       }
       setState(() {
