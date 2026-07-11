@@ -35,6 +35,30 @@ class ChatMusicStationState {
     return trackLibrary == null || trackLibrary.isEmpty ? null : trackLibrary;
   }
 
+  static bool userCoListeningActiveFromMessages(
+    Iterable<ChatMessage> messages,
+  ) {
+    var active = false;
+    for (final message in messages) {
+      final metadata = message.metadata;
+      if (metadata == null) continue;
+      final status = metadata['music_status']?.toString();
+      final actor = metadata['music_status_actor']?.toString();
+      if (status == 'started' && actor == 'user') {
+        active = true;
+      } else if (status == 'ended') {
+        active = false;
+      }
+    }
+    return active;
+  }
+
+  static bool activeSessionIncludesUser(MusicCoListening? session) {
+    if (session?.isActive != true) return false;
+    return session!.initiatedBy != 'agent' &&
+        session.initiatedBy != 'agent_auto';
+  }
+
   void reset() {
     card = null;
     messageId = null;
