@@ -73,6 +73,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "4.3.0"
+  bishop:
+    dependency: "direct main"
+    description:
+      name: bishop
+      sha256: "49739eff3ff06ec44f1660ff06baec6b44bb8926114b5f6bbed96f24d11a98d3"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "1.4.4"
   boolean_selector:
     dependency: transitive
     description:
@@ -818,14 +826,6 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "1.4.1"
-  sud_gip_plugin:
-    dependency: "direct main"
-    description:
-      name: sud_gip_plugin
-      sha256: ba492bde327f90423b6be8a2060c38508ecda48ab631528fc1f28a08fb01aeb1
-      url: "https://pub.flutter-io.cn"
-    source: hosted
-    version: "0.0.3"
   synchronized:
     dependency: transitive
     description:

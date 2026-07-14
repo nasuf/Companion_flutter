@@ -13,20 +13,10 @@ class GamePage extends StatefulWidget {
 class _GamePageState extends State<GamePage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  SudConfigResponse? _config;
-  List<SudSession> _sessions = const [];
-  SudSession? _activeSession;
-  SudGamePlayMode _mode = SudGamePlayMode.versus;
-  SudGameDifficulty _difficulty = SudGameDifficulty.newbie;
+  GameSession? _activeSession;
   _GameGroup? _activeGroup = _gameGroupCatalog.first;
   _GameTile _activeGame = _gameGroupCatalog.first.games[1];
-  final List<String> _boardMarks = List.filled(9, '');
-  final List<_GameTimelineItem> _timeline = [];
-  bool _loading = true;
-  bool _starting = false;
-  bool _sendingEvent = false;
   String? _error;
-  int _moveCount = 0;
 
   @override
   void initState() {
@@ -47,130 +37,16 @@ class _GamePageState extends State<GamePage>
 
   Future<void> _load() async {
     if (!mounted) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    setState(() => _error = null);
     try {
-      final results = await Future.wait([
-        widget.api.getSudConfig(),
-        widget.api.listSudSessions(),
-      ]);
-      if (!mounted) return;
-      final sessions = results[1] as List<SudSession>;
-      setState(() {
-        _config = results[0] as SudConfigResponse;
-        _sessions = sessions;
-        _activeSession ??= sessions.isEmpty ? null : sessions.first;
-        _loading = false;
-      });
-    } catch (error) {
+      final sessions = await widget.api.listNativeGameSessions(limit: 20);
       if (!mounted) return;
       setState(() {
-        _error = _formatError(error);
-        _loading = false;
-      });
-    }
-  }
-
-  Future<void> _startSession() async {
-    final agentId = widget.session.agentId;
-    if (agentId == null || agentId.isEmpty) {
-      setState(() => _error = '还没有可用的 AI 伙伴，无法创建游戏房间。');
-      return;
-    }
-    if (_starting) return;
-    setState(() {
-      _starting = true;
-      _error = null;
-    });
-    try {
-      final session = await widget.api.createSudSession(
-        agentId: agentId,
-        workspaceId: widget.session.workspaceId,
-        conversationId: widget.session.conversationId,
-        mgId: _resolvedMgId(),
-        playMode: _mode,
-        difficulty: _difficulty,
-      );
-      if (!mounted) return;
-      setState(() {
-        _activeSession = session;
-        _sessions = [
-          session,
-          ..._sessions.where((item) => item.id != session.id),
-        ];
-        _resetBoard();
-        _timeline.insert(
-          0,
-          _GameTimelineItem.system(
-            '房间创建成功',
-            '${session.roomId} · AI Lv.${session.aiLevel}',
-          ),
-        );
-        if (session.companionReply != null &&
-            session.companionReply!.isNotEmpty) {
-          _timeline.insert(
-            0,
-            _GameTimelineItem.ai(
-              session.aiPlayer.nickName,
-              session.companionReply!,
-            ),
-          );
-        }
-        _trimTimeline();
+        _activeSession = sessions.isEmpty ? null : sessions.first;
       });
     } catch (error) {
       if (mounted) setState(() => _error = _formatError(error));
-    } finally {
-      if (mounted) setState(() => _starting = false);
     }
-  }
-
-  Future<SudSession?> _refreshCodeForNativeGame() async {
-    final session = _activeSession;
-    if (session == null) return null;
-    try {
-      final refreshed = await widget.api.refreshSudSessionCode(session.id);
-      if (!mounted) return refreshed;
-      setState(() {
-        _activeSession = refreshed;
-        _sessions = [
-          refreshed,
-          ..._sessions.where((item) => item.id != refreshed.id),
-        ];
-      });
-      return refreshed;
-    } catch (error) {
-      if (mounted) setState(() => _error = _formatError(error));
-      return null;
-    }
-  }
-
-  Future<void> _ensureSessionAndSend(_GameDemoEvent event) async {
-    if (_activeSession == null) {
-      await _startSession();
-    }
-    await _sendEvent(event);
-  }
-
-  Future<void> _sendEvent(_GameDemoEvent event) async {
-    final session = _activeSession;
-    if (session == null || _sendingEvent) return;
-    final payload = _payloadFor(event, session);
-    setState(() {
-      _sendingEvent = true;
-      _error = null;
-      _timeline.insert(0, _GameTimelineItem.user(event.label, event.detail));
-      _trimTimeline();
-    });
-    await _sendRawEvent(
-      sessionId: session.id,
-      eventType: event.eventType,
-      state: event.state,
-      payload: payload,
-    );
-    if (mounted) setState(() => _sendingEvent = false);
   }
 
   Future<void> _openGame(_GameGroup group, _GameTile game) async {
@@ -179,138 +55,66 @@ class _GamePageState extends State<GamePage>
       _activeGame = game;
     });
     if (!game.isOnline) return;
-    await Navigator.of(context).push(
-      CupertinoPageRoute<void>(
-        builder: (_) => _SudGamePlayPage(
-          api: widget.api,
-          authSession: widget.session,
-          initialConfig: _config,
-          game: game,
-        ),
+    final page = switch (game.nativeGameKey) {
+      _nativeReversiGameKey => _ReversiGamePage(
+        api: widget.api,
+        authSession: widget.session,
+        game: game,
       ),
-    );
-    if (mounted) unawaited(_load());
-  }
-
-  Future<void> _handleNativeEvent({
-    required String eventType,
-    String? state,
-    Map<String, dynamic> payload = const {},
-  }) async {
-    final session = _activeSession;
-    if (session == null) return;
-    await _sendRawEvent(
-      sessionId: session.id,
-      eventType: eventType,
-      state: state,
-      payload: {
-        ...payload,
-        'source': 'sud_flutter_callback',
-        'mg_id': session.mgId,
-        'game_title': _activeGame.title,
-        'play_mode': _mode.name,
-        'difficulty': _difficulty.name,
-      },
-    );
-  }
-
-  Future<void> _sendRawEvent({
-    required String sessionId,
-    required String eventType,
-    String? state,
-    Map<String, dynamic> payload = const {},
-  }) async {
-    try {
-      final response = await widget.api.sendSudGameEvent(
-        sessionId: sessionId,
-        eventType: eventType,
-        state: state,
-        payload: payload,
-      );
-      if (!mounted) return;
-      setState(() {
-        _activeSession = response.session;
-        _error = null;
-        _sessions = [
-          response.session,
-          ..._sessions.where((item) => item.id != response.session.id),
-        ];
-        final reply = response.companionReply;
-        if (reply != null && reply.isNotEmpty) {
-          _timeline.insert(
-            0,
-            _GameTimelineItem.ai(response.session.aiPlayer.nickName, reply),
-          );
-          _trimTimeline();
-        }
-      });
-    } catch (error) {
-      if (mounted) setState(() => _error = _formatError(error));
-    }
-  }
-
-  String? _resolvedMgId() {
-    if (_activeGame.mgId.isNotEmpty) return _activeGame.mgId;
-    final configMgId = _config?.defaultMgId ?? '';
-    if (configMgId.isNotEmpty) return configMgId;
-    return _demoSudMgId;
-  }
-
-  void _resetBoard() {
-    _moveCount = 0;
-    for (var i = 0; i < _boardMarks.length; i += 1) {
-      _boardMarks[i] = '';
-    }
-  }
-
-  void _trimTimeline() {
-    if (_timeline.length > 20) {
-      _timeline.removeRange(20, _timeline.length);
-    }
-  }
-
-  Map<String, dynamic> _payloadFor(_GameDemoEvent event, SudSession session) {
-    final payload = <String, dynamic>{
-      'mg_id': session.mgId,
-      'game_title': _activeGame.title,
-      'play_mode': _mode.name,
-      'difficulty': _difficulty.name,
+      _nativeGoGameKey => _GoGamePage(
+        api: widget.api,
+        authSession: widget.session,
+        game: game,
+      ),
+      _nativeGomokuGameKey => _NativeGomokuGamePage(
+        api: widget.api,
+        authSession: widget.session,
+        game: game,
+      ),
+      _nativeXiangqiGameKey => _ChessFamilyGamePage(
+        api: widget.api,
+        authSession: widget.session,
+        game: game,
+        kind: ChessFamilyKind.xiangqi,
+      ),
+      _nativeChessGameKey => _ChessFamilyGamePage(
+        api: widget.api,
+        authSession: widget.session,
+        game: game,
+        kind: ChessFamilyKind.chess,
+      ),
+      _nativeChineseCheckersGameKey => _ChineseCheckersGamePage(
+        api: widget.api,
+        authSession: widget.session,
+        game: game,
+      ),
+      _nativeLudoGameKey => _LudoGamePage(
+        api: widget.api,
+        authSession: widget.session,
+        game: game,
+      ),
+      _nativeMatch3GameKey => _Match3GamePage(
+        api: widget.api,
+        authSession: widget.session,
+        game: game,
+      ),
+      _nativeMinesweeperGameKey => _MinesweeperGamePage(
+        api: widget.api,
+        authSession: widget.session,
+        game: game,
+      ),
+      _nativeNumberMergeGameKey => _NumberMergeGamePage(
+        api: widget.api,
+        authSession: widget.session,
+        game: game,
+      ),
+      _ => null,
     };
-    switch (event) {
-      case _GameDemoEvent.gameStarted:
-        payload['gameState'] = 'playing';
-      case _GameDemoEvent.move:
-        final slot = _nextBoardSlot();
-        _boardMarks[slot] = _moveCount.isEven ? 'X' : 'O';
-        _moveCount += 1;
-        payload['move_index'] = slot;
-        payload['piece'] = _boardMarks[slot];
-        payload['uid'] = _boardMarks[slot] == 'X'
-            ? session.userPlayer.uid
-            : session.aiPlayer.uid;
-      case _GameDemoEvent.levelSuccess:
-        payload['checkpoint'] = 'demo-clear';
-      case _GameDemoEvent.levelFailed:
-        payload['checkpoint'] = 'demo-stuck';
-      case _GameDemoEvent.gameSettleWin:
-      case _GameDemoEvent.gameSettleLose:
-      case _GameDemoEvent.gameSettleDraw:
-        payload['gameRoundId'] = DateTime.now().microsecondsSinceEpoch
-            .toString();
-        payload['battle_duration'] = math.max(45, _moveCount * 18);
-        payload['results'] = [
-          {'uid': session.userPlayer.uid, 'isWin': event.userOutcomeValue},
-          {'uid': session.aiPlayer.uid, 'isWin': event.aiOutcomeValue},
-        ];
-    }
-    return payload;
-  }
-
-  int _nextBoardSlot() {
-    final empty = _boardMarks.indexWhere((mark) => mark.isEmpty);
-    if (empty >= 0) return empty;
-    _resetBoard();
-    return 0;
+    if (page == null) return;
+    await Navigator.of(
+      context,
+    ).push(CupertinoPageRoute<void>(builder: (_) => page));
+    if (mounted) unawaited(_load());
   }
 
   @override
@@ -425,6 +229,17 @@ class _GamePageState extends State<GamePage>
               fontWeight: FontWeight.w600,
             ),
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              style: const TextStyle(
+                color: Color(0xFFCC3D3D),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           Row(
             children: [
@@ -437,250 +252,14 @@ class _GamePageState extends State<GamePage>
               const SizedBox(width: 10),
               Expanded(
                 child: _MetricCard(
-                  value: session == null ? '16' : 'Lv.${session.aiLevel}',
-                  label: 'AI 强度',
+                  value: session == null ? '--' : '自然对局',
+                  label: '陪玩方式',
                 ),
               ),
               const SizedBox(width: 10),
-              Expanded(
-                child: _MetricCard(
-                  value: _config?.sdkEnabled == true ? 'SUD' : 'Demo',
-                  label: '游戏源',
-                ),
+              const Expanded(
+                child: _MetricCard(value: '自研', label: '游戏源'),
               ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ignore: unused_element
-  Widget _readinessCard() {
-    final config = _config;
-    final message = _loading
-        ? '正在读取 SUD 配置'
-        : config?.sdkEnabled == true
-        ? 'SUD 配置已就绪，可加载原生 Flutter PlatformView'
-        : '后端游戏链路已接通，等待 SUD AppId/AppKey/AppSecret';
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-      child: _GlassPanel(
-        radius: 18,
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  config?.sdkEnabled == true
-                      ? CupertinoIcons.checkmark_seal_fill
-                      : CupertinoIcons.exclamationmark_triangle_fill,
-                  color: config?.sdkEnabled == true
-                      ? const Color(0xFF22A06B)
-                      : const Color(0xFFFF8B2D),
-                  size: 18,
-                ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Text(
-                    message,
-                    style: TextStyle(
-                      color: AppColors.text,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 9),
-              Text(
-                _error!,
-                style: const TextStyle(
-                  color: Color(0xFFCC3D3D),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-            if (config != null && config.missingConfig.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                '缺少配置：${config.missingConfig.join(', ')}',
-                style: TextStyle(
-                  color: AppColors.text.withValues(alpha: 0.56),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ignore: unused_element
-  Widget _modeControls() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              for (final mode in SudGamePlayMode.values) ...[
-                Expanded(
-                  child: _SegmentButton(
-                    selected: _mode == mode,
-                    icon: mode == SudGamePlayMode.versus
-                        ? CupertinoIcons.scope
-                        : CupertinoIcons.circle_grid_hex,
-                    label: mode.title,
-                    onTap: () => setState(() => _mode = mode),
-                  ),
-                ),
-                if (mode != SudGamePlayMode.values.last)
-                  const SizedBox(width: 10),
-              ],
-            ],
-          ),
-          const SizedBox(height: 10),
-          for (final difficulty in SudGameDifficulty.values)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _DifficultyRow(
-                difficulty: difficulty,
-                selected: _difficulty == difficulty,
-                onTap: () => setState(() => _difficulty = difficulty),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  // ignore: unused_element
-  Widget _gameStage() {
-    final session = _activeSession;
-    final useNative = session?.canLoadNativeGame == true;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-      child: _GlassPanel(
-        radius: 24,
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          children: [
-            SizedBox(
-              height: 330,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(22),
-                child: useNative
-                    ? _SudNativeGameStage(
-                        key: ValueKey('${session!.id}:${session.code}'),
-                        session: session,
-                        api: widget.api,
-                        isFullscreen: false,
-                        shouldReportExitOnDispose: () => true,
-                        onRefreshCode: _refreshCodeForNativeGame,
-                        onEvent: _handleNativeEvent,
-                      )
-                    : _LocalGameStage(
-                        group: _activeGroup ?? _gameGroupCatalog.first,
-                        tile: _activeGame,
-                        marks: _boardMarks,
-                        session: session,
-                      ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            CupertinoButton(
-              padding: EdgeInsets.zero,
-              borderRadius: BorderRadius.circular(16),
-              onPressed: _starting ? null : _startSession,
-              child: Container(
-                height: 48,
-                decoration: BoxDecoration(
-                  color: _starting
-                      ? AppColors.accent.withValues(alpha: 0.58)
-                      : AppColors.accent,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.accent.withValues(alpha: 0.18),
-                      blurRadius: 18,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: _starting
-                      ? const CupertinoActivityIndicator(color: Colors.white)
-                      : Text(
-                          session == null ? '创建游戏房间' : '重新开一局',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ignore: unused_element
-  Widget _eventControls() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '测试事件',
-            style: TextStyle(
-              color: AppColors.text,
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 10),
-          GridView.count(
-            padding: EdgeInsets.zero,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childAspectRatio: 3.25,
-            children: [
-              for (final event in _GameDemoEvent.values)
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  borderRadius: BorderRadius.circular(14),
-                  onPressed: _sendingEvent
-                      ? null
-                      : () => _ensureSessionAndSend(event),
-                  child: Container(
-                    decoration: _glassDecoration(14),
-                    child: Center(
-                      child: Text(
-                        event.label,
-                        style: TextStyle(
-                          color: AppColors.text,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
             ],
           ),
         ],
@@ -711,690 +290,9 @@ class _GamePageState extends State<GamePage>
     );
   }
 
-  // ignore: unused_element
-  Widget _timelinePanel() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-      child: _GlassPanel(
-        radius: 22,
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'AI 伴聊与事件流水',
-              style: TextStyle(
-                color: AppColors.text,
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (_timeline.isEmpty)
-              Text(
-                '创建房间后，这里会显示开局、落子、闯关和结算对应的话术。',
-                style: TextStyle(
-                  color: AppColors.text.withValues(alpha: 0.56),
-                  fontSize: 12,
-                  height: 1.4,
-                  fontWeight: FontWeight.w600,
-                ),
-              )
-            else
-              for (final item in _timeline.take(8))
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _TimelineRow(item: item),
-                ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ignore: unused_element
-  Widget _recentSessions() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '最近房间',
-            style: TextStyle(
-              color: AppColors.text,
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (_sessions.isEmpty)
-            Text(
-              '暂无历史房间。',
-              style: TextStyle(
-                color: AppColors.text.withValues(alpha: 0.52),
-                fontSize: 12,
-              ),
-            )
-          else
-            for (final session in _sessions.take(4))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  borderRadius: BorderRadius.circular(14),
-                  onPressed: () => setState(() {
-                    _activeSession = session;
-                    _mode = session.playMode;
-                    _difficulty = session.difficulty;
-                    _resetBoard();
-                    _timeline.insert(
-                      0,
-                      _GameTimelineItem.system(
-                        '切换到历史房间',
-                        '${session.roomId} · ${session.status}',
-                      ),
-                    );
-                    _trimTimeline();
-                  }),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: _glassDecoration(14),
-                    child: Row(
-                      children: [
-                        Icon(
-                          CupertinoIcons.rectangle_stack_fill,
-                          color: AppColors.accent,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                session.roomId,
-                                style: TextStyle(
-                                  color: AppColors.text,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                '${session.playMode.title} · ${session.difficulty.title} · ${session.status}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: AppColors.text.withValues(alpha: 0.54),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(
-                          _activeSession?.id == session.id
-                              ? CupertinoIcons.checkmark_circle_fill
-                              : CupertinoIcons.chevron_right,
-                          color: AppColors.text.withValues(alpha: 0.42),
-                          size: 18,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-        ],
-      ),
-    );
-  }
-
   String _formatError(Object error) {
     if (error is ApiException) return error.message;
     return error.toString();
-  }
-}
-
-class _SudGamePlayPage extends StatefulWidget {
-  const _SudGamePlayPage({
-    required this.api,
-    required this.authSession,
-    required this.initialConfig,
-    required this.game,
-  });
-
-  final CompanionApi api;
-  final AuthSession authSession;
-  final SudConfigResponse? initialConfig;
-  final _GameTile game;
-
-  @override
-  State<_SudGamePlayPage> createState() => _SudGamePlayPageState();
-}
-
-class _SudGamePlayPageState extends State<_SudGamePlayPage> {
-  SudConfigResponse? _config;
-  SudSession? _session;
-  List<SudSession> _rounds = const [];
-  final List<_GameTimelineItem> _timeline = [];
-  bool _roundsLoading = true;
-  bool _starting = false;
-  bool _nativeFullscreen = false;
-  bool _systemUiHidden = false;
-  bool _suppressNextNativeDisposeReport = false;
-  int _nativeStageRevision = 0;
-  final Set<String> _reportedNativeLifecycleEvents = <String>{};
-  String? _error;
-  String? _roundsError;
-
-  @override
-  void initState() {
-    super.initState();
-    _config = widget.initialConfig;
-    if (_config == null) unawaited(_loadConfig());
-    unawaited(_loadRounds());
-  }
-
-  Future<void> _loadConfig() async {
-    try {
-      final config = await widget.api.getSudConfig();
-      if (mounted) setState(() => _config = config);
-    } catch (error) {
-      if (mounted) setState(() => _error = _formatError(error));
-    }
-  }
-
-  Future<void> _loadRounds() async {
-    if (!mounted) return;
-    setState(() {
-      _roundsLoading = true;
-      _roundsError = null;
-    });
-    try {
-      final sessions = await widget.api.listSudSessions();
-      final mgId = _resolvedMgId();
-      if (!mounted) return;
-      setState(() {
-        _rounds = sessions
-            .where(
-              (item) => item.mgId == mgId && _GameRoundSummary.canShow(item),
-            )
-            .toList();
-        _roundsLoading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _roundsLoading = false;
-        _roundsError = _formatError(error);
-      });
-    }
-  }
-
-  Future<void> _startSession() async {
-    final agentId = widget.authSession.agentId;
-    if (agentId == null || agentId.isEmpty) {
-      setState(() => _error = '还没有可用的 AI 伙伴，无法创建游戏房间。');
-      return;
-    }
-    if (_starting) return;
-    setState(() {
-      _starting = true;
-      _error = null;
-      _timeline.clear();
-      _reportedNativeLifecycleEvents.clear();
-    });
-    try {
-      final session = await widget.api.createSudSession(
-        agentId: agentId,
-        workspaceId: widget.authSession.workspaceId,
-        conversationId: widget.authSession.conversationId,
-        mgId: _resolvedMgId(),
-        playMode: SudGamePlayMode.versus,
-        difficulty: SudGameDifficulty.newbie,
-      );
-      if (!mounted) return;
-      setState(() {
-        _session = session;
-        _nativeFullscreen = session.canLoadNativeGame;
-        _timeline.insert(
-          0,
-          _GameTimelineItem.system(
-            '房间创建成功',
-            '${session.roomId} · AI Lv.${session.aiLevel}',
-          ),
-        );
-        final reply = session.companionReply;
-        if (reply != null && reply.isNotEmpty) {
-          _timeline.insert(
-            0,
-            _GameTimelineItem.ai(session.aiPlayer.nickName, reply),
-          );
-        }
-        _trimTimeline();
-      });
-      if (session.canLoadNativeGame) {
-        unawaited(_applyFullscreenSystemUi());
-      }
-      unawaited(_loadRounds());
-    } catch (error) {
-      if (mounted) setState(() => _error = _formatError(error));
-    } finally {
-      if (mounted) setState(() => _starting = false);
-    }
-  }
-
-  @override
-  void dispose() {
-    unawaited(_restoreSystemUi());
-    super.dispose();
-  }
-
-  void _enterNativeFullscreen() {
-    if (_session?.canLoadNativeGame != true) return;
-    _suppressNextNativeDisposeReport = true;
-    setState(() {
-      _nativeFullscreen = true;
-      _nativeStageRevision += 1;
-    });
-    unawaited(_applyFullscreenSystemUi());
-    _clearNativeDisposeSuppressionAfterFrame();
-  }
-
-  void _exitNativeFullscreen() {
-    _suppressNextNativeDisposeReport = true;
-    setState(() {
-      _nativeFullscreen = false;
-      _nativeStageRevision += 1;
-    });
-    unawaited(_restoreSystemUi());
-    _clearNativeDisposeSuppressionAfterFrame();
-  }
-
-  Future<void> _applyFullscreenSystemUi() async {
-    _systemUiHidden = true;
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-  }
-
-  Future<void> _restoreSystemUi() async {
-    if (!_systemUiHidden) return;
-    _systemUiHidden = false;
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  }
-
-  void _clearNativeDisposeSuppressionAfterFrame() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _suppressNextNativeDisposeReport = false;
-    });
-  }
-
-  Future<SudSession?> _refreshCode() async {
-    final session = _session;
-    if (session == null) return null;
-    try {
-      final refreshed = await widget.api.refreshSudSessionCode(session.id);
-      if (mounted) setState(() => _session = refreshed);
-      return refreshed;
-    } catch (error) {
-      if (mounted) setState(() => _error = _formatError(error));
-      return null;
-    }
-  }
-
-  Future<void> _handleNativeEvent({
-    required String eventType,
-    String? state,
-    Map<String, dynamic> payload = const {},
-  }) async {
-    final session = _session;
-    if (session == null) return;
-    if (_isDuplicateNativeLifecycleEvent(eventType)) return;
-    try {
-      final response = await widget.api.sendSudGameEvent(
-        sessionId: session.id,
-        eventType: eventType,
-        state: state,
-        payload: {
-          ...payload,
-          'source': 'sud_flutter_callback',
-          'mg_id': session.mgId,
-          'game_title': widget.game.title,
-          'play_mode': session.playMode.name,
-          'difficulty': session.difficulty.name,
-        },
-      );
-      if (!mounted) return;
-      setState(() {
-        _session = response.session;
-        _error = null;
-        final reply = response.companionReply;
-        if (reply != null && reply.isNotEmpty) {
-          _timeline.insert(
-            0,
-            _GameTimelineItem.ai(response.session.aiPlayer.nickName, reply),
-          );
-          _trimTimeline();
-        }
-      });
-      if (_GameRoundSummary.canShow(response.session)) {
-        unawaited(_loadRounds());
-      }
-    } catch (error) {
-      if (mounted) setState(() => _error = _formatError(error));
-    }
-  }
-
-  bool _isDuplicateNativeLifecycleEvent(String eventType) {
-    const lifecycleEvents = {'sdk_ready', 'game_started', 'sud_entry_synced'};
-    if (!lifecycleEvents.contains(eventType)) return false;
-    return !_reportedNativeLifecycleEvents.add(eventType);
-  }
-
-  String? _resolvedMgId() {
-    if (widget.game.mgId.isNotEmpty) return widget.game.mgId;
-    final configMgId = _config?.defaultMgId ?? '';
-    if (configMgId.isNotEmpty) return configMgId;
-    return _demoSudMgId;
-  }
-
-  void _trimTimeline() {
-    if (_timeline.length > 10) {
-      _timeline.removeRange(10, _timeline.length);
-    }
-  }
-
-  String _formatError(Object error) {
-    if (error is ApiException) return error.message;
-    return error.toString();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final session = _session;
-    final canLoadGame = session?.canLoadNativeGame == true;
-    final nativeStage = canLoadGame
-        ? _SudNativeGameStage(
-            key: ValueKey(
-              '${session!.id}:${session.code}:$_nativeStageRevision'
-              ':${_nativeFullscreen ? 'full' : 'window'}',
-            ),
-            session: session,
-            api: widget.api,
-            isFullscreen: _nativeFullscreen,
-            shouldReportExitOnDispose: () => !_suppressNextNativeDisposeReport,
-            onRefreshCode: _refreshCode,
-            onEvent: _handleNativeEvent,
-          )
-        : null;
-    return Scaffold(
-      backgroundColor: AppColors.page,
-      body: Stack(
-        children: [
-          const _GameBackground(progress: 0.5),
-          CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              SliverToBoxAdapter(child: _playHeader(context)),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-                  child: _GlassPanel(
-                    radius: 24,
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      children: [
-                        SizedBox(
-                          height: 420,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(22),
-                            child: canLoadGame && !_nativeFullscreen
-                                ? Stack(
-                                    fit: StackFit.expand,
-                                    children: [
-                                      nativeStage!,
-                                      Positioned(
-                                        top: 12,
-                                        right: 12,
-                                        child: _NativeStageControl(
-                                          icon: Icons.fullscreen_rounded,
-                                          label: '全屏',
-                                          onPressed: _enterNativeFullscreen,
-                                        ),
-                                      ),
-                                    ],
-                                  )
-                                : _GamePlaceholderStage(game: widget.game),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _playPrimaryActions(canLoadGame: canLoadGame),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(child: _playTimeline()),
-              SliverToBoxAdapter(child: _roundHistorySection()),
-              const SliverToBoxAdapter(child: SizedBox(height: 42)),
-            ],
-          ),
-          if (canLoadGame && _nativeFullscreen)
-            Positioned.fill(
-              child: _FullscreenNativeGameStage(
-                title: widget.game.title,
-                stage: nativeStage!,
-                onMinimize: _exitNativeFullscreen,
-                onClose: () => Navigator.maybePop(context),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _playPrimaryActions({required bool canLoadGame}) {
-    if (_session != null && canLoadGame) {
-      return Row(
-        children: [
-          Expanded(
-            child: _PrimaryGameButton(
-              label: '全屏继续',
-              icon: Icons.fullscreen_rounded,
-              disabled: _starting,
-              onPressed: _enterNativeFullscreen,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _PrimaryGameButton(
-              label: '重新开一局',
-              disabled: _starting,
-              onPressed: _startSession,
-            ),
-          ),
-        ],
-      );
-    }
-    return _PrimaryGameButton(
-      label: _session == null ? '开始游戏' : '重新开一局',
-      loading: _starting,
-      disabled: _starting,
-      onPressed: _startSession,
-    );
-  }
-
-  Widget _playHeader(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        18,
-        MediaQuery.paddingOf(context).top + 12,
-        18,
-        16,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CupertinoButton(
-            padding: EdgeInsets.zero,
-            minimumSize: const Size(38, 38),
-            borderRadius: BorderRadius.circular(19),
-            onPressed: () => Navigator.maybePop(context),
-            child: _GlassButton(
-              size: 38,
-              child: const Icon(CupertinoIcons.chevron_left, size: 17),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            widget.game.title,
-            style: TextStyle(
-              color: AppColors.text,
-              fontSize: 34,
-              height: 1.05,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _session == null
-                ? '和 ${widget.authSession.agentName ?? 'AI'} 开一局'
-                : '${_session!.roomId} · ${_session!.status}',
-            style: TextStyle(
-              color: AppColors.text.withValues(alpha: 0.56),
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 10),
-            Text(
-              _error!,
-              style: const TextStyle(
-                color: Color(0xFFCC3D3D),
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _playTimeline() {
-    if (_timeline.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-      child: _GlassPanel(
-        radius: 22,
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'AI 伴聊',
-              style: TextStyle(
-                color: AppColors.text,
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 12),
-            for (final item in _timeline.take(4))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _TimelineRow(item: item),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _roundHistorySection() {
-    final summaries = _rounds.map(_GameRoundSummary.fromSession).toList();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
-      child: _GlassPanel(
-        radius: 24,
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '游戏回顾',
-                    style: TextStyle(
-                      color: AppColors.text,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                ),
-                if (summaries.isNotEmpty)
-                  _SoftCountPill(text: '${summaries.length} 局'),
-              ],
-            ),
-            const SizedBox(height: 5),
-            Text(
-              '每一局都先收起来，等你想回味的时候再打开。',
-              style: TextStyle(
-                color: AppColors.text.withValues(alpha: 0.50),
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 14),
-            if (_roundsLoading)
-              const SizedBox(
-                height: 72,
-                child: Center(child: CupertinoActivityIndicator()),
-              )
-            else if (_roundsError != null)
-              _GameRoundEmptyState(
-                icon: CupertinoIcons.exclamationmark_triangle,
-                title: '回顾暂时没拉到',
-                subtitle: _roundsError!,
-              )
-            else if (summaries.isEmpty)
-              const _GameRoundEmptyState(
-                icon: CupertinoIcons.sparkles,
-                title: '还没有完成的对局',
-                subtitle: '玩完一局后，这里会留下你和 AI 的小小战绩。',
-              )
-            else
-              Column(
-                children: [
-                  for (final summary in summaries)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _GameRoundCard(
-                        summary: summary,
-                        onTap: () => _showRoundDetail(summary),
-                      ),
-                    ),
-                ],
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showRoundDetail(_GameRoundSummary summary) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      useSafeArea: false,
-      builder: (context) => _GameRoundDetailSheet(summary: summary),
-    );
   }
 }
 
@@ -1402,13 +300,11 @@ class _PrimaryGameButton extends StatelessWidget {
   const _PrimaryGameButton({
     required this.label,
     required this.onPressed,
-    this.icon,
     this.loading = false,
     this.disabled = false,
   });
 
   final String label;
-  final IconData? icon;
   final bool loading;
   final bool disabled;
   final VoidCallback onPressed;
@@ -1434,10 +330,6 @@ class _PrimaryGameButton extends StatelessWidget {
               : Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (icon != null) ...[
-                      Icon(icon, color: Colors.white, size: 19),
-                      const SizedBox(width: 7),
-                    ],
                     Flexible(
                       child: Text(
                         label,
@@ -1458,119 +350,6 @@ class _PrimaryGameButton extends StatelessWidget {
   }
 }
 
-class _FullscreenNativeGameStage extends StatelessWidget {
-  const _FullscreenNativeGameStage({
-    required this.title,
-    required this.stage,
-    required this.onMinimize,
-    required this.onClose,
-  });
-
-  final String title;
-  final Widget stage;
-  final VoidCallback onMinimize;
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: const Color(0xFF05070D),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          stage,
-          Positioned(
-            left: 12,
-            right: 12,
-            top: MediaQuery.paddingOf(context).top + 10,
-            child: Row(
-              children: [
-                Expanded(
-                  child: IgnorePointer(
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.78),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ),
-                _NativeStageControl(
-                  icon: Icons.fullscreen_exit_rounded,
-                  label: '小窗',
-                  onPressed: onMinimize,
-                ),
-                const SizedBox(width: 8),
-                _NativeStageControl(
-                  icon: Icons.close_rounded,
-                  label: '返回',
-                  onPressed: onClose,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NativeStageControl extends StatelessWidget {
-  const _NativeStageControl({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      minimumSize: const Size(0, 0),
-      borderRadius: BorderRadius.circular(18),
-      onPressed: onPressed,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Container(
-            height: 36,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.38),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 18, color: Colors.white),
-                const SizedBox(width: 5),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _GameRoundSummary {
   const _GameRoundSummary({
     required this.session,
@@ -1581,11 +360,13 @@ class _GameRoundSummary {
     required this.playedAt,
     required this.userExtras,
     required this.gomoku,
+    required this.gameKey,
+    required this.gameData,
     required this.aiName,
     required this.roomId,
   });
 
-  final SudSession session;
+  final GameSession session;
   final String outcome;
   final int? userScore;
   final int? aiScore;
@@ -1593,31 +374,48 @@ class _GameRoundSummary {
   final DateTime? playedAt;
   final Map<String, dynamic> userExtras;
   final Map<String, dynamic> gomoku;
+  final String gameKey;
+  final Map<String, dynamic> gameData;
   final String aiName;
   final String roomId;
 
-  static bool canShow(SudSession session) {
+  static bool canShow(GameSession session) {
     return session.result != null &&
         {'settled', 'aborted'}.contains(session.status);
   }
 
-  factory _GameRoundSummary.fromSession(SudSession session) {
+  factory _GameRoundSummary.fromSession(GameSession session) {
     final result = session.result ?? const <String, dynamic>{};
     final user = _asMap(result['user']);
     final ai = _asMap(result['ai']);
     final process = _asMap(result['process']);
     final gomoku = {..._asMap(process['gomoku']), ..._asMap(result['gomoku'])};
+    final gameKey =
+        session.gameKey ?? result['game_key']?.toString() ?? 'gomoku';
+    final storedGame = _asMap(process[gameKey]);
+    final resultGame = _asMap(result[gameKey]);
+    final finalPayload = _asMap(result['final_payload']);
+    final gameSummary = {
+      ...storedGame,
+      ...resultGame,
+      ..._asMap(storedGame['summary']),
+      ..._asMap(resultGame['summary']),
+      ...finalPayload,
+    };
     final outcome = (result['user_outcome'] ?? session.status).toString();
     return _GameRoundSummary(
       session: session,
       outcome: outcome,
-      userScore: _intValue(user['score']),
-      aiScore: _intValue(ai['score']),
+      userScore:
+          _intValue(user['score']) ?? _intValue(gameSummary['user_score']),
+      aiScore: _intValue(ai['score']) ?? _intValue(gameSummary['agent_score']),
       durationSeconds:
           session.durationSeconds ?? _intValue(result['duration_seconds']),
       playedAt: session.endedAt ?? session.startedAt ?? session.createdAt,
       userExtras: _asMap(result['user_extras']),
       gomoku: gomoku,
+      gameKey: gameKey,
+      gameData: gameSummary,
       aiName: session.aiPlayer.nickName.isEmpty
           ? 'AI'
           : session.aiPlayer.nickName,
@@ -1629,9 +427,21 @@ class _GameRoundSummary {
   bool get isLose => outcome == 'lose';
   bool get isAborted => outcome == 'aborted' || session.status == 'aborted';
   bool get isGomoku => gomoku.isNotEmpty;
+  bool get isCooperative => {
+    _nativeMatch3GameKey,
+    _nativeMinesweeperGameKey,
+    _nativeNumberMergeGameKey,
+  }.contains(gameKey);
+
+  int? get actionCount =>
+      _intValue(gameData['move_count']) ??
+      _intValue(gameData['turn_count']) ??
+      _intValue(gameData['action_count']);
 
   String get resultLabel {
     if (isAborted) return '未完成';
+    if (isCooperative && isWin) return '共同过关';
+    if (isCooperative && isLose) return '这次没过';
     if (isWin) return '你赢了';
     if (isLose) return '$aiName 小赢';
     if (outcome == 'draw') return '平局';
@@ -1640,6 +450,8 @@ class _GameRoundSummary {
 
   String get title {
     if (isAborted) return '这局先停在半路';
+    if (isCooperative && isWin) return '这一关你们一起拿下了';
+    if (isCooperative && isLose) return '差一点就一起解开了';
     if (isWin) return '这一局你拿下了';
     if (isLose) return '差一点，节奏已经起来了';
     if (outcome == 'draw') return '谁也没让谁舒服';
@@ -1654,6 +466,8 @@ class _GameRoundSummary {
     if (combo != null) fragments.add(combo);
     final gomokuText = gomokuLine;
     if (gomokuText != null) fragments.add(gomokuText);
+    final genericText = genericLine;
+    if (genericText != null) fragments.add(genericText);
     if (fragments.isEmpty && durationText != null) fragments.add(durationText!);
     return fragments.isEmpty ? '点开看看这一局发生了什么。' : fragments.join(' · ');
   }
@@ -1696,10 +510,45 @@ class _GameRoundSummary {
     return fragments.isEmpty ? null : fragments.join(' · ');
   }
 
+  String? get genericLine {
+    if (isGomoku) return null;
+    if (gameKey == _nativeGoGameKey) {
+      final score = _asMap(gameData['score']);
+      final user = score['user_total'];
+      final agent = score['agent_total'];
+      if (user != null && agent != null) return '数目 $user : $agent';
+    }
+    if (gameKey == _nativeReversiGameKey) {
+      final user = _intValue(gameData['user_count']);
+      final agent = _intValue(gameData['agent_count']);
+      if (user != null && agent != null) return '棋子 $user : $agent';
+    }
+    if (gameKey == _nativeMatch3GameKey) {
+      final total = _intValue(gameData['total_score']);
+      final target = _intValue(gameData['target_score']);
+      if (total != null && target != null) return '$total / $target 分';
+    }
+    if (gameKey == _nativeMinesweeperGameKey) {
+      final revealed = _intValue(gameData['revealed_count']);
+      final safeCells = _intValue(gameData['safe_cell_count']);
+      if (revealed != null && safeCells != null) {
+        return '共同清理 $revealed / $safeCells 格';
+      }
+    }
+    if (gameKey == _nativeNumberMergeGameKey) {
+      final score = _intValue(gameData['score']);
+      final maxTile = _intValue(gameData['max_tile']);
+      if (score != null && maxTile != null) return '$score 分 · 最大 $maxTile';
+    }
+    final count = actionCount;
+    if (count == null || count <= 0) return null;
+    return '$count ${gameKey == _nativeLudoGameKey ? '次移动' : '步'}';
+  }
+
   List<_RoundDetailMetric> get metrics {
     final items = <_RoundDetailMetric>[];
     if (scoreLine != null) {
-      items.add(_RoundDetailMetric('比分', scoreLine!));
+      items.add(_RoundDetailMetric(isCooperative ? '贡献' : '比分', scoreLine!));
     }
     if (durationText != null) {
       items.add(_RoundDetailMetric('时长', durationText!));
@@ -1726,6 +575,7 @@ class _GameRoundSummary {
       items.add(_RoundDetailMetric('房间', roomId));
       return items;
     }
+    _appendNativeGameMetrics(items);
     final perfect = _intValue(userExtras['numPerfect']) ?? 0;
     final good = _intValue(userExtras['numGood']) ?? 0;
     final excellent = _intValue(userExtras['numExcellent']) ?? 0;
@@ -1745,6 +595,171 @@ class _GameRoundSummary {
     }
     items.add(_RoundDetailMetric('房间', roomId));
     return items;
+  }
+
+  void _appendNativeGameMetrics(List<_RoundDetailMetric> items) {
+    final analysis = _asMap(gameData['analysis']);
+    switch (gameKey) {
+      case _nativeReversiGameKey:
+        final count = actionCount;
+        if (count != null) items.add(_RoundDetailMetric('手数', '$count 手'));
+        final user = _intValue(gameData['user_count']);
+        final agent = _intValue(gameData['agent_count']);
+        if (user != null && agent != null) {
+          items.add(_RoundDetailMetric('最终棋子', '你 $user : $agent $aiName'));
+        }
+        final userCorners = _intValue(analysis['user_corner_count']);
+        final agentCorners = _intValue(analysis['agent_corner_count']);
+        if (userCorners != null && agentCorners != null) {
+          items.add(
+            _RoundDetailMetric('角点', '你 $userCorners : $agentCorners $aiName'),
+          );
+        }
+      case _nativeGoGameKey:
+        final count = actionCount;
+        if (count != null) items.add(_RoundDetailMetric('手数', '$count 手'));
+        final score = _asMap(gameData['score']);
+        final user = score['user_total'];
+        final agent = score['agent_total'];
+        if (user != null && agent != null) {
+          items.add(_RoundDetailMetric('最终数目', '你 $user : $agent $aiName'));
+        }
+        final userCaptures = _intValue(gameData['user_captures']);
+        final agentCaptures = _intValue(gameData['agent_captures']);
+        if (userCaptures != null && agentCaptures != null) {
+          items.add(
+            _RoundDetailMetric(
+              '提子',
+              '你 $userCaptures : $agentCaptures $aiName',
+            ),
+          );
+        }
+      case _nativeXiangqiGameKey:
+      case _nativeChessGameKey:
+        final count = actionCount;
+        if (count != null) items.add(_RoundDetailMetric('手数', '$count 手'));
+        final result = gameData['result']?.toString();
+        if (result != null && result.isNotEmpty) {
+          items.add(_RoundDetailMetric('棋局结果', result));
+        }
+        if (analysis['in_check'] == true) {
+          items.add(const _RoundDetailMetric('终局', '将军局面'));
+        }
+      case _nativeChineseCheckersGameKey:
+        final count = actionCount;
+        if (count != null) items.add(_RoundDetailMetric('步数', '$count 步'));
+        final userTarget = _intValue(analysis['user_target_pieces']);
+        final agentTarget = _intValue(analysis['agent_target_pieces']);
+        if (userTarget != null && agentTarget != null) {
+          items.add(
+            _RoundDetailMetric('进营', '你 $userTarget : $agentTarget $aiName'),
+          );
+        }
+      case _nativeLudoGameKey:
+        final rolls = _intValue(gameData['roll_count']);
+        final moves = actionCount;
+        if (rolls != null) items.add(_RoundDetailMetric('掷骰', '$rolls 次'));
+        if (moves != null) items.add(_RoundDetailMetric('移动', '$moves 次'));
+        final userFinished = _intValue(analysis['user_finished']);
+        final agentFinished = _intValue(analysis['agent_finished']);
+        if (userFinished != null && agentFinished != null) {
+          items.add(
+            _RoundDetailMetric(
+              '到达终点',
+              '你 $userFinished : $agentFinished $aiName',
+            ),
+          );
+        }
+        final ludoMoments = gameData['key_moments'];
+        if (ludoMoments is List) {
+          final shortcuts = ludoMoments
+              .whereType<Map>()
+              .where((item) => item['type'] == 'flight_shortcut')
+              .length;
+          final jumps = ludoMoments
+              .whereType<Map>()
+              .where((item) => item['type'] == 'color_jump')
+              .length;
+          final captures = ludoMoments
+              .whereType<Map>()
+              .where((item) => item['type'] == 'capture')
+              .length;
+          if (shortcuts + jumps > 0) {
+            items.add(
+              _RoundDetailMetric('飞行路线', '$shortcuts 次捷径 · $jumps 次连跳'),
+            );
+          }
+          if (captures > 0) {
+            items.add(_RoundDetailMetric('撞回', '$captures 次'));
+          }
+        }
+      case _nativeMatch3GameKey:
+        final total = _intValue(gameData['total_score']);
+        final target = _intValue(gameData['target_score']);
+        final turns = actionCount;
+        if (total != null && target != null) {
+          items.add(_RoundDetailMetric('合作进度', '$total / $target'));
+        }
+        if (turns != null) items.add(_RoundDetailMetric('交换', '$turns 次'));
+        final specialCount = _intValue(analysis['special_count']);
+        if (specialCount != null) {
+          items.add(_RoundDetailMetric('终局特殊块', '$specialCount 个'));
+        }
+      case _nativeMinesweeperGameKey:
+        final actions = actionCount;
+        if (actions != null) {
+          items.add(_RoundDetailMetric('共同操作', '$actions 步'));
+        }
+        final revealed = _intValue(gameData['revealed_count']);
+        final safeCells = _intValue(gameData['safe_cell_count']);
+        if (revealed != null && safeCells != null) {
+          items.add(_RoundDetailMetric('清理进度', '$revealed / $safeCells'));
+        }
+        final deductions = _intValue(gameData['deductions']);
+        final guesses = _intValue(gameData['guesses']);
+        if (deductions != null || guesses != null) {
+          items.add(
+            _RoundDetailMetric(
+              '推理方式',
+              '${deductions ?? 0} 次确定 · ${guesses ?? 0} 次试探',
+            ),
+          );
+        }
+        final largestReveal = _intValue(gameData['largest_reveal']);
+        if (largestReveal != null && largestReveal > 0) {
+          items.add(_RoundDetailMetric('最大连开', '$largestReveal 格'));
+        }
+      case _nativeNumberMergeGameKey:
+        final moves = actionCount;
+        if (moves != null) {
+          items.add(_RoundDetailMetric('共同滑动', '$moves 次'));
+        }
+        final score = _intValue(gameData['score']);
+        final maxTile = _intValue(gameData['max_tile']);
+        if (score != null) items.add(_RoundDetailMetric('共同得分', '$score'));
+        if (maxTile != null) items.add(_RoundDetailMetric('最大数字', '$maxTile'));
+        final userScore = _intValue(gameData['user_score']);
+        final agentScore = _intValue(gameData['agent_score']);
+        if (userScore != null && agentScore != null) {
+          items.add(
+            _RoundDetailMetric('合并贡献', '你 $userScore : $agentScore $aiName'),
+          );
+        }
+        final totalMerges = _intValue(gameData['total_merges']);
+        final bestCombo = _intValue(gameData['best_combo']);
+        if (totalMerges != null) {
+          items.add(
+            _RoundDetailMetric(
+              '合并表现',
+              '$totalMerges 次合并 · 单步最多 ${bestCombo ?? 0} 次',
+            ),
+          );
+        }
+    }
+    final moments = gameData['key_moments'];
+    if (moments is List && moments.isNotEmpty) {
+      items.add(_RoundDetailMetric('关键节点', '${moments.length} 个'));
+    }
   }
 
   Color get accent {
@@ -2213,10 +1228,8 @@ Map<String, dynamic> _roundDebugData(_GameRoundSummary summary) {
     'session': {
       'id': session.id,
       'room_id': session.roomId,
-      'mg_id': session.mgId,
       'status': session.status,
-      'play_mode': session.playMode.name,
-      'difficulty': session.difficulty.name,
+      'difficulty': session.difficulty,
       'ai_level': session.aiLevel,
       'duration_seconds': summary.durationSeconds,
       'started_at': session.startedAt?.toIso8601String(),
@@ -2275,369 +1288,6 @@ String? _gomokuDirectionLabel(String? direction) {
       return '斜线收官';
     default:
       return null;
-  }
-}
-
-class _SudNativeGameStage extends StatefulWidget {
-  const _SudNativeGameStage({
-    super.key,
-    required this.session,
-    required this.api,
-    required this.isFullscreen,
-    required this.shouldReportExitOnDispose,
-    required this.onRefreshCode,
-    required this.onEvent,
-  });
-
-  final SudSession session;
-  final CompanionApi api;
-  final bool isFullscreen;
-  final bool Function() shouldReportExitOnDispose;
-  final Future<SudSession?> Function() onRefreshCode;
-  final Future<void> Function({
-    required String eventType,
-    String? state,
-    Map<String, dynamic> payload,
-  })
-  onEvent;
-
-  @override
-  State<_SudNativeGameStage> createState() => _SudNativeGameStageState();
-}
-
-class _SudNativeGameStageState extends State<_SudNativeGameStage>
-    with WidgetsBindingObserver {
-  final GlobalKey _viewKey = GlobalKey();
-  late final SudGIPFSMGameDelegate _fsmGame;
-  Widget? _platformView;
-  int? _platformViewId;
-  String? _loadedSessionKey;
-  String? _status;
-  bool _entryStateSynced = false;
-  bool _exitReported = false;
-  bool _nativeGameStarted = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _fsmGame = SudGIPFSMGameDelegate(
-      onGameLoadingProgress: (stage, retCode, progress) {
-        final code = (retCode as num?)?.round() ?? 0;
-        if (code != 0) {
-          final message = '加载失败 $code · $stage';
-          if (mounted) setState(() => _status = message);
-          widget.onEvent(
-            eventType: 'game_load_failed',
-            payload: {'stage': stage, 'ret_code': code, 'progress': progress},
-          );
-          return;
-        }
-        if (mounted) setState(() => _status = '加载中 $progress%');
-      },
-      onGameStarted: () {
-        _nativeGameStarted = true;
-        if (mounted) setState(() => _status = '游戏已启动');
-        unawaited(_syncEntryStateToGame());
-        widget.onEvent(
-          eventType: 'game_started',
-          payload: {'gameState': 'playing'},
-        );
-      },
-      onGameDestroyed: () {
-        if (mounted) setState(() => _status = '游戏已销毁');
-        unawaited(_reportGameExit('destroyed', eventType: 'game_destroyed'));
-      },
-      onExpireCode: (_) async {
-        final refreshed = await widget.onRefreshCode();
-        final viewId = _platformViewId;
-        if (refreshed != null && viewId != null) {
-          await SudGipPlugin.updateCode(viewId, refreshed.code);
-        }
-      },
-      onGameStateChange: (state, dataJson) {
-        final payload = _decodeJson(dataJson);
-        widget.onEvent(
-          eventType: _eventTypeForSudState(state),
-          state: state,
-          payload: payload,
-        );
-      },
-      onPlayerStateChange: (userId, state, dataJson) {
-        widget.onEvent(
-          eventType: 'sud_player_state',
-          state: state,
-          payload: {'uid': userId, ..._decodeJson(dataJson)},
-        );
-      },
-    );
-    _platformView = getSudGIPPlatformView((viewId) {
-      _platformViewId = viewId;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadGame());
-    });
-  }
-
-  @override
-  void didUpdateWidget(covariant _SudNativeGameStage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.session.id != widget.session.id ||
-        oldWidget.session.code != widget.session.code) {
-      _entryStateSynced = false;
-      _nativeGameStarted = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadGame());
-    }
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    if (widget.shouldReportExitOnDispose()) {
-      unawaited(_reportGameExit('page_disposed'));
-    }
-    final viewId = _platformViewId;
-    if (viewId != null) {
-      SudGipPlugin.removeFSMGame(viewId);
-      SudGipPlugin.destroyGame(viewId);
-      SudGipPlugin.dispose(viewId);
-    }
-    super.dispose();
-  }
-
-  Future<void> _reportGameExit(
-    String reason, {
-    String eventType = 'game_exited',
-  }) async {
-    if (_exitReported) return;
-    if (!_nativeGameStarted && eventType != 'game_destroyed') return;
-    _exitReported = true;
-    await widget.onEvent(
-      eventType: eventType,
-      payload: {'reason': reason, 'gameState': 'aborted'},
-    );
-  }
-
-  Future<void> _loadGame() async {
-    final viewId = _platformViewId;
-    if (viewId == null || !mounted) return;
-    final session = widget.session;
-    final sessionKey = '${session.id}:${session.code}';
-    if (_loadedSessionKey == sessionKey) return;
-    _loadedSessionKey = sessionKey;
-    setState(() => _status = '初始化 SudGIP');
-    try {
-      final initResult = await SudGipPlugin.initSDKWithEnv(
-        session.appId,
-        session.appKey,
-        session.userId,
-        session.isTestEnv,
-      );
-      if ((initResult['retCode'] as num?)?.round() != 0) {
-        setState(() => _status = 'SDK 初始化失败 ${initResult['retMsg'] ?? ''}');
-        return;
-      }
-      await SudGipCfgPlugin.setShowCustomLoading(true);
-      SudGipPlugin.setFSMGame(viewId, _fsmGame);
-      final loadResult = await SudGipPlugin.loadGame(
-        viewId,
-        session.userId,
-        session.roomId,
-        session.code,
-        session.mgId,
-        'zh-CN',
-        _gameViewInfoJson(),
-        _gameConfigJson(),
-      );
-      if (!mounted) return;
-      final retCode = (loadResult['retCode'] as num?)?.round() ?? -1;
-      setState(() {
-        _status = retCode == 0
-            ? '正在进入游戏'
-            : '加载失败 ${loadResult['retMsg'] ?? retCode}';
-      });
-      if (retCode == 0) {
-        widget.onEvent(eventType: 'sdk_ready', payload: {'view_id': viewId});
-      }
-    } catch (error) {
-      if (mounted) setState(() => _status = '原生游戏加载异常：$error');
-    }
-  }
-
-  Future<void> _syncEntryStateToGame() async {
-    final viewId = _platformViewId;
-    if (viewId == null || _entryStateSynced) return;
-    _entryStateSynced = true;
-    final session = widget.session;
-    try {
-      await _notifyGameState('app_common_self_in', {
-        'isIn': true,
-        'seatIndex': 0,
-        'isSeatRandom': false,
-        'isRandom': false,
-        'teamId': 1,
-      });
-      final gameSetting = _gameSettingSelectInfo(session);
-      if (gameSetting != null) {
-        await _notifyGameState(
-          'app_common_game_setting_select_info',
-          gameSetting,
-        );
-      }
-      await _notifyGameState('app_common_self_ready', {'isReady': true});
-      await _notifyGameState('app_common_self_captain', {
-        'curCaptainUID': session.userId,
-      });
-      await _notifyGameState('app_common_game_add_ai_players', {
-        'aiPlayers': [
-          {
-            'userId': session.aiPlayer.uid,
-            'avatar': session.aiPlayer.avatarUrl,
-            'name': session.aiPlayer.nickName,
-            'gender': session.aiPlayer.gender.isEmpty
-                ? 'male'
-                : session.aiPlayer.gender,
-            'level': session.aiPlayer.aiLevel,
-          },
-        ],
-        'isReady': 1,
-      });
-      if (!mounted) return;
-      setState(() => _status = '真人和 AI 已准备');
-      widget.onEvent(
-        eventType: 'sud_entry_synced',
-        payload: {
-          'view_id': viewId,
-          'user_id': session.userId,
-          'ai_user_id': session.aiPlayer.uid,
-        },
-      );
-    } catch (error) {
-      _entryStateSynced = false;
-      if (mounted) setState(() => _status = '入座/准备同步失败：$error');
-    }
-  }
-
-  Map<String, dynamic>? _gameSettingSelectInfo(SudSession session) {
-    if (session.mgId == _monsterCrushSudMgId) {
-      return {
-        'MonsterCrush': {
-          'mode_ex': session.playMode == SudGamePlayMode.cooperate ? 2 : 1,
-        },
-      };
-    }
-    return null;
-  }
-
-  Future<void> _notifyGameState(
-    String state,
-    Map<String, dynamic> payload,
-  ) async {
-    final viewId = _platformViewId;
-    if (viewId == null) return;
-    final result = await SudGipPlugin.notifyStateChange(
-      viewId,
-      state,
-      jsonEncode(payload),
-    );
-    final retCode = (result['retCode'] as num?)?.round() ?? -1;
-    if (retCode != 0) {
-      throw StateError('$state ${result['retMsg'] ?? retCode}');
-    }
-  }
-
-  String _gameViewInfoJson() {
-    final box = _viewKey.currentContext?.findRenderObject() as RenderBox?;
-    final size = box?.size ?? const Size(1, 1);
-    final ratio = MediaQuery.devicePixelRatioOf(context);
-    final topInset = widget.isFullscreen
-        ? math.min(96.0, MediaQuery.paddingOf(context).top + 48)
-        : 0.0;
-    final bottomInset = widget.isFullscreen
-        ? math.min(96.0, MediaQuery.paddingOf(context).bottom + 44)
-        : 0.0;
-    return jsonEncode({
-      'ret_code': 0,
-      'ret_msg': 'success',
-      'view_size': {
-        'width': (size.width * ratio).ceil(),
-        'height': (size.height * ratio).ceil(),
-      },
-      'view_game_rect': {
-        'left': 0,
-        'top': (topInset * ratio).ceil(),
-        'right': 0,
-        'bottom': (bottomInset * ratio).ceil(),
-      },
-    });
-  }
-
-  String _gameConfigJson() {
-    return jsonEncode({
-      'gameMode': 1,
-      'gameCPU': 0,
-      'gameSoundControl': 0,
-      'gameSoundVolume': 100,
-      'viewScale': 1.0,
-      'autoScale': 0,
-      'ui': {
-        'ping': {'hide': false},
-        'share_btn': {'hide': true},
-        'game_bg': {'hide': false},
-      },
-    });
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    final viewId = _platformViewId;
-    if (viewId == null) return;
-    if (state == AppLifecycleState.paused) {
-      SudGipPlugin.pauseGame(viewId);
-    } else if (state == AppLifecycleState.resumed) {
-      SudGipPlugin.playGame(viewId);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      key: _viewKey,
-      fit: StackFit.expand,
-      children: [
-        ColoredBox(color: const Color(0xFF111827), child: _platformView),
-        Positioned(
-          left: 14,
-          top: 14,
-          child: _NativeBadge(text: _status ?? 'SudGIP PlatformView'),
-        ),
-      ],
-    );
-  }
-
-  Map<String, dynamic> _decodeJson(String value) {
-    if (value.isEmpty) return const {};
-    try {
-      final decoded = jsonDecode(value);
-      return decoded is Map ? Map<String, dynamic>.from(decoded) : const {};
-    } catch (_) {
-      return {'raw': value};
-    }
-  }
-
-  String _eventTypeForSudState(String state) {
-    final lower = state.toLowerCase();
-    if (lower.contains('settle')) return 'game_settle';
-    if (lower.contains('move') ||
-        lower.contains('chess') ||
-        lower.contains('stone')) {
-      return 'move';
-    }
-    if (lower.contains('player_scores')) return 'game_player_scores';
-    if (lower.contains('ranking')) return 'game_ranking';
-    if (lower.contains('game_info')) return 'game_process_info';
-    if (lower.contains('ai_message')) return 'sud_ai_message';
-    if (lower.contains('start')) return 'game_started';
-    if (lower.contains('game_state')) return 'sud_game_state';
-    return 'sud_$state';
   }
 }
 
@@ -2770,271 +1420,6 @@ class _MetricCard extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SegmentButton extends StatelessWidget {
-  const _SegmentButton({
-    required this.selected,
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final bool selected;
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      borderRadius: BorderRadius.circular(14),
-      onPressed: onTap,
-      child: Container(
-        height: 42,
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.accent
-              : AppColors.subtleFill(context, light: 0.58),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: selected
-                ? AppColors.accent.withValues(alpha: 0.36)
-                : AppColors.glassBorder(context),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 17,
-              color: selected
-                  ? Colors.white
-                  : (isDark ? const Color(0xFFEAF2F8) : AppColors.text),
-            ),
-            const SizedBox(width: 7),
-            Text(
-              label,
-              style: TextStyle(
-                color: selected ? Colors.white : AppColors.text,
-                fontSize: 13,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DifficultyRow extends StatelessWidget {
-  const _DifficultyRow({
-    required this.difficulty,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final SudGameDifficulty difficulty;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      borderRadius: BorderRadius.circular(14),
-      onPressed: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.elevatedSurface(context, light: 0.76)
-              : AppColors.subtleFill(context, light: 0.46),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.glassBorder(context)),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              selected
-                  ? CupertinoIcons.largecircle_fill_circle
-                  : CupertinoIcons.circle,
-              color: selected
-                  ? AppColors.accent
-                  : AppColors.text.withValues(alpha: 0.32),
-              size: 16,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    difficulty.title,
-                    style: TextStyle(
-                      color: AppColors.text,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    difficulty.subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: AppColors.text.withValues(alpha: 0.54),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LocalGameStage extends StatelessWidget {
-  const _LocalGameStage({
-    required this.group,
-    required this.tile,
-    required this.marks,
-    required this.session,
-  });
-
-  final _GameGroup group;
-  final _GameTile tile;
-  final List<String> marks;
-  final SudSession? session;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: group.accent,
-        image: DecorationImage(
-          image: AssetImage(group.hero),
-          fit: BoxFit.cover,
-          opacity: 0.30,
-        ),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.black.withValues(alpha: 0.08),
-              Colors.black.withValues(alpha: 0.52),
-            ],
-          ),
-        ),
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        tile.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        session?.status ?? '本地游戏壳',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.72),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                _NativeBadge(
-                  text: session?.code.isNotEmpty == true
-                      ? 'code ready'
-                      : 'waiting',
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: GridView.count(
-                padding: EdgeInsets.zero,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 3,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-                children: [
-                  for (var i = 0; i < 9; i += 1)
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.20),
-                        ),
-                      ),
-                      child: Center(
-                        child: Text(
-                          i < marks.length ? marks[i] : '',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 30,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Text(
-                  session?.roomId ?? 'no room',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.76),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  session?.mgId ??
-                      (tile.mgId.isEmpty ? _demoSudMgId : tile.mgId),
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.76),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -3611,17 +1996,10 @@ class _TimelineRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = switch (item.role) {
-      _TimelineRole.system => AppColors.accent,
-      _TimelineRole.user => const Color(0xFFFF7A3D),
-      _TimelineRole.ai => const Color(0xFF22A06B),
-    };
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(
-          alpha: item.role == _TimelineRole.ai ? 0.70 : 0.48,
-        ),
+        color: Colors.white.withValues(alpha: 0.70),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -3631,7 +2009,10 @@ class _TimelineRow extends StatelessWidget {
             width: 10,
             height: 10,
             margin: const EdgeInsets.only(top: 5),
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            decoration: const BoxDecoration(
+              color: Color(0xFF22A06B),
+              shape: BoxShape.circle,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -3732,70 +2113,14 @@ BoxDecoration _glassDecoration(double radius) {
   );
 }
 
-enum _TimelineRole { system, user, ai }
-
 class _GameTimelineItem {
-  const _GameTimelineItem(this.role, this.title, this.detail);
-
-  factory _GameTimelineItem.system(String title, String detail) =>
-      _GameTimelineItem(_TimelineRole.system, title, detail);
-
-  factory _GameTimelineItem.user(String title, String detail) =>
-      _GameTimelineItem(_TimelineRole.user, title, detail);
+  const _GameTimelineItem(this.title, this.detail);
 
   factory _GameTimelineItem.ai(String title, String detail) =>
-      _GameTimelineItem(_TimelineRole.ai, title, detail);
+      _GameTimelineItem(title, detail);
 
-  final _TimelineRole role;
   final String title;
   final String detail;
-}
-
-enum _GameDemoEvent {
-  gameStarted('开局', '向后端发送 game_started', 'game_started', null, 0, 0),
-  move('落子', '向后端发送 move，并更新本地棋盘', 'move', null, 0, 0),
-  levelSuccess('闯关成功', '向后端发送 level_success', 'level_success', null, 0, 0),
-  levelFailed('闯关失败', '向后端发送 level_failed', 'level_failed', null, 0, 0),
-  gameSettleWin(
-    '结算·用户胜',
-    '向后端发送 game_settle，用户结果为胜',
-    'game_settle',
-    'mg_common_game_settle',
-    2,
-    1,
-  ),
-  gameSettleLose(
-    '结算·AI 胜',
-    '向后端发送 game_settle，用户结果为负',
-    'game_settle',
-    'mg_common_game_settle',
-    1,
-    2,
-  ),
-  gameSettleDraw(
-    '结算·平局',
-    '向后端发送 game_settle，用户结果为平',
-    'game_settle',
-    'mg_common_game_settle',
-    3,
-    3,
-  );
-
-  const _GameDemoEvent(
-    this.label,
-    this.detail,
-    this.eventType,
-    this.state,
-    this.userOutcomeValue,
-    this.aiOutcomeValue,
-  );
-
-  final String label;
-  final String detail;
-  final String eventType;
-  final String? state;
-  final int userOutcomeValue;
-  final int aiOutcomeValue;
 }
 
 class _GameGroup {
@@ -3827,20 +2152,27 @@ class _GameTile {
     required this.title,
     required this.note,
     required this.image,
-    required this.mgId,
+    this.nativeGameKey = '',
   });
 
   final String title;
   final String note;
   final String image;
-  final String mgId;
+  final String nativeGameKey;
 
-  bool get isOnline => mgId.isNotEmpty;
+  bool get isOnline => nativeGameKey.isNotEmpty;
 }
 
-const _gomokuSudMgId = '1676069429630722049';
-const _monsterCrushSudMgId = '1664525565526667266';
-const _demoSudMgId = _gomokuSudMgId;
+const _nativeGoGameKey = 'go';
+const _nativeReversiGameKey = 'reversi';
+const _nativeGomokuGameKey = 'gomoku';
+const _nativeXiangqiGameKey = 'xiangqi';
+const _nativeChessGameKey = 'chess';
+const _nativeChineseCheckersGameKey = 'chinese_checkers';
+const _nativeLudoGameKey = 'ludo';
+const _nativeMatch3GameKey = 'match3';
+const _nativeMinesweeperGameKey = 'minesweeper';
+const _nativeNumberMergeGameKey = 'number_merge';
 
 const _gameGroupCatalog = [
   _GameGroup(
@@ -3848,34 +2180,52 @@ const _gameGroupCatalog = [
     kicker: 'slow strategy',
     title: '棋牌游戏',
     badge: '静心对弈',
-    metric: '4 款棋类',
+    metric: '7 款棋类',
     hero: 'assets/prototype/games/category-board-hero.jpg',
     accent: Color(0xFF1F6FFF),
     description: '从安静落子开始，不急着赢，只把这一局慢慢下完。',
     games: [
       _GameTile(
+        title: '黑白棋',
+        note: '抢角、迫停，翻一盘短局。',
+        image: 'assets/prototype/games/reversi-native.jpg',
+        nativeGameKey: _nativeReversiGameKey,
+      ),
+      _GameTile(
         title: '围棋',
-        note: '黑白落子，适合慢慢想。',
+        note: '九路快棋，提子数目都算清。',
         image: 'assets/prototype/games/go-conquest.jpg',
-        mgId: '',
+        nativeGameKey: _nativeGoGameKey,
       ),
       _GameTile(
         title: '五子棋',
         note: '五子连线，几分钟开局。',
         image: 'assets/prototype/games/gomoku-lets-go.jpg',
-        mgId: _gomokuSudMgId,
+        nativeGameKey: _nativeGomokuGameKey,
       ),
       _GameTile(
         title: '象棋',
         note: '攻守推进，一边聊一边下。',
         image: 'assets/prototype/games/chinese-chess.jpg',
-        mgId: '',
+        nativeGameKey: _nativeXiangqiGameKey,
       ),
       _GameTile(
         title: '国际象棋',
         note: '节奏更锋利的策略局。',
         image: 'assets/prototype/games/chess-ultra.jpg',
-        mgId: '',
+        nativeGameKey: _nativeChessGameKey,
+      ),
+      _GameTile(
+        title: '跳棋',
+        note: '连续跳跃，把棋子送进对面的星角。',
+        image: 'assets/prototype/games/chinese-checkers-native.jpg',
+        nativeGameKey: _nativeChineseCheckersGameKey,
+      ),
+      _GameTile(
+        title: '飞行棋',
+        note: '掷骰起飞，绕场竞速也会互相撞回。',
+        image: 'assets/prototype/games/ludo-native.jpg',
+        nativeGameKey: _nativeLudoGameKey,
       ),
     ],
   ),
@@ -3884,34 +2234,42 @@ const _gameGroupCatalog = [
     kicker: 'co-op room',
     title: '双人同行',
     badge: '一起过关',
-    metric: '4 个搭档局',
+    metric: '6 个搭档局',
     hero: 'assets/prototype/games/category-coop-hero.jpg',
     accent: Color(0xFFFF7A3D),
     description: '需要一点配合，也允许一点手忙脚乱，笑出来就算赢。',
     games: [
       _GameTile(
+        title: '协作扫雷',
+        note: '一起推理，别踩到那颗雷。',
+        image: 'assets/prototype/games/minesweeper-native.jpg',
+        nativeGameKey: _nativeMinesweeperGameKey,
+      ),
+      _GameTile(
+        title: '数字合并',
+        note: '轮流滑动，把小数字慢慢养大。',
+        image: 'assets/prototype/games/number-merge-native.jpg',
+        nativeGameKey: _nativeNumberMergeGameKey,
+      ),
+      _GameTile(
         title: '双人厨房',
         note: '分工备餐，别把锅烧糊。',
         image: 'assets/prototype/games/overcooked-2.jpg',
-        mgId: '',
       ),
       _GameTile(
         title: '乒乓大战',
         note: '短回合接球，节奏很轻。',
         image: 'assets/prototype/games/eleven-table-tennis.jpg',
-        mgId: '',
       ),
       _GameTile(
         title: '经典台球',
         note: '瞄准、撞球、慢慢收杆。',
         image: 'assets/prototype/games/pure-pool.jpg',
-        mgId: '',
       ),
       _GameTile(
         title: '异界冒险',
         note: '两个人一起探索下一格。',
         image: 'assets/prototype/games/it-takes-two.jpg',
-        mgId: '',
       ),
     ],
   ),
@@ -3929,25 +2287,22 @@ const _gameGroupCatalog = [
         title: '怪物消消乐',
         note: '连消攒分，过程数据更适合伴聊。',
         image: 'assets/prototype/games/monster-crush.png',
-        mgId: _monsterCrushSudMgId,
+        nativeGameKey: _nativeMatch3GameKey,
       ),
       _GameTile(
         title: '拳皇',
         note: '街机感对战，出招要快。',
         image: 'assets/prototype/games/kof-xv.jpg',
-        mgId: '',
       ),
       _GameTile(
         title: '合金弹头',
         note: '横版闯关，火力一起开。',
         image: 'assets/prototype/games/metal-slug-tactics.jpg',
-        mgId: '',
       ),
       _GameTile(
         title: '赛车竞速',
         note: '弯道超车，追一点风。',
         image: 'assets/prototype/games/forza-horizon-5.jpg',
-        mgId: '',
       ),
     ],
   ),
@@ -3965,25 +2320,21 @@ const _gameGroupCatalog = [
         title: '像素世界',
         note: '小地图里搭一个角落。',
         image: 'assets/prototype/games/terraria.jpg',
-        mgId: '',
       ),
       _GameTile(
         title: '冒险王',
         note: '向前一格，就有新发现。',
         image: 'assets/prototype/games/adventurequest-3d.jpg',
-        mgId: '',
       ),
       _GameTile(
         title: '解忧时光',
         note: '收集温柔物件，整理心情。',
         image: 'assets/prototype/games/cozy-grove.jpg',
-        mgId: '',
       ),
       _GameTile(
         title: '密室寻宝',
         note: '找线索，开最后一扇门。',
         image: 'assets/prototype/games/escape-simulator.jpg',
-        mgId: '',
       ),
     ],
   ),

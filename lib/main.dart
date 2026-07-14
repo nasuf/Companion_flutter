@@ -11,7 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:flutter/services.dart' as services;
+import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:fluwx/fluwx.dart';
@@ -20,7 +20,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
-import 'package:sud_gip_plugin/sud_gip_plugin.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -31,6 +30,16 @@ import 'companion_api.dart';
 import 'models.dart';
 import 'offline_models.dart';
 import 'src/services/client_info.dart';
+import 'src/games/chess_family_engine.dart';
+import 'src/games/chinese_checkers_engine.dart';
+import 'src/games/gomoku_engine.dart';
+import 'src/games/go_engine.dart';
+import 'src/games/ludo_engine.dart';
+import 'src/games/match3_engine.dart';
+import 'src/games/minesweeper_engine.dart';
+import 'src/games/native_game_event_outbox.dart';
+import 'src/games/number_merge_engine.dart';
+import 'src/games/reversi_engine.dart';
 
 part 'src/app/auth_gate.dart';
 part 'src/app/auth_session_store.dart';
@@ -54,6 +63,14 @@ part 'src/screens/daily_share_page.dart';
 part 'src/screens/daily_share_preview.dart';
 part 'src/screens/daily_share_widgets.dart';
 part 'src/screens/game_page.dart';
+part 'src/screens/gomoku_game_page.dart';
+part 'src/screens/go_game_page.dart';
+part 'src/screens/chess_family_game_page.dart';
+part 'src/screens/native_casual_game_pages.dart';
+part 'src/screens/native_game_runtime.dart';
+part 'src/screens/minesweeper_game_page.dart';
+part 'src/screens/number_merge_game_page.dart';
+part 'src/screens/reversi_game_page.dart';
 part 'src/screens/last_will_page.dart';
 part 'src/screens/login_page.dart';
 part 'src/screens/main_shell.dart';
@@ -168,7 +185,7 @@ class _CompanionAppState extends State<CompanionApp>
         AppColors.use(brightness);
         return AppThemeScope(
           controller: appThemeController,
-          child: AnnotatedRegion<services.SystemUiOverlayStyle>(
+          child: AnnotatedRegion<SystemUiOverlayStyle>(
             value: AppTheme.systemOverlayStyle(brightness),
             child: MaterialApp(
               debugShowCheckedModeBanner: false,
@@ -364,12 +381,10 @@ class AppTheme {
     );
   }
 
-  static services.SystemUiOverlayStyle systemOverlayStyle(
-    Brightness brightness,
-  ) {
+  static SystemUiOverlayStyle systemOverlayStyle(Brightness brightness) {
     final colors = AppColors.paletteFor(brightness);
     final darkIcons = brightness == Brightness.light;
-    return services.SystemUiOverlayStyle(
+    return SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       systemNavigationBarColor: colors.page,
       systemNavigationBarDividerColor: colors.hairline,

@@ -6,9 +6,7 @@ class ChinaRegions {
   static Future<ChinaRegionData> load() async {
     final cached = _cached;
     if (cached != null) return cached;
-    final raw = await services.rootBundle.loadString(
-      'assets/data/china_regions.json',
-    );
+    final raw = await rootBundle.loadString('assets/data/china_regions.json');
     final decoded = jsonDecode(raw) as Map<String, dynamic>;
     final regionMap = decoded['regions'] as Map<String, dynamic>;
     final data = ChinaRegionData(

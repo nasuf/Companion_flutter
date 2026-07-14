@@ -290,8 +290,9 @@ class CompanionApi {
     if (platform != null) body['platform'] = platform;
     if (osVersion != null) body['os_version'] = osVersion;
     if (appVersion != null) body['app_version'] = appVersion;
-    final json = await _request('POST', '/auth/register', body: body)
-        as Map<String, dynamic>;
+    final json =
+        await _request('POST', '/auth/register', body: body)
+            as Map<String, dynamic>;
     final session = _normalizeAuthSession(AuthSession.fromJson(json));
     authToken = session.token;
     return session;
@@ -306,8 +307,9 @@ class CompanionApi {
     final body = <String, dynamic>{'code': code, 'platform': platform};
     if (osVersion != null) body['os_version'] = osVersion;
     if (appVersion != null) body['app_version'] = appVersion;
-    final json = await _request('POST', '/auth/wechat/mobile', body: body)
-        as Map<String, dynamic>;
+    final json =
+        await _request('POST', '/auth/wechat/mobile', body: body)
+            as Map<String, dynamic>;
     final session = _normalizeAuthSession(AuthSession.fromJson(json));
     authToken = session.token;
     return session;
@@ -752,73 +754,63 @@ class CompanionApi {
     return DailyShareLinksResponse.fromJson(json);
   }
 
-  Future<SudConfigResponse> getSudConfig() async {
+  Future<List<GameSession>> listNativeGameSessions({
+    String? gameKey,
+    int limit = 50,
+  }) async {
+    final query = <String, String>{'limit': '$limit'};
+    if (gameKey != null && gameKey.isNotEmpty) query['game_key'] = gameKey;
+    final suffix = Uri(queryParameters: query).query;
     final json =
-        await _request('GET', '/games/sud/config') as Map<String, dynamic>;
-    return SudConfigResponse.fromJson(json);
-  }
-
-  Future<List<SudSession>> listSudSessions() async {
-    final json = await _request('GET', '/games/sud/sessions') as List;
+        await _request('GET', '/games/native/sessions?$suffix') as List;
     return json
-        .map((item) => SudSession.fromJson(item as Map<String, dynamic>))
+        .map((item) => GameSession.fromJson(item as Map<String, dynamic>))
         .toList();
   }
 
-  Future<SudSession> createSudSession({
+  Future<GameSession> createNativeGameSession({
     required String agentId,
+    required String gameKey,
     String? workspaceId,
     String? conversationId,
-    String? mgId,
-    String? roomId,
-    required SudGamePlayMode playMode,
-    required SudGameDifficulty difficulty,
   }) async {
     final json =
         await _request(
               'POST',
-              '/games/sud/sessions',
+              '/games/native/sessions',
               body: {
                 'agent_id': agentId,
                 'workspace_id': workspaceId,
                 'conversation_id': conversationId,
-                'mg_id': mgId,
-                'room_id': roomId,
-                'play_mode': playMode.name,
-                'difficulty': difficulty.name,
+                'game_key': gameKey,
               },
             )
             as Map<String, dynamic>;
-    return SudSession.fromJson(json);
+    return GameSession.fromJson(json);
   }
 
-  Future<SudSession> refreshSudSessionCode(String sessionId) async {
-    final json =
-        await _request('POST', '/games/sud/sessions/$sessionId/code')
-            as Map<String, dynamic>;
-    return SudSession.fromJson(json);
-  }
-
-  Future<SudGameEventResponse> sendSudGameEvent({
+  Future<GameEventResponse> sendNativeGameEvent({
     required String sessionId,
     required String eventType,
     String? state,
     Map<String, dynamic> payload = const {},
     String source = 'client',
+    String? clientEventId,
   }) async {
     final json =
         await _request(
               'POST',
-              '/games/sud/sessions/$sessionId/events',
+              '/games/native/sessions/$sessionId/events',
               body: {
                 'event_type': eventType,
                 'state': state,
                 'payload': payload,
                 'source': source,
+                'client_event_id': clientEventId,
               },
             )
             as Map<String, dynamic>;
-    return SudGameEventResponse.fromJson(json);
+    return GameEventResponse.fromJson(json);
   }
 
   Future<MusicTracksResponse> listMusicTracks({

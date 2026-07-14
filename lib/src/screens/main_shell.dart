@@ -3569,7 +3569,7 @@ class _LegalDocumentPage extends StatefulWidget {
 }
 
 class _LegalDocumentPageState extends State<_LegalDocumentPage> {
-  late final Future<String> _textFuture = services.rootBundle.loadString(
+  late final Future<String> _textFuture = rootBundle.loadString(
     widget.assetPath,
   );
 

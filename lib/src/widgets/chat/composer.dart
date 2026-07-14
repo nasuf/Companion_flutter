@@ -210,9 +210,7 @@ class _Composer extends StatelessWidget {
   }
 
   Future<void> _handlePasteFromToolbar() async {
-    final data = await services.Clipboard.getData(
-      services.Clipboard.kTextPlain,
-    );
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = data?.text;
     if (text == null || text.isEmpty) return;
     final consumed = await onPasteText(text);
