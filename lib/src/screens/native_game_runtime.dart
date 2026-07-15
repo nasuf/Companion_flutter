@@ -55,27 +55,7 @@ class _NativeGameRuntime {
       );
       final candidate = active.firstOrNull;
       if (candidate != null) {
-        final resume = _NativeGameResume.fromSession(candidate, gameKey);
-        session = candidate;
-        // A resumed page starts a new active segment. Time spent away from the
-        // game must not be reported as play time for this visit.
-        startedAt = DateTime.now();
-        completed = false;
-        resumed = true;
-        timeline
-          ..clear()
-          ..add(_GameTimelineItem.ai(agentName, '这局还在。棋盘和走过的每一步我都替你留着，我们接着来。'));
-        await reportEvent(
-          'game_state_snapshot',
-          state: 'playing',
-          payload: {
-            'reason': 'resumed',
-            'action_count': resume.actionCount,
-            'state_after': resume.state,
-          },
-          updateUi: false,
-        );
-        return resume;
+        return _activateResume(candidate);
       }
       return null;
     } catch (caught) {
@@ -86,6 +66,76 @@ class _NativeGameRuntime {
       roundsLoading = false;
       _notify();
     }
+  }
+
+  Future<_NativeGameResume?> resumeRound(GameSession candidate) async {
+    if (starting || recovering || aiThinking) {
+      syncNotice = aiThinking ? '$agentName 还在走当前这一步，请稍等一下。' : '正在恢复棋局，请稍等一下。';
+      _notify();
+      return null;
+    }
+    if (!_isResumable(candidate)) {
+      syncNotice = '这局已经结束，可以在回忆里查看完整数据。';
+      _notify();
+      return null;
+    }
+    recovering = true;
+    syncNotice = null;
+    _notify();
+    try {
+      final sessions = await api.listNativeGameSessions(gameKey: gameKey);
+      rounds = sessions.where(_GameRoundSummary.canShow).toList();
+      final latest = sessions
+          .where((item) => item.id == candidate.id)
+          .firstOrNull;
+      if (latest == null || !_isResumable(latest)) {
+        syncNotice = '这局的状态已经更新，请重新选择。';
+        return null;
+      }
+      return await _activateResume(latest);
+    } catch (caught) {
+      syncNotice = '这局暂时无法恢复：${_formatError(caught)}';
+      return null;
+    } finally {
+      recovering = false;
+      roundsLoading = false;
+      _notify();
+    }
+  }
+
+  bool _isResumable(GameSession candidate) {
+    final agentId = authSession.agentId;
+    return candidate.status == 'playing' &&
+        (candidate.gameKey == null || candidate.gameKey == gameKey) &&
+        (agentId == null || candidate.agentId == agentId);
+  }
+
+  Future<_NativeGameResume> _activateResume(GameSession candidate) async {
+    final resume = _NativeGameResume.fromSession(candidate, gameKey);
+    if (resume.actionCount > 0 && resume.state.isEmpty) {
+      throw const FormatException('saved_game_state_missing');
+    }
+    session = candidate;
+    // A resumed page starts a new active segment. Time spent away from the
+    // game must not be reported as play time for this visit.
+    startedAt = DateTime.now();
+    completed = false;
+    resumed = true;
+    aiThinking = false;
+    timeline
+      ..clear()
+      ..add(_GameTimelineItem.ai(agentName, '这局还在。棋盘和走过的每一步我都替你留着，我们接着来。'));
+    await reportEvent(
+      'game_state_snapshot',
+      state: 'playing',
+      payload: {
+        'reason': 'resumed',
+        'action_count': resume.actionCount,
+        'state_after': resume.state,
+      },
+      updateUi: false,
+    );
+    return resume;
   }
 
   Future<void> loadRounds() async {
@@ -170,7 +220,6 @@ class _NativeGameRuntime {
       // must not replace or fail validation against that stream at settlement.
       terminalPayload.remove('actions');
       terminalPayload.remove('moves');
-      terminalPayload.remove('rolls');
     }
     final response = await reportEvent(
       'game_finished',
@@ -222,7 +271,6 @@ class _NativeGameRuntime {
         terminal ||
         {
           'game_started',
-          'dice_rolled',
           'move_placed',
           'stone_placed',
           'disc_placed',
@@ -315,18 +363,14 @@ class _NativeGameResume {
     required this.process,
     required this.state,
     required this.actions,
-    required this.rolls,
     required this.actionCount,
-    required this.rollCount,
   });
 
   final GameSession session;
   final Map<String, dynamic> process;
   final Map<String, dynamic> state;
   final List<Map<String, dynamic>> actions;
-  final List<Map<String, dynamic>> rolls;
   final int actionCount;
-  final int rollCount;
 
   factory _NativeGameResume.fromSession(GameSession session, String gameKey) {
     final result = session.result ?? const <String, dynamic>{};
@@ -335,24 +379,14 @@ class _NativeGameResume {
     final actions = _asNativeGameMapList(
       process['actions'] ?? process['moves'],
     );
-    final snapshots = _asNativeGameMapList(process['snapshots']);
-    final rolls = snapshots
-        .where((item) => item['event_type'] == 'dice_rolled')
-        .toList(growable: false);
-    final lastRoll = _asNativeGameMap(process['last_roll']);
     return _NativeGameResume(
       session: session,
       process: process,
       state: _asNativeGameMap(process['final_state']),
       actions: actions,
-      rolls: rolls,
       actionCount: _asNativeGameInt(
         process['action_count'] ?? process['move_count'],
         fallback: actions.length,
-      ),
-      rollCount: _asNativeGameInt(
-        lastRoll['roll_number'],
-        fallback: rolls.length,
       ),
     );
   }

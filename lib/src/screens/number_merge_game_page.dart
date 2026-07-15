@@ -39,7 +39,17 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
 
   Future<void> _initialize() async {
     final resume = await _runtime.initialize();
-    if (!mounted || resume == null) return;
+    if (resume != null) await _restoreResume(resume);
+  }
+
+  Future<bool> _resumeRound(GameSession session) async {
+    if (_runtime.session?.id == session.id && _engine != null) return true;
+    final resume = await _runtime.resumeRound(session);
+    return resume != null && await _restoreResume(resume);
+  }
+
+  Future<bool> _restoreResume(_NativeGameResume resume) async {
+    if (!mounted) return false;
     try {
       final engine = resume.state.isEmpty
           ? NumberMergeEngine(seed: resume.session.id.hashCode)
@@ -61,9 +71,11 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
       } else if (engine.turn == NumberMergeActor.agent) {
         unawaited(_agentTurn());
       }
+      return true;
     } catch (caught) {
       _runtime.syncNotice = '上一局数字合并无法恢复，可以重新开一局：$caught';
       if (mounted) setState(() {});
+      return false;
     }
   }
 
@@ -272,6 +284,7 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
           ? '轮到你选择滑动方向'
           : '轮到 ${_runtime.agentName} 接着合',
       onStart: _start,
+      onResumeRound: _resumeRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每次滑动、方块轨迹、合并得分、出生位置和搜索判断都会保存。',
       activeChild: engine == null

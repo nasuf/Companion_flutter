@@ -389,6 +389,7 @@ class _GameRoundSummary {
   final String roomId;
 
   static bool canShow(GameSession session) {
+    if (session.status == 'playing') return true;
     return session.result != null &&
         {'settled', 'aborted'}.contains(session.status);
   }
@@ -434,6 +435,7 @@ class _GameRoundSummary {
 
   bool get isWin => outcome == 'win';
   bool get isLose => outcome == 'lose';
+  bool get isPlaying => session.status == 'playing';
   bool get isAborted => outcome == 'aborted' || session.status == 'aborted';
   bool get isGomoku => gomoku.isNotEmpty;
   bool get isCooperative => {
@@ -448,6 +450,7 @@ class _GameRoundSummary {
       _intValue(gameData['action_count']);
 
   String get resultLabel {
+    if (isPlaying) return '继续游戏';
     if (isAborted) return '未完成';
     if (isCooperative && isWin) return '共同过关';
     if (isCooperative && isLose) return '这次没过';
@@ -458,6 +461,7 @@ class _GameRoundSummary {
   }
 
   String get title {
+    if (isPlaying) return '这局还在进行';
     if (isAborted) return '这局先停在半路';
     if (isCooperative && isWin) return '这一关你们一起拿下了';
     if (isCooperative && isLose) return '差一点就一起解开了';
@@ -478,6 +482,10 @@ class _GameRoundSummary {
     final genericText = genericLine;
     if (genericText != null) fragments.add(genericText);
     if (fragments.isEmpty && durationText != null) fragments.add(durationText!);
+    if (isPlaying) {
+      final progress = fragments.isEmpty ? '进度已经保存' : fragments.join(' · ');
+      return '$progress，点开继续。';
+    }
     return fragments.isEmpty ? '点开看看这一局发生了什么。' : fragments.join(' · ');
   }
 
@@ -734,6 +742,7 @@ class _GameRoundSummary {
   }
 
   Color get accent {
+    if (isPlaying) return const Color(0xFF16A56F);
     if (isWin) return const Color(0xFF19A56F);
     if (isLose) return const Color(0xFF178BFF);
     if (isAborted) return const Color(0xFF8996A6);
@@ -787,7 +796,9 @@ class _GameRoundCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(15),
               ),
               child: Icon(
-                summary.isAborted
+                summary.isPlaying
+                    ? CupertinoIcons.play_fill
+                    : summary.isAborted
                     ? CupertinoIcons.pause_fill
                     : summary.isWin
                     ? CupertinoIcons.sparkles

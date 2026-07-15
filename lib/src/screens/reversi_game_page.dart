@@ -38,7 +38,17 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
 
   Future<void> _initialize() async {
     final resume = await _runtime.initialize();
-    if (!mounted || resume == null) return;
+    if (resume != null) await _restoreResume(resume);
+  }
+
+  Future<bool> _resumeRound(GameSession session) async {
+    if (_runtime.session?.id == session.id && _engine != null) return true;
+    final resume = await _runtime.resumeRound(session);
+    return resume != null && await _restoreResume(resume);
+  }
+
+  Future<bool> _restoreResume(_NativeGameResume resume) async {
+    if (!mounted) return false;
     try {
       final engine = resume.state.isEmpty
           ? ReversiEngine()
@@ -53,9 +63,11 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
       } else if (engine.turn == ReversiActor.agent) {
         unawaited(_agentLoop());
       }
+      return true;
     } catch (caught) {
       _runtime.syncNotice = '上一局黑白棋无法恢复，可以重新开一局：$caught';
       if (mounted) setState(() {});
+      return false;
     }
   }
 
@@ -247,6 +259,7 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
           ? '你执黑，落在发光的位置'
           : '${_runtime.agentName} 执白，轮到对方落子',
       onStart: _start,
+      onResumeRound: _resumeRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每次落子、翻面、抢角、迫停、搜索判断和最终比分都会保存。',
       activeChild: engine == null

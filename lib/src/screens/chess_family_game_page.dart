@@ -45,7 +45,20 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
 
   Future<void> _initialize() async {
     final resume = await _runtime.initialize();
-    if (!mounted || resume == null) return;
+    if (resume != null) await _restoreResume(resume);
+  }
+
+  Future<void> _resumeRound(GameSession session) async {
+    if (_runtime.session?.id == session.id && _engine != null) {
+      if (mounted) setState(() => _isFullscreen = true);
+      return;
+    }
+    final resume = await _runtime.resumeRound(session);
+    if (resume != null) await _restoreResume(resume);
+  }
+
+  Future<bool> _restoreResume(_NativeGameResume resume) async {
+    if (!mounted) return false;
     try {
       final engine = resume.state.isEmpty
           ? ChessFamilyEngine(kind: widget.kind)
@@ -65,9 +78,11 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       } else if (engine.isAgentTurn) {
         unawaited(_playAgentTurn());
       }
+      return true;
     } catch (caught) {
       _runtime.syncNotice = '上一局棋盘无法恢复，可以重新开一局：$caught';
       if (mounted) setState(() {});
+      return false;
     }
   }
 
@@ -454,15 +469,21 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
               padding: const EdgeInsets.only(bottom: 9),
               child: _GameRoundCard(
                 summary: _GameRoundSummary.fromSession(round),
-                onTap: () => showModalBottomSheet<void>(
-                  context: context,
-                  isScrollControlled: true,
-                  useSafeArea: false,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) => _GameRoundDetailSheet(
-                    summary: _GameRoundSummary.fromSession(round),
-                  ),
-                ),
+                onTap: () {
+                  if (round.status == 'playing') {
+                    unawaited(_resumeRound(round));
+                    return;
+                  }
+                  showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    useSafeArea: false,
+                    backgroundColor: Colors.transparent,
+                    builder: (_) => _GameRoundDetailSheet(
+                      summary: _GameRoundSummary.fromSession(round),
+                    ),
+                  );
+                },
               ),
             ),
       ],

@@ -38,7 +38,17 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
 
   Future<void> _initialize() async {
     final resume = await _runtime.initialize();
-    if (!mounted || resume == null) return;
+    if (resume != null) await _restoreResume(resume);
+  }
+
+  Future<bool> _resumeRound(GameSession session) async {
+    if (_runtime.session?.id == session.id && _engine != null) return true;
+    final resume = await _runtime.resumeRound(session);
+    return resume != null && await _restoreResume(resume);
+  }
+
+  Future<bool> _restoreResume(_NativeGameResume resume) async {
+    if (!mounted) return false;
     try {
       final engine = resume.state.isEmpty
           ? ChineseCheckersEngine()
@@ -56,9 +66,11 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
       } else if (engine.turn == ChineseCheckersActor.agent) {
         unawaited(_agentTurn());
       }
+      return true;
     } catch (caught) {
       _runtime.syncNotice = '上一局棋盘无法恢复，可以重新开一局：$caught';
       if (mounted) setState(() {});
+      return false;
     }
   }
 
@@ -192,6 +204,7 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
           ? '这一局结束了'
           : '轮到你移动棋子',
       onStart: _start,
+      onResumeRound: _resumeRound,
       restartDisabled: _runtime.aiThinking,
       historySubtitle: '每条连续跳路径和进营过程都会保存。',
       activeChild: engine == null
@@ -258,7 +271,17 @@ class _Match3GamePageState extends State<_Match3GamePage> {
 
   Future<void> _initialize() async {
     final resume = await _runtime.initialize();
-    if (!mounted || resume == null) return;
+    if (resume != null) await _restoreResume(resume);
+  }
+
+  Future<bool> _resumeRound(GameSession session) async {
+    if (_runtime.session?.id == session.id && _engine != null) return true;
+    final resume = await _runtime.resumeRound(session);
+    return resume != null && await _restoreResume(resume);
+  }
+
+  Future<bool> _restoreResume(_NativeGameResume resume) async {
+    if (!mounted) return false;
     try {
       final engine = resume.state.isEmpty
           ? Match3Engine(seed: resume.session.id.hashCode)
@@ -278,9 +301,11 @@ class _Match3GamePageState extends State<_Match3GamePage> {
       } else if (engine.turn == Match3Actor.agent) {
         unawaited(_match3AgentTurn());
       }
+      return true;
     } catch (caught) {
       _runtime.syncNotice = '上一局消消乐无法恢复，可以重新开一局：$caught';
       if (mounted) setState(() {});
+      return false;
     }
   }
 
@@ -463,6 +488,7 @@ class _Match3GamePageState extends State<_Match3GamePage> {
                 : '这一关差一点'
           : '轮到你交换相邻方块',
       onStart: _start,
+      onResumeRound: _resumeRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每次交换、连消、特殊块和贡献分都会保存。',
       activeChild: engine == null
@@ -506,6 +532,7 @@ class _NativeGameExperienceScaffold extends StatefulWidget {
     required this.game,
     required this.subtitle,
     required this.onStart,
+    required this.onResumeRound,
     required this.restartDisabled,
     required this.historySubtitle,
     this.activeChild,
@@ -515,6 +542,7 @@ class _NativeGameExperienceScaffold extends StatefulWidget {
   final _GameTile game;
   final String subtitle;
   final Future<void> Function() onStart;
+  final Future<bool> Function(GameSession session) onResumeRound;
   final bool restartDisabled;
   final String historySubtitle;
   final Widget? activeChild;
@@ -547,6 +575,12 @@ class _NativeGameExperienceScaffoldState
         setState(() => _isFullscreen = true);
       }
     });
+  }
+
+  Future<void> _resumeRound(GameSession session) async {
+    final restored = await widget.onResumeRound(session);
+    if (!mounted || !restored) return;
+    setState(() => _isFullscreen = true);
   }
 
   @override
@@ -726,6 +760,7 @@ class _NativeGameExperienceScaffoldState
                 child: _NativeGameHistory(
                   runtime: widget.runtime,
                   subtitle: widget.historySubtitle,
+                  onResumeRound: _resumeRound,
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 42)),
@@ -738,9 +773,14 @@ class _NativeGameExperienceScaffoldState
 }
 
 class _NativeGameHistory extends StatelessWidget {
-  const _NativeGameHistory({required this.runtime, required this.subtitle});
+  const _NativeGameHistory({
+    required this.runtime,
+    required this.subtitle,
+    required this.onResumeRound,
+  });
   final _NativeGameRuntime runtime;
   final String subtitle;
+  final Future<void> Function(GameSession session) onResumeRound;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -787,15 +827,21 @@ class _NativeGameHistory extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 9),
               child: _GameRoundCard(
                 summary: _GameRoundSummary.fromSession(round),
-                onTap: () => showModalBottomSheet<void>(
-                  context: context,
-                  isScrollControlled: true,
-                  useSafeArea: false,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) => _GameRoundDetailSheet(
-                    summary: _GameRoundSummary.fromSession(round),
-                  ),
-                ),
+                onTap: () {
+                  if (round.status == 'playing') {
+                    unawaited(onResumeRound(round));
+                    return;
+                  }
+                  showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    useSafeArea: false,
+                    backgroundColor: Colors.transparent,
+                    builder: (_) => _GameRoundDetailSheet(
+                      summary: _GameRoundSummary.fromSession(round),
+                    ),
+                  );
+                },
               ),
             ),
       ],

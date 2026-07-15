@@ -135,6 +135,89 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     }
   }
 
+  Future<void> _resumeRound(GameSession candidate) async {
+    if (_session?.id == candidate.id && _engine != null) {
+      if (mounted) setState(() => _isFullscreen = true);
+      return;
+    }
+    if (_starting || _recoveringTerminalEvents || _aiThinking) {
+      if (mounted) {
+        setState(() {
+          _syncNotice = _aiThinking
+              ? '$_agentName 还在走当前这一步，请稍等一下。'
+              : '正在恢复棋局，请稍等一下。';
+        });
+      }
+      return;
+    }
+    setState(() {
+      _recoveringTerminalEvents = true;
+      _syncNotice = null;
+    });
+    try {
+      final sessions = await widget.api.listNativeGameSessions(
+        gameKey: _nativeGomokuGameKey,
+      );
+      final session = sessions
+          .where((item) => item.id == candidate.id)
+          .firstOrNull;
+      final agentId = widget.authSession.agentId;
+      if (session == null ||
+          session.status != 'playing' ||
+          (agentId != null && session.agentId != agentId)) {
+        if (!mounted) return;
+        setState(() {
+          _rounds = sessions.where(_GameRoundSummary.canShow).toList();
+          _syncNotice = '这局的状态已经更新，请重新选择。';
+        });
+        return;
+      }
+      final process = _asNativeGameMap(
+        _asNativeGameMap(session.result?['process'])[_nativeGomokuGameKey],
+      );
+      final engine = GomokuEngine.restore(
+        _asNativeGameMapList(process['moves']),
+      );
+      if (!mounted) return;
+      setState(() {
+        _rounds = sessions.where(_GameRoundSummary.canShow).toList();
+        _session = session;
+        _engine = engine;
+        _startedAt = DateTime.now();
+        _completedLocally = false;
+        _isFullscreen = true;
+        _timeline
+          ..clear()
+          ..add(
+            _GameTimelineItem.ai(_agentName, '这盘还在，我把棋谱接回来了。轮到谁、走到哪一步都没丢。'),
+          );
+      });
+      await _reportEvent(
+        'game_state_snapshot',
+        state: 'playing',
+        payload: {
+          'reason': 'resumed_from_history',
+          'move_count': engine.moves.length,
+          'analysis': engine.analyze().toJson(),
+        },
+        updateUi: false,
+      );
+      if (engine.isFinished) {
+        unawaited(_finishGame(engine.status));
+      } else if (engine.currentActor == GomokuActor.agent) {
+        unawaited(_playAgentTurn());
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _syncNotice = '这局五子棋暂时无法恢复：${_formatError(error)}';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _recoveringTerminalEvents = false);
+    }
+  }
+
   Future<void> _startGame() async {
     final agentId = widget.authSession.agentId;
     if (_recoveringTerminalEvents) {
@@ -716,7 +799,13 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
                 padding: const EdgeInsets.only(bottom: 9),
                 child: _GameRoundCard(
                   summary: _GameRoundSummary.fromSession(round),
-                  onTap: () => _showRound(round),
+                  onTap: () {
+                    if (round.status == 'playing') {
+                      unawaited(_resumeRound(round));
+                      return;
+                    }
+                    _showRound(round);
+                  },
                 ),
               ),
         ],
