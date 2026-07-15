@@ -86,6 +86,22 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
     }
   }
 
+  Future<void> _deleteRound(GameSession session) async {
+    final wasActive = _runtime.session?.id == session.id;
+    if (wasActive && _runtime.aiThinking) {
+      _runtime.showNotice('${_runtime.agentName} 还在完成当前这一步，请稍等一下。');
+      return;
+    }
+    final deleted = await _runtime.deleteRound(session);
+    if (!mounted || !deleted || !wasActive) return;
+    setState(() {
+      _engine = null;
+      _selectedSquare = null;
+      _legalTargets = const {};
+      _isFullscreen = false;
+    });
+  }
+
   Future<void> _startGame() async {
     final current = _engine;
     if (_runtime.session != null && !_runtime.completed) {
@@ -470,17 +486,12 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
               child: _GameRoundCard(
                 summary: _GameRoundSummary.fromSession(round),
                 onTap: () {
-                  if (round.status == 'playing') {
-                    unawaited(_resumeRound(round));
-                    return;
-                  }
-                  showModalBottomSheet<void>(
-                    context: context,
-                    isScrollControlled: true,
-                    useSafeArea: false,
-                    backgroundColor: Colors.transparent,
-                    builder: (_) => _GameRoundDetailSheet(
-                      summary: _GameRoundSummary.fromSession(round),
+                  unawaited(
+                    _handleGameRoundTap(
+                      context: context,
+                      session: round,
+                      onResume: () => _resumeRound(round),
+                      onDelete: () => _deleteRound(round),
                     ),
                   );
                 },

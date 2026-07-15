@@ -71,6 +71,14 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
     }
   }
 
+  void _clearActiveRound() {
+    setState(() {
+      _engine = null;
+      _lastMove = null;
+      _resolving = false;
+    });
+  }
+
   Future<void> _start() async {
     final old = _engine;
     if (_runtime.session != null && !_runtime.completed) {
@@ -260,6 +268,7 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
           : '${_runtime.agentName} 执白，轮到对方落子',
       onStart: _start,
       onResumeRound: _resumeRound,
+      onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每次落子、翻面、抢角、迫停、搜索判断和最终比分都会保存。',
       activeChild: engine == null

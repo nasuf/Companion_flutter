@@ -27,6 +27,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
   bool _recoveringTerminalEvents = true;
   bool _completedLocally = false;
   bool _isFullscreen = false;
+  bool _deletingRound = false;
   int _eventSequence = 0;
   String? _error;
   String? _syncNotice;
@@ -215,6 +216,61 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
       }
     } finally {
       if (mounted) setState(() => _recoveringTerminalEvents = false);
+    }
+  }
+
+  Future<void> _deleteRound(GameSession candidate) async {
+    final isActive = _session?.id == candidate.id;
+    if (_deletingRound ||
+        _starting ||
+        _recoveringTerminalEvents ||
+        (isActive && _aiThinking)) {
+      if (mounted) {
+        setState(() {
+          _syncNotice = isActive && _aiThinking
+              ? '$_agentName 还在完成当前这一步，请稍等一下。'
+              : '正在处理游戏记录，请稍等一下。';
+        });
+      }
+      return;
+    }
+    setState(() {
+      _deletingRound = true;
+      _syncNotice = null;
+    });
+    try {
+      try {
+        await widget.api.deleteNativeGameSession(candidate.id);
+      } on ApiException catch (error) {
+        if (!_isMissingNativeGameSession(error)) rethrow;
+      }
+      try {
+        await _eventOutbox.removeSession(candidate.id);
+      } catch (error) {
+        debugPrint('Failed to clear gomoku outbox for ${candidate.id}: $error');
+      }
+      if (!mounted) return;
+      setState(() {
+        _rounds = _rounds.where((round) => round.id != candidate.id).toList();
+        if (isActive) {
+          _session = null;
+          _engine = null;
+          _startedAt = null;
+          _completedLocally = false;
+          _aiThinking = false;
+          _isFullscreen = false;
+          _timeline.clear();
+        }
+        _syncNotice = '游戏记录已删除。';
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _syncNotice = '暂时无法删除这局：${_formatError(error)}';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _deletingRound = false);
     }
   }
 
@@ -800,28 +856,18 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
                 child: _GameRoundCard(
                   summary: _GameRoundSummary.fromSession(round),
                   onTap: () {
-                    if (round.status == 'playing') {
-                      unawaited(_resumeRound(round));
-                      return;
-                    }
-                    _showRound(round);
+                    unawaited(
+                      _handleGameRoundTap(
+                        context: context,
+                        session: round,
+                        onResume: () => _resumeRound(round),
+                        onDelete: () => _deleteRound(round),
+                      ),
+                    );
                   },
                 ),
               ),
         ],
-      ),
-    );
-  }
-
-  void _showRound(GameSession session) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: false,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.34),
-      builder: (_) => _GameRoundDetailSheet(
-        summary: _GameRoundSummary.fromSession(session),
       ),
     );
   }

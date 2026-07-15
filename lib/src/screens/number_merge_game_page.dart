@@ -79,6 +79,15 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
     }
   }
 
+  void _clearActiveRound() {
+    setState(() {
+      _engine = null;
+      _lastMove = null;
+      _actionHistory.clear();
+      _resolving = false;
+    });
+  }
+
   Future<void> _start() async {
     if (_runtime.session != null && !_runtime.completed) {
       await _runtime.abort('restarted', _sessionSummary());
@@ -285,6 +294,7 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
           : '轮到 ${_runtime.agentName} 接着合',
       onStart: _start,
       onResumeRound: _resumeRound,
+      onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每次滑动、方块轨迹、合并得分、出生位置和搜索判断都会保存。',
       activeChild: engine == null

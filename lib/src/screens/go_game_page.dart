@@ -71,6 +71,14 @@ class _GoGamePageState extends State<_GoGamePage> {
     }
   }
 
+  void _clearActiveRound() {
+    setState(() {
+      _engine = null;
+      _lastMove = null;
+      _resolving = false;
+    });
+  }
+
   Future<void> _start() async {
     final old = _engine;
     if (_runtime.session != null && !_runtime.completed) {
@@ -232,6 +240,7 @@ class _GoGamePageState extends State<_GoGamePage> {
           : '你执黑，轮到你落子',
       onStart: _start,
       onResumeRound: _resumeRound,
+      onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每一手、提子、叫吃、停着与最终数目都会保存。',
       activeChild: engine == null

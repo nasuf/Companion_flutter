@@ -106,6 +106,26 @@ void main() {
     expect(await outbox.read(), isEmpty);
   });
 
+  test('removing a session keeps other sessions queued', () async {
+    final outbox = NativeGameEventOutbox(
+      apiBaseUrl: 'https://example.test',
+      userId: 'user-1',
+      supportDirectory: () async => directory,
+      sendEvent: (event) async {},
+    );
+    await outbox.write([
+      _event('session-2', 'other-1'),
+      _event('session-1', 'event-2'),
+      _event('session-1', 'event-1'),
+    ]);
+
+    await outbox.removeSession('session-1');
+
+    expect((await outbox.read()).map((event) => event['client_event_id']), [
+      'other-1',
+    ]);
+  });
+
   test('concurrent writes are serialized without losing an action', () async {
     final outbox = NativeGameEventOutbox(
       apiBaseUrl: 'https://example.test',

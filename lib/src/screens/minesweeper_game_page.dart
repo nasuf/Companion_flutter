@@ -83,6 +83,16 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
     }
   }
 
+  void _clearActiveRound() {
+    setState(() {
+      _engine = null;
+      _lastAction = null;
+      _actionHistory.clear();
+      _tool = _MinesweeperTool.reveal;
+      _resolving = false;
+    });
+  }
+
   Future<void> _start() async {
     if (_runtime.session != null && !_runtime.completed) {
       await _runtime.abort('restarted', _sessionSummary());
@@ -308,6 +318,7 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
           : '轮到 ${_runtime.agentName} 推理',
       onStart: _start,
       onResumeRound: _resumeRound,
+      onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每次揭格、标雷、约束推理、冒险判断和最终雷盘都会保存。',
       activeChild: engine == null

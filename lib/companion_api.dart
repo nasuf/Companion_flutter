@@ -789,6 +789,13 @@ class CompanionApi {
     return GameSession.fromJson(json);
   }
 
+  Future<void> deleteNativeGameSession(String sessionId) async {
+    await _request(
+      'DELETE',
+      '/games/native/sessions/${Uri.encodeComponent(sessionId)}',
+    );
+  }
+
   Future<GameEventResponse> sendNativeGameEvent({
     required String sessionId,
     required String eventType,

@@ -74,6 +74,14 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
     }
   }
 
+  void _clearActiveRound() {
+    setState(() {
+      _engine = null;
+      _selected = null;
+      _targets = const {};
+    });
+  }
+
   Future<void> _start() async {
     final old = _engine;
     if (_runtime.session != null && !_runtime.completed) {
@@ -205,6 +213,7 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
           : '轮到你移动棋子',
       onStart: _start,
       onResumeRound: _resumeRound,
+      onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking,
       historySubtitle: '每条连续跳路径和进营过程都会保存。',
       activeChild: engine == null
@@ -307,6 +316,15 @@ class _Match3GamePageState extends State<_Match3GamePage> {
       if (mounted) setState(() {});
       return false;
     }
+  }
+
+  void _clearActiveRound() {
+    setState(() {
+      _engine = null;
+      _selected = null;
+      _lastTurn = null;
+      _resolving = false;
+    });
   }
 
   Future<void> _start() async {
@@ -489,6 +507,7 @@ class _Match3GamePageState extends State<_Match3GamePage> {
           : '轮到你交换相邻方块',
       onStart: _start,
       onResumeRound: _resumeRound,
+      onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每次交换、连消、特殊块和贡献分都会保存。',
       activeChild: engine == null
@@ -533,6 +552,7 @@ class _NativeGameExperienceScaffold extends StatefulWidget {
     required this.subtitle,
     required this.onStart,
     required this.onResumeRound,
+    required this.onActiveRoundDeleted,
     required this.restartDisabled,
     required this.historySubtitle,
     this.activeChild,
@@ -543,6 +563,7 @@ class _NativeGameExperienceScaffold extends StatefulWidget {
   final String subtitle;
   final Future<void> Function() onStart;
   final Future<bool> Function(GameSession session) onResumeRound;
+  final VoidCallback onActiveRoundDeleted;
   final bool restartDisabled;
   final String historySubtitle;
   final Widget? activeChild;
@@ -578,9 +599,25 @@ class _NativeGameExperienceScaffoldState
   }
 
   Future<void> _resumeRound(GameSession session) async {
+    if (widget.runtime.session?.id != session.id && widget.restartDisabled) {
+      widget.runtime.showNotice('当前这一步还在完成，请稍等一下。');
+      return;
+    }
     final restored = await widget.onResumeRound(session);
     if (!mounted || !restored) return;
     setState(() => _isFullscreen = true);
+  }
+
+  Future<void> _deleteRound(GameSession session) async {
+    final wasActive = widget.runtime.session?.id == session.id;
+    if (wasActive && widget.restartDisabled) {
+      widget.runtime.showNotice('当前这一步还在完成，请稍等一下。');
+      return;
+    }
+    final deleted = await widget.runtime.deleteRound(session);
+    if (!mounted || !deleted || !wasActive) return;
+    widget.onActiveRoundDeleted();
+    setState(() => _isFullscreen = false);
   }
 
   @override
@@ -761,6 +798,7 @@ class _NativeGameExperienceScaffoldState
                   runtime: widget.runtime,
                   subtitle: widget.historySubtitle,
                   onResumeRound: _resumeRound,
+                  onDeleteRound: _deleteRound,
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 42)),
@@ -777,10 +815,12 @@ class _NativeGameHistory extends StatelessWidget {
     required this.runtime,
     required this.subtitle,
     required this.onResumeRound,
+    required this.onDeleteRound,
   });
   final _NativeGameRuntime runtime;
   final String subtitle;
   final Future<void> Function(GameSession session) onResumeRound;
+  final Future<void> Function(GameSession session) onDeleteRound;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -828,17 +868,12 @@ class _NativeGameHistory extends StatelessWidget {
               child: _GameRoundCard(
                 summary: _GameRoundSummary.fromSession(round),
                 onTap: () {
-                  if (round.status == 'playing') {
-                    unawaited(onResumeRound(round));
-                    return;
-                  }
-                  showModalBottomSheet<void>(
-                    context: context,
-                    isScrollControlled: true,
-                    useSafeArea: false,
-                    backgroundColor: Colors.transparent,
-                    builder: (_) => _GameRoundDetailSheet(
-                      summary: _GameRoundSummary.fromSession(round),
+                  unawaited(
+                    _handleGameRoundTap(
+                      context: context,
+                      session: round,
+                      onResume: () => onResumeRound(round),
+                      onDelete: () => onDeleteRound(round),
                     ),
                   );
                 },

@@ -757,6 +757,89 @@ class _RoundDetailMetric {
   final String value;
 }
 
+enum _GameRoundAction { resume, details, delete }
+
+bool _isMissingNativeGameSession(ApiException error) =>
+    error.statusCode == 404 && error.message.contains('session_not_found');
+
+Future<void> _handleGameRoundTap({
+  required BuildContext context,
+  required GameSession session,
+  required Future<void> Function() onResume,
+  required Future<void> Function() onDelete,
+}) async {
+  final summary = _GameRoundSummary.fromSession(session);
+  final action = await showCupertinoModalPopup<_GameRoundAction>(
+    context: context,
+    builder: (sheetContext) => CupertinoActionSheet(
+      title: Text(summary.title),
+      message: Text(summary.subtitle),
+      actions: [
+        CupertinoActionSheetAction(
+          isDefaultAction: summary.isPlaying,
+          onPressed: () => Navigator.pop(
+            sheetContext,
+            summary.isPlaying
+                ? _GameRoundAction.resume
+                : _GameRoundAction.details,
+          ),
+          child: Text(summary.isPlaying ? '继续游戏' : '查看详情'),
+        ),
+        CupertinoActionSheetAction(
+          isDestructiveAction: true,
+          onPressed: () => Navigator.pop(sheetContext, _GameRoundAction.delete),
+          child: const Text('删除记录'),
+        ),
+      ],
+      cancelButton: CupertinoActionSheetAction(
+        onPressed: () => Navigator.pop(sheetContext),
+        child: const Text('取消'),
+      ),
+    ),
+  );
+  if (!context.mounted || action == null) return;
+  switch (action) {
+    case _GameRoundAction.resume:
+      await onResume();
+      break;
+    case _GameRoundAction.details:
+      _showGameRoundDetails(context, summary);
+      break;
+    case _GameRoundAction.delete:
+      final confirmed = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (dialogContext) => CupertinoAlertDialog(
+          title: const Text('删除这局游戏？'),
+          content: const Text('删除后，这一局的棋盘进度、事件记录和由此生成的共同记忆都会永久移除。'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('删除'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true) await onDelete();
+      break;
+  }
+}
+
+void _showGameRoundDetails(BuildContext context, _GameRoundSummary summary) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: false,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.34),
+    builder: (_) => _GameRoundDetailSheet(summary: summary),
+  );
+}
+
 class _GameRoundCard extends StatelessWidget {
   const _GameRoundCard({required this.summary, required this.onTap});
 

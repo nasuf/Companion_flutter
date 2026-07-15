@@ -25,6 +25,7 @@ class _NativeGameRuntime {
   bool recovering = true;
   bool completed = false;
   bool resumed = false;
+  bool deleting = false;
   String? error;
   String? syncNotice;
   int _eventSequence = 0;
@@ -147,6 +148,52 @@ class _NativeGameRuntime {
     } catch (caught) {
       roundsLoading = false;
       syncNotice = _formatError(caught);
+      _notify();
+    }
+  }
+
+  Future<bool> deleteRound(GameSession candidate) async {
+    final isActive = session?.id == candidate.id;
+    if (deleting || starting || recovering || (isActive && aiThinking)) {
+      showNotice(
+        isActive && aiThinking
+            ? '$agentName 还在完成当前这一步，请稍等一下。'
+            : '正在处理游戏记录，请稍等一下。',
+      );
+      return false;
+    }
+    deleting = true;
+    syncNotice = null;
+    _notify();
+    try {
+      try {
+        await api.deleteNativeGameSession(candidate.id);
+      } on ApiException catch (caught) {
+        if (!_isMissingNativeGameSession(caught)) rethrow;
+      }
+      try {
+        await _eventOutbox.removeSession(candidate.id);
+      } catch (caught) {
+        debugPrint(
+          'Failed to clear native game outbox for ${candidate.id}: $caught',
+        );
+      }
+      rounds = rounds.where((round) => round.id != candidate.id).toList();
+      if (isActive) {
+        session = null;
+        startedAt = null;
+        completed = false;
+        resumed = false;
+        aiThinking = false;
+        timeline.clear();
+      }
+      syncNotice = '游戏记录已删除。';
+      return true;
+    } catch (caught) {
+      syncNotice = '暂时无法删除这局：${_formatError(caught)}';
+      return false;
+    } finally {
+      deleting = false;
       _notify();
     }
   }
@@ -338,6 +385,11 @@ class _NativeGameRuntime {
   void addLocalComment(String message) {
     timeline.add(_GameTimelineItem.ai(agentName, message));
     _trimTimeline();
+    _notify();
+  }
+
+  void showNotice(String message) {
+    syncNotice = message;
     _notify();
   }
 

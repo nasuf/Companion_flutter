@@ -165,6 +165,12 @@ class NativeGameEventOutbox {
     await _writeUnlocked(events);
   });
 
+  Future<void> removeSession(String sessionId) => _locked(() async {
+    final events = await _readUnlocked();
+    events.removeWhere((item) => item['session_id'] == sessionId);
+    await _writeUnlocked(events);
+  });
+
   Future<void> replay() => _locked(() async {
     final events = await _readUnlocked();
     if (events.isEmpty) return;
