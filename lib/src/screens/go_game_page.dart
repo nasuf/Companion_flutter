@@ -33,22 +33,30 @@ class _GoGamePageState extends State<_GoGamePage> {
         if (mounted) setState(() {});
       },
     );
-    unawaited(_runtime.initialize());
+    unawaited(_initialize());
   }
 
-  @override
-  void dispose() {
-    final engine = _engine;
-    if (_runtime.session != null && !_runtime.completed) {
-      unawaited(
-        _runtime.abort(
-          'page_closed',
-          engine?.summaryJson() ?? const {},
-          updateUi: false,
-        ),
-      );
+  Future<void> _initialize() async {
+    final resume = await _runtime.initialize();
+    if (!mounted || resume == null) return;
+    try {
+      final engine = resume.state.isEmpty
+          ? GoEngine()
+          : GoEngine.restore(resume.state, moveCount: resume.actionCount);
+      setState(() {
+        _engine = engine;
+        _lastMove = null;
+        _resolving = false;
+      });
+      if (engine.isFinished) {
+        unawaited(_finish(engine.status));
+      } else if (engine.turn == GoActor.agent) {
+        unawaited(_agentTurn());
+      }
+    } catch (caught) {
+      _runtime.syncNotice = '上一局围棋无法恢复，可以重新开一局：$caught';
+      if (mounted) setState(() {});
     }
-    super.dispose();
   }
 
   Future<void> _start() async {
@@ -110,7 +118,7 @@ class _GoGamePageState extends State<_GoGamePage> {
     await _runtime.reportEvent(
       'ai_thinking_started',
       payload: {
-        'move_number': engine.moves.length + 1,
+        'move_number': engine.moveCount + 1,
         'analysis': engine.analysisJson(),
       },
     );
@@ -119,6 +127,7 @@ class _GoGamePageState extends State<_GoGamePage> {
       if (!mounted || engine.isFinished || engine.turn != GoActor.agent) return;
       await _runtime.reportEvent('ai_move_decided', payload: decision.toJson());
       await Future<void>.delayed(const Duration(milliseconds: 220));
+      if (!mounted || engine.isFinished || engine.turn != GoActor.agent) return;
       await _playAndReport(decision.index, decision: decision);
     } finally {
       if (mounted) setState(() => _runtime.aiThinking = false);

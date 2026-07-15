@@ -40,22 +40,35 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
         if (mounted) setState(() {});
       },
     );
-    unawaited(_runtime.initialize());
+    unawaited(_initialize());
   }
 
-  @override
-  void dispose() {
-    final engine = _engine;
-    if (_runtime.session != null && !_runtime.completed) {
-      unawaited(
-        _runtime.abort(
-          'page_closed',
-          engine?.summaryJson() ?? const {},
-          updateUi: false,
-        ),
-      );
+  Future<void> _initialize() async {
+    final resume = await _runtime.initialize();
+    if (!mounted || resume == null) return;
+    try {
+      final engine = resume.state.isEmpty
+          ? ChessFamilyEngine(kind: widget.kind)
+          : ChessFamilyEngine.restore(
+              kind: widget.kind,
+              state: resume.state,
+              moveCount: resume.actionCount,
+            );
+      setState(() {
+        _engine = engine;
+        _selectedSquare = null;
+        _legalTargets = const {};
+        _isFullscreen = true;
+      });
+      if (engine.isFinished) {
+        unawaited(_finish(engine.status));
+      } else if (engine.isAgentTurn) {
+        unawaited(_playAgentTurn());
+      }
+    } catch (caught) {
+      _runtime.syncNotice = '上一局棋盘无法恢复，可以重新开一局：$caught';
+      if (mounted) setState(() {});
     }
-    super.dispose();
   }
 
   Future<void> _startGame() async {
@@ -128,7 +141,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
     await _runtime.reportEvent(
       'ai_thinking_started',
       payload: {
-        'move_number': engine.moves.length + 1,
+        'move_number': engine.moveCount + 1,
         'analysis': before.toJson(),
       },
     );

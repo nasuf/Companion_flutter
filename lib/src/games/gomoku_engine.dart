@@ -156,6 +156,26 @@ class GomokuMoveResult {
 class GomokuEngine {
   GomokuEngine({math.Random? random}) : _random = random ?? math.Random();
 
+  factory GomokuEngine.restore(
+    List<Map<String, dynamic>> moves, {
+    math.Random? random,
+  }) {
+    final engine = GomokuEngine(random: random);
+    for (final move in moves) {
+      final row = (move['row'] as num?)?.round();
+      final col = (move['col'] as num?)?.round();
+      if (row == null || col == null) {
+        throw const FormatException('invalid_move');
+      }
+      final actor = GomokuActor.values.firstWhere(
+        (item) => item.name == move['actor'],
+        orElse: () => throw const FormatException('invalid_actor'),
+      );
+      engine.place(GomokuPoint(row, col), actor);
+    }
+    return engine;
+  }
+
   static const int boardSize = 15;
   static const List<(int, int)> _directions = [(0, 1), (1, 0), (1, 1), (1, -1)];
 

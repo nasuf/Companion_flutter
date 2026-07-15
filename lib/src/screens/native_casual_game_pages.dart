@@ -33,22 +33,33 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
         if (mounted) setState(() {});
       },
     );
-    unawaited(_runtime.initialize());
+    unawaited(_initialize());
   }
 
-  @override
-  void dispose() {
-    final engine = _engine;
-    if (_runtime.session != null && !_runtime.completed) {
-      unawaited(
-        _runtime.abort(
-          'page_closed',
-          engine?.summaryJson() ?? const {},
-          updateUi: false,
-        ),
-      );
+  Future<void> _initialize() async {
+    final resume = await _runtime.initialize();
+    if (!mounted || resume == null) return;
+    try {
+      final engine = resume.state.isEmpty
+          ? ChineseCheckersEngine()
+          : ChineseCheckersEngine.restore(
+              resume.state,
+              actionCount: resume.actionCount,
+            );
+      setState(() {
+        _engine = engine;
+        _selected = null;
+        _targets = const {};
+      });
+      if (engine.isFinished) {
+        unawaited(_finish(engine.status));
+      } else if (engine.turn == ChineseCheckersActor.agent) {
+        unawaited(_agentTurn());
+      }
+    } catch (caught) {
+      _runtime.syncNotice = '上一局棋盘无法恢复，可以重新开一局：$caught';
+      if (mounted) setState(() {});
     }
-    super.dispose();
   }
 
   Future<void> _start() async {
@@ -114,7 +125,7 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
     await _runtime.reportEvent(
       'ai_thinking_started',
       payload: {
-        'move_number': engine.moves.length + 1,
+        'move_number': engine.moveCount + 1,
         'analysis': engine.analysisJson(),
       },
     );
@@ -240,22 +251,34 @@ class _LudoGamePageState extends State<_LudoGamePage> {
         if (mounted) setState(() {});
       },
     );
-    unawaited(_runtime.initialize());
+    unawaited(_initialize());
   }
 
-  @override
-  void dispose() {
-    final engine = _engine;
-    if (_runtime.session != null && !_runtime.completed) {
-      unawaited(
-        _runtime.abort(
-          'page_closed',
-          engine?.summaryJson() ?? const {},
-          updateUi: false,
-        ),
-      );
+  Future<void> _initialize() async {
+    final resume = await _runtime.initialize();
+    if (!mounted || resume == null) return;
+    try {
+      final engine = resume.state.isEmpty
+          ? LudoEngine(seed: resume.session.id.hashCode)
+          : LudoEngine.restore(
+              resume.state,
+              moveCount: resume.actionCount,
+              rollCount: resume.rollCount,
+              seed: resume.session.id.hashCode,
+            );
+      setState(() {
+        _engine = engine;
+        _lastRoll = engine.pendingRoll?.value;
+      });
+      if (engine.isFinished) {
+        unawaited(_finishLudo(engine.status));
+      } else if (engine.turn == LudoActor.agent) {
+        unawaited(_agentLoop());
+      }
+    } catch (caught) {
+      _runtime.syncNotice = '上一局飞行棋无法恢复，可以重新开一局：$caught';
+      if (mounted) setState(() {});
     }
-    super.dispose();
   }
 
   Future<void> _start() async {
@@ -326,9 +349,11 @@ class _LudoGamePageState extends State<_LudoGamePage> {
           engine.turn == LudoActor.agent &&
           guard++ < 8) {
         await Future<void>.delayed(const Duration(milliseconds: 520));
-        final roll = engine.roll();
+        if (!mounted) break;
+        final existingRoll = engine.pendingRoll;
+        final roll = existingRoll ?? engine.roll();
         setState(() => _lastRoll = roll.value);
-        await _reportRoll(roll);
+        if (existingRoll == null) await _reportRoll(roll);
         if (roll.legalPieces.isEmpty) continue;
         final before = engine.stateJson();
         final decision = engine.chooseAgentPiece();
@@ -440,10 +465,14 @@ class _LudoGamePageState extends State<_LudoGamePage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                if (!engine.isFinished &&
-                    engine.turn == LudoActor.user &&
-                    engine.pendingRoll == null)
-                  _PrimaryGameButton(label: '掷骰子', onPressed: _userRoll),
+                _LudoTurnConsole(
+                  engine: engine,
+                  agentName: _runtime.agentName,
+                  lastRoll: _lastRoll,
+                  aiThinking: _runtime.aiThinking,
+                  onRoll: _userRoll,
+                  onPieceTap: _userPiece,
+                ),
               ],
             ),
     );
@@ -483,22 +512,35 @@ class _Match3GamePageState extends State<_Match3GamePage> {
         if (mounted) setState(() {});
       },
     );
-    unawaited(_runtime.initialize());
+    unawaited(_initialize());
   }
 
-  @override
-  void dispose() {
-    final engine = _engine;
-    if (_runtime.session != null && !_runtime.completed) {
-      unawaited(
-        _runtime.abort(
-          'page_closed',
-          engine?.summaryJson() ?? const {},
-          updateUi: false,
-        ),
-      );
+  Future<void> _initialize() async {
+    final resume = await _runtime.initialize();
+    if (!mounted || resume == null) return;
+    try {
+      final engine = resume.state.isEmpty
+          ? Match3Engine(seed: resume.session.id.hashCode)
+          : Match3Engine.restore(
+              resume.state,
+              actionCount: resume.actionCount,
+              seed: resume.session.id.hashCode,
+            );
+      setState(() {
+        _engine = engine;
+        _selected = null;
+        _lastTurn = null;
+        _resolving = false;
+      });
+      if (engine.isFinished) {
+        unawaited(_finishMatch3(engine.status));
+      } else if (engine.turn == Match3Actor.agent) {
+        unawaited(_match3AgentTurn());
+      }
+    } catch (caught) {
+      _runtime.syncNotice = '上一局消消乐无法恢复，可以重新开一局：$caught';
+      if (mounted) setState(() {});
     }
-    super.dispose();
   }
 
   Future<void> _start() async {
@@ -569,6 +611,9 @@ class _Match3GamePageState extends State<_Match3GamePage> {
     setState(() => _runtime.aiThinking = true);
     await Future<void>.delayed(const Duration(milliseconds: 580));
     try {
+      if (!mounted || engine.isFinished || engine.turn != Match3Actor.agent) {
+        return;
+      }
       final before = engine.stateJson();
       final decision = engine.chooseAgentSwap();
       await _runtime.reportEvent('ai_move_decided', payload: decision.toJson());
@@ -1430,7 +1475,193 @@ Path _checkersStarPath(Offset center, double radius) {
   return path..close();
 }
 
-class _LudoBoard extends StatelessWidget {
+class _LudoTurnConsole extends StatelessWidget {
+  const _LudoTurnConsole({
+    required this.engine,
+    required this.agentName,
+    required this.lastRoll,
+    required this.aiThinking,
+    required this.onRoll,
+    required this.onPieceTap,
+  });
+
+  final LudoEngine engine;
+  final String agentName;
+  final int? lastRoll;
+  final bool aiThinking;
+  final Future<void> Function() onRoll;
+  final ValueChanged<int> onPieceTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = engine.pendingRoll;
+    final isUserTurn = engine.turn == LudoActor.user;
+    final legal = pending?.legalPieces ?? const <int>[];
+    final title = aiThinking
+        ? '$agentName 正在掷骰子'
+        : !isUserTurn
+        ? '等 $agentName 走完这一步'
+        : pending == null
+        ? '轮到你掷骰子'
+        : legal.length == 1
+        ? '只有这架飞机能走'
+        : '选一架飞机前进 ${pending.value} 格';
+    final detail = pending == null && isUserTurn
+        ? '掷到 6 可以让停机坪里的飞机起飞，并获得一次额外机会。'
+        : legal.isEmpty
+        ? '这一骰没有可走的飞机，回合会自动交给对方。'
+        : '你可以直接点棋盘上发光的飞机，也可以用下面的按钮选择。';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x1824323F)),
+      ),
+      child: Row(
+        children: [
+          _LudoDiceFace(value: pending?.value ?? lastRoll),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  detail,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.text.withValues(alpha: .5),
+                    fontSize: 10,
+                    height: 1.25,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 9),
+                if (!engine.isFinished && isUserTurn && pending == null)
+                  SizedBox(
+                    width: double.infinity,
+                    child: _PrimaryGameButton(label: '掷骰子', onPressed: onRoll),
+                  )
+                else if (isUserTurn && legal.isNotEmpty)
+                  Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
+                    children: [
+                      for (final index in legal)
+                        CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(72, 34),
+                          onPressed: () => onPieceTap(index),
+                          child: Container(
+                            height: 34,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEF5F5F),
+                              borderRadius: BorderRadius.circular(11),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x33EF5F5F),
+                                  blurRadius: 9,
+                                  offset: Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              '飞机 ${index + 1}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LudoDiceFace extends StatelessWidget {
+  const _LudoDiceFace({required this.value});
+  final int? value;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = value != null && value! >= 1 && value! <= 6;
+    return Container(
+      width: 62,
+      height: 62,
+      decoration: BoxDecoration(
+        color: active ? const Color(0xFF172433) : const Color(0xFFE8EDF1),
+        borderRadius: BorderRadius.circular(17),
+        boxShadow: active
+            ? const [
+                BoxShadow(
+                  color: Color(0x30172433),
+                  blurRadius: 12,
+                  offset: Offset(0, 5),
+                ),
+              ]
+            : null,
+      ),
+      child: active
+          ? CustomPaint(painter: _LudoDicePainter(value!))
+          : const Icon(
+              Icons.casino_rounded,
+              color: Color(0xFF7B8791),
+              size: 29,
+            ),
+    );
+  }
+}
+
+class _LudoDicePainter extends CustomPainter {
+  const _LudoDicePainter(this.value);
+  final int value;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const patterns = <int, List<(int, int)>>{
+      1: [(1, 1)],
+      2: [(0, 0), (2, 2)],
+      3: [(0, 0), (1, 1), (2, 2)],
+      4: [(0, 0), (2, 0), (0, 2), (2, 2)],
+      5: [(0, 0), (2, 0), (1, 1), (0, 2), (2, 2)],
+      6: [(0, 0), (0, 1), (0, 2), (2, 0), (2, 1), (2, 2)],
+    };
+    final paint = Paint()..color = Colors.white;
+    for (final (x, y) in patterns[value]!) {
+      canvas.drawCircle(
+        Offset(size.width * (.27 + x * .23), size.height * (.27 + y * .23)),
+        size.width * .055,
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _LudoDicePainter oldDelegate) =>
+      oldDelegate.value != value;
+}
+
+class _LudoBoard extends StatefulWidget {
   const _LudoBoard({
     required this.engine,
     required this.selectablePieces,
@@ -1441,34 +1672,76 @@ class _LudoBoard extends StatelessWidget {
   final ValueChanged<int> onPieceTap;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) => GestureDetector(
-      onTapUp: (details) {
-        final positions = _ludoPiecePositions(engine, constraints.biggest);
-        for (final entry in positions.entries) {
-          if (entry.key.actor == LudoActor.user &&
-              selectablePieces.contains(entry.key.index) &&
-              (entry.value - details.localPosition).distance <
-                  constraints.maxWidth / 15) {
-            onPieceTap(entry.key.index);
-            return;
-          }
-        }
+  State<_LudoBoard> createState() => _LudoBoardState();
+}
+
+class _LudoBoardState extends State<_LudoBoard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _pulse,
+    builder: (context, child) => LayoutBuilder(
+      builder: (context, constraints) {
+        final size = constraints.biggest;
+        final positions = _ludoPiecePositions(widget.engine, size);
+        final hitSize = math.max(44.0, size.width / 9.5);
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _LudoPainter(
+                  pieces: widget.engine.pieces,
+                  selectablePieces: widget.selectablePieces,
+                  pulse: _pulse.value,
+                ),
+              ),
+            ),
+            for (final entry in positions.entries)
+              if (entry.key.actor == LudoActor.user &&
+                  widget.selectablePieces.contains(entry.key.index))
+                Positioned(
+                  left: entry.value.dx - hitSize / 2,
+                  top: entry.value.dy - hitSize / 2,
+                  width: hitSize,
+                  height: hitSize,
+                  child: Semantics(
+                    button: true,
+                    label: '选择飞机 ${entry.key.index + 1}',
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => widget.onPieceTap(entry.key.index),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                ),
+          ],
+        );
       },
-      child: CustomPaint(
-        painter: _LudoPainter(
-          pieces: engine.pieces,
-          selectablePieces: selectablePieces,
-        ),
-      ),
     ),
   );
 }
 
 class _LudoPainter extends CustomPainter {
-  const _LudoPainter({required this.pieces, required this.selectablePieces});
+  const _LudoPainter({
+    required this.pieces,
+    required this.selectablePieces,
+    required this.pulse,
+  });
   final List<LudoPiece> pieces;
   final Set<int> selectablePieces;
+  final double pulse;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1577,9 +1850,13 @@ class _LudoPainter extends CustomPainter {
           selectablePieces.contains(piece.index)) {
         canvas.drawCircle(
           entry.value,
-          radius * 1.35,
+          radius * (1.3 + pulse * .26),
           Paint()
-            ..color = const Color(0xFFFFB000)
+            ..color = Color.lerp(
+              const Color(0xFFFFC64B),
+              const Color(0xFFEF5F5F),
+              pulse,
+            )!
             ..style = PaintingStyle.stroke
             ..strokeWidth = 3,
         );
@@ -1751,7 +2028,8 @@ class _LudoPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _LudoPainter oldDelegate) =>
       oldDelegate.pieces != pieces ||
-      oldDelegate.selectablePieces != selectablePieces;
+      oldDelegate.selectablePieces != selectablePieces ||
+      oldDelegate.pulse != pulse;
 }
 
 Path _flightStarPath(Offset center, double radius) {

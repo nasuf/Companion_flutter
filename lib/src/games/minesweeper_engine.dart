@@ -174,6 +174,68 @@ class MinesweeperEngine {
     _flags.addAll(flaggedIndices);
   }
 
+  factory MinesweeperEngine.restore(
+    Map<String, dynamic> state, {
+    int actionCount = 0,
+    int seed = 20260715,
+  }) {
+    final rows = (state['rows'] as num?)?.round() ?? 9;
+    final columns = (state['columns'] as num?)?.round() ?? 9;
+    final cells = state['cells'];
+    if (cells is! List || cells.length != rows * columns) {
+      throw const FormatException('invalid_cells');
+    }
+    final mines = <int>{};
+    final revealed = <int>{};
+    final flags = <int>{};
+    int? exploded;
+    for (final raw in cells.whereType<Map>()) {
+      final cell = Map<String, dynamic>.from(raw);
+      final index = (cell['index'] as num?)?.round();
+      if (index == null) throw const FormatException('invalid_cell');
+      final cellState = '${cell['state']}';
+      if (cell['is_mine'] == true ||
+          cellState == 'mine' ||
+          cellState == 'exploded') {
+        mines.add(index);
+      }
+      if (cellState == 'revealed') revealed.add(index);
+      if (cellState == 'flagged') flags.add(index);
+      if (cellState == 'exploded') exploded = index;
+    }
+    final restoredTurn = MinesweeperActor.values.firstWhere(
+      (item) => item.name == state['turn'],
+      orElse: () => MinesweeperActor.user,
+    );
+    final engine = mines.isEmpty
+        ? MinesweeperEngine(
+            rows: rows,
+            columns: columns,
+            mineCount: (state['mine_count'] as num?)?.round() ?? 12,
+            seed: seed,
+          )
+        : MinesweeperEngine.withMineLayout(
+            rows: rows,
+            columns: columns,
+            mineIndices: mines,
+            revealedIndices: revealed,
+            flaggedIndices: flags,
+            firstActor: restoredTurn,
+          );
+    if (mines.isEmpty) {
+      engine.turn = restoredTurn;
+      engine._flags.addAll(flags);
+    }
+    engine.status = MinesweeperStatus.values.firstWhere(
+      (item) => item.name == state['status'],
+      orElse: () => MinesweeperStatus.playing,
+    );
+    engine.safeStreak = (state['safe_streak'] as num?)?.round() ?? 0;
+    engine.explodedIndex = exploded;
+    engine._actionOffset = actionCount;
+    return engine;
+  }
+
   final int rows;
   final int columns;
   final int mineCount;
@@ -183,9 +245,11 @@ class MinesweeperEngine {
   final Set<int> _flags = {};
   final List<int> _adjacentMines;
   final List<MinesweeperAction> actions = [];
+  int _actionOffset = 0;
   final List<MinesweeperKeyMoment> keyMoments = [];
 
   MinesweeperActor turn = MinesweeperActor.user;
+  int get actionCount => _actionOffset + actions.length;
   MinesweeperStatus status = MinesweeperStatus.awaitingFirstMove;
   int safeStreak = 0;
   int deductions = 0;
@@ -388,7 +452,7 @@ class MinesweeperEngine {
           : MinesweeperActor.user;
     }
     final action = MinesweeperAction(
-      number: actions.length + 1,
+      number: _actionOffset + actions.length + 1,
       actor: actor,
       kind: kind,
       point: pointFor(index),
@@ -475,7 +539,7 @@ class MinesweeperEngine {
     'mine_count': mineCount,
     'status': status.name,
     'turn': turn.name,
-    'action_count': actions.length,
+    'action_count': actionCount,
     'revealed_count': revealedCount,
     'flag_count': flagCount,
     'safe_remaining': safeRemaining,
@@ -538,7 +602,7 @@ class MinesweeperEngine {
     'rules': '9x9_12_mines_first_move_safe_bounded_no_guess_generation',
     'cooperative': true,
     'status': status.name,
-    'action_count': actions.length,
+    'action_count': actionCount,
     'revealed_count': revealedCount,
     'safe_cell_count': safeCellCount,
     'flag_count': flagCount,

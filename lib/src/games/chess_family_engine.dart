@@ -155,9 +155,24 @@ class ChessFamilyEngine {
   ChessFamilyEngine({required this.kind, String? fen})
     : _game = bishop.Game(variant: _variant(kind), fen: fen);
 
+  factory ChessFamilyEngine.restore({
+    required ChessFamilyKind kind,
+    required Map<String, dynamic> state,
+    int moveCount = 0,
+  }) {
+    final fen = state['fen'];
+    if (fen is! String || fen.isEmpty) {
+      throw const FormatException('missing_fen');
+    }
+    final engine = ChessFamilyEngine(kind: kind, fen: fen);
+    engine._moveOffset = moveCount;
+    return engine;
+  }
+
   final ChessFamilyKind kind;
   final bishop.Game _game;
   final List<ChessFamilyMove> _moves = [];
+  int _moveOffset = 0;
 
   static bishop.Variant _variant(ChessFamilyKind kind) =>
       kind == ChessFamilyKind.chess
@@ -167,6 +182,7 @@ class ChessFamilyEngine {
   int get files => _game.size.h;
   int get ranks => _game.size.v;
   bool get isFinished => _game.gameOver;
+  int get moveCount => _moveOffset + _moves.length;
   bool get isAgentTurn => _game.turn == bishop.Bishop.black;
   String get fen => _game.fen;
   List<ChessFamilyMove> get moves => List.unmodifiable(_moves);
@@ -235,7 +251,7 @@ class ChessFamilyEngine {
       notation: notation,
     );
     final record = ChessFamilyMove(
-      number: _moves.length + 1,
+      number: _moveOffset + _moves.length + 1,
       actor: actor,
       from: fromName,
       to: toName,
@@ -289,7 +305,7 @@ class ChessFamilyEngine {
   Map<String, dynamic> summaryJson() => {
     'variant': kind.name,
     'status': status.name,
-    'move_count': _moves.length,
+    'move_count': moveCount,
     'final_fen': _game.fen,
     'result': _game.result?.readable,
     'moves': [for (final move in _moves) move.toJson()],

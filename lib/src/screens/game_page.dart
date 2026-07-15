@@ -14,6 +14,7 @@ class _GamePageState extends State<GamePage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   GameSession? _activeSession;
+  Set<String> _resumableGameKeys = const {};
   _GameGroup? _activeGroup = _gameGroupCatalog.first;
   _GameTile _activeGame = _gameGroupCatalog.first.games[1];
   String? _error;
@@ -41,8 +42,20 @@ class _GamePageState extends State<GamePage>
     try {
       final sessions = await widget.api.listNativeGameSessions(limit: 20);
       if (!mounted) return;
+      final agentId = widget.session.agentId;
+      final relevantSessions = sessions
+          .where((session) => agentId == null || session.agentId == agentId)
+          .toList(growable: false);
       setState(() {
-        _activeSession = sessions.isEmpty ? null : sessions.first;
+        _activeSession = relevantSessions
+            .where((session) => session.status == 'playing')
+            .firstOrNull;
+        _activeSession ??= relevantSessions.firstOrNull;
+        _resumableGameKeys = relevantSessions
+            .where((session) => session.status == 'playing')
+            .map((session) => session.gameKey)
+            .whereType<String>()
+            .toSet();
       });
     } catch (error) {
       if (mounted) setState(() => _error = _formatError(error));
@@ -279,6 +292,7 @@ class _GamePageState extends State<GamePage>
                 group: group,
                 isOpen: group == _activeGroup,
                 activeGame: _activeGame,
+                resumableGameKeys: _resumableGameKeys,
                 onTap: () => setState(() {
                   _activeGroup = group == _activeGroup ? null : group;
                 }),
@@ -1561,6 +1575,7 @@ class _GameGroupCard extends StatelessWidget {
     required this.group,
     required this.isOpen,
     required this.activeGame,
+    required this.resumableGameKeys,
     required this.onTap,
     required this.onGameSelected,
   });
@@ -1568,6 +1583,7 @@ class _GameGroupCard extends StatelessWidget {
   final _GameGroup group;
   final bool isOpen;
   final _GameTile activeGame;
+  final Set<String> resumableGameKeys;
   final VoidCallback onTap;
   final ValueChanged<_GameTile> onGameSelected;
 
@@ -1709,6 +1725,9 @@ class _GameGroupCard extends StatelessWidget {
                               _SmallGameTile(
                                 game: game,
                                 selected: game == activeGame,
+                                resumable: resumableGameKeys.contains(
+                                  game.nativeGameKey,
+                                ),
                                 onTap: () => onGameSelected(game),
                               ),
                           ],
@@ -1728,11 +1747,13 @@ class _SmallGameTile extends StatefulWidget {
   const _SmallGameTile({
     required this.game,
     required this.selected,
+    required this.resumable,
     required this.onTap,
   });
 
   final _GameTile game;
   final bool selected;
+  final bool resumable;
   final VoidCallback onTap;
 
   @override
@@ -1825,7 +1846,10 @@ class _SmallGameTileState extends State<_SmallGameTile>
             Positioned(
               left: 8,
               top: 8,
-              child: _GameStatusTag(isOnline: widget.game.isOnline),
+              child: _GameStatusTag(
+                isOnline: widget.game.isOnline,
+                resumable: widget.resumable,
+              ),
             ),
             Positioned(
               left: 10,
@@ -1865,9 +1889,10 @@ class _SmallGameTileState extends State<_SmallGameTile>
 }
 
 class _GameStatusTag extends StatelessWidget {
-  const _GameStatusTag({required this.isOnline});
+  const _GameStatusTag({required this.isOnline, required this.resumable});
 
   final bool isOnline;
+  final bool resumable;
 
   @override
   Widget build(BuildContext context) {
@@ -1877,15 +1902,21 @@ class _GameStatusTag extends StatelessWidget {
       decoration: BoxDecoration(
         color: isOnline ? null : Colors.white.withValues(alpha: 0.20),
         gradient: isOnline
-            ? const LinearGradient(
+            ? LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF64EAA2),
-                  Color(0xFF19C778),
-                  Color(0xFF078E55),
-                ],
-                stops: [0.0, 0.52, 1.0],
+                colors: resumable
+                    ? const [
+                        Color(0xFF74C8FF),
+                        Color(0xFF2987F5),
+                        Color(0xFF1556C6),
+                      ]
+                    : const [
+                        Color(0xFF64EAA2),
+                        Color(0xFF19C778),
+                        Color(0xFF078E55),
+                      ],
+                stops: const [0.0, 0.52, 1.0],
               )
             : null,
         borderRadius: BorderRadius.circular(13),
@@ -1897,7 +1928,11 @@ class _GameStatusTag extends StatelessWidget {
         boxShadow: isOnline
             ? [
                 BoxShadow(
-                  color: const Color(0xFF03A85E).withValues(alpha: 0.28),
+                  color:
+                      (resumable
+                              ? const Color(0xFF287FF0)
+                              : const Color(0xFF03A85E))
+                          .withValues(alpha: 0.28),
                   blurRadius: 16,
                   offset: const Offset(0, 7),
                 ),
@@ -1946,7 +1981,11 @@ class _GameStatusTag extends StatelessWidget {
                 const SizedBox(width: 5),
               ],
               Text(
-                isOnline ? '已上线' : '待上线',
+                resumable
+                    ? '继续上局'
+                    : isOnline
+                    ? '已上线'
+                    : '待上线',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: isOnline ? 1 : 0.86),
                   fontSize: 10,

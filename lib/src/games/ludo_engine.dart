@@ -162,6 +162,69 @@ class LudoEngine {
        _user = List<int>.from(user),
        _agent = List<int>.from(agent);
 
+  factory LudoEngine.restore(
+    Map<String, dynamic> state, {
+    int moveCount = 0,
+    int rollCount = 0,
+    int seed = 20260714,
+  }) {
+    final user = List<int>.filled(pieceCount, -1);
+    final agent = List<int>.filled(pieceCount, -1);
+    final pieces = state['pieces'];
+    if (pieces is! List) throw const FormatException('missing_pieces');
+    for (final raw in pieces.whereType<Map>()) {
+      final piece = Map<String, dynamic>.from(raw);
+      final index = (piece['piece_index'] as num?)?.round();
+      final progress = (piece['progress'] as num?)?.round();
+      if (index == null ||
+          progress == null ||
+          index < 0 ||
+          index >= pieceCount) {
+        throw const FormatException('invalid_piece');
+      }
+      if (piece['actor'] == LudoActor.user.name) {
+        user[index] = progress;
+      } else if (piece['actor'] == LudoActor.agent.name) {
+        agent[index] = progress;
+      } else {
+        throw const FormatException('invalid_actor');
+      }
+    }
+    final engine = LudoEngine.debug(
+      user: user,
+      agent: agent,
+      turn: LudoActor.values.firstWhere(
+        (item) => item.name == state['turn'],
+        orElse: () => LudoActor.user,
+      ),
+      seed: seed,
+    );
+    engine._moveOffset = moveCount;
+    engine._rollOffset = rollCount;
+    engine._consecutiveSixes =
+        (state['consecutive_sixes'] as num?)?.round() ?? 0;
+    final pending = state['pending_roll'];
+    if (pending is Map) {
+      final json = Map<String, dynamic>.from(pending);
+      engine.pendingRoll = LudoRoll(
+        number: (json['roll_number'] as num?)?.round() ?? rollCount,
+        actor: LudoActor.values.firstWhere(
+          (item) => item.name == json['actor'],
+          orElse: () => engine.turn,
+        ),
+        value: (json['value'] as num?)?.round() ?? 1,
+        legalPieces: (json['legal_pieces'] as List? ?? const [])
+            .whereType<num>()
+            .map((item) => item.round())
+            .toList(growable: false),
+        consecutiveSixes: (json['consecutive_sixes'] as num?)?.round() ?? 0,
+        forfeited: json['forfeited'] == true,
+        stateHash: int.tryParse('${json['state_hash']}') ?? engine.stateHash,
+      );
+    }
+    return engine;
+  }
+
   static const int pieceCount = 4;
   static const int outerTrackLength = 52;
   static const int finishProgress = 57;
@@ -174,6 +237,8 @@ class LudoEngine {
   final List<int> _agent;
   final List<LudoMove> _moves = [];
   final List<LudoRoll> _rolls = [];
+  int _moveOffset = 0;
+  int _rollOffset = 0;
   LudoActor turn = LudoActor.user;
   LudoRoll? pendingRoll;
   int _consecutiveSixes = 0;
@@ -215,7 +280,7 @@ class LudoEngine {
     final forfeited = _consecutiveSixes >= 3;
     final legal = forfeited ? <int>[] : legalPieces(value);
     final record = LudoRoll(
-      number: _rolls.length + 1,
+      number: _rollOffset + _rolls.length + 1,
       actor: turn,
       value: value,
       legalPieces: legal,
@@ -366,7 +431,7 @@ class LudoEngine {
       _consecutiveSixes = 0;
     }
     final move = LudoMove(
-      number: _moves.length + 1,
+      number: _moveOffset + _moves.length + 1,
       actor: actor,
       pieceIndex: pieceIndex,
       roll: roll.value,
@@ -408,14 +473,14 @@ class LudoEngine {
     'agent_finished': _agent.where((value) => value == finishProgress).length,
     'user_in_yard': _user.where((value) => value < 0).length,
     'agent_in_yard': _agent.where((value) => value < 0).length,
-    'roll_count': _rolls.length,
-    'move_count': _moves.length,
+    'roll_count': _rollOffset + _rolls.length,
+    'move_count': _moveOffset + _moves.length,
   };
 
   Map<String, dynamic> summaryJson() => {
     'status': status.name,
-    'roll_count': _rolls.length,
-    'move_count': _moves.length,
+    'roll_count': _rollOffset + _rolls.length,
+    'move_count': _moveOffset + _moves.length,
     'rolls': [for (final roll in _rolls) roll.toJson()],
     'actions': [for (final move in _moves) move.toJson()],
     'key_moments': [

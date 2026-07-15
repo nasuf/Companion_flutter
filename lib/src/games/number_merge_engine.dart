@@ -179,15 +179,45 @@ class NumberMergeEngine {
     _refreshStatus();
   }
 
+  factory NumberMergeEngine.restore(
+    Map<String, dynamic> state, {
+    int moveCount = 0,
+    int seed = 20260715,
+  }) {
+    final board = (state['board'] as List? ?? const [])
+        .whereType<num>()
+        .map((item) => item.round())
+        .toList(growable: false);
+    if (board.length != size * size) {
+      throw const FormatException('invalid_board');
+    }
+    final engine = NumberMergeEngine.withBoard(
+      board,
+      seed: seed,
+      target: (state['target'] as num?)?.round() ?? 2048,
+      firstActor: NumberMergeActor.values.firstWhere(
+        (item) => item.name == state['turn'],
+        orElse: () => NumberMergeActor.user,
+      ),
+    );
+    engine.score = (state['score'] as num?)?.round() ?? 0;
+    engine.userScore = (state['user_score'] as num?)?.round() ?? 0;
+    engine.agentScore = (state['agent_score'] as num?)?.round() ?? 0;
+    engine._moveOffset = moveCount;
+    return engine;
+  }
+
   static const int size = 4;
 
   final int target;
   final math.Random _random;
   final List<int> _board;
   final List<NumberMergeMove> moves = [];
+  int _moveOffset = 0;
   final List<NumberMergeKeyMoment> keyMoments = [];
 
   NumberMergeActor turn = NumberMergeActor.user;
+  int get moveCount => _moveOffset + moves.length;
   NumberMergeStatus status = NumberMergeStatus.playing;
   int score = 0;
   int userScore = 0;
@@ -254,7 +284,7 @@ class NumberMergeEngine {
           : NumberMergeActor.user;
     }
     final move = NumberMergeMove(
-      number: moves.length + 1,
+      number: _moveOffset + moves.length + 1,
       actor: activeActor,
       direction: direction,
       transitions: simulation.transitions,
@@ -300,7 +330,7 @@ class NumberMergeEngine {
     'score': score,
     'user_score': userScore,
     'agent_score': agentScore,
-    'move_count': moves.length,
+    'move_count': moveCount,
     'empty_count': emptyCount,
     'max_tile': maxTile,
     'legal_directions': legalDirections.map((item) => item.name).toList(),
@@ -331,8 +361,8 @@ class NumberMergeEngine {
     'score': score,
     'user_score': userScore,
     'agent_score': agentScore,
-    'move_count': moves.length,
-    'action_count': moves.length,
+    'move_count': moveCount,
+    'action_count': moveCount,
     'max_tile': maxTile,
     'total_merges': totalMerges,
     'best_combo': bestCombo,

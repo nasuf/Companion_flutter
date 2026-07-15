@@ -24,6 +24,7 @@ class _NativeGameRuntime {
   bool roundsLoading = true;
   bool recovering = true;
   bool completed = false;
+  bool resumed = false;
   String? error;
   String? syncNotice;
   int _eventSequence = 0;
@@ -41,11 +42,50 @@ class _NativeGameRuntime {
     return math.max(0, DateTime.now().difference(value).inSeconds);
   }
 
-  Future<void> initialize() async {
+  Future<_NativeGameResume?> initialize() async {
     await _eventOutbox.replay();
-    recovering = false;
-    _notify();
-    await loadRounds();
+    try {
+      final sessions = await api.listNativeGameSessions(gameKey: gameKey);
+      rounds = sessions.where(_GameRoundSummary.canShow).toList();
+      final agentId = authSession.agentId;
+      final active = sessions.where(
+        (candidate) =>
+            candidate.status == 'playing' &&
+            (agentId == null || candidate.agentId == agentId),
+      );
+      final candidate = active.firstOrNull;
+      if (candidate != null) {
+        final resume = _NativeGameResume.fromSession(candidate, gameKey);
+        session = candidate;
+        // A resumed page starts a new active segment. Time spent away from the
+        // game must not be reported as play time for this visit.
+        startedAt = DateTime.now();
+        completed = false;
+        resumed = true;
+        timeline
+          ..clear()
+          ..add(_GameTimelineItem.ai(agentName, '这局还在。棋盘和走过的每一步我都替你留着，我们接着来。'));
+        await reportEvent(
+          'game_state_snapshot',
+          state: 'playing',
+          payload: {
+            'reason': 'resumed',
+            'action_count': resume.actionCount,
+            'state_after': resume.state,
+          },
+          updateUi: false,
+        );
+        return resume;
+      }
+      return null;
+    } catch (caught) {
+      syncNotice = _formatError(caught);
+      return null;
+    } finally {
+      recovering = false;
+      roundsLoading = false;
+      _notify();
+    }
   }
 
   Future<void> loadRounds() async {
@@ -81,6 +121,7 @@ class _NativeGameRuntime {
     session = null;
     timeline.clear();
     completed = false;
+    resumed = false;
     aiThinking = false;
     _eventSequence = 0;
     _notify();
@@ -122,13 +163,22 @@ class _NativeGameRuntime {
     completed = true;
     aiThinking = false;
     _notify();
+    final terminalPayload = Map<String, dynamic>.from(payload);
+    if (resumed) {
+      // The server already owns the canonical pre-resume action stream. New
+      // actions have also been appended one-by-one, so a partial local history
+      // must not replace or fail validation against that stream at settlement.
+      terminalPayload.remove('actions');
+      terminalPayload.remove('moves');
+      terminalPayload.remove('rolls');
+    }
     final response = await reportEvent(
       'game_finished',
       state: 'settled',
       payload: {
         'schema_version': 1,
         'duration_seconds': elapsedSeconds,
-        ...payload,
+        ...terminalPayload,
       },
     );
     unawaited(loadRounds());
@@ -259,7 +309,71 @@ class _NativeGameRuntime {
   }
 }
 
-class _NativeFullscreenGameSurface extends StatelessWidget {
+class _NativeGameResume {
+  const _NativeGameResume({
+    required this.session,
+    required this.process,
+    required this.state,
+    required this.actions,
+    required this.rolls,
+    required this.actionCount,
+    required this.rollCount,
+  });
+
+  final GameSession session;
+  final Map<String, dynamic> process;
+  final Map<String, dynamic> state;
+  final List<Map<String, dynamic>> actions;
+  final List<Map<String, dynamic>> rolls;
+  final int actionCount;
+  final int rollCount;
+
+  factory _NativeGameResume.fromSession(GameSession session, String gameKey) {
+    final result = session.result ?? const <String, dynamic>{};
+    final processRoot = _asNativeGameMap(result['process']);
+    final process = _asNativeGameMap(processRoot[gameKey]);
+    final actions = _asNativeGameMapList(
+      process['actions'] ?? process['moves'],
+    );
+    final snapshots = _asNativeGameMapList(process['snapshots']);
+    final rolls = snapshots
+        .where((item) => item['event_type'] == 'dice_rolled')
+        .toList(growable: false);
+    final lastRoll = _asNativeGameMap(process['last_roll']);
+    return _NativeGameResume(
+      session: session,
+      process: process,
+      state: _asNativeGameMap(process['final_state']),
+      actions: actions,
+      rolls: rolls,
+      actionCount: _asNativeGameInt(
+        process['action_count'] ?? process['move_count'],
+        fallback: actions.length,
+      ),
+      rollCount: _asNativeGameInt(
+        lastRoll['roll_number'],
+        fallback: rolls.length,
+      ),
+    );
+  }
+}
+
+Map<String, dynamic> _asNativeGameMap(Object? value) =>
+    value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
+
+List<Map<String, dynamic>> _asNativeGameMapList(Object? value) => value is List
+    ? value
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(growable: false)
+    : const <Map<String, dynamic>>[];
+
+int _asNativeGameInt(Object? value, {required int fallback}) {
+  if (value is int) return value;
+  return int.tryParse(value?.toString() ?? '') ?? fallback;
+}
+
+class _NativeFullscreenGameSurface extends StatefulWidget {
   const _NativeFullscreenGameSurface({
     required this.title,
     required this.subtitle,
@@ -281,10 +395,42 @@ class _NativeFullscreenGameSurface extends StatelessWidget {
   final bool restartLoading;
 
   @override
+  State<_NativeFullscreenGameSurface> createState() =>
+      _NativeFullscreenGameSurfaceState();
+}
+
+class _NativeFullscreenGameSurfaceState
+    extends State<_NativeFullscreenGameSurface> {
+  @override
+  void initState() {
+    super.initState();
+    unawaited(
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]),
+    );
+    unawaited(
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
+    );
+  }
+
+  @override
+  void dispose() {
+    unawaited(
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.portraitUp,
+      ]),
+    );
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => PopScope(
     canPop: false,
     onPopInvokedWithResult: (didPop, result) {
-      if (!didPop) onExit();
+      if (!didPop) widget.onExit();
     },
     child: Scaffold(
       backgroundColor: AppColors.page,
@@ -292,89 +438,136 @@ class _NativeFullscreenGameSurface extends StatelessWidget {
         children: [
           const _GameBackground(progress: 0.5),
           SafeArea(
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 10, 8),
-                  child: Row(
-                    children: [
-                      Expanded(
+            minimum: const EdgeInsets.all(8),
+            child: LayoutBuilder(
+              builder: (context, constraints) => Stack(
+                children: [
+                  Positioned.fill(
+                    child: Center(
+                      child: _GlassPanel(
+                        radius: 20,
+                        padding: const EdgeInsets.all(10),
+                        child: FittedBox(
+                          fit: BoxFit.contain,
+                          child: SizedBox(width: 620, child: widget.child),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 10,
+                    top: 10,
+                    child: IgnorePointer(
+                      child: Container(
+                        constraints: BoxConstraints(
+                          maxWidth: constraints.maxWidth * .45,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 13,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface.withValues(alpha: .9),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: AppColors.text.withValues(alpha: .08),
+                          ),
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              title,
+                              widget.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: AppColors.text,
-                                fontSize: 22,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w900,
-                                letterSpacing: 0,
                               ),
                             ),
-                            const SizedBox(height: 3),
                             Text(
-                              subtitle,
+                              widget.subtitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: AppColors.text.withValues(alpha: 0.5),
-                                fontSize: 11,
+                                color: AppColors.text.withValues(alpha: .5),
+                                fontSize: 10,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      _NativeFullscreenToggleButton(
-                        expanded: true,
-                        onPressed: onExit,
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) => SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: math.max(0.0, constraints.maxHeight - 12),
-                        ),
-                        child: Center(
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxWidth: math.min(700, constraints.maxWidth),
-                            ),
-                            child: _GlassPanel(
-                              radius: 24,
-                              padding: const EdgeInsets.all(12),
-                              child: child,
-                            ),
-                          ),
-                        ),
-                      ),
                     ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 2, 10, 10),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 700),
-                    child: _PrimaryGameButton(
-                      label: restartLabel,
-                      loading: restartLoading,
-                      disabled: restartDisabled,
-                      onPressed: onRestart,
+                  Positioned(
+                    right: 10,
+                    top: 10,
+                    child: Row(
+                      children: [
+                        _NativeFullscreenActionButton(
+                          tooltip: widget.restartLabel,
+                          icon: Icons.refresh_rounded,
+                          loading: widget.restartLoading,
+                          onPressed: widget.restartDisabled
+                              ? null
+                              : widget.onRestart,
+                        ),
+                        const SizedBox(width: 8),
+                        _NativeFullscreenToggleButton(
+                          expanded: true,
+                          onPressed: widget.onExit,
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
+      ),
+    ),
+  );
+}
+
+class _NativeFullscreenActionButton extends StatelessWidget {
+  const _NativeFullscreenActionButton({
+    required this.tooltip,
+    required this.icon,
+    required this.loading,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final bool loading;
+  final Future<void> Function()? onPressed;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: const Size(38, 38),
+      onPressed: onPressed == null ? null : () => unawaited(onPressed!()),
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: AppColors.surface.withValues(alpha: .88),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.text.withValues(alpha: .09)),
+        ),
+        alignment: Alignment.center,
+        child: loading
+            ? const CupertinoActivityIndicator(radius: 8)
+            : Icon(
+                icon,
+                color: AppColors.text.withValues(alpha: .78),
+                size: 21,
+              ),
       ),
     ),
   );

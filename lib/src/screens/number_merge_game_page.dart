@@ -34,17 +34,37 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
         if (mounted) setState(() {});
       },
     );
-    unawaited(_runtime.initialize());
+    unawaited(_initialize());
   }
 
-  @override
-  void dispose() {
-    if (_runtime.session != null && !_runtime.completed) {
-      unawaited(
-        _runtime.abort('page_closed', _sessionSummary(), updateUi: false),
-      );
+  Future<void> _initialize() async {
+    final resume = await _runtime.initialize();
+    if (!mounted || resume == null) return;
+    try {
+      final engine = resume.state.isEmpty
+          ? NumberMergeEngine(seed: resume.session.id.hashCode)
+          : NumberMergeEngine.restore(
+              resume.state,
+              moveCount: resume.actionCount,
+              seed: resume.session.id.hashCode,
+            );
+      setState(() {
+        _engine = engine;
+        _lastMove = null;
+        _actionHistory
+          ..clear()
+          ..addAll(resume.actions);
+        _resolving = false;
+      });
+      if (engine.isFinished) {
+        unawaited(_finish(engine.status));
+      } else if (engine.turn == NumberMergeActor.agent) {
+        unawaited(_agentTurn());
+      }
+    } catch (caught) {
+      _runtime.syncNotice = '上一局数字合并无法恢复，可以重新开一局：$caught';
+      if (mounted) setState(() {});
     }
-    super.dispose();
   }
 
   Future<void> _start() async {
@@ -101,7 +121,7 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
       await _runtime.reportEvent(
         'ai_thinking_started',
         payload: {
-          'move_number': engine.moves.length + 1,
+          'move_number': engine.moveCount + 1,
           'analysis': engine.analysisJson(),
         },
       );
@@ -113,6 +133,11 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
       }
       await _runtime.reportEvent('ai_move_decided', payload: decision.toJson());
       await Future<void>.delayed(const Duration(milliseconds: 330));
+      if (!mounted ||
+          engine.isFinished ||
+          engine.turn != NumberMergeActor.agent) {
+        return;
+      }
       await _applyAndReport(decision.direction, decision: decision);
     } finally {
       if (mounted) setState(() => _runtime.aiThinking = false);

@@ -37,17 +37,38 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
         if (mounted) setState(() {});
       },
     );
-    unawaited(_runtime.initialize());
+    unawaited(_initialize());
   }
 
-  @override
-  void dispose() {
-    if (_runtime.session != null && !_runtime.completed) {
-      unawaited(
-        _runtime.abort('page_closed', _sessionSummary(), updateUi: false),
-      );
+  Future<void> _initialize() async {
+    final resume = await _runtime.initialize();
+    if (!mounted || resume == null) return;
+    try {
+      final engine = resume.state.isEmpty
+          ? MinesweeperEngine(seed: resume.session.id.hashCode)
+          : MinesweeperEngine.restore(
+              resume.state,
+              actionCount: resume.actionCount,
+              seed: resume.session.id.hashCode,
+            );
+      setState(() {
+        _engine = engine;
+        _lastAction = null;
+        _actionHistory
+          ..clear()
+          ..addAll(resume.actions);
+        _tool = _MinesweeperTool.reveal;
+        _resolving = false;
+      });
+      if (engine.isFinished) {
+        unawaited(_finish(engine.status));
+      } else if (engine.turn == MinesweeperActor.agent) {
+        unawaited(_agentTurn());
+      }
+    } catch (caught) {
+      _runtime.syncNotice = '上一局扫雷无法恢复，可以重新开一局：$caught';
+      if (mounted) setState(() {});
     }
-    super.dispose();
   }
 
   Future<void> _start() async {
@@ -64,9 +85,7 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
     });
     if (session != null && mounted) {
       setState(() {
-        _engine = MinesweeperEngine(
-          seed: DateTime.now().microsecondsSinceEpoch & 0x7fffffff,
-        );
+        _engine = MinesweeperEngine(seed: session.id.hashCode);
         _lastAction = null;
         _actionHistory.clear();
         _tool = _MinesweeperTool.reveal;
@@ -101,7 +120,7 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
       await _runtime.reportEvent(
         'ai_thinking_started',
         payload: {
-          'action_number': engine.actions.length + 1,
+          'action_number': engine.actionCount + 1,
           'visible_analysis': engine.analysisJson(),
         },
       );
@@ -113,6 +132,11 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
       }
       await _runtime.reportEvent('ai_move_decided', payload: decision.toJson());
       await Future<void>.delayed(const Duration(milliseconds: 360));
+      if (!mounted ||
+          engine.isFinished ||
+          engine.turn != MinesweeperActor.agent) {
+        return;
+      }
       await _applyAndReport(
         decision.point.index(engine.columns),
         flag: decision.kind == MinesweeperActionKind.flag,
@@ -174,7 +198,7 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
       ...action.toJson(),
       'action_id': '${_runtime.session?.id}:${action.number}',
       'state_before': before,
-      'state_after': engine.stateJson(),
+      'state_after': engine.stateJson(revealMines: true),
       'analysis': engine.analysisJson(),
     };
     _actionHistory.add(canonicalAction);

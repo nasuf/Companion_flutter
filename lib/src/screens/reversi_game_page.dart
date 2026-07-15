@@ -33,22 +33,30 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
         if (mounted) setState(() {});
       },
     );
-    unawaited(_runtime.initialize());
+    unawaited(_initialize());
   }
 
-  @override
-  void dispose() {
-    final engine = _engine;
-    if (_runtime.session != null && !_runtime.completed) {
-      unawaited(
-        _runtime.abort(
-          'page_closed',
-          engine?.summaryJson() ?? const {},
-          updateUi: false,
-        ),
-      );
+  Future<void> _initialize() async {
+    final resume = await _runtime.initialize();
+    if (!mounted || resume == null) return;
+    try {
+      final engine = resume.state.isEmpty
+          ? ReversiEngine()
+          : ReversiEngine.restore(resume.state, moveCount: resume.actionCount);
+      setState(() {
+        _engine = engine;
+        _lastMove = null;
+        _resolving = false;
+      });
+      if (engine.isFinished) {
+        unawaited(_finish(engine.status));
+      } else if (engine.turn == ReversiActor.agent) {
+        unawaited(_agentLoop());
+      }
+    } catch (caught) {
+      _runtime.syncNotice = '上一局黑白棋无法恢复，可以重新开一局：$caught';
+      if (mounted) setState(() {});
     }
-    super.dispose();
   }
 
   Future<void> _start() async {
@@ -101,7 +109,7 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
         await _runtime.reportEvent(
           'ai_thinking_started',
           payload: {
-            'move_number': engine.moves.length + 1,
+            'move_number': engine.moveCount + 1,
             'analysis': engine.analysisJson(),
           },
         );
@@ -116,6 +124,11 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
           payload: decision.toJson(),
         );
         await Future<void>.delayed(const Duration(milliseconds: 230));
+        if (!mounted ||
+            engine.isFinished ||
+            engine.turn != ReversiActor.agent) {
+          return;
+        }
         await _playAndReport(decision.point.index, decision: decision);
         if (!engine.isFinished && engine.turn == ReversiActor.agent) {
           _runtime.addLocalComment('这一轮你没有能落的位置，我就再走一步啦。');
