@@ -101,11 +101,6 @@ class _GamePageState extends State<GamePage>
         authSession: widget.session,
         game: game,
       ),
-      _nativeLudoGameKey => _LudoGamePage(
-        api: widget.api,
-        authSession: widget.session,
-        game: game,
-      ),
       _nativeMatch3GameKey => _Match3GamePage(
         api: widget.api,
         authSession: widget.session,
@@ -556,7 +551,7 @@ class _GameRoundSummary {
     }
     final count = actionCount;
     if (count == null || count <= 0) return null;
-    return '$count ${gameKey == _nativeLudoGameKey ? '次移动' : '步'}';
+    return '$count 步';
   }
 
   List<_RoundDetailMetric> get metrics {
@@ -668,44 +663,6 @@ class _GameRoundSummary {
           items.add(
             _RoundDetailMetric('进营', '你 $userTarget : $agentTarget $aiName'),
           );
-        }
-      case _nativeLudoGameKey:
-        final rolls = _intValue(gameData['roll_count']);
-        final moves = actionCount;
-        if (rolls != null) items.add(_RoundDetailMetric('掷骰', '$rolls 次'));
-        if (moves != null) items.add(_RoundDetailMetric('移动', '$moves 次'));
-        final userFinished = _intValue(analysis['user_finished']);
-        final agentFinished = _intValue(analysis['agent_finished']);
-        if (userFinished != null && agentFinished != null) {
-          items.add(
-            _RoundDetailMetric(
-              '到达终点',
-              '你 $userFinished : $agentFinished $aiName',
-            ),
-          );
-        }
-        final ludoMoments = gameData['key_moments'];
-        if (ludoMoments is List) {
-          final shortcuts = ludoMoments
-              .whereType<Map>()
-              .where((item) => item['type'] == 'flight_shortcut')
-              .length;
-          final jumps = ludoMoments
-              .whereType<Map>()
-              .where((item) => item['type'] == 'color_jump')
-              .length;
-          final captures = ludoMoments
-              .whereType<Map>()
-              .where((item) => item['type'] == 'capture')
-              .length;
-          if (shortcuts + jumps > 0) {
-            items.add(
-              _RoundDetailMetric('飞行路线', '$shortcuts 次捷径 · $jumps 次连跳'),
-            );
-          }
-          if (captures > 0) {
-            items.add(_RoundDetailMetric('撞回', '$captures 次'));
-          }
         }
       case _nativeMatch3GameKey:
         final total = _intValue(gameData['total_score']);
@@ -2208,7 +2165,6 @@ const _nativeGomokuGameKey = 'gomoku';
 const _nativeXiangqiGameKey = 'xiangqi';
 const _nativeChessGameKey = 'chess';
 const _nativeChineseCheckersGameKey = 'chinese_checkers';
-const _nativeLudoGameKey = 'ludo';
 const _nativeMatch3GameKey = 'match3';
 const _nativeMinesweeperGameKey = 'minesweeper';
 const _nativeNumberMergeGameKey = 'number_merge';
@@ -2219,7 +2175,7 @@ const _gameGroupCatalog = [
     kicker: 'slow strategy',
     title: '棋牌游戏',
     badge: '静心对弈',
-    metric: '7 款棋类',
+    metric: '6 款棋类',
     hero: 'assets/prototype/games/category-board-hero.jpg',
     accent: Color(0xFF1F6FFF),
     description: '从安静落子开始，不急着赢，只把这一局慢慢下完。',
@@ -2259,12 +2215,6 @@ const _gameGroupCatalog = [
         note: '连续跳跃，把棋子送进对面的星角。',
         image: 'assets/prototype/games/chinese-checkers-native.jpg',
         nativeGameKey: _nativeChineseCheckersGameKey,
-      ),
-      _GameTile(
-        title: '飞行棋',
-        note: '掷骰起飞，绕场竞速也会互相撞回。',
-        image: 'assets/prototype/games/ludo-native.jpg',
-        nativeGameKey: _nativeLudoGameKey,
       ),
     ],
   ),

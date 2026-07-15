@@ -2,7 +2,6 @@ import 'package:companion_flutter/src/games/chess_family_engine.dart';
 import 'package:companion_flutter/src/games/chinese_checkers_engine.dart';
 import 'package:companion_flutter/src/games/go_engine.dart';
 import 'package:companion_flutter/src/games/gomoku_engine.dart';
-import 'package:companion_flutter/src/games/ludo_engine.dart';
 import 'package:companion_flutter/src/games/match3_engine.dart';
 import 'package:companion_flutter/src/games/minesweeper_engine.dart';
 import 'package:companion_flutter/src/games/number_merge_engine.dart';
@@ -60,48 +59,6 @@ void main() {
         restored.legalPathsFrom(agentFrom).first,
       );
       expect(agentMove.move.number, 2);
-    });
-
-    test('restores a pending ludo choice and both counters', () {
-      final original = LudoEngine(seed: 8);
-      original.roll(forcedValue: 6);
-      original.movePiece(0);
-      original.roll(forcedValue: 3);
-      final restored = LudoEngine.restore(
-        original.stateJson(),
-        moveCount: 1,
-        rollCount: 2,
-        seed: 8,
-      );
-
-      expect(restored.stateHash, original.stateHash);
-      expect(
-        restored.pendingRoll?.legalPieces,
-        original.pendingRoll?.legalPieces,
-      );
-      expect(restored.movePiece(0).move.number, 2);
-    });
-
-    test('restored agent pending roll can continue without rerolling', () {
-      final original = LudoEngine.debug(
-        user: const [-1, -1, -1, -1],
-        agent: const [0, -1, -1, -1],
-        turn: LudoActor.agent,
-      )..roll(forcedValue: 2);
-      final restored = LudoEngine.restore(
-        original.stateJson(),
-        rollCount: 1,
-        seed: 8,
-      );
-
-      expect(restored.pendingRoll?.value, 2);
-      final decision = restored.chooseAgentPiece();
-      final result = restored.movePiece(
-        decision.pieceIndex,
-        decision: decision,
-      );
-      expect(result.move.roll, 2);
-      expect(result.move.number, 1);
     });
 
     test('restores match3 score, board, turn, and remaining turns', () {
