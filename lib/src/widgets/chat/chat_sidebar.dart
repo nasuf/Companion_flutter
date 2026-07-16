@@ -1,13 +1,13 @@
 part of 'package:companion_flutter/main.dart';
 
 enum _SidebarDestination {
-  weather('天气', Color(0xFF0A84FF)),
-  capsule('胶囊', Color(0xFF7C3CFF)),
-  legacy('遗言', Color(0xFF151820)),
+  weather('天气', Color(0xFF4B9AFF)),
+  capsule('胶囊', Color(0xFFFE9631)),
+  legacy('遗言', Color(0xFF1C1E28)),
   mail('信箱', Color(0xFF7C3CFF)),
-  task('打卡', Color(0xFF22C66B)),
-  achievement('成就', Color(0xFF96556A)),
-  shop('商城', Color(0xFF0A84FF));
+  task('打卡', Color(0xFF1AB88D)),
+  achievement('成就', Color(0xFFFD6846)),
+  shop('商城', Color(0xFF124DB2));
 
   const _SidebarDestination(this.label, this.color);
 
@@ -82,7 +82,7 @@ class _SidebarRail extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         _LiquidRailContainer(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          padding: const EdgeInsets.all(12),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -98,7 +98,7 @@ class _SidebarRail extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         _LiquidRailContainer(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(20),
           child: _SidebarButton(
             destination: _SidebarDestination.shop,
             onTap: () => onSelected(_SidebarDestination.shop),
@@ -117,32 +117,13 @@ class _LiquidRailContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(38),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.82),
-            borderRadius: BorderRadius.circular(38),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF315B88).withValues(alpha: 0.15),
-                blurRadius: 26,
-                offset: const Offset(0, 16),
-              ),
-              BoxShadow(
-                color: Colors.white.withValues(alpha: 0.76),
-                blurRadius: 1,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: child,
-        ),
+    return Container(
+      padding: padding,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.all(Radius.circular(999)),
       ),
+      child: child,
     );
   }
 }
@@ -155,6 +136,12 @@ class _SidebarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final iconRadius = destination == _SidebarDestination.shop ? 12.0 : 999.0;
+    final showBadge = destination != _SidebarDestination.weather;
+    final badgeOffset = destination == _SidebarDestination.capsule
+        ? const Offset(44, 8)
+        : const Offset(48, 4);
+
     return Tooltip(
       message: destination.label,
       child: CupertinoButton(
@@ -170,63 +157,29 @@ class _SidebarButton extends StatelessWidget {
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color.lerp(destination.color, Colors.white, 0.08)!,
-                        destination.color,
-                        Color.lerp(destination.color, Colors.black, 0.08)!,
-                      ],
-                      stops: const [0, 0.58, 1],
-                    ),
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.white.withValues(alpha: 0.58),
-                        blurRadius: 1,
-                        offset: const Offset(-1, -1),
-                      ),
-                      BoxShadow(
-                        color: destination.color.withValues(alpha: 0.22),
-                        blurRadius: 14,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
+                    color: destination.color,
+                    borderRadius: BorderRadius.circular(iconRadius),
                   ),
                   child: _SidebarIcon(destination: destination),
                 ),
               ),
-              Positioned(
-                right: 5,
-                top: 4,
-                child: Container(
-                  width: 14,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    color: _badgeColor(destination),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: destination.color, width: 1.5),
+              if (showBadge)
+                Positioned(
+                  left: badgeOffset.dx,
+                  top: badgeOffset.dy,
+                  child: const DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Color(0xFFFF4778),
+                      shape: BoxShape.circle,
+                    ),
+                    child: SizedBox(width: 8, height: 8),
                   ),
                 ),
-              ),
             ],
           ),
         ),
       ),
     );
-  }
-
-  Color _badgeColor(_SidebarDestination destination) {
-    return switch (destination) {
-      _SidebarDestination.weather => AppColors.accentCyan,
-      _SidebarDestination.capsule => const Color(0xFFB491FF),
-      _SidebarDestination.legacy => const Color(0xFF9EA4AA),
-      _SidebarDestination.mail => AppColors.accent,
-      _SidebarDestination.task => const Color(0xFFFFC23A),
-      _SidebarDestination.achievement => const Color(0xFFFFC23A),
-      _SidebarDestination.shop => AppColors.accentCyan,
-    };
   }
 }
 
@@ -391,35 +344,21 @@ class _GlossSidebarIconPainter extends CustomPainter {
   }
 
   void _paintTask(Canvas canvas, Size size) {
-    final badge = Path();
-    const center = Offset(18, 18);
-    for (var i = 0; i < 20; i += 1) {
-      final angle = -math.pi / 2 + i * math.pi / 10;
-      final radius = i.isEven ? 13.3 : 11.3;
-      final point = Offset(
-        center.dx + math.cos(angle) * radius,
-        center.dy + math.sin(angle) * radius,
-      );
-      if (i == 0) {
-        badge.moveTo(point.dx, point.dy);
-      } else {
-        badge.lineTo(point.dx, point.dy);
-      }
-    }
-    badge.close();
+    final pin = Path()
+      ..moveTo(18, 7)
+      ..cubicTo(11.6, 7, 7.2, 11.4, 7.2, 17.1)
+      ..cubicTo(7.2, 24.3, 15.2, 29.8, 18, 32)
+      ..cubicTo(20.8, 29.8, 28.8, 24.3, 28.8, 17.1)
+      ..cubicTo(28.8, 11.4, 24.4, 7, 18, 7)
+      ..close();
 
-    _drawPathShadow(canvas, badge, const Offset(0, 1.7));
-    canvas.drawPath(badge, Paint()..color = Colors.white);
-    canvas.drawCircle(
-      const Offset(14, 12.8),
-      3.4,
-      Paint()..color = Colors.white.withValues(alpha: 0.28),
-    );
+    _drawPathShadow(canvas, pin, const Offset(0, 1.4));
+    canvas.drawPath(pin, Paint()..color = Colors.white);
 
     final check = Path()
-      ..moveTo(12.4, 18.2)
-      ..lineTo(16.3, 22.1)
-      ..lineTo(24.3, 13.9);
+      ..moveTo(13.8, 16.8)
+      ..lineTo(16.9, 19.9)
+      ..lineTo(22.5, 14.1);
     canvas.drawPath(
       check,
       Paint()
@@ -428,6 +367,18 @@ class _GlossSidebarIconPainter extends CustomPainter {
         ..strokeWidth = 3
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round,
+    );
+
+    final base = Path()
+      ..moveTo(9.5, 30.2)
+      ..cubicTo(13.3, 33, 22.7, 33, 26.5, 30.2);
+    canvas.drawPath(
+      base,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.4
+        ..strokeCap = StrokeCap.round,
     );
   }
 
@@ -477,55 +428,48 @@ class _GlossSidebarIconPainter extends CustomPainter {
   }
 
   void _paintShop(Canvas canvas, Size size) {
-    final bag = RRect.fromRectAndRadius(
-      const Rect.fromLTWH(7.4, 12.2, 21.2, 17.4),
-      const Radius.circular(4.4),
-    );
-    final bagPath = Path()..addRRect(bag);
-    _drawPathShadow(canvas, bagPath, const Offset(0, 1.5));
-    canvas.drawRRect(bag, Paint()..color = Colors.white);
+    final crown = Path()
+      ..moveTo(7.7, 14.6)
+      ..lineTo(12.8, 20.1)
+      ..lineTo(18, 9.2)
+      ..lineTo(23.2, 20.1)
+      ..lineTo(28.3, 14.6)
+      ..lineTo(26.5, 27.2)
+      ..lineTo(9.5, 27.2)
+      ..close();
+    _drawPathShadow(canvas, crown, const Offset(0, 1.2));
+    canvas.drawPath(crown, Paint()..color = Colors.white);
 
-    final handlePaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round;
-    canvas.drawArc(
-      const Rect.fromLTWH(12, 6.4, 12, 12),
-      math.pi,
-      math.pi,
-      false,
-      handlePaint,
+    final base = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(9, 24.1, 18, 7.8),
+      const Radius.circular(1.6),
     );
-    canvas.drawArc(
-      const Rect.fromLTWH(12, 6.4, 12, 12),
-      math.pi,
-      math.pi,
-      false,
-      Paint()
-        ..color = destination.color.withValues(alpha: 0.38)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.3
-        ..strokeCap = StrokeCap.round,
-    );
+    canvas.drawRRect(base, Paint()..color = Colors.white);
 
-    final sparkle = Path();
-    const center = Offset(18, 21);
-    for (var i = 0; i < 8; i += 1) {
-      final radius = i.isEven ? 6.6 : 2.4;
-      final angle = -math.pi / 2 + i * math.pi / 4;
-      final point = Offset(
-        center.dx + math.cos(angle) * radius,
-        center.dy + math.sin(angle) * radius,
-      );
-      if (i == 0) {
-        sparkle.moveTo(point.dx, point.dy);
-      } else {
-        sparkle.lineTo(point.dx, point.dy);
-      }
+    for (final point in const [
+      Offset(8, 14.4),
+      Offset(18, 8.8),
+      Offset(28, 14.4),
+    ]) {
+      canvas.drawCircle(point, 1.9, Paint()..color = Colors.white);
     }
-    sparkle.close();
-    canvas.drawPath(sparkle, Paint()..color = destination.color);
+
+    final textPainter = TextPainter(
+      text: const TextSpan(
+        text: 'VIP',
+        style: TextStyle(
+          color: Color(0xFF124DB2),
+          fontSize: 7.2,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    textPainter.paint(
+      canvas,
+      Offset(18 - textPainter.width / 2, 25.5 - textPainter.height / 2),
+    );
   }
 
   void _drawPathShadow(Canvas canvas, Path path, Offset offset) {
