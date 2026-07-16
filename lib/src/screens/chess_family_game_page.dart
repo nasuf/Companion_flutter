@@ -594,19 +594,37 @@ class _ChessFamilyBoard extends StatelessWidget {
       final rank = 7 - row;
       return engine.squareAt(file, rank);
     }
-    final board = Rect.fromLTWH(
-      padding + 10,
-      padding + 10,
-      size.width - padding * 2 - 20,
-      size.height - padding * 2 - 20,
-    );
-    final cellX = board.width / 8;
-    final cellY = board.height / 9;
-    final file = ((point.dx - board.left + cellX / 2) / cellX).floor();
-    final row = ((point.dy - board.top + cellY / 2) / cellY).floor();
+    final geometry = _XiangqiBoardGeometry(size);
+    final file =
+        ((point.dx - geometry.board.left + geometry.step / 2) / geometry.step)
+            .floor();
+    final row =
+        ((point.dy - geometry.board.top + geometry.step / 2) / geometry.step)
+            .floor();
     if (file < 0 || file >= 9 || row < 0 || row >= 10) return null;
     return engine.squareAt(file, 9 - row);
   }
+}
+
+class _XiangqiBoardGeometry {
+  _XiangqiBoardGeometry(Size size) {
+    final margin = math.max(20.0, size.shortestSide * 0.07);
+    final availableWidth = math.max(0.0, size.width - margin * 2);
+    final availableHeight = math.max(0.0, size.height - margin * 2);
+    final width = math.min(availableWidth, availableHeight * 8 / 9);
+    step = width / 8;
+    board = Rect.fromCenter(
+      center: size.center(Offset.zero),
+      width: width,
+      height: step * 9,
+    );
+  }
+
+  late final Rect board;
+  late final double step;
+
+  Offset point(int file, int row) =>
+      Offset(board.left + file * step, board.top + row * step);
 }
 
 extension _IterableFirstOrNull<T> on Iterable<T> {
@@ -736,128 +754,240 @@ class _ChessFamilyBoardPainter extends CustomPainter {
   }
 
   void _paintXiangqi(Canvas canvas, Size size) {
-    const pad = 22.0;
-    final board = Rect.fromLTWH(
-      pad,
-      pad,
-      size.width - pad * 2,
-      size.height - pad * 2,
+    final geometry = _XiangqiBoardGeometry(size);
+    final board = geometry.board;
+    final step = geometry.step;
+    final rect = Offset.zero & size;
+    final frame = RRect.fromRectAndRadius(rect, const Radius.circular(18));
+    canvas.drawRRect(
+      frame,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFF3D49A), Color(0xFFE2AE68), Color(0xFFC98247)],
+          stops: [0, 0.58, 1],
+        ).createShader(rect),
     );
-    final dx = board.width / 8;
-    final dy = board.height / 9;
-    final line = Paint()
-      ..color = const Color(0xFF56361F)
-      ..strokeWidth = 1.25;
-    for (var row = 0; row < 10; row++) {
-      canvas.drawLine(
-        Offset(board.left, board.top + row * dy),
-        Offset(board.right, board.top + row * dy),
-        line,
+    canvas.save();
+    canvas.clipRRect(frame);
+    final grain = Paint()
+      ..color = const Color(0xFF704127).withValues(alpha: 0.1)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = math.max(0.55, step * 0.018);
+    for (var index = 0; index < 17; index += 1) {
+      final y = size.height * (index + 0.5) / 17;
+      final wave = math.sin(index * 1.37) * step * 0.18;
+      canvas.drawPath(
+        Path()
+          ..moveTo(-8, y)
+          ..cubicTo(
+            size.width * 0.28,
+            y + wave,
+            size.width * 0.72,
+            y - wave,
+            size.width + 8,
+            y + wave * 0.35,
+          ),
+        grain,
       );
+    }
+    canvas.restore();
+    canvas.drawRRect(
+      frame.deflate(1.2),
+      Paint()
+        ..color = const Color(0xFF7A4528).withValues(alpha: 0.72)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.5, step * 0.075),
+    );
+    final boardFrame = RRect.fromRectAndRadius(
+      board.inflate(step * 0.18),
+      Radius.circular(step * 0.12),
+    );
+    canvas.drawRRect(
+      boardFrame,
+      Paint()
+        ..color = const Color(0xFF6C3B23).withValues(alpha: 0.24)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.0, step * 0.045),
+    );
+    final line = Paint()
+      ..color = const Color(0xFF4E2B1A).withValues(alpha: 0.9)
+      ..strokeWidth = math.max(1.0, step * 0.038)
+      ..strokeCap = StrokeCap.square;
+    for (var row = 0; row < 10; row++) {
+      canvas.drawLine(geometry.point(0, row), geometry.point(8, row), line);
     }
     for (var file = 0; file < 9; file++) {
-      final x = board.left + file * dx;
-      canvas.drawLine(
-        Offset(x, board.top),
-        Offset(x, board.top + 4 * dy),
-        line,
-      );
-      canvas.drawLine(
-        Offset(x, board.top + 5 * dy),
-        Offset(x, board.bottom),
-        line,
-      );
+      if (file == 0 || file == 8) {
+        canvas.drawLine(geometry.point(file, 0), geometry.point(file, 9), line);
+      } else {
+        canvas.drawLine(geometry.point(file, 0), geometry.point(file, 4), line);
+        canvas.drawLine(geometry.point(file, 5), geometry.point(file, 9), line);
+      }
     }
-    canvas.drawLine(
-      Offset(board.left + 3 * dx, board.top),
-      Offset(board.left + 5 * dx, board.top + 2 * dy),
-      line,
-    );
-    canvas.drawLine(
-      Offset(board.left + 5 * dx, board.top),
-      Offset(board.left + 3 * dx, board.top + 2 * dy),
-      line,
-    );
-    canvas.drawLine(
-      Offset(board.left + 3 * dx, board.bottom),
-      Offset(board.left + 5 * dx, board.bottom - 2 * dy),
-      line,
-    );
-    canvas.drawLine(
-      Offset(board.left + 5 * dx, board.bottom),
-      Offset(board.left + 3 * dx, board.bottom - 2 * dy),
-      line,
-    );
+    canvas.drawLine(geometry.point(3, 0), geometry.point(5, 2), line);
+    canvas.drawLine(geometry.point(5, 0), geometry.point(3, 2), line);
+    canvas.drawLine(geometry.point(3, 9), geometry.point(5, 7), line);
+    canvas.drawLine(geometry.point(5, 9), geometry.point(3, 7), line);
+    for (final (file, row) in const [
+      (1, 2),
+      (7, 2),
+      (0, 3),
+      (2, 3),
+      (4, 3),
+      (6, 3),
+      (8, 3),
+      (0, 6),
+      (2, 6),
+      (4, 6),
+      (6, 6),
+      (8, 6),
+      (1, 7),
+      (7, 7),
+    ]) {
+      _paintXiangqiMark(canvas, geometry.point(file, row), step, file, line);
+    }
     _paintCenteredText(
       canvas,
       '楚 河',
-      Offset(board.left + dx * 2, board.top + dy * 4.5),
-      16,
-      const Color(0xAA56361F),
+      Offset(board.left + step * 2, board.top + step * 4.5),
+      step * 0.5,
+      const Color(0xC44E2B1A),
     );
     _paintCenteredText(
       canvas,
-      '汉 界',
-      Offset(board.left + dx * 6, board.top + dy * 4.5),
-      16,
-      const Color(0xAA56361F),
+      '漢 界',
+      Offset(board.left + step * 6, board.top + step * 4.5),
+      step * 0.5,
+      const Color(0xC44E2B1A),
     );
     for (final piece in pieces) {
-      final center = Offset(
-        board.left + piece.file * dx,
-        board.top + (9 - piece.rank) * dy,
-      );
-      final radius = math.min(dx, dy) * .39;
-      canvas.drawCircle(
-        center,
-        radius + 2,
-        Paint()..color = const Color(0x5527190F),
-      );
-      canvas.drawCircle(
-        center,
-        radius,
-        Paint()..color = const Color(0xFFF3D89A),
-      );
-      canvas.drawCircle(
-        center,
-        radius,
-        Paint()
-          ..color = piece.actor == ChessFamilyActor.user
-              ? const Color(0xFFD34335)
-              : const Color(0xFF26372B)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2,
-      );
-      if (piece.square == selectedSquare) {
-        canvas.drawCircle(
-          center,
-          radius + 4,
-          Paint()
-            ..color = const Color(0xFF168CFF)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 3,
-        );
-      }
-      _paintCenteredText(
+      _paintXiangqiPiece(
         canvas,
-        _xiangqiGlyph(piece),
-        center,
-        radius * .92,
-        piece.actor == ChessFamilyActor.user
-            ? const Color(0xFFBD3028)
-            : const Color(0xFF1E3025),
+        geometry.point(piece.file, 9 - piece.rank),
+        step,
+        piece,
+        selected: piece.square == selectedSquare,
       );
     }
     for (final target in legalTargets) {
       final piece = _pieceBySquare(target);
       final file = piece?.file ?? target % (files * 2);
       final rank = piece?.rank ?? ranks - target ~/ (files * 2) - 1;
-      final center = Offset(
-        board.left + file * dx,
-        board.top + (9 - rank) * dy,
-      );
-      canvas.drawCircle(center, 5, Paint()..color = const Color(0xD9168CFF));
+      final center = geometry.point(file, 9 - rank);
+      if (piece == null) {
+        canvas.drawCircle(
+          center,
+          step * 0.13,
+          Paint()..color = const Color(0xE51C7B67),
+        );
+      } else {
+        canvas.drawCircle(
+          center,
+          step * 0.47,
+          Paint()
+            ..color = const Color(0xFF1C7B67)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.max(2.0, step * 0.07),
+        );
+      }
     }
+  }
+
+  void _paintXiangqiMark(
+    Canvas canvas,
+    Offset center,
+    double step,
+    int file,
+    Paint line,
+  ) {
+    final gap = step * 0.11;
+    final length = step * 0.17;
+    final stroke = Paint()
+      ..color = line.color
+      ..strokeWidth = math.max(0.9, step * 0.032)
+      ..style = PaintingStyle.stroke;
+    void corner(double xDirection, double yDirection) {
+      final start = center + Offset(gap * xDirection, gap * yDirection);
+      canvas.drawPath(
+        Path()
+          ..moveTo(start.dx + length * xDirection, start.dy)
+          ..lineTo(start.dx, start.dy)
+          ..lineTo(start.dx, start.dy + length * yDirection),
+        stroke,
+      );
+    }
+
+    if (file > 0) {
+      corner(-1, -1);
+      corner(-1, 1);
+    }
+    if (file < 8) {
+      corner(1, -1);
+      corner(1, 1);
+    }
+  }
+
+  void _paintXiangqiPiece(
+    Canvas canvas,
+    Offset center,
+    double step,
+    ChessBoardPiece piece, {
+    required bool selected,
+  }) {
+    final radius = step * 0.405;
+    canvas.drawCircle(
+      center + Offset(0, radius * 0.18),
+      radius * 1.08,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.28)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, radius * 0.2),
+    );
+    final rimRect = Rect.fromCircle(center: center, radius: radius * 1.05);
+    canvas.drawCircle(
+      center,
+      radius * 1.05,
+      Paint()
+        ..shader = const RadialGradient(
+          center: Alignment(-0.35, -0.42),
+          colors: [Color(0xFFFFE9B7), Color(0xFFD7A45F), Color(0xFF8A532E)],
+          stops: [0, 0.72, 1],
+        ).createShader(rimRect),
+    );
+    canvas.drawCircle(
+      center,
+      radius * 0.87,
+      Paint()..color = const Color(0xFFF6DDA3),
+    );
+    final actorColor = piece.actor == ChessFamilyActor.user
+        ? const Color(0xFFC63F34)
+        : const Color(0xFF253C32);
+    canvas.drawCircle(
+      center,
+      radius * 0.78,
+      Paint()
+        ..color = actorColor.withValues(alpha: 0.9)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.3, step * 0.045),
+    );
+    if (selected) {
+      canvas.drawCircle(
+        center,
+        radius * 1.23,
+        Paint()
+          ..color = const Color(0xFF0E8C77)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(2.2, step * 0.075),
+      );
+    }
+    _paintCenteredText(
+      canvas,
+      _xiangqiGlyph(piece),
+      center - Offset(0, radius * 0.02),
+      radius * 1.04,
+      actorColor,
+    );
   }
 
   ChessBoardPiece? _pieceBySquare(int square) =>

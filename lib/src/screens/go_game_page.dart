@@ -476,9 +476,6 @@ class _GoBoardState extends State<_GoBoard> with TickerProviderStateMixin {
       builder: (context, constraints) {
         final side = math.min(constraints.maxWidth, constraints.maxHeight);
         final size = Size.square(side);
-        final legalMoves = widget.enabled
-            ? widget.engine.legalMoves().toSet()
-            : const <int>{};
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTapUp: (details) => _handleTap(details, size),
@@ -488,7 +485,6 @@ class _GoBoardState extends State<_GoBoard> with TickerProviderStateMixin {
               size: size,
               painter: _GoBoardPainter(
                 board: widget.engine.board,
-                legalMoves: legalMoves,
                 lastMove: widget.lastMove,
                 moveProgress: Curves.easeOutCubic.transform(
                   _moveController.value,
@@ -510,7 +506,7 @@ class _GoBoardGeometry {
 
   final Size size;
 
-  double get inset => size.width * 0.09;
+  double get inset => size.width * 0.105;
   double get step => (size.width - inset * 2) / (GoEngine.boardSize - 1);
 
   Offset point(int index) => Offset(
@@ -535,7 +531,6 @@ class _GoBoardGeometry {
 class _GoBoardPainter extends CustomPainter {
   const _GoBoardPainter({
     required this.board,
-    required this.legalMoves,
     required this.lastMove,
     required this.moveProgress,
     required this.ambientProgress,
@@ -544,7 +539,6 @@ class _GoBoardPainter extends CustomPainter {
   });
 
   final List<int> board;
-  final Set<int> legalMoves;
   final GoMove? lastMove;
   final double moveProgress;
   final double ambientProgress;
@@ -555,42 +549,56 @@ class _GoBoardPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final geometry = _GoBoardGeometry(size);
     final boardRect = Offset.zero & size;
-    final radius = Radius.circular(size.width * 0.045);
+    final radius = Radius.circular(size.width * 0.038);
     canvas.drawRRect(
       RRect.fromRectAndRadius(boardRect, radius),
+      Paint()..color = const Color(0xFF6E421E),
+    );
+    final woodRect = boardRect.deflate(size.width * 0.012);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(woodRect, radius * 0.78),
       Paint()
         ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFD9A85D), Color(0xFFC9873F), Color(0xFFE1B66C)],
-          stops: [0, 0.56, 1],
-        ).createShader(boardRect),
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [Color(0xFFE5B665), Color(0xFFD19A4D), Color(0xFFE8BC70)],
+          stops: [0, 0.52, 1],
+        ).createShader(woodRect),
     );
     canvas.save();
-    canvas.clipRRect(RRect.fromRectAndRadius(boardRect, radius));
+    canvas.clipRRect(RRect.fromRectAndRadius(woodRect, radius * 0.78));
     final grainPaint = Paint()
       ..color = const Color(0xFF6C3A1D).withValues(alpha: 0.08)
       ..strokeWidth = 0.7;
-    for (var i = 0; i < 13; i += 1) {
-      final y = size.height * (i + 0.7) / 13;
-      final wave = math.sin(i * 1.71) * size.width * 0.018;
+    for (var i = 0; i < 17; i += 1) {
+      final x = size.width * (i + 0.4) / 17;
+      final wave = math.sin(i * 1.71) * size.width * 0.015;
       final path = Path()
-        ..moveTo(-10, y)
+        ..moveTo(x, -10)
         ..cubicTo(
-          size.width * 0.28,
-          y + wave,
-          size.width * 0.66,
-          y - wave,
-          size.width + 10,
-          y + wave * 0.3,
+          x + wave,
+          size.height * 0.28,
+          x - wave,
+          size.height * 0.68,
+          x + wave * 0.3,
+          size.height + 10,
         );
       canvas.drawPath(path, grainPaint);
     }
     canvas.restore();
 
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(woodRect, radius * 0.78),
+      Paint()
+        ..color = const Color(0xFF6F421F).withValues(alpha: 0.5)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.2, size.width * 0.006),
+    );
+
     final gridPaint = Paint()
-      ..color = const Color(0xFF3B2416).withValues(alpha: 0.78)
-      ..strokeWidth = math.max(0.8, size.width / 420);
+      ..color = const Color(0xFF2E2118).withValues(alpha: 0.9)
+      ..strokeWidth = math.max(0.9, size.width / 390)
+      ..strokeCap = StrokeCap.square;
     for (var line = 0; line < GoEngine.boardSize; line += 1) {
       final a = geometry.point(line);
       final b = geometry.point(
@@ -607,7 +615,7 @@ class _GoBoardPainter extends CustomPainter {
     for (final point in const [20, 24, 40, 56, 60]) {
       canvas.drawCircle(
         geometry.point(point),
-        geometry.step * 0.075,
+        geometry.step * 0.085,
         starPaint,
       );
     }
@@ -643,7 +651,7 @@ class _GoBoardPainter extends CustomPainter {
       _paintGoStone(
         canvas,
         geometry.point(index),
-        geometry.step * 0.43 * scale,
+        geometry.step * 0.455 * scale,
         black: stone == 1,
         last: isLast,
       );
@@ -664,21 +672,6 @@ class _GoBoardPainter extends CustomPainter {
         );
       }
     }
-
-    if (legalMoves.isNotEmpty) {
-      final pulse = 0.45 + ambientProgress * 0.3;
-      final hintPaint = Paint()
-        ..color = const Color(0xFF0D5F4E).withValues(alpha: pulse * 0.22);
-      for (final index in legalMoves) {
-        canvas.drawCircle(
-          geometry.point(index),
-          geometry.step * 0.075,
-          hintPaint,
-        );
-      }
-    }
-
-    _paintGoCoordinates(canvas, geometry, size);
   }
 
   void _paintGoStone(
@@ -727,44 +720,6 @@ class _GoBoardPainter extends CustomPainter {
     }
   }
 
-  void _paintGoCoordinates(
-    Canvas canvas,
-    _GoBoardGeometry geometry,
-    Size size,
-  ) {
-    final style = TextStyle(
-      color: const Color(0xFF382416).withValues(alpha: 0.64),
-      fontSize: math.max(7, size.width * 0.023),
-      fontWeight: FontWeight.w800,
-    );
-    for (var i = 0; i < GoEngine.boardSize; i += 1) {
-      final column = TextPainter(
-        text: TextSpan(text: _goDisplayColumns[i], style: style),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      column.paint(
-        canvas,
-        Offset(
-          geometry.point(i).dx - column.width / 2,
-          size.height - geometry.inset * 0.56,
-        ),
-      );
-      final row = TextPainter(
-        text: TextSpan(text: '${GoEngine.boardSize - i}', style: style),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      row.paint(
-        canvas,
-        Offset(
-          geometry.inset * 0.31 - row.width / 2,
-          geometry.point(i * 9).dy - row.height / 2,
-        ),
-      );
-    }
-  }
-
   @override
   bool shouldRepaint(covariant _GoBoardPainter oldDelegate) => true;
 }
-
-const _goDisplayColumns = 'ABCDEFGHJ';

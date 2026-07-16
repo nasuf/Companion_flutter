@@ -18,8 +18,10 @@ class _ChineseCheckersGamePage extends StatefulWidget {
 class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
   late final _NativeGameRuntime _runtime;
   ChineseCheckersEngine? _engine;
+  ChineseCheckersMove? _lastMove;
   int? _selected;
   Map<int, List<int>> _targets = const {};
+  bool _moveAnimating = false;
 
   @override
   void initState() {
@@ -50,8 +52,10 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
   void _clearActiveRound() {
     setState(() {
       _engine = null;
+      _lastMove = null;
       _selected = null;
       _targets = const {};
+      _moveAnimating = false;
     });
   }
 
@@ -69,24 +73,40 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
     if (session != null && mounted) {
       setState(() {
         _engine = ChineseCheckersEngine();
+        _lastMove = null;
         _selected = null;
         _targets = const {};
+        _moveAnimating = false;
       });
     }
   }
 
   Future<void> _tapCell(int index) async {
     final engine = _engine;
-    if (engine == null || engine.isFinished || _runtime.aiThinking) return;
+    if (engine == null ||
+        engine.isFinished ||
+        _runtime.aiThinking ||
+        _moveAnimating) {
+      return;
+    }
     final target = _targets[index];
     if (_selected != null && target != null) {
       final before = engine.stateJson();
       final result = engine.playPath(target);
       setState(() {
+        _lastMove = result.move;
+        _moveAnimating = true;
         _selected = null;
         _targets = const {};
       });
-      await _reportMove(result.move, before);
+      try {
+        await Future.wait([
+          _reportMove(result.move, before),
+          Future<void>.delayed(_checkersMoveDuration(result.move)),
+        ]);
+      } finally {
+        if (mounted) setState(() => _moveAnimating = false);
+      }
       if (result.status != ChineseCheckersStatus.playing) {
         await _finish(result.status);
       } else {
@@ -128,7 +148,20 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
       if (!mounted) return;
       await _runtime.reportEvent('ai_move_decided', payload: decision.toJson());
       final result = engine.playPath(decision.path, decision: decision);
-      await _reportMove(result.move, before);
+      if (mounted) {
+        setState(() {
+          _lastMove = result.move;
+          _moveAnimating = true;
+        });
+      }
+      try {
+        await Future.wait([
+          _reportMove(result.move, before),
+          Future<void>.delayed(_checkersMoveDuration(result.move)),
+        ]);
+      } finally {
+        if (mounted) setState(() => _moveAnimating = false);
+      }
       if (result.status != ChineseCheckersStatus.playing) {
         await _finish(result.status);
       }
@@ -203,6 +236,7 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
                   aspectRatio: 1,
                   child: _ChineseCheckersBoard(
                     engine: engine,
+                    lastMove: _lastMove,
                     selected: _selected,
                     targets: _targets,
                     onTap: _tapCell,
@@ -817,11 +851,13 @@ class _NativeScoreHeader extends StatelessWidget {
 class _ChineseCheckersBoard extends StatefulWidget {
   const _ChineseCheckersBoard({
     required this.engine,
+    required this.lastMove,
     required this.selected,
     required this.targets,
     required this.onTap,
   });
   final ChineseCheckersEngine engine;
+  final ChineseCheckersMove? lastMove;
   final int? selected;
   final Map<int, List<int>> targets;
   final ValueChanged<int> onTap;
@@ -831,8 +867,9 @@ class _ChineseCheckersBoard extends StatefulWidget {
 }
 
 class _ChineseCheckersBoardState extends State<_ChineseCheckersBoard>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _targetPulse;
+  late final AnimationController _moveController;
 
   @override
   void initState() {
@@ -840,6 +877,11 @@ class _ChineseCheckersBoardState extends State<_ChineseCheckersBoard>
     _targetPulse = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
+    );
+    _moveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+      value: 1,
     );
     if (widget.targets.isNotEmpty) {
       _targetPulse.repeat(reverse: true);
@@ -856,21 +898,28 @@ class _ChineseCheckersBoardState extends State<_ChineseCheckersBoard>
         ..stop()
         ..value = 0;
     }
+    if (oldWidget.lastMove?.number != widget.lastMove?.number &&
+        widget.lastMove != null) {
+      _moveController.duration = _checkersMoveDuration(widget.lastMove!);
+      _moveController.forward(from: 0);
+    }
   }
 
   @override
   void dispose() {
     _targetPulse.dispose();
+    _moveController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: _targetPulse,
+    animation: Listenable.merge([_targetPulse, _moveController]),
     builder: (context, _) => LayoutBuilder(
       builder: (context, constraints) => GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTapUp: (details) {
+          if (!_moveController.isCompleted) return;
           final index = _nearest(details.localPosition, constraints.biggest);
           if (index != null) widget.onTap(index);
         },
@@ -878,6 +927,8 @@ class _ChineseCheckersBoardState extends State<_ChineseCheckersBoard>
           child: CustomPaint(
             painter: _ChineseCheckersPainter(
               board: widget.engine.board,
+              lastMove: widget.lastMove,
+              moveProgress: _moveController.value,
               selected: widget.selected,
               targets: widget.targets,
               pulse: _targetPulse.value,
@@ -907,12 +958,16 @@ class _ChineseCheckersBoardState extends State<_ChineseCheckersBoard>
 class _ChineseCheckersPainter extends CustomPainter {
   const _ChineseCheckersPainter({
     required this.board,
+    required this.lastMove,
+    required this.moveProgress,
     required this.selected,
     required this.targets,
     required this.pulse,
     required this.darkMode,
   });
   final List<int> board;
+  final ChineseCheckersMove? lastMove;
+  final double moveProgress;
   final int? selected;
   final Map<int, List<int>> targets;
   final double pulse;
@@ -931,98 +986,119 @@ class _ChineseCheckersPainter extends CustomPainter {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: darkMode
-              ? const [Color(0xFF172B2D), Color(0xFF0E2023)]
-              : const [Color(0xFFEAF4EF), Color(0xFFD9EAE6)],
+              ? const [Color(0xFF14272A), Color(0xFF091A1D)]
+              : const [Color(0xFFE7F2EE), Color(0xFFD4E8E4)],
         ).createShader(rect),
     );
     final geometry = _checkersGeometry(size);
     final layout = geometry.positions;
-    final star = _checkersStarPath(geometry.center, geometry.outerRadius);
-    canvas.drawPath(
-      star.shift(Offset(0, geometry.spacing * .13)),
+    final slabRadius = geometry.outerRadius + geometry.spacing * 0.2;
+    final slabRect = Rect.fromCircle(
+      center: geometry.center,
+      radius: slabRadius,
+    );
+    canvas.drawCircle(
+      geometry.center + Offset(0, geometry.spacing * 0.18),
+      slabRadius,
       Paint()
         ..color = Colors.black.withValues(alpha: darkMode ? .34 : .2)
         ..maskFilter = MaskFilter.blur(
           BlurStyle.normal,
-          geometry.spacing * .22,
+          geometry.spacing * .28,
         ),
     );
-    canvas.drawPath(
-      star,
+    canvas.drawCircle(
+      geometry.center,
+      slabRadius,
       Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFE1AF74), Color(0xFFBF7A49), Color(0xFF8F5238)],
-          stops: [0, .55, 1],
-        ).createShader(star.getBounds()),
+        ..shader = const RadialGradient(
+          center: Alignment(-0.34, -0.4),
+          radius: 1.08,
+          colors: [Color(0xFFF1CD91), Color(0xFFD39A5E), Color(0xFF8D5438)],
+          stops: [0, 0.72, 1],
+        ).createShader(slabRect),
     );
     canvas.save();
-    canvas.clipPath(star);
+    canvas.clipPath(Path()..addOval(slabRect));
     final grainPaint = Paint()
-      ..color = const Color(0xFF6D392B).withValues(alpha: .12)
+      ..color = const Color(0xFF6D392B).withValues(alpha: .11)
       ..style = PaintingStyle.stroke
       ..strokeWidth = math.max(0.55, geometry.spacing * .035);
-    for (var line = 0; line < 18; line += 1) {
-      final y = rect.top + rect.height * (line + .5) / 18;
-      final wave = math.sin(line * 1.41) * geometry.spacing * .3;
+    for (var line = 0; line < 21; line += 1) {
+      final y = slabRect.top + slabRect.height * (line + 0.5) / 21;
+      final wave = math.sin(line * 1.41) * geometry.spacing * 0.32;
       canvas.drawPath(
         Path()
-          ..moveTo(rect.left - 12, y)
+          ..moveTo(slabRect.left - 12, y)
           ..cubicTo(
-            rect.width * .28,
+            slabRect.left + slabRect.width * .28,
             y + wave,
-            rect.width * .7,
+            slabRect.left + slabRect.width * .7,
             y - wave,
-            rect.right + 12,
-            y + wave * .25,
+            slabRect.right + 12,
+            y + wave * 0.25,
           ),
         grainPaint,
       );
     }
     canvas.restore();
+    canvas.drawCircle(
+      geometry.center,
+      slabRadius,
+      Paint()
+        ..color = const Color(0xFF70412F).withValues(alpha: 0.72)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = geometry.spacing * 0.13,
+    );
+
+    final star = _checkersStarPath(
+      geometry.center,
+      geometry.outerRadius - geometry.spacing * 0.03,
+    );
+    canvas.drawPath(
+      star,
+      Paint()..color = const Color(0xFFFFE2AD).withValues(alpha: 0.13),
+    );
     canvas.drawPath(
       star,
       Paint()
-        ..color = const Color(0xFF6B3A2B).withValues(alpha: .62)
+        ..color = const Color(0xFF744630).withValues(alpha: 0.38)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = geometry.spacing * .09,
+        ..strokeWidth = geometry.spacing * 0.055,
     );
 
-    final holeRadius = geometry.spacing * .255;
-    final userColor = const Color(0xFFFFBE45);
-    final agentColor = const Color(0xFF4AA8F5);
+    final holeRadius = geometry.spacing * 0.215;
+    const userColor = Color(0xFFF4B73E);
+    const agentColor = Color(0xFF3B95DA);
     for (final cell in ChineseCheckersEngine.cells) {
       final center = layout[cell.index];
       final campColor = cell.row <= 3
           ? agentColor
           : cell.row >= 13
           ? userColor
-          : const Color(0xFF4E2D25);
+          : const Color(0xFF57372A);
       canvas.drawCircle(
-        center + Offset(0, holeRadius * .22),
-        holeRadius * 1.12,
-        Paint()..color = Colors.white.withValues(alpha: .2),
+        center + Offset(0, holeRadius * 0.28),
+        holeRadius * 1.16,
+        Paint()..color = Colors.white.withValues(alpha: 0.22),
       );
       canvas.drawCircle(
         center,
         holeRadius * 1.08,
-        Paint()..color = const Color(0xFF653C2E).withValues(alpha: .42),
-      );
-      canvas.drawCircle(
-        center,
-        holeRadius,
         Paint()
-          ..shader = RadialGradient(
-            center: const Alignment(-.32, -.38),
-            radius: .95,
-            colors: [
-              campColor.withValues(
-                alpha: cell.row <= 3 || cell.row >= 13 ? .34 : .22,
+          ..shader =
+              RadialGradient(
+                center: const Alignment(0.25, 0.3),
+                radius: 1.0,
+                colors: [
+                  const Color(0xFF3E281F).withValues(alpha: 0.82),
+                  campColor.withValues(
+                    alpha: cell.row <= 3 || cell.row >= 13 ? 0.44 : 0.27,
+                  ),
+                ],
+              ).createShader(
+                Rect.fromCircle(center: center, radius: holeRadius * 1.08),
               ),
-              const Color(0xFF42281F).withValues(alpha: .72),
-            ],
-          ).createShader(Rect.fromCircle(center: center, radius: holeRadius)),
       );
     }
 
@@ -1040,9 +1116,9 @@ class _ChineseCheckersPainter extends CustomPainter {
       canvas.drawPath(
         path,
         Paint()
-          ..color = Colors.white.withValues(alpha: .48)
+          ..color = const Color(0xFF1F7566).withValues(alpha: 0.55)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = geometry.spacing * .08
+          ..strokeWidth = geometry.spacing * 0.065
           ..strokeCap = StrokeCap.round
           ..strokeJoin = StrokeJoin.round,
       );
@@ -1052,87 +1128,187 @@ class _ChineseCheckersPainter extends CustomPainter {
       final center = layout[target];
       canvas.drawCircle(
         center,
-        holeRadius * (1.3 + pulse * .24),
+        holeRadius * (1.38 + pulse * 0.22),
         Paint()
-          ..color = Colors.white.withValues(alpha: .58 - pulse * .22)
+          ..color = const Color(
+            0xFF187864,
+          ).withValues(alpha: 0.78 - pulse * 0.2)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = geometry.spacing * .07,
+          ..strokeWidth = geometry.spacing * 0.065,
       );
       canvas.drawCircle(
         center,
-        holeRadius * .42,
-        Paint()..color = Colors.white.withValues(alpha: .9),
+        holeRadius * 0.36,
+        Paint()..color = const Color(0xFFE8FFF9).withValues(alpha: 0.9),
       );
     }
 
-    final pieceRadius = geometry.spacing * .37;
+    if (lastMove != null && moveProgress < 1 && lastMove!.isJump) {
+      final route = Path()
+        ..moveTo(
+          layout[lastMove!.path.first].dx,
+          layout[lastMove!.path.first].dy,
+        );
+      for (final index in lastMove!.path.skip(1)) {
+        route.lineTo(layout[index].dx, layout[index].dy);
+      }
+      final routeColor = lastMove!.actor == ChineseCheckersActor.user
+          ? userColor
+          : agentColor;
+      canvas.drawPath(
+        route,
+        Paint()
+          ..color = routeColor.withValues(alpha: 0.28)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = geometry.spacing * 0.07
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round,
+      );
+      for (final index in lastMove!.path.skip(1)) {
+        canvas.drawCircle(
+          layout[index],
+          holeRadius * 1.36,
+          Paint()
+            ..color = routeColor.withValues(alpha: 0.22)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = geometry.spacing * 0.05,
+        );
+      }
+    }
+
+    final pieceRadius = geometry.spacing * 0.325;
+    final hiddenDestination = moveProgress < 1 ? lastMove?.path.last : null;
     for (final cell in ChineseCheckersEngine.cells) {
       final center = layout[cell.index];
       final actor = board[cell.index];
-      if (actor >= 0) {
+      if (actor >= 0 && cell.index != hiddenDestination) {
         final color = actor == ChineseCheckersActor.user.index
             ? userColor
             : agentColor;
-        canvas.drawCircle(
-          center + Offset(0, pieceRadius * .24),
-          pieceRadius * 1.02,
-          Paint()
-            ..color = Colors.black.withValues(alpha: .34)
-            ..maskFilter = MaskFilter.blur(
-              BlurStyle.normal,
-              geometry.spacing * .07,
-            ),
-        );
-        canvas.drawCircle(
-          center,
-          pieceRadius * 1.05,
-          Paint()..color = Color.lerp(color, Colors.black, .24)!,
-        );
-        canvas.drawCircle(
-          center,
-          pieceRadius,
-          Paint()
-            ..shader =
-                RadialGradient(
-                  center: const Alignment(-.38, -.46),
-                  radius: .92,
-                  colors: [
-                    Color.lerp(color, Colors.white, .46)!,
-                    color,
-                    Color.lerp(color, Colors.black, .2)!,
-                  ],
-                  stops: const [0, .48, 1],
-                ).createShader(
-                  Rect.fromCircle(center: center, radius: pieceRadius),
-                ),
-        );
-        canvas.drawCircle(
-          center - Offset(pieceRadius * .31, pieceRadius * .36),
-          pieceRadius * .2,
-          Paint()..color = Colors.white.withValues(alpha: .78),
-        );
+        _paintCheckersMarble(canvas, center, pieceRadius, color);
       }
       if (cell.index == selected) {
         canvas.drawCircle(
           center,
-          pieceRadius * 1.34,
+          pieceRadius * 1.4,
           Paint()
-            ..color = Colors.white
+            ..color = const Color(0xFF176E60)
             ..style = PaintingStyle.stroke
-            ..strokeWidth = geometry.spacing * .09,
+            ..strokeWidth = geometry.spacing * 0.075,
         );
       }
     }
+
+    if (lastMove != null && moveProgress < 1) {
+      _paintMovingCheckersPiece(
+        canvas,
+        geometry,
+        lastMove!,
+        moveProgress,
+        pieceRadius,
+        lastMove!.actor == ChineseCheckersActor.user ? userColor : agentColor,
+      );
+    }
     canvas.restore();
+  }
+
+  void _paintCheckersMarble(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    Color color, {
+    double shadowScale = 1,
+    Offset? shadowCenter,
+  }) {
+    canvas.drawOval(
+      Rect.fromCenter(
+        center:
+            (shadowCenter ?? center) + Offset(0, radius * 0.48 * shadowScale),
+        width: radius * 1.7,
+        height: radius * 0.7,
+      ),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.3 / shadowScale)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, radius * 0.23),
+    );
+    canvas.drawCircle(
+      center,
+      radius * 1.04,
+      Paint()..color = Color.lerp(color, Colors.black, 0.28)!,
+    );
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(-0.42, -0.48),
+          radius: 1.05,
+          colors: [
+            Color.lerp(color, Colors.white, 0.52)!,
+            color,
+            Color.lerp(color, Colors.black, 0.25)!,
+          ],
+          stops: const [0, 0.5, 1],
+        ).createShader(Rect.fromCircle(center: center, radius: radius)),
+    );
+    canvas.drawCircle(
+      center - Offset(radius * 0.3, radius * 0.35),
+      radius * 0.18,
+      Paint()..color = Colors.white.withValues(alpha: 0.78),
+    );
+  }
+
+  void _paintMovingCheckersPiece(
+    Canvas canvas,
+    _ChineseCheckersGeometry geometry,
+    ChineseCheckersMove move,
+    double progress,
+    double radius,
+    Color color,
+  ) {
+    final segmentCount = math.max(1, move.path.length - 1);
+    final scaled = (progress * segmentCount).clamp(
+      0.0,
+      segmentCount.toDouble(),
+    );
+    final segment = math.min(segmentCount - 1, scaled.floor());
+    final local = (scaled - segment).clamp(0.0, 1.0);
+    final eased = Curves.easeInOutCubic.transform(local);
+    final from = geometry.positions[move.path[segment]];
+    final to = geometry.positions[move.path[segment + 1]];
+    final ground = Offset.lerp(from, to, eased)!;
+    final lift =
+        math.sin(math.pi * local) *
+        geometry.spacing *
+        (move.isJump ? 0.4 : 0.16);
+    final center = ground - Offset(0, lift);
+    _paintCheckersMarble(
+      canvas,
+      center,
+      radius * (1 + math.sin(math.pi * local) * 0.06),
+      color,
+      shadowScale: 1 + lift / geometry.spacing,
+      shadowCenter: ground,
+    );
   }
 
   @override
   bool shouldRepaint(covariant _ChineseCheckersPainter oldDelegate) =>
       oldDelegate.board != board ||
+      oldDelegate.lastMove?.number != lastMove?.number ||
+      oldDelegate.moveProgress != moveProgress ||
       oldDelegate.selected != selected ||
       oldDelegate.targets != targets ||
       oldDelegate.pulse != pulse ||
       oldDelegate.darkMode != darkMode;
+}
+
+Duration _checkersMoveDuration(ChineseCheckersMove move) {
+  final segments = math.max(1, move.path.length - 1);
+  final milliseconds = move.isJump
+      ? (segments * 300).clamp(480, 1500).toInt()
+      : 420;
+  return Duration(milliseconds: milliseconds);
 }
 
 class _ChineseCheckersGeometry {
