@@ -172,6 +172,7 @@ class _Composer extends StatelessWidget {
                             ? CupertinoIcons.xmark
                             : CupertinoIcons.plus,
                         selected: activePanel == ComposerPanel.more,
+                        prominent: activePanel != ComposerPanel.more,
                         onTap: onToggleMore,
                       );
                     },
@@ -513,6 +514,7 @@ class _RoundIconButton extends StatelessWidget {
     required this.onTap,
     this.selected = false,
     this.quiet = false,
+    this.prominent = false,
   });
 
   final String tooltip;
@@ -520,6 +522,7 @@ class _RoundIconButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool selected;
   final bool quiet;
+  final bool prominent;
 
   @override
   Widget build(BuildContext context) {
@@ -529,12 +532,24 @@ class _RoundIconButton extends StatelessWidget {
         onTap: onTap,
         radius: 23,
         child: Container(
-          width: quiet ? 24 : 38,
-          height: quiet ? 36 : 38,
+          width: quiet
+              ? 24
+              : prominent
+              ? 30
+              : 38,
+          height: quiet
+              ? 36
+              : prominent
+              ? 30
+              : 38,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: selected || quiet ? null : AppColors.surface,
-            gradient: selected
+            color: selected || quiet
+                ? null
+                : prominent
+                ? AppColors.accent
+                : AppColors.surface,
+            gradient: selected && !prominent
                 ? LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -546,6 +561,8 @@ class _RoundIconButton extends StatelessWidget {
                   ? Colors.transparent
                   : selected
                   ? Colors.white.withValues(alpha: 0.28)
+                  : prominent
+                  ? Colors.transparent
                   : AppColors.hairline,
             ),
             boxShadow: selected
@@ -560,11 +577,13 @@ class _RoundIconButton extends StatelessWidget {
           ),
           child: Icon(
             icon,
-            size: 21,
+            size: prominent ? 22 : 21,
             color: selected
                 ? Colors.white
                 : quiet
                 ? const Color(0xFF8A8A8A)
+                : prominent
+                ? Colors.white
                 : AppColors.text,
           ),
         ),
