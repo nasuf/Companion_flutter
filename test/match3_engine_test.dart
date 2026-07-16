@@ -9,6 +9,20 @@ void main() {
     expect(engine.stateJson()['status'], Match3Status.playing.name);
   });
 
+  test('gesture validation accepts legal swaps in either direction', () {
+    final engine = Match3Engine(seed: 42);
+    final legal = engine.availableSwaps().first;
+
+    expect(engine.isLegalSwap(legal), isTrue);
+    expect(engine.isLegalSwap(Match3Swap(legal.b, legal.a)), isTrue);
+    expect(
+      engine.isLegalSwap(
+        const Match3Swap(Match3Point(0, 0), Match3Point(2, 0)),
+      ),
+      isFalse,
+    );
+  });
+
   test('a legal swap resolves score, cascades and turn record', () {
     final engine = Match3Engine(seed: 9);
     final before = engine.stateHash;

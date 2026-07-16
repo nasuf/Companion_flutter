@@ -265,7 +265,6 @@ class _Match3GamePage extends StatefulWidget {
 class _Match3GamePageState extends State<_Match3GamePage> {
   late final _NativeGameRuntime _runtime;
   Match3Engine? _engine;
-  Match3Point? _selected;
   Match3Turn? _lastTurn;
   bool _resolving = false;
 
@@ -298,7 +297,6 @@ class _Match3GamePageState extends State<_Match3GamePage> {
   void _clearActiveRound() {
     setState(() {
       _engine = null;
-      _selected = null;
       _lastTurn = null;
       _resolving = false;
     });
@@ -319,14 +317,13 @@ class _Match3GamePageState extends State<_Match3GamePage> {
     if (session != null && mounted) {
       setState(() {
         _engine = Match3Engine(seed: session.id.hashCode);
-        _selected = null;
         _lastTurn = null;
         _resolving = false;
       });
     }
   }
 
-  Future<void> _tileTap(Match3Point point) async {
+  Future<void> _tileSwipe(Match3Swap swap) async {
     final engine = _engine;
     if (engine == null ||
         engine.isFinished ||
@@ -335,27 +332,7 @@ class _Match3GamePageState extends State<_Match3GamePage> {
         _runtime.aiThinking) {
       return;
     }
-    final selected = _selected;
-    if (selected == null) {
-      setState(() => _selected = point);
-      unawaited(HapticFeedback.selectionClick());
-      return;
-    }
-    if (selected == point) {
-      setState(() => _selected = null);
-      return;
-    }
-    final swap = Match3Swap(selected, point);
-    final legal = engine.availableSwaps().any(
-      (item) =>
-          (item.a == swap.a && item.b == swap.b) ||
-          (item.a == swap.b && item.b == swap.a),
-    );
-    if (!legal) {
-      setState(() => _selected = point);
-      unawaited(HapticFeedback.selectionClick());
-      return;
-    }
+    if (!engine.isLegalSwap(swap)) return;
     final before = engine.stateJson();
     final result = engine.swap(swap);
     await _presentTurn(result.turn, before);
@@ -394,7 +371,6 @@ class _Match3GamePageState extends State<_Match3GamePage> {
   ) async {
     if (!mounted) return;
     setState(() {
-      _selected = null;
       _lastTurn = turn;
       _resolving = true;
     });
@@ -406,7 +382,7 @@ class _Match3GamePageState extends State<_Match3GamePage> {
     try {
       await Future.wait([
         _reportMatchTurn(turn, before),
-        Future<void>.delayed(_match3TurnAnimationDuration(turn)),
+        Future<void>.delayed(_match3RemainingAnimationDuration(turn)),
       ]);
     } finally {
       if (mounted) setState(() => _resolving = false);
@@ -502,10 +478,14 @@ class _Match3GamePageState extends State<_Match3GamePage> {
                     aspectRatio: 1,
                     child: _Match3Board(
                       engine: engine,
-                      selected: _selected,
                       lastTurn: _lastTurn,
                       thinking: _runtime.aiThinking && !_resolving,
-                      onTap: _tileTap,
+                      enabled:
+                          engine.turn == Match3Actor.user &&
+                          !_resolving &&
+                          !_runtime.aiThinking &&
+                          !engine.isFinished,
+                      onSwap: _tileSwipe,
                     ),
                   ),
                 ),
@@ -1465,17 +1445,17 @@ class _Match3MissionBar extends StatelessWidget {
 class _Match3Board extends StatefulWidget {
   const _Match3Board({
     required this.engine,
-    required this.selected,
     required this.lastTurn,
     required this.thinking,
-    required this.onTap,
+    required this.enabled,
+    required this.onSwap,
   });
 
   final Match3Engine engine;
-  final Match3Point? selected;
   final Match3Turn? lastTurn;
   final bool thinking;
-  final ValueChanged<Match3Point> onTap;
+  final bool enabled;
+  final Future<void> Function(Match3Swap) onSwap;
 
   @override
   State<_Match3Board> createState() => _Match3BoardState();
@@ -1485,6 +1465,14 @@ class _Match3BoardState extends State<_Match3Board>
     with TickerProviderStateMixin {
   late final AnimationController _ambient;
   late final AnimationController _resolve;
+  late final AnimationController _gesture;
+  Match3Point? _dragOrigin;
+  Offset? _dragStartPosition;
+  Match3Swap? _gestureSwap;
+  Animation<double>? _gestureAnimation;
+  double _dragProgress = 0;
+  bool _gestureInvalid = false;
+  bool _gestureSettling = false;
 
   @override
   void initState() {
@@ -1492,12 +1480,14 @@ class _Match3BoardState extends State<_Match3Board>
     _ambient = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 4200),
-    )..repeat();
+    );
+    if (widget.thinking) _ambient.repeat();
     _resolve = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 780),
       value: 1,
     );
+    _gesture = AnimationController(vsync: this, value: 1);
   }
 
   @override
@@ -1506,7 +1496,16 @@ class _Match3BoardState extends State<_Match3Board>
     if (oldWidget.lastTurn?.number != widget.lastTurn?.number &&
         widget.lastTurn != null) {
       _resolve.duration = _match3TurnAnimationDuration(widget.lastTurn!);
-      _resolve.forward(from: 0);
+      _resolve.forward(from: _match3ResolveStart(widget.lastTurn!));
+    }
+    if (oldWidget.thinking != widget.thinking) {
+      if (widget.thinking) {
+        _ambient.repeat();
+      } else {
+        _ambient
+          ..stop()
+          ..value = 0;
+      }
     }
   }
 
@@ -1514,40 +1513,175 @@ class _Match3BoardState extends State<_Match3Board>
   void dispose() {
     _ambient.dispose();
     _resolve.dispose();
+    _gesture.dispose();
     super.dispose();
+  }
+
+  bool get _canInteract =>
+      widget.enabled && _resolve.isCompleted && !_gestureSettling;
+
+  double get _gestureProgress => _gestureAnimation?.value ?? _dragProgress;
+
+  void _handlePanDown(DragDownDetails details, _Match3BoardGeometry geometry) {
+    if (!_canInteract) return;
+    final origin = geometry.pointAt(details.localPosition);
+    if (origin == null) return;
+    _gesture.stop();
+    setState(() {
+      _dragOrigin = origin;
+      _dragStartPosition = details.localPosition;
+      _gestureSwap = null;
+      _gestureAnimation = null;
+      _dragProgress = 0;
+      _gestureInvalid = false;
+    });
+  }
+
+  void _handlePanUpdate(
+    DragUpdateDetails details,
+    _Match3BoardGeometry geometry,
+  ) {
+    final origin = _dragOrigin;
+    final start = _dragStartPosition;
+    if (!_canInteract || origin == null || start == null) return;
+    final delta = details.localPosition - start;
+    final swap = geometry.swapFromDrag(origin, delta);
+    if (swap == null) {
+      setState(() {
+        _gestureSwap = null;
+        _dragProgress = 0;
+        _gestureInvalid = false;
+      });
+      return;
+    }
+    final travel = (swap.a.row == swap.b.row ? delta.dx.abs() : delta.dy.abs());
+    final previous = _gestureSwap;
+    final directionChanged = previous?.a != swap.a || previous?.b != swap.b;
+    final invalid = directionChanged
+        ? !widget.engine.isLegalSwap(swap)
+        : _gestureInvalid;
+    setState(() {
+      _gestureSwap = swap;
+      _dragProgress = (travel / geometry.stride).clamp(0.0, 0.86);
+      _gestureInvalid = invalid;
+    });
+  }
+
+  void _handlePanEnd() {
+    final swap = _gestureSwap;
+    if (swap == null || _dragProgress < 0.24) {
+      unawaited(_settleGesture(commit: false, rejected: false));
+    } else if (_gestureInvalid) {
+      unawaited(_settleGesture(commit: false, rejected: true));
+    } else {
+      unawaited(_settleGesture(commit: true, rejected: false));
+    }
+  }
+
+  Future<void> _settleGesture({
+    required bool commit,
+    required bool rejected,
+  }) async {
+    final swap = _gestureSwap;
+    final from = _dragProgress;
+    if (swap == null) {
+      _clearGesture();
+      return;
+    }
+    _gesture
+      ..stop()
+      ..value = 0
+      ..duration = Duration(
+        milliseconds: commit
+            ? 135
+            : rejected
+            ? 250
+            : 150,
+      );
+    final Animation<double> animation;
+    if (rejected) {
+      final peak = math.max(from, 0.46);
+      animation = TweenSequence<double>([
+        TweenSequenceItem(
+          tween: Tween(
+            begin: from,
+            end: peak,
+          ).chain(CurveTween(curve: Curves.easeOutCubic)),
+          weight: 34,
+        ),
+        TweenSequenceItem(
+          tween: Tween(
+            begin: peak,
+            end: 0.0,
+          ).chain(CurveTween(curve: Curves.easeOutBack)),
+          weight: 66,
+        ),
+      ]).animate(_gesture);
+      unawaited(HapticFeedback.mediumImpact());
+    } else {
+      animation = Tween(begin: from, end: commit ? 1.0 : 0.0).animate(
+        CurvedAnimation(
+          parent: _gesture,
+          curve: commit ? Curves.easeOutCubic : Curves.easeOutBack,
+        ),
+      );
+    }
+    setState(() {
+      _gestureAnimation = animation;
+      _gestureSettling = true;
+      _gestureInvalid = rejected;
+    });
+    try {
+      await _gesture.forward().orCancel;
+    } on TickerCanceled {
+      return;
+    }
+    if (!mounted) return;
+    _clearGesture();
+    if (commit) {
+      await widget.onSwap(swap);
+    }
+  }
+
+  void _clearGesture() {
+    if (!mounted) return;
+    setState(() {
+      _dragOrigin = null;
+      _dragStartPosition = null;
+      _gestureSwap = null;
+      _gestureAnimation = null;
+      _dragProgress = 0;
+      _gestureInvalid = false;
+      _gestureSettling = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final legalTargets = <int>{};
-    final selected = widget.selected;
-    if (selected != null) {
-      for (final swap in widget.engine.availableSwaps()) {
-        if (swap.a == selected) legalTargets.add(swap.b.index);
-        if (swap.b == selected) legalTargets.add(swap.a.index);
-      }
-    }
     return Semantics(
-      label: '怪物消消乐棋盘，点击棋子后选择发光的相邻棋子进行交换',
+      label: '怪物消消乐棋盘，向上下左右滑动怪物来交换相邻位置',
       child: AnimatedBuilder(
-        animation: Listenable.merge([_ambient, _resolve]),
+        animation: Listenable.merge([_ambient, _resolve, _gesture]),
         builder: (context, _) => LayoutBuilder(
           builder: (context, constraints) {
             final size = constraints.biggest;
             final geometry = _Match3BoardGeometry(size);
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTapUp: (details) {
-                final point = geometry.pointAt(details.localPosition);
-                if (point != null) widget.onTap(point);
-              },
+              onPanDown: (details) => _handlePanDown(details, geometry),
+              onPanUpdate: (details) => _handlePanUpdate(details, geometry),
+              onPanEnd: (_) => _handlePanEnd(),
+              onPanCancel: () =>
+                  unawaited(_settleGesture(commit: false, rejected: false)),
               child: RepaintBoundary(
                 child: CustomPaint(
                   painter: _Match3BoardPainter(
                     board: widget.engine.board,
                     stateHash: widget.engine.stateHash,
-                    selected: selected,
-                    legalTargets: legalTargets,
+                    gestureOrigin: _dragOrigin,
+                    gestureSwap: _gestureSwap,
+                    gestureProgress: _gestureProgress,
+                    gestureInvalid: _gestureInvalid,
                     lastTurn: widget.lastTurn,
                     thinking: widget.thinking,
                     ambient: _ambient.value,
@@ -1615,6 +1749,24 @@ class _Match3BoardGeometry {
     }
     return null;
   }
+
+  double get stride => tileSize + gap;
+
+  Match3Swap? swapFromDrag(Match3Point origin, Offset delta) {
+    if (math.max(delta.dx.abs(), delta.dy.abs()) < tileSize * 0.08) {
+      return null;
+    }
+    final horizontal = delta.dx.abs() > delta.dy.abs();
+    final row = origin.row + (horizontal ? 0 : delta.dy.sign.toInt());
+    final col = origin.col + (horizontal ? delta.dx.sign.toInt() : 0);
+    if (row < 0 ||
+        row >= Match3Engine.size ||
+        col < 0 ||
+        col >= Match3Engine.size) {
+      return null;
+    }
+    return Match3Swap(origin, Match3Point(row, col));
+  }
 }
 
 class _Match3Presentation {
@@ -1624,7 +1776,12 @@ class _Match3Presentation {
     this.swapProgress = 1,
     this.clearing = const {},
     this.clearProgress = 1,
+    this.dropRows = const {},
     this.dropProgress = 1,
+    this.cascadeIndex = 0,
+    this.cascadeScore = 0,
+    this.cascadeAnchor,
+    this.cascadeProgress = 1,
   });
 
   final List<Match3Tile> board;
@@ -1632,11 +1789,31 @@ class _Match3Presentation {
   final double swapProgress;
   final Set<int> clearing;
   final double clearProgress;
+  final Map<int, double> dropRows;
   final double dropProgress;
+  final int cascadeIndex;
+  final int cascadeScore;
+  final int? cascadeAnchor;
+  final double cascadeProgress;
 }
+
+const double _match3SwapUnits = .34;
 
 Duration _match3TurnAnimationDuration(Match3Turn turn) =>
     Duration(milliseconds: 300 + turn.cascades.length * 620);
+
+double _match3ResolveStart(Match3Turn turn) {
+  if (turn.actor != Match3Actor.user || turn.cascades.isEmpty) return 0;
+  return _match3SwapUnits / (_match3SwapUnits + turn.cascades.length);
+}
+
+Duration _match3RemainingAnimationDuration(Match3Turn turn) {
+  final fullDuration = _match3TurnAnimationDuration(turn);
+  final remaining = 1 - _match3ResolveStart(turn);
+  return Duration(
+    milliseconds: (fullDuration.inMilliseconds * remaining).round(),
+  );
+}
 
 _Match3Presentation _match3Presentation(
   List<Match3Tile> finalBoard,
@@ -1646,40 +1823,97 @@ _Match3Presentation _match3Presentation(
   if (turn == null || progress >= 1 || turn.cascades.isEmpty) {
     return _Match3Presentation(board: finalBoard);
   }
-  const swapUnits = .34;
-  final totalUnits = swapUnits + turn.cascades.length;
+  final totalUnits = _match3SwapUnits + turn.cascades.length;
   final position = progress * totalUnits;
-  if (position < swapUnits) {
+  if (position < _match3SwapUnits) {
     return _Match3Presentation(
       board: turn.boardBefore,
       swap: turn.swap,
-      swapProgress: Curves.easeInOutCubic.transform(position / swapUnits),
+      swapProgress: Curves.easeInOutCubic.transform(
+        position / _match3SwapUnits,
+      ),
     );
   }
-  final cascadePosition = position - swapUnits;
+  final cascadePosition = position - _match3SwapUnits;
   final waveIndex = math.min(turn.cascades.length - 1, cascadePosition.floor());
   final local = cascadePosition - waveIndex;
   final wave = turn.cascades[waveIndex];
+  final anchor = _match3CascadeAnchor(wave.cleared);
   if (local < .43) {
     return _Match3Presentation(
       board: wave.boardBefore,
       clearing: {for (final point in wave.cleared) point.index},
       clearProgress: Curves.easeInCubic.transform(local / .43),
       dropProgress: 0,
+      cascadeIndex: wave.index,
+      cascadeScore: wave.score,
+      cascadeAnchor: anchor,
+      cascadeProgress: local,
     );
   }
   return _Match3Presentation(
     board: wave.boardAfter,
+    dropRows: _match3DropRows(wave.boardAfterClear),
     dropProgress: Curves.easeOutBack.transform((local - .43) / .57),
+    cascadeIndex: wave.index,
+    cascadeScore: wave.score,
+    cascadeAnchor: anchor,
+    cascadeProgress: local,
   );
+}
+
+int? _match3CascadeAnchor(List<Match3Point> points) {
+  if (points.isEmpty) return null;
+  final averageRow =
+      points.fold<double>(0, (sum, point) => sum + point.row) / points.length;
+  final averageCol =
+      points.fold<double>(0, (sum, point) => sum + point.col) / points.length;
+  Match3Point nearest = points.first;
+  var nearestDistance = double.infinity;
+  for (final point in points) {
+    final rowDistance = point.row - averageRow;
+    final colDistance = point.col - averageCol;
+    final distance = rowDistance * rowDistance + colDistance * colDistance;
+    if (distance < nearestDistance) {
+      nearest = point;
+      nearestDistance = distance;
+    }
+  }
+  return nearest.index;
+}
+
+Map<int, double> _match3DropRows(List<Match3Tile> boardAfterClear) {
+  final result = <int, double>{};
+  for (var col = 0; col < Match3Engine.size; col++) {
+    final sourceRows = <int>[];
+    for (var row = Match3Engine.size - 1; row >= 0; row--) {
+      if (boardAfterClear[row * Match3Engine.size + col].color >= 0) {
+        sourceRows.add(row);
+      }
+    }
+    for (
+      var destination = Match3Engine.size - 1, item = 0;
+      destination >= 0;
+      destination--, item++
+    ) {
+      final source = item < sourceRows.length
+          ? sourceRows[item]
+          : -(item - sourceRows.length + 1);
+      result[destination * Match3Engine.size + col] = (destination - source)
+          .toDouble();
+    }
+  }
+  return result;
 }
 
 class _Match3BoardPainter extends CustomPainter {
   const _Match3BoardPainter({
     required this.board,
     required this.stateHash,
-    required this.selected,
-    required this.legalTargets,
+    required this.gestureOrigin,
+    required this.gestureSwap,
+    required this.gestureProgress,
+    required this.gestureInvalid,
     required this.lastTurn,
     required this.thinking,
     required this.ambient,
@@ -1689,8 +1923,10 @@ class _Match3BoardPainter extends CustomPainter {
 
   final List<Match3Tile> board;
   final int stateHash;
-  final Match3Point? selected;
-  final Set<int> legalTargets;
+  final Match3Point? gestureOrigin;
+  final Match3Swap? gestureSwap;
+  final double gestureProgress;
+  final bool gestureInvalid;
   final Match3Turn? lastTurn;
   final bool thinking;
   final double ambient;
@@ -1730,8 +1966,10 @@ class _Match3BoardPainter extends CustomPainter {
 
     for (var index = 0; index < presentation.board.length; index++) {
       final rect = geometry.rectFor(index);
-      final radius = Radius.circular(geometry.tileSize * .25);
-      final cavity = RRect.fromRectAndRadius(rect, radius);
+      final cavity = RRect.fromRectAndRadius(
+        rect,
+        Radius.circular(geometry.tileSize * .25),
+      );
       canvas.drawRRect(
         cavity,
         Paint()
@@ -1751,12 +1989,25 @@ class _Match3BoardPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = math.max(.65, geometry.tileSize * .018),
       );
+    }
 
+    final paintOrder = List<int>.generate(
+      presentation.board.length,
+      (index) => index,
+    );
+    final originIndex = gestureOrigin?.index;
+    if (originIndex != null &&
+        presentation.swap == null &&
+        paintOrder.remove(originIndex)) {
+      paintOrder.add(originIndex);
+    }
+
+    for (final index in paintOrder) {
+      final rect = geometry.rectFor(index);
       final phase = ambient * math.pi * 2 + index * .79;
-      final bob = math.sin(phase) * geometry.tileSize * .018;
-      final active = selected?.index == index;
-      final target = legalTargets.contains(index);
+      final bob = thinking ? math.sin(phase) * geometry.tileSize * .012 : 0.0;
       var tileRect = rect;
+      var interactionScale = 1.0;
       final swap = presentation.swap;
       if (swap != null) {
         if (index == swap.a.index) {
@@ -1770,33 +2021,38 @@ class _Match3BoardPainter extends CustomPainter {
             (targetCenter - rect.center) * presentation.swapProgress,
           );
         }
+      } else {
+        final gesture = gestureSwap;
+        if (gesture != null && index == gesture.a.index) {
+          final targetCenter = geometry.rectFor(gesture.b.index).center;
+          tileRect = rect.shift((targetCenter - rect.center) * gestureProgress);
+          interactionScale = 1.035;
+        } else if (gesture != null && index == gesture.b.index) {
+          final originCenter = geometry.rectFor(gesture.a.index).center;
+          tileRect = rect.shift((originCenter - rect.center) * gestureProgress);
+          interactionScale = 1 - gestureProgress * .035;
+        } else if (index == originIndex) {
+          interactionScale = .96;
+        }
       }
       if (presentation.dropProgress < 1) {
-        final row = index ~/ Match3Engine.size;
+        final rows = presentation.dropRows[index] ?? 0;
         tileRect = tileRect.shift(
-          Offset(
-            0,
-            -geometry.tileSize *
-                (1.15 + row * .13) *
-                (1 - presentation.dropProgress),
-          ),
+          Offset(0, -geometry.stride * rows * (1 - presentation.dropProgress)),
         );
       }
       final clearing = presentation.clearing.contains(index);
       final disappearScale = clearing
           ? math.max(0.0, 1 - presentation.clearProgress)
           : 1.0;
-      final scale = (active ? .89 : 1.0) * disappearScale;
       canvas.save();
       canvas.translate(tileRect.center.dx, tileRect.center.dy + bob);
-      canvas.scale(scale, scale);
+      canvas.scale(interactionScale * disappearScale);
       canvas.translate(-tileRect.center.dx, -tileRect.center.dy);
-      if (target) _paintTargetGlow(canvas, tileRect, phase);
       final tile = presentation.board[index];
       if (tile.color >= 0 && disappearScale > .03) {
         _paintMonster(canvas, tileRect.deflate(geometry.tileSize * .055), tile);
       }
-      if (active) _paintSelectedRing(canvas, tileRect, phase);
       canvas.restore();
       if (clearing && presentation.clearProgress > .18) {
         _paintClearSparkles(
@@ -1808,8 +2064,12 @@ class _Match3BoardPainter extends CustomPainter {
       }
     }
 
-    if (lastTurn != null && resolve < 1) {
-      _paintResolveFeedback(canvas, lastTurn!, resolve);
+    if (presentation.swap == null && gestureSwap != null) {
+      _paintGestureTarget(canvas, gestureSwap!.b.index);
+    }
+
+    if (presentation.cascadeAnchor != null) {
+      _paintCascadeFeedback(canvas, presentation);
     }
     if (thinking) _paintThinkingSweep(canvas, bounds, ambient);
 
@@ -2158,31 +2418,26 @@ class _Match3BoardPainter extends CustomPainter {
     }
   }
 
-  void _paintSelectedRing(Canvas canvas, Rect rect, double phase) {
-    final pulse = .5 + .5 * math.sin(phase);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        rect.inflate(geometry.tileSize * (.035 + pulse * .018)),
-        Radius.circular(geometry.tileSize * .29),
-      ),
-      Paint()
-        ..color = const Color(0xFFFFE58A).withValues(alpha: .84)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.5, geometry.tileSize * .055),
+  void _paintGestureTarget(Canvas canvas, int index) {
+    final rect = geometry.rectFor(index);
+    final emphasis = Curves.easeOutCubic.transform(
+      gestureProgress.clamp(0.0, 1.0),
     );
-  }
-
-  void _paintTargetGlow(Canvas canvas, Rect rect, double phase) {
-    final pulse = .5 + .5 * math.sin(phase + 1.2);
+    final color = gestureInvalid
+        ? const Color(0xFFFF7A7A)
+        : const Color(0xFF7BE7C0);
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        rect.inflate(geometry.tileSize * .035),
+        rect.inflate(geometry.tileSize * (.018 + emphasis * .025)),
         Radius.circular(geometry.tileSize * .29),
       ),
       Paint()
-        ..color = Colors.white.withValues(alpha: .36 + pulse * .3)
+        ..color = color.withValues(alpha: .32 + emphasis * .58)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1, geometry.tileSize * .035),
+        ..strokeWidth = math.max(
+          1,
+          geometry.tileSize * (.025 + .02 * emphasis),
+        ),
     );
   }
 
@@ -2209,48 +2464,62 @@ class _Match3BoardPainter extends CustomPainter {
     }
   }
 
-  void _paintResolveFeedback(Canvas canvas, Match3Turn turn, double progress) {
-    final curve = Curves.easeOutCubic.transform(progress);
-    final center = geometry.rectFor(turn.swap.b.index).center;
-    final radius = geometry.tileSize * (.45 + curve * 1.6);
+  void _paintCascadeFeedback(Canvas canvas, _Match3Presentation presentation) {
+    final progress = presentation.cascadeProgress;
+    final appear = Curves.easeOutBack.transform(
+      (progress / .2).clamp(0.0, 1.0),
+    );
+    final fade = 1 - ((progress - .58) / .42).clamp(0.0, 1.0);
+    if (fade <= 0) return;
+    final center = geometry.rectFor(presentation.cascadeAnchor!).center;
+    final radius = geometry.tileSize * (.35 + progress * 1.35);
+    final accent = presentation.cascadeIndex > 1
+        ? const Color(0xFFFFD66E)
+        : Colors.white;
     canvas.drawCircle(
       center,
       radius,
       Paint()
-        ..color = Colors.white.withValues(alpha: (1 - curve) * .7)
+        ..color = accent.withValues(alpha: fade * .62)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.2, geometry.tileSize * .07 * (1 - curve)),
+        ..strokeWidth = math.max(1.1, geometry.tileSize * .065 * fade),
     );
-    for (var i = 0; i < 7; i++) {
-      final angle = i * math.pi * 2 / 7 + .35;
+    for (var i = 0; i < 8; i++) {
+      final angle = i * math.pi * 2 / 8 + presentation.cascadeIndex * .31;
       final position =
           center + Offset(math.cos(angle), math.sin(angle)) * radius;
       canvas.drawCircle(
         position,
-        geometry.tileSize * .055 * (1 - curve),
-        Paint()..color = _colors[(i + turn.number) % _colors.length],
+        geometry.tileSize * .05 * fade,
+        Paint()
+          ..color = _colors[(i + presentation.cascadeIndex) % _colors.length]
+              .withValues(alpha: fade),
       );
     }
-    final opacity = (1 - ((progress - .5).clamp(0.0, .5) * 2));
-    final label = turn.cascades.length > 1
-        ? '+${turn.score}  ${turn.cascades.length} 连消'
-        : '+${turn.score}';
+    final label = presentation.cascadeIndex > 1
+        ? '${presentation.cascadeIndex} 连消  +${presentation.cascadeScore}'
+        : '+${presentation.cascadeScore}';
     final text = TextPainter(
       text: TextSpan(
         text: label,
         style: TextStyle(
-          color: Colors.white.withValues(alpha: opacity),
-          fontSize: geometry.tileSize * .3,
+          color: accent.withValues(alpha: fade),
+          fontSize:
+              geometry.tileSize * (presentation.cascadeIndex > 1 ? .34 : .3),
           fontWeight: FontWeight.w900,
           shadows: const [Shadow(color: Color(0xCC14233A), blurRadius: 8)],
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.scale(.8 + appear * .2);
     text.paint(
       canvas,
-      center - Offset(text.width / 2, geometry.tileSize * (.55 + curve * .65)),
+      Offset(-text.width / 2, -geometry.tileSize * (.62 + progress * .55)),
     );
+    canvas.restore();
   }
 
   void _paintThinkingSweep(Canvas canvas, Rect bounds, double progress) {
@@ -2279,8 +2548,10 @@ class _Match3BoardPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _Match3BoardPainter oldDelegate) =>
       oldDelegate.stateHash != stateHash ||
-      oldDelegate.selected != selected ||
-      oldDelegate.legalTargets != legalTargets ||
+      oldDelegate.gestureOrigin != gestureOrigin ||
+      oldDelegate.gestureSwap != gestureSwap ||
+      oldDelegate.gestureProgress != gestureProgress ||
+      oldDelegate.gestureInvalid != gestureInvalid ||
       oldDelegate.lastTurn?.number != lastTurn?.number ||
       oldDelegate.thinking != thinking ||
       oldDelegate.ambient != ambient ||

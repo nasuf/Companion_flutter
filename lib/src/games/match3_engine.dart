@@ -205,6 +205,9 @@ class Match3Engine {
 
   List<Match3Swap> availableSwaps() => _availableSwaps(_board);
 
+  bool isLegalSwap(Match3Swap swap) =>
+      _adjacent(swap.a, swap.b) && availableSwaps().containsSwap(swap);
+
   Match3AiDecision chooseAgentSwap() {
     if (turn != Match3Actor.agent) throw StateError('not_agent_turn');
     final swaps = availableSwaps();
@@ -240,7 +243,7 @@ class Match3Engine {
   Match3TurnResult swap(Match3Swap swap, {Match3AiDecision? decision}) {
     if (isFinished) throw StateError('game_finished');
     if (!_adjacent(swap.a, swap.b)) throw StateError('not_adjacent');
-    if (!availableSwaps().containsSwap(swap)) throw StateError('invalid_swap');
+    if (!isLegalSwap(swap)) throw StateError('invalid_swap');
     final actor = turn;
     final beforeHash = stateHash;
     final boardBefore = List<Match3Tile>.unmodifiable(_board);
