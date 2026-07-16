@@ -298,6 +298,39 @@ class CompanionApi {
     return session;
   }
 
+  /// Request an SMS verification code for [phone] (mainland-CN 11-digit).
+  /// Backend enforces cooldown/quota; errors surface as ApiException with a
+  /// user-facing Chinese message.
+  Future<void> smsSend(String phone) async {
+    await _request('POST', '/auth/sms/send', body: {'phone': phone});
+  }
+
+  /// Phone + SMS code login; auto-registers on first login. Device metadata
+  /// tags the signup source (users.signup_* columns, source "sms_app") like
+  /// the WeChat path.
+  Future<AuthSession> smsLogin(
+    String phone,
+    String code, {
+    String? platform,
+    String? osVersion,
+    String? appVersion,
+  }) async {
+    final body = <String, dynamic>{
+      'phone': phone,
+      'code': code,
+      'channel': 'app',
+    };
+    if (platform != null) body['platform'] = platform;
+    if (osVersion != null) body['os_version'] = osVersion;
+    if (appVersion != null) body['app_version'] = appVersion;
+    final json =
+        await _request('POST', '/auth/sms/login', body: body)
+            as Map<String, dynamic>;
+    final session = _normalizeAuthSession(AuthSession.fromJson(json));
+    authToken = session.token;
+    return session;
+  }
+
   Future<AuthSession> wechatMobileLogin(
     String code, {
     required String platform,
