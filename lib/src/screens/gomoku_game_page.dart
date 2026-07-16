@@ -180,19 +180,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
   @override
   Widget build(BuildContext context) {
     final engine = _engine;
-    if (_isFullscreen && engine != null) {
-      return _NativeFullscreenGameSurface(
-        gameKey: widget.game.nativeGameKey,
-        gameTitle: widget.game.title,
-        onExit: () => setState(() => _isFullscreen = false),
-        onRestart: _startGame,
-        restartLabel: engine.isFinished ? '再来一盘' : '重新开一盘',
-        restartDisabled: _runtime.starting || _runtime.aiThinking,
-        restartLoading: _runtime.starting,
-        child: _activeGameContents(engine),
-      );
-    }
-    return Scaffold(
+    final compact = Scaffold(
       backgroundColor: AppColors.page,
       body: Stack(
         children: [
@@ -233,6 +221,23 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
           ),
         ],
       ),
+    );
+    final expanded = engine == null
+        ? const SizedBox.shrink()
+        : _NativeFullscreenGameSurface(
+            gameKey: widget.game.nativeGameKey,
+            gameTitle: widget.game.title,
+            onExit: () => setState(() => _isFullscreen = false),
+            onRestart: _startGame,
+            restartLabel: engine.isFinished ? '再来一盘' : '重新开一盘',
+            restartDisabled: _runtime.starting || _runtime.aiThinking,
+            restartLoading: _runtime.starting,
+            child: _activeGameContents(engine),
+          );
+    return _NativeGameFullscreenTransition(
+      expanded: _isFullscreen && engine != null,
+      compactChild: compact,
+      expandedChild: expanded,
     );
   }
 

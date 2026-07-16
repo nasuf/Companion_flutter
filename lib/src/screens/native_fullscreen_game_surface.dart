@@ -1,5 +1,70 @@
 part of 'package:companion_flutter/main.dart';
 
+class _NativeGameFullscreenTransition extends StatelessWidget {
+  const _NativeGameFullscreenTransition({
+    required this.expanded,
+    required this.compactChild,
+    required this.expandedChild,
+  });
+
+  static const _expandDuration = Duration(milliseconds: 480);
+  static const _collapseDuration = Duration(milliseconds: 400);
+
+  final bool expanded;
+  final Widget compactChild;
+  final Widget expandedChild;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return AnimatedSwitcher(
+      duration: reduceMotion ? Duration.zero : _expandDuration,
+      reverseDuration: reduceMotion ? Duration.zero : _collapseDuration,
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      layoutBuilder: (currentChild, previousChildren) => Stack(
+        fit: StackFit.expand,
+        children: [...previousChildren, if (currentChild != null) currentChild],
+      ),
+      transitionBuilder: (child, animation) {
+        final key = child.key;
+        final isExpanded = key is ValueKey<bool> ? key.value : expanded;
+        return AnimatedBuilder(
+          animation: animation,
+          child: child,
+          builder: (context, child) {
+            final progress = animation.value;
+            final startScale = isExpanded ? 0.92 : 0.975;
+            final startOpacity = isExpanded ? 0.28 : 0.58;
+            final scale = startScale + (1 - startScale) * progress;
+            final opacity = startOpacity + (1 - startOpacity) * progress;
+            final radius = isExpanded ? 28 * (1 - progress) : 0.0;
+            final travel = isExpanded ? 18.0 : 7.0;
+            return Opacity(
+              opacity: opacity,
+              child: Transform.translate(
+                offset: Offset(0, travel * (1 - progress)),
+                child: Transform.scale(
+                  scale: scale,
+                  alignment: Alignment.center,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(radius),
+                    child: RepaintBoundary(child: child),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+      child: KeyedSubtree(
+        key: ValueKey<bool>(expanded),
+        child: expanded ? expandedChild : compactChild,
+      ),
+    );
+  }
+}
+
 class _NativeFullscreenGameSurface extends StatefulWidget {
   const _NativeFullscreenGameSurface({
     required this.gameKey,

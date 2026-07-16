@@ -220,19 +220,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
   @override
   Widget build(BuildContext context) {
     final engine = _engine;
-    if (_isFullscreen && engine != null) {
-      return _NativeFullscreenGameSurface(
-        gameKey: widget.game.nativeGameKey,
-        gameTitle: widget.game.title,
-        onExit: () => setState(() => _isFullscreen = false),
-        onRestart: _startGame,
-        restartLabel: engine.isFinished ? '再来一局' : '重新开一局',
-        restartDisabled: _runtime.starting || _runtime.aiThinking,
-        restartLoading: _runtime.starting,
-        child: _gameContents(engine),
-      );
-    }
-    return Scaffold(
+    final compact = Scaffold(
       backgroundColor: AppColors.page,
       body: Stack(
         children: [
@@ -253,6 +241,23 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
           ),
         ],
       ),
+    );
+    final expanded = engine == null
+        ? const SizedBox.shrink()
+        : _NativeFullscreenGameSurface(
+            gameKey: widget.game.nativeGameKey,
+            gameTitle: widget.game.title,
+            onExit: () => setState(() => _isFullscreen = false),
+            onRestart: _startGame,
+            restartLabel: engine.isFinished ? '再来一局' : '重新开一局',
+            restartDisabled: _runtime.starting || _runtime.aiThinking,
+            restartLoading: _runtime.starting,
+            child: _gameContents(engine),
+          );
+    return _NativeGameFullscreenTransition(
+      expanded: _isFullscreen && engine != null,
+      compactChild: compact,
+      expandedChild: expanded,
     );
   }
 

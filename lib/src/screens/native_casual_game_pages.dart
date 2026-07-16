@@ -571,19 +571,7 @@ class _NativeGameExperienceScaffoldState
   @override
   Widget build(BuildContext context) {
     final activeChild = widget.activeChild;
-    if (_isFullscreen && activeChild != null) {
-      return _NativeFullscreenGameSurface(
-        gameKey: widget.game.nativeGameKey,
-        gameTitle: widget.game.title,
-        onExit: () => setState(() => _isFullscreen = false),
-        onRestart: _start,
-        restartLabel: widget.runtime.completed ? '再来一局' : '重新开一局',
-        restartDisabled: widget.runtime.starting || widget.restartDisabled,
-        restartLoading: widget.runtime.starting,
-        child: activeChild,
-      );
-    }
-    return Scaffold(
+    final compact = Scaffold(
       backgroundColor: AppColors.page,
       body: Stack(
         children: [
@@ -723,6 +711,23 @@ class _NativeGameExperienceScaffoldState
           ),
         ],
       ),
+    );
+    final expanded = activeChild == null
+        ? const SizedBox.shrink()
+        : _NativeFullscreenGameSurface(
+            gameKey: widget.game.nativeGameKey,
+            gameTitle: widget.game.title,
+            onExit: () => setState(() => _isFullscreen = false),
+            onRestart: _start,
+            restartLabel: widget.runtime.completed ? '再来一局' : '重新开一局',
+            restartDisabled: widget.runtime.starting || widget.restartDisabled,
+            restartLoading: widget.runtime.starting,
+            child: activeChild,
+          );
+    return _NativeGameFullscreenTransition(
+      expanded: _isFullscreen && activeChild != null,
+      compactChild: compact,
+      expandedChild: expanded,
     );
   }
 }
