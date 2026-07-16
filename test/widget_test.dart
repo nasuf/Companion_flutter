@@ -60,6 +60,20 @@ void main() {
     expect(paragraph.text.style?.decoration, TextDecoration.none);
   });
 
+  testWidgets('raster-filters the animated Hello bubble', (tester) async {
+    await pumpLoginPage(tester);
+
+    final transforms = tester.widgetList<Transform>(
+      find.ancestor(of: find.text('Hello'), matching: find.byType(Transform)),
+    );
+    expect(
+      transforms.any(
+        (transform) => transform.filterQuality == FilterQuality.high,
+      ),
+      isTrue,
+    );
+  });
+
   testWidgets('holds the splash for two seconds and crossfades to login', (
     tester,
   ) async {
@@ -99,8 +113,10 @@ void main() {
     expect(find.text('Hello'), findsOneWidget);
     expect(find.text('微信登录'), findsOneWidget);
     expect(find.text('其他登录方式'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('同意用户协议和隐私协议'));
+    await tester.pump();
 
-    for (final method in ['苹果登录', 'QQ登录', '手机号登录']) {
+    for (final method in ['苹果登录', '手机号登录']) {
       await tester.tap(find.bySemanticsLabel(method));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
@@ -112,6 +128,52 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
     }
+  });
+
+  for (final method in ['微信登录', '苹果登录', 'QQ登录', '手机号登录']) {
+    testWidgets('requires consent before $method', (tester) async {
+      await pumpLoginPage(tester);
+
+      final entry = method == '微信登录'
+          ? find.text(method)
+          : find.bySemanticsLabel(method);
+      await tester.tap(entry);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.text('同意用户协议与隐私政策'), findsOneWidget);
+      expect(find.text('同意并继续'), findsOneWidget);
+
+      await tester.tap(find.text('暂不同意'));
+      await tester.pump();
+    });
+  }
+
+  testWidgets('opens username and password login from QQ entry', (
+    tester,
+  ) async {
+    await pumpLoginPage(tester);
+
+    await tester.tap(find.bySemanticsLabel('QQ登录'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('同意用户协议与隐私政策'), findsOneWidget);
+    expect(find.text('用户名密码登录'), findsNothing);
+
+    await tester.tap(find.text('同意并继续'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('用户名密码登录'), findsOneWidget);
+    expect(find.text('用户名'), findsOneWidget);
+    expect(find.text('密码'), findsOneWidget);
+    expect(find.text('登录'), findsOneWidget);
+    expect(find.text('暂未开放'), findsNothing);
+
+    await tester.tap(find.widgetWithText(FilledButton, '登录'));
+    await tester.pump();
+    expect(find.text('请输入用户名和密码'), findsOneWidget);
   });
 
   testWidgets('renders wechat login button', (tester) async {

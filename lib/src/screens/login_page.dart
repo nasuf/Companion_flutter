@@ -12,6 +12,8 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage>
     with SingleTickerProviderStateMixin {
   final _apiBaseController = TextEditingController(text: defaultApiBaseUrl);
+  final _accountController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _wechatLoginService = WeChatLoginService();
   late final AnimationController _breathController;
   late final Animation<double> _breathAnimation;
@@ -36,7 +38,33 @@ class _LoginPageState extends State<LoginPage>
   void dispose() {
     _breathController.dispose();
     _apiBaseController.dispose();
+    _accountController.dispose();
+    _passwordController.dispose();
     super.dispose();
+  }
+
+  void _openUsernamePasswordLogin() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: const Color(0x52101824),
+      builder: (sheetContext) {
+        return AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+          ),
+          child: _UsernamePasswordLoginSheet(
+            apiBaseController: _apiBaseController,
+            accountController: _accountController,
+            passwordController: _passwordController,
+            onAuthenticated: widget.onAuthenticated,
+          ),
+        );
+      },
+    );
   }
 
   void _showUnavailableLogin(String method) {
@@ -55,9 +83,37 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
+  Future<void> _runAfterConsent(FutureOr<void> Function() action) async {
+    if (!_acceptedTerms) {
+      final accepted = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (dialogContext) => CupertinoAlertDialog(
+          title: const Text('同意用户协议与隐私政策'),
+          content: const Text('为了保障你的权益，请阅读并同意《用户协议》和《隐私协议》后继续。'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('暂不同意'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('同意并继续'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || accepted != true) return;
+      setState(() {
+        _acceptedTerms = true;
+        _wechatError = null;
+      });
+    }
+    await action();
+  }
+
   Future<void> _loginWithWechat() async {
     if (_wechatSubmitting) return;
-    if (!_ensureTermsAccepted()) return;
     FocusScope.of(context).unfocus();
     final baseUrl = _apiBaseController.text.trim().replaceAll(
       RegExp(r'/$'),
@@ -88,12 +144,6 @@ class _LoginPageState extends State<LoginPage>
     } finally {
       if (mounted) setState(() => _wechatSubmitting = false);
     }
-  }
-
-  bool _ensureTermsAccepted() {
-    if (_acceptedTerms) return true;
-    setState(() => _wechatError = '请先阅读并同意《用户协议》和《隐私协议》');
-    return false;
   }
 
   void _toggleTerms() {
@@ -144,8 +194,14 @@ class _LoginPageState extends State<LoginPage>
                       acceptedTerms: _acceptedTerms,
                       wechatLoading: _wechatSubmitting,
                       errorMessage: _wechatError,
-                      onWechatTap: _loginWithWechat,
-                      onUnavailableLogin: _showUnavailableLogin,
+                      onWechatTap: () =>
+                          unawaited(_runAfterConsent(_loginWithWechat)),
+                      onQqTap: () => unawaited(
+                        _runAfterConsent(_openUsernamePasswordLogin),
+                      ),
+                      onUnavailableLogin: (method) => unawaited(
+                        _runAfterConsent(() => _showUnavailableLogin(method)),
+                      ),
                       onTermsToggle: _toggleTerms,
                       onServiceAgreementTap: () => _openLegalDocument(
                         title: '用户协议',
@@ -174,6 +230,7 @@ class _LoginCanvas extends StatelessWidget {
     required this.wechatLoading,
     required this.errorMessage,
     required this.onWechatTap,
+    required this.onQqTap,
     required this.onUnavailableLogin,
     required this.onTermsToggle,
     required this.onServiceAgreementTap,
@@ -185,6 +242,7 @@ class _LoginCanvas extends StatelessWidget {
   final bool wechatLoading;
   final String? errorMessage;
   final VoidCallback onWechatTap;
+  final VoidCallback onQqTap;
   final ValueChanged<String> onUnavailableLogin;
   final VoidCallback onTermsToggle;
   final VoidCallback onServiceAgreementTap;
@@ -283,8 +341,10 @@ class _LoginCanvas extends StatelessWidget {
           top: 140,
           child: _FloatingElement(
             animation: animation,
-            xAmplitude: -2,
-            yAmplitude: 3,
+            xAmplitude: -4,
+            yAmplitude: 6,
+            scaleAmplitude: 0.006,
+            filterQuality: FilterQuality.high,
             child: const _HelloBubble(),
           ),
         ),
@@ -339,7 +399,7 @@ class _LoginCanvas extends StatelessWidget {
           width: 240,
           child: _SecondaryLoginRow(
             onAppleTap: () => onUnavailableLogin('苹果登录'),
-            onQqTap: () => onUnavailableLogin('QQ登录'),
+            onQqTap: onQqTap,
             onPhoneTap: () => onUnavailableLogin('手机号登录'),
           ),
         ),
@@ -357,6 +417,7 @@ class _FloatingElement extends StatelessWidget {
     this.scaleAmplitude = 0,
     this.rotation = 0,
     this.rotationAmplitude = 0,
+    this.filterQuality,
   });
 
   final Animation<double> animation;
@@ -366,6 +427,7 @@ class _FloatingElement extends StatelessWidget {
   final double scaleAmplitude;
   final double rotation;
   final double rotationAmplitude;
+  final FilterQuality? filterQuality;
 
   @override
   Widget build(BuildContext context) {
@@ -374,15 +436,16 @@ class _FloatingElement extends StatelessWidget {
       child: RepaintBoundary(child: child),
       builder: (context, child) {
         final phase = animation.value * 2 - 1;
-        return Transform.translate(
-          offset: Offset(xAmplitude * phase, yAmplitude * phase),
-          child: Transform.rotate(
-            angle: rotation + rotationAmplitude * phase,
-            child: Transform.scale(
-              scale: 1 + scaleAmplitude * phase,
-              child: child,
-            ),
-          ),
+        final scale = 1 + scaleAmplitude * phase;
+        final transform = Matrix4.identity()
+          ..translateByDouble(xAmplitude * phase, yAmplitude * phase, 0, 1)
+          ..rotateZ(rotation + rotationAmplitude * phase)
+          ..scaleByDouble(scale, scale, 1, 1);
+        return Transform(
+          transform: transform,
+          alignment: Alignment.center,
+          filterQuality: filterQuality,
+          child: child,
         );
       },
     );
@@ -682,6 +745,253 @@ class _SecondaryLoginButton extends StatelessWidget {
             height: 48,
             child: Center(child: ExcludeSemantics(child: icon)),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UsernamePasswordLoginSheet extends StatefulWidget {
+  const _UsernamePasswordLoginSheet({
+    required this.apiBaseController,
+    required this.accountController,
+    required this.passwordController,
+    required this.onAuthenticated,
+  });
+
+  final TextEditingController apiBaseController;
+  final TextEditingController accountController;
+  final TextEditingController passwordController;
+  final void Function(CompanionApi api, AuthSession session) onAuthenticated;
+
+  @override
+  State<_UsernamePasswordLoginSheet> createState() =>
+      _UsernamePasswordLoginSheetState();
+}
+
+class _UsernamePasswordLoginSheetState
+    extends State<_UsernamePasswordLoginSheet> {
+  final _passwordFocus = FocusNode();
+  bool _obscurePassword = true;
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _passwordFocus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    FocusScope.of(context).unfocus();
+    final baseUrl = widget.apiBaseController.text.trim().replaceAll(
+      RegExp(r'/$'),
+      '',
+    );
+    final account = widget.accountController.text.trim();
+    final password = widget.passwordController.text;
+    if (account.isEmpty || password.isEmpty) {
+      setState(() => _error = '请输入用户名和密码');
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      final api = CompanionApi(baseUrl: baseUrl);
+      final loggedIn = await api.login(account, password);
+      final session = await api.ensureConversation(loggedIn);
+      if (!mounted) return;
+      final onAuthenticated = widget.onAuthenticated;
+      Navigator.of(context).pop();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        onAuthenticated(api, session);
+      });
+    } catch (error) {
+      if (mounted) setState(() => _error = _asMessage(error));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const accent = Color(0xFF06C893);
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: ColoredBox(
+          color: const Color(0xFFF7FFFD).withValues(alpha: 0.98),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Align(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD5DBDA),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  const Text(
+                    '用户名密码登录',
+                    style: TextStyle(
+                      color: Color(0xFF111111),
+                      fontSize: 22,
+                      height: 1.25,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    '使用已有的伴生账号继续',
+                    style: TextStyle(
+                      color: Color(0xFF7B8582),
+                      fontSize: 14,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  _CredentialField(
+                    controller: widget.accountController,
+                    label: '用户名',
+                    icon: CupertinoIcons.person,
+                    textInputAction: TextInputAction.next,
+                    onSubmitted: (_) => _passwordFocus.requestFocus(),
+                  ),
+                  const SizedBox(height: 12),
+                  _CredentialField(
+                    controller: widget.passwordController,
+                    focusNode: _passwordFocus,
+                    label: '密码',
+                    icon: CupertinoIcons.lock,
+                    obscureText: _obscurePassword,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _submit(),
+                    trailing: IconButton(
+                      tooltip: _obscurePassword ? '显示密码' : '隐藏密码',
+                      onPressed: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
+                      icon: Icon(
+                        _obscurePassword
+                            ? CupertinoIcons.eye
+                            : CupertinoIcons.eye_slash,
+                        color: const Color(0xFF7B8582),
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 180),
+                    alignment: Alignment.topCenter,
+                    child: _error == null
+                        ? const SizedBox(height: 18)
+                        : Padding(
+                            padding: const EdgeInsets.only(top: 12, bottom: 2),
+                            child: Text(
+                              _error!,
+                              style: const TextStyle(
+                                color: Color(0xFFD84E4E),
+                                fontSize: 13,
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                  ),
+                  FilledButton(
+                    onPressed: _submitting ? null : _submit,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                      backgroundColor: accent,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: const Color(0xFF9DE2D2),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: _submitting
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            '登录',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CredentialField extends StatelessWidget {
+  const _CredentialField({
+    required this.controller,
+    required this.label,
+    required this.icon,
+    this.focusNode,
+    this.obscureText = false,
+    this.textInputAction,
+    this.onSubmitted,
+    this.trailing,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final IconData icon;
+  final FocusNode? focusNode;
+  final bool obscureText;
+  final TextInputAction? textInputAction;
+  final ValueChanged<String>? onSubmitted;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      focusNode: focusNode,
+      obscureText: obscureText,
+      textInputAction: textInputAction,
+      onSubmitted: onSubmitted,
+      autocorrect: false,
+      enableSuggestions: !obscureText,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: const Color(0xFF7B8582), size: 20),
+        suffixIcon: trailing,
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(vertical: 17),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFFD5E5E1)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFF06C893), width: 1.5),
         ),
       ),
     );
