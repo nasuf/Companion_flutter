@@ -136,7 +136,6 @@ class _SidebarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final iconRadius = destination == _SidebarDestination.shop ? 12.0 : 999.0;
     final showBadge = destination != _SidebarDestination.weather;
     final badgeOffset = destination == _SidebarDestination.capsule
         ? const Offset(44, 8)
@@ -158,7 +157,7 @@ class _SidebarButton extends StatelessWidget {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: destination.color,
-                    borderRadius: BorderRadius.circular(iconRadius),
+                    borderRadius: BorderRadius.circular(999),
                   ),
                   child: _SidebarIcon(destination: destination),
                 ),
@@ -429,29 +428,29 @@ class _GlossSidebarIconPainter extends CustomPainter {
 
   void _paintShop(Canvas canvas, Size size) {
     final crown = Path()
-      ..moveTo(7.7, 14.6)
-      ..lineTo(12.8, 20.1)
-      ..lineTo(18, 9.2)
-      ..lineTo(23.2, 20.1)
-      ..lineTo(28.3, 14.6)
-      ..lineTo(26.5, 27.2)
-      ..lineTo(9.5, 27.2)
+      ..moveTo(5.6, 12.8)
+      ..lineTo(12.2, 19.5)
+      ..lineTo(18, 7.1)
+      ..lineTo(23.8, 19.5)
+      ..lineTo(30.4, 12.8)
+      ..lineTo(28.2, 26.1)
+      ..lineTo(7.8, 26.1)
       ..close();
     _drawPathShadow(canvas, crown, const Offset(0, 1.2));
     canvas.drawPath(crown, Paint()..color = Colors.white);
 
     final base = RRect.fromRectAndRadius(
-      const Rect.fromLTWH(9, 24.1, 18, 7.8),
+      const Rect.fromLTWH(8.2, 23.4, 19.6, 8.8),
       const Radius.circular(1.6),
     );
     canvas.drawRRect(base, Paint()..color = Colors.white);
 
     for (final point in const [
-      Offset(8, 14.4),
-      Offset(18, 8.8),
-      Offset(28, 14.4),
+      Offset(5.8, 12.6),
+      Offset(18, 7),
+      Offset(30.2, 12.6),
     ]) {
-      canvas.drawCircle(point, 1.9, Paint()..color = Colors.white);
+      canvas.drawCircle(point, 2.2, Paint()..color = Colors.white);
     }
 
     final textPainter = TextPainter(
@@ -459,7 +458,7 @@ class _GlossSidebarIconPainter extends CustomPainter {
         text: 'VIP',
         style: TextStyle(
           color: Color(0xFF124DB2),
-          fontSize: 7.2,
+          fontSize: 7.8,
           fontWeight: FontWeight.w900,
           letterSpacing: 0,
         ),
@@ -468,7 +467,7 @@ class _GlossSidebarIconPainter extends CustomPainter {
     )..layout();
     textPainter.paint(
       canvas,
-      Offset(18 - textPainter.width / 2, 25.5 - textPainter.height / 2),
+      Offset(18 - textPainter.width / 2, 27 - textPainter.height / 2),
     );
   }
 
