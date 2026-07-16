@@ -500,33 +500,29 @@ class _FloatingTabBar extends StatelessWidget {
 
   static const _items = [
     (
-      icon: CupertinoIcons.chat_bubble_2_fill,
-      selectedIcon: CupertinoIcons.chat_bubble_2_fill,
+      activeIcon: 'assets/navigation/tab-chat-active.png',
+      inactiveIcon: 'assets/navigation/tab-chat-inactive.png',
       label: '聊天',
     ),
     (
-      icon: CupertinoIcons.paperplane_fill,
-      selectedIcon: CupertinoIcons.paperplane_fill,
+      activeIcon: 'assets/navigation/tab-interaction-active.png',
+      inactiveIcon: 'assets/navigation/tab-interaction-inactive.png',
       label: '互动',
     ),
     (
-      icon: CupertinoIcons.heart_circle_fill,
-      selectedIcon: CupertinoIcons.heart_circle_fill,
+      activeIcon: 'assets/navigation/tab-companion-active.png',
+      inactiveIcon: 'assets/navigation/tab-companion-inactive.png',
       label: '陪伴',
     ),
     (
-      icon: CupertinoIcons.person_crop_circle,
-      selectedIcon: CupertinoIcons.person_crop_circle_fill,
+      activeIcon: 'assets/navigation/tab-profile-active.png',
+      inactiveIcon: 'assets/navigation/tab-profile-inactive.png',
       label: '我的',
     ),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final backgroundColor = isDark
-        ? const Color(0xFF121A24)
-        : const Color(0xFFFAFFFE);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onHorizontalDragEnd: (details) {
@@ -538,17 +534,8 @@ class _FloatingTabBar extends StatelessWidget {
       child: Container(
         height: 64,
         decoration: BoxDecoration(
-          color: backgroundColor,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(999),
-          boxShadow: [
-            BoxShadow(
-              color: isDark
-                  ? Colors.black.withValues(alpha: 0.52)
-                  : const Color(0xFF06C893).withValues(alpha: 0.15),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
         ),
         child: Center(
           child: SizedBox(
@@ -559,8 +546,8 @@ class _FloatingTabBar extends StatelessWidget {
               children: [
                 for (var i = 0; i < _items.length; i += 1)
                   _TabBarItem(
-                    icon: _items[i].icon,
-                    selectedIcon: _items[i].selectedIcon,
+                    activeIcon: _items[i].activeIcon,
+                    inactiveIcon: _items[i].inactiveIcon,
                     label: _items[i].label,
                     selected: selectedIndex == i,
                     onTap: () => onSelected(i),
@@ -576,15 +563,15 @@ class _FloatingTabBar extends StatelessWidget {
 
 class _TabBarItem extends StatelessWidget {
   const _TabBarItem({
-    required this.icon,
-    required this.selectedIcon,
+    required this.activeIcon,
+    required this.inactiveIcon,
     required this.label,
     required this.selected,
     required this.onTap,
   });
 
-  final IconData icon;
-  final IconData selectedIcon;
+  final String activeIcon;
+  final String inactiveIcon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -604,12 +591,12 @@ class _TabBarItem extends StatelessWidget {
             children: [
               SizedBox.square(
                 dimension: 24,
-                child: Icon(
-                  selected ? selectedIcon : icon,
-                  size: 24,
-                  color: selected
-                      ? const Color(0xFF06C893)
-                      : const Color(0xFFC7C7C7),
+                child: Image.asset(
+                  selected ? activeIcon : inactiveIcon,
+                  width: 24,
+                  height: 24,
+                  fit: BoxFit.cover,
+                  filterQuality: FilterQuality.high,
                 ),
               ),
               const SizedBox(height: 2),

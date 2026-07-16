@@ -97,6 +97,7 @@ flutter:
     - assets/prototype/games/
     - assets/achievements/
     - assets/interaction/
+    - assets/navigation/
     - assets/store/icons/
     - assets/legal/
     - assets/data/china_regions.json
