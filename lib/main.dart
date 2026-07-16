@@ -12,6 +12,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:fluwx/fluwx.dart';
@@ -199,6 +200,15 @@ class _CompanionAppState extends State<CompanionApp>
               theme: AppTheme.materialTheme(Brightness.light),
               darkTheme: AppTheme.materialTheme(Brightness.dark),
               themeMode: appThemeController.mode,
+              builder: (context, child) {
+                return DefaultTextStyle.merge(
+                  style: const TextStyle(
+                    decoration: TextDecoration.none,
+                    decorationColor: Colors.transparent,
+                  ),
+                  child: child ?? const SizedBox.shrink(),
+                );
+              },
               home: const AuthGate(),
             ),
           ),

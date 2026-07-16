@@ -36,9 +36,17 @@ void main() {
     expect(maleSemantics.flagsCollection.isSelected, ui.Tristate.isTrue);
 
     await tester.tap(find.byKey(const ValueKey('agent-create-next')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+
+    final traitsTitle = find.text('灵魂倾向');
+    final enteringX = tester.getTopLeft(traitsTitle).dx;
+    expect(enteringX, greaterThan(20));
+    expect(enteringX, lessThan(410));
+
     await tester.pumpAndSettle();
 
-    expect(find.text('灵魂倾向'), findsOneWidget);
+    expect(tester.getTopLeft(traitsTitle).dx, closeTo(20, 0.1));
     expect(find.text('随机生成'), findsOneWidget);
     expect(find.text('活泼度'), findsOneWidget);
     expect(find.text('理性度'), findsOneWidget);
@@ -66,6 +74,9 @@ void main() {
     }
 
     await tester.tap(find.byKey(const ValueKey('agent-create-previous')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(tester.getTopLeft(traitsTitle).dx, greaterThan(20));
     await tester.pumpAndSettle();
     expect(find.text('TA是男生还是女生？'), findsOneWidget);
   });

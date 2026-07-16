@@ -3,6 +3,7 @@ import 'package:companion_flutter/main.dart';
 import 'package:companion_flutter/models.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -36,9 +37,12 @@ class _FakeProfileApi extends CompanionApi {
 
 Future<void> pumpLoginPage(WidgetTester tester) async {
   await tester.pumpWidget(const CompanionApp());
-  for (var i = 0; i < 10; i += 1) {
+  for (var i = 0; i < 70; i += 1) {
     await tester.pump(const Duration(milliseconds: 50));
-    if (find.text('从一句话开始').evaluate().isNotEmpty) return;
+    if (find.text('微信登录').evaluate().isNotEmpty) {
+      await tester.pump(const Duration(milliseconds: 700));
+      return;
+    }
   }
 }
 
@@ -47,31 +51,73 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
   });
 
-  testWidgets('renders prototype login entry and opens backend form', (
+  testWidgets('removes inherited text decorations from login copy', (
     tester,
   ) async {
     await pumpLoginPage(tester);
 
-    expect(find.text('从一句话开始'), findsOneWidget);
-    expect(find.text('Ban Sheng'), findsOneWidget);
-    expect(find.text('手机号登录'), findsOneWidget);
-    expect(find.text('or'), findsOneWidget);
-    expect(find.text('后端地址'), findsNothing);
+    final paragraph = tester.renderObject<RenderParagraph>(find.text('Hello'));
+    expect(paragraph.text.style?.decoration, TextDecoration.none);
+  });
 
-    await tester.tap(find.text('手机号登录'));
-    await tester.pump(const Duration(milliseconds: 300));
+  testWidgets('holds the splash for two seconds and crossfades to login', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const CompanionApp());
+    await tester.pump();
 
-    expect(find.text('后端地址'), findsOneWidget);
-    expect(find.text('登录'), findsWidgets);
-    expect(find.text('注册'), findsOneWidget);
-    expect(find.text('账号'), findsOneWidget);
-    expect(find.text('密码'), findsOneWidget);
+    expect(find.text('独处时刻，皆有伴生相守'), findsOneWidget);
+    expect(find.text('微信登录'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 1900));
+    expect(find.text('独处时刻，皆有伴生相守'), findsOneWidget);
+    expect(find.text('微信登录'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(find.text('独处时刻，皆有伴生相守'), findsOneWidget);
+    expect(find.text('微信登录'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 100));
+    final transitionOpacities = tester
+        .widgetList<FadeTransition>(find.byType(FadeTransition))
+        .map((transition) => transition.opacity.value);
+    expect(
+      transitionOpacities.any((opacity) => opacity > 0 && opacity < 1),
+      isTrue,
+    );
+
+    for (var i = 0; i < 15; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.text('独处时刻，皆有伴生相守').evaluate().isEmpty) break;
+    }
+    expect(find.text('独处时刻，皆有伴生相守'), findsNothing);
+    expect(find.text('微信登录'), findsOneWidget);
+  });
+
+  testWidgets('renders secondary login methods as unavailable', (tester) async {
+    await pumpLoginPage(tester);
+
+    expect(find.text('Hello'), findsOneWidget);
+    expect(find.text('微信登录'), findsOneWidget);
+    expect(find.text('其他登录方式'), findsOneWidget);
+
+    for (final method in ['苹果登录', 'QQ登录', '手机号登录']) {
+      await tester.tap(find.bySemanticsLabel(method));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('暂未开放'), findsOneWidget);
+      expect(find.text('$method功能正在准备中，敬请期待。'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(CupertinoDialogAction, '知道了'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
   });
 
   testWidgets('renders wechat login button', (tester) async {
     await pumpLoginPage(tester);
 
-    expect(find.bySemanticsLabel('微信'), findsOneWidget);
+    expect(find.text('微信登录'), findsOneWidget);
     expect(find.byIcon(CupertinoIcons.chat_bubble_2_fill), findsNothing);
   });
 

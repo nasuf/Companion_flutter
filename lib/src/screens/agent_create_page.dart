@@ -29,9 +29,11 @@ class AgentCreatePage extends StatefulWidget {
 class _AgentCreatePageState extends State<AgentCreatePage>
     with TickerProviderStateMixin {
   late final AnimationController _traitMoveController;
+  late final PageController _pageController;
   final _nameController = TextEditingController(text: '小芜');
   var _gender = _AgentGender.female;
   var _step = _AgentCreateStep.gender;
+  var _pageTransitioning = false;
   int? _openTraitInfoIndex;
   late List<_TraitDraft> _traits;
   List<int>? _previousTraitValues;
@@ -51,6 +53,7 @@ class _AgentCreatePageState extends State<AgentCreatePage>
       duration: const Duration(milliseconds: 360),
       value: 1,
     );
+    _pageController = PageController(initialPage: _step.index);
     _traits = _defaultTraits
         .map(
           (trait) => _TraitDraft(
@@ -71,28 +74,43 @@ class _AgentCreatePageState extends State<AgentCreatePage>
     _provisionPollTimer?.cancel();
     _llmTickerTimer?.cancel();
     _traitMoveController.dispose();
+    _pageController.dispose();
     _nameController.dispose();
     super.dispose();
   }
 
   void _showTraits() {
-    setState(() {
-      _step = _AgentCreateStep.traits;
-      _openTraitInfoIndex = null;
-      _error = null;
-    });
+    _animateToStep(_AgentCreateStep.traits);
   }
 
   void _showGender() {
+    _animateToStep(_AgentCreateStep.gender);
+  }
+
+  void _animateToStep(_AgentCreateStep target) {
+    if (_pageTransitioning || _submitting || target == _step) return;
     setState(() {
-      _step = _AgentCreateStep.gender;
+      _step = target;
+      _pageTransitioning = true;
       _openTraitInfoIndex = null;
       _error = null;
     });
+    unawaited(
+      _pageController
+          .animateToPage(
+            target.index,
+            duration: const Duration(milliseconds: 360),
+            curve: Curves.easeOutCubic,
+          )
+          .whenComplete(() {
+            if (!mounted) return;
+            setState(() => _pageTransitioning = false);
+          }),
+    );
   }
 
   void _handleBack() {
-    if (_submitting) return;
+    if (_submitting || _pageTransitioning) return;
     if (_step == _AgentCreateStep.traits) {
       _showGender();
       return;
@@ -399,7 +417,8 @@ class _AgentCreatePageState extends State<AgentCreatePage>
                         );
                         return MediaQuery.withNoTextScaling(
                           child: _AgentCreateCanvas(
-                            step: _step,
+                            pageController: _pageController,
+                            pageTransitioning: _pageTransitioning,
                             gender: _gender,
                             traits: _traits,
                             previousTraitValues: _previousTraitValues,
@@ -471,7 +490,8 @@ class _AgentCreatePageState extends State<AgentCreatePage>
 
 class _AgentCreateCanvas extends StatelessWidget {
   const _AgentCreateCanvas({
-    required this.step,
+    required this.pageController,
+    required this.pageTransitioning,
     required this.gender,
     required this.traits,
     required this.previousTraitValues,
@@ -489,7 +509,8 @@ class _AgentCreateCanvas extends StatelessWidget {
     required this.onSubmit,
   });
 
-  final _AgentCreateStep step;
+  final PageController pageController;
+  final bool pageTransitioning;
   final _AgentGender gender;
   final List<_TraitDraft> traits;
   final List<int>? previousTraitValues;
@@ -516,27 +537,45 @@ class _AgentCreateCanvas extends StatelessWidget {
       child: Stack(
         children: [
           const Positioned.fill(child: _AgentCreateBackground()),
-          _AgentCreateHeader(onBack: onBack),
-          if (step == _AgentCreateStep.gender)
-            _GenderStep(
-              gender: gender,
-              onGenderChanged: onGenderChanged,
-              onNext: onNext,
-            )
-          else
-            _TraitsStep(
-              traits: traits,
-              previousTraitValues: previousTraitValues,
-              moveProgress: traitMoveProgress,
-              openInfoIndex: openTraitInfoIndex,
-              submitting: submitting,
-              error: error,
-              onPrevious: onPrevious,
-              onRandomize: onRandomize,
-              onInfoPressed: onTraitInfoPressed,
-              onChanged: onTraitChanged,
-              onSubmit: onSubmit,
+          Positioned.fill(
+            child: AbsorbPointer(
+              absorbing: pageTransitioning,
+              child: PageView(
+                controller: pageController,
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  Stack(
+                    children: [
+                      _AgentCreateHeader(onBack: onBack),
+                      _GenderStep(
+                        gender: gender,
+                        onGenderChanged: onGenderChanged,
+                        onNext: onNext,
+                      ),
+                    ],
+                  ),
+                  Stack(
+                    children: [
+                      _AgentCreateHeader(onBack: onBack),
+                      _TraitsStep(
+                        traits: traits,
+                        previousTraitValues: previousTraitValues,
+                        moveProgress: traitMoveProgress,
+                        openInfoIndex: openTraitInfoIndex,
+                        submitting: submitting,
+                        error: error,
+                        onPrevious: onPrevious,
+                        onRandomize: onRandomize,
+                        onInfoPressed: onTraitInfoPressed,
+                        onChanged: onTraitChanged,
+                        onSubmit: onSubmit,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
+          ),
         ],
       ),
     );
