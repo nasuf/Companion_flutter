@@ -610,11 +610,10 @@ class _TabBarItem extends StatelessWidget {
                   textScaler: TextScaler.noScaling,
                   style: TextStyle(
                     fontSize: 10,
-                    height: 1.0,
                     color: selected
                         ? const Color(0xFF06C893)
                         : const Color(0xFFC7C7C7),
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
                     decoration: TextDecoration.none,
                   ),
                 ),
