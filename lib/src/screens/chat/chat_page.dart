@@ -1797,6 +1797,19 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     widget.onAchievementOverlayChanged?.call(true);
   }
 
+  void _openInteractionDetail() {
+    _dismissInputSurfaces();
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => _InteractionStreakPage(
+          agentAvatarUrl: _agentAvatarUrl,
+          userAvatarUrl: widget.session.userAvatarUrl,
+          interactionDays: _conversationMeta?.interactionDays ?? 0,
+        ),
+      ),
+    );
+  }
+
   void _showDemoAchievementNotice() {
     const samples = [
       ('初次开口', '哇哦！成功打破沉默，冷场彻底退退退！', '第一次给TA发消息', '用户累计给ai发送1条信息', '微光痕迹', 1),
@@ -2235,201 +2248,206 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
     return SafeArea(
       bottom: false,
-      child: Stack(
-        children: [
-          Column(
-            children: [
-              _ChatHeader(
-                agentName: widget.session.agentName ?? 'Companion',
-                interactionDays: _conversationMeta?.interactionDays,
-                aiStatus: _conversationMeta?.aiStatus,
-                aiStatusLabel: _conversationMeta?.aiStatusLabel,
-                aiActivity: _conversationMeta?.aiActivity,
-                avatarUrl: agentAvatarUrl,
-                isMusicListening: _isUserCoListening,
-                isMusicPlaying:
-                    _conversationMeta?.musicCoListening?.isPlaying ?? false,
-                onMusicTap: _openActiveMusic,
-                onAvatarDoubleTap: _showDemoAchievementNotice,
-                onOpenSidebar: widget.onOpenSidebar,
-              ),
-              if (_historyError != null)
-                _InlineBanner(
-                  text: _historyError!,
-                  onRetry: () => _loadLatestMessages(showLoading: true),
+      child: DecoratedBox(
+        decoration: const BoxDecoration(color: Color(0xFFF6FDFC)),
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                _ChatHeader(
+                  agentName: widget.session.agentName ?? 'Companion',
+                  interactionDays: _conversationMeta?.interactionDays,
+                  aiStatus: _conversationMeta?.aiStatus,
+                  aiStatusLabel: _conversationMeta?.aiStatusLabel,
+                  aiActivity: _conversationMeta?.aiActivity,
+                  avatarUrl: agentAvatarUrl,
+                  isMusicListening: _isUserCoListening,
+                  isMusicPlaying:
+                      _conversationMeta?.musicCoListening?.isPlaying ?? false,
+                  onMusicTap: _openActiveMusic,
+                  onAvatarDoubleTap: _showDemoAchievementNotice,
+                  onInteractionTap: _openInteractionDetail,
+                  onOpenSidebar: widget.onOpenSidebar,
                 ),
-              Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onTap: _dismissInputSurfaces,
-                  child: _loadingInitial
-                      ? const Center(child: CircularProgressIndicator())
-                      : _MessageList(
-                          controller: _scrollController,
-                          messages: _messages,
-                          isLoadingOlder: _loadingOlder,
-                          bottomPadding: listBottomPadding,
-                          topPadding: listTopPadding,
-                          onComponentCardTap: _openComponentCard,
-                          onAchievementTap: _openAchievementDetail,
-                          onResolveMusicTrack: _resolveMusicTrack,
-                          onMusicCardActivated: _activateMusicStationCard,
-                          onMusicPrevious: () =>
-                              unawaited(_playPreviousStationTrack()),
-                          onMusicNext: () => unawaited(_playNextStationTrack()),
-                          onMusicFavorite: (track) =>
-                              unawaited(_toggleMusicFavorite(track)),
-                          onAttachmentTap: _previewAttachment,
-                          activeMusicMessageId: _musicStation.activeMessageId,
-                          musicCardPositions: _musicStation.cardPositions,
-                          favoriteMusicTrackIds: _favoriteMusicTrackIds,
-                          busyMusicFavoriteIds: _busyMusicFavoriteIds,
-                          canGoMusicPrevious: _canGoStationPrevious,
-                          isMusicBusy: _advancingStation,
-                          stationMessageId: _musicStation.messageId,
-                          stationMessageKey: _stationCardKey,
-                          agentAvatarUrl: agentAvatarUrl,
-                          userAvatarUrl: widget.session.userAvatarUrl,
-                          authToken: widget.api.authToken,
-                          apiBaseUrl: widget.api.baseUrl,
-                        ),
+                if (_historyError != null)
+                  _InlineBanner(
+                    text: _historyError!,
+                    onRetry: () => _loadLatestMessages(showLoading: true),
+                  ),
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: _dismissInputSurfaces,
+                    child: _loadingInitial
+                        ? const Center(child: CircularProgressIndicator())
+                        : _MessageList(
+                            controller: _scrollController,
+                            messages: _messages,
+                            isLoadingOlder: _loadingOlder,
+                            bottomPadding: listBottomPadding,
+                            topPadding: listTopPadding,
+                            onComponentCardTap: _openComponentCard,
+                            onAchievementTap: _openAchievementDetail,
+                            onResolveMusicTrack: _resolveMusicTrack,
+                            onMusicCardActivated: _activateMusicStationCard,
+                            onMusicPrevious: () =>
+                                unawaited(_playPreviousStationTrack()),
+                            onMusicNext: () =>
+                                unawaited(_playNextStationTrack()),
+                            onMusicFavorite: (track) =>
+                                unawaited(_toggleMusicFavorite(track)),
+                            onAttachmentTap: _previewAttachment,
+                            activeMusicMessageId: _musicStation.activeMessageId,
+                            musicCardPositions: _musicStation.cardPositions,
+                            favoriteMusicTrackIds: _favoriteMusicTrackIds,
+                            busyMusicFavoriteIds: _busyMusicFavoriteIds,
+                            canGoMusicPrevious: _canGoStationPrevious,
+                            isMusicBusy: _advancingStation,
+                            stationMessageId: _musicStation.messageId,
+                            stationMessageKey: _stationCardKey,
+                            agentAvatarUrl: agentAvatarUrl,
+                            userAvatarUrl: widget.session.userAvatarUrl,
+                            authToken: widget.api.authToken,
+                            apiBaseUrl: widget.api.baseUrl,
+                          ),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          AnimatedPositioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: inputSurfaceHeight,
-            duration: positionDuration,
-            curve: _animationCurve,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppColors.page.withValues(alpha: 0.96),
-                ),
-              ),
+              ],
             ),
-          ),
-          AnimatedPositioned(
-            left: 0,
-            right: 0,
-            bottom: composerBottom,
-            duration: positionDuration,
-            curve: _animationCurve,
-            child: _Composer(
-              controller: _inputController,
-              focusNode: _inputFocus,
-              height: composerHeight,
-              activePanel: _panel,
-              sending: _sending || _uploadingImage,
-              resolvingLink:
-                  _linkPreviewInFlightText != null &&
-                  _pendingLinkPreview == null,
-              pendingImages: _pendingImages,
-              pendingLink: _pendingLinkPreview,
-              authToken: widget.api.authToken,
-              onFocusInput: _focusInput,
-              onToggleEmoji: () => _setPanel(ComposerPanel.emoji),
-              onShowKeyboard: _focusInput,
-              onToggleMore: () => _setPanel(ComposerPanel.more),
-              onSend: _sendMessage,
-              onRemoveImage: _removePendingImage,
-              onPreviewImage: _previewPendingImage,
-              onRemoveLink: _removePendingLink,
-              onPreviewLink: _openPendingLink,
-              onPasteText: _handleComposerPasteText,
-            ),
-          ),
-          AnimatedPositioned(
-            left: 0,
-            right: 0,
-            bottom: tabBarLift,
-            height: panelHeight,
-            duration: positionDuration,
-            curve: _animationCurve,
-            child: ClipRect(
-              child: _ChatPanel(
-                panel: visiblePanel,
-                onEmojiTap: _appendEmoji,
-                onPickPhoto: () =>
-                    unawaited(_pickChatImage(ImageSource.gallery)),
-                onTakePhoto: () =>
-                    unawaited(_pickChatImage(ImageSource.camera)),
-              ),
-            ),
-          ),
-          AnimatedPositioned(
-            left: 0,
-            right: 0,
-            bottom: inputSurfaceHeight + 12,
-            duration: _animationDuration,
-            curve: _animationCurve,
-            child: IgnorePointer(
-              ignoring: _newMessageCount == 0,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOutCubic,
-                opacity: _newMessageCount > 0 ? 1 : 0,
-                child: Center(
-                  child: _NewMessagesButton(
-                    count: _newMessageCount,
-                    onTap: () => scrollToLatest(),
+            AnimatedPositioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: inputSurfaceHeight,
+              duration: positionDuration,
+              curve: _animationCurve,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF6FDFC).withValues(alpha: 0.96),
                   ),
                 ),
               ),
             ),
-          ),
-          Positioned(
-            top: 74,
-            left: 26,
-            right: 24,
-            child: AnimatedSlide(
-              duration: const Duration(milliseconds: 280),
-              curve: Curves.easeOutCubic,
-              offset: showStationDock ? Offset.zero : const Offset(0, -0.35),
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                opacity: showStationDock ? 1 : 0,
-                child: IgnorePointer(
-                  ignoring: !showStationDock,
-                  child: stationTrack == null
-                      ? const SizedBox.shrink()
-                      : _StickyMusicDock(
-                          track: stationTrack,
-                          isPlaying: _isStationPlaying,
-                          isLoading: _isStationLoading || _advancingStation,
-                          canGoPrevious: _canGoStationPrevious,
-                          isBusy: _advancingStation,
-                          onTap: _openStationMusic,
-                          onPrevious: () =>
-                              unawaited(_playPreviousStationTrack()),
-                          onNext: () => unawaited(_playNextStationTrack()),
-                          onTogglePlay: () =>
-                              unawaited(_toggleStationPlayback()),
-                        ),
+            AnimatedPositioned(
+              left: 0,
+              right: 0,
+              bottom: composerBottom,
+              duration: positionDuration,
+              curve: _animationCurve,
+              child: _Composer(
+                controller: _inputController,
+                focusNode: _inputFocus,
+                height: composerHeight,
+                activePanel: _panel,
+                sending: _sending || _uploadingImage,
+                resolvingLink:
+                    _linkPreviewInFlightText != null &&
+                    _pendingLinkPreview == null,
+                pendingImages: _pendingImages,
+                pendingLink: _pendingLinkPreview,
+                authToken: widget.api.authToken,
+                onFocusInput: _focusInput,
+                onToggleEmoji: () => _setPanel(ComposerPanel.emoji),
+                onShowKeyboard: _focusInput,
+                onToggleMore: () => _setPanel(ComposerPanel.more),
+                onSend: _sendMessage,
+                onRemoveImage: _removePendingImage,
+                onPreviewImage: _previewPendingImage,
+                onRemoveLink: _removePendingLink,
+                onPreviewLink: _openPendingLink,
+                onPasteText: _handleComposerPasteText,
+              ),
+            ),
+            AnimatedPositioned(
+              left: 0,
+              right: 0,
+              bottom: tabBarLift,
+              height: panelHeight,
+              duration: positionDuration,
+              curve: _animationCurve,
+              child: ClipRect(
+                child: _ChatPanel(
+                  panel: visiblePanel,
+                  onEmojiTap: _appendEmoji,
+                  onPickPhoto: () =>
+                      unawaited(_pickChatImage(ImageSource.gallery)),
+                  onTakePhoto: () =>
+                      unawaited(_pickChatImage(ImageSource.camera)),
                 ),
               ),
             ),
-          ),
-          Positioned(
-            top: 74,
-            left: 18,
-            right: 18,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: _readyCapsule == null
-                  ? const SizedBox.shrink()
-                  : _ReadyCapsuleBanner(
-                      key: ValueKey(_readyCapsule!.id),
-                      capsule: _readyCapsule!,
-                      onTap: _openReadyCapsuleNotice,
+            AnimatedPositioned(
+              left: 0,
+              right: 0,
+              bottom: inputSurfaceHeight + 12,
+              duration: _animationDuration,
+              curve: _animationCurve,
+              child: IgnorePointer(
+                ignoring: _newMessageCount == 0,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  opacity: _newMessageCount > 0 ? 1 : 0,
+                  child: Center(
+                    child: _NewMessagesButton(
+                      count: _newMessageCount,
+                      onTap: () => scrollToLatest(),
                     ),
+                  ),
+                ),
+              ),
             ),
-          ),
-        ],
+            Positioned(
+              top: 74,
+              left: 26,
+              right: 24,
+              child: AnimatedSlide(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeOutCubic,
+                offset: showStationDock ? Offset.zero : const Offset(0, -0.35),
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  opacity: showStationDock ? 1 : 0,
+                  child: IgnorePointer(
+                    ignoring: !showStationDock,
+                    child: stationTrack == null
+                        ? const SizedBox.shrink()
+                        : _StickyMusicDock(
+                            track: stationTrack,
+                            isPlaying: _isStationPlaying,
+                            isLoading: _isStationLoading || _advancingStation,
+                            canGoPrevious: _canGoStationPrevious,
+                            isBusy: _advancingStation,
+                            onTap: _openStationMusic,
+                            onPrevious: () =>
+                                unawaited(_playPreviousStationTrack()),
+                            onNext: () => unawaited(_playNextStationTrack()),
+                            onTogglePlay: () =>
+                                unawaited(_toggleStationPlayback()),
+                          ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 74,
+              left: 18,
+              right: 18,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                child: _readyCapsule == null
+                    ? const SizedBox.shrink()
+                    : _ReadyCapsuleBanner(
+                        key: ValueKey(_readyCapsule!.id),
+                        capsule: _readyCapsule!,
+                        onTap: _openReadyCapsuleNotice,
+                      ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

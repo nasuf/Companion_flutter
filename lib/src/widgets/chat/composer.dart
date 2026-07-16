@@ -47,11 +47,8 @@ class _Composer extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: height,
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-      decoration: BoxDecoration(
-        color: AppColors.page,
-        border: Border(top: BorderSide(color: AppColors.hairline)),
-      ),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+      decoration: const BoxDecoration(color: Color(0xFFF6FDFC)),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final canShowAttachmentStrip =
@@ -78,19 +75,19 @@ class _Composer extends StatelessWidget {
                   _RoundIconButton(
                     tooltip: '语音',
                     icon: CupertinoIcons.mic,
+                    quiet: true,
                     onTap: () {},
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Container(
                       constraints: BoxConstraints(
-                        minHeight: 38,
-                        maxHeight: resolvingLink ? 38 : 86,
+                        minHeight: 36,
+                        maxHeight: resolvingLink ? 36 : 86,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(19),
-                        border: Border.all(color: AppColors.hairline),
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(999),
                       ),
                       child: TextField(
                         controller: controller,
@@ -103,7 +100,10 @@ class _Composer extends StatelessWidget {
                         contextMenuBuilder: _buildContextMenu,
                         decoration: InputDecoration(
                           hintText: '发消息...',
-                          hintStyle: TextStyle(color: AppColors.muted),
+                          hintStyle: const TextStyle(
+                            color: Color(0xFFBFBFBF),
+                            fontSize: 12,
+                          ),
                           border: InputBorder.none,
                           isDense: true,
                           prefixIcon: resolvingLink
@@ -124,15 +124,15 @@ class _Composer extends StatelessWidget {
                               : null,
                           contentPadding: const EdgeInsets.fromLTRB(
                             14,
-                            8,
+                            7,
                             14,
-                            8,
+                            7,
                           ),
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   _RoundIconButton(
                     tooltip: activePanel == ComposerPanel.emoji ? '键盘' : '表情',
                     icon: activePanel == ComposerPanel.emoji
@@ -143,7 +143,7 @@ class _Composer extends StatelessWidget {
                         ? onShowKeyboard
                         : onToggleEmoji,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   AnimatedBuilder(
                     animation: controller,
                     builder: (context, _) {
@@ -512,12 +512,14 @@ class _RoundIconButton extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.selected = false,
+    this.quiet = false,
   });
 
   final String tooltip;
   final IconData icon;
   final VoidCallback onTap;
   final bool selected;
+  final bool quiet;
 
   @override
   Widget build(BuildContext context) {
@@ -527,11 +529,11 @@ class _RoundIconButton extends StatelessWidget {
         onTap: onTap,
         radius: 23,
         child: Container(
-          width: 38,
-          height: 38,
+          width: quiet ? 24 : 38,
+          height: quiet ? 36 : 38,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: selected ? null : AppColors.surface,
+            color: selected || quiet ? null : AppColors.surface,
             gradient: selected
                 ? LinearGradient(
                     begin: Alignment.topLeft,
@@ -540,7 +542,9 @@ class _RoundIconButton extends StatelessWidget {
                   )
                 : null,
             border: Border.all(
-              color: selected
+              color: quiet
+                  ? Colors.transparent
+                  : selected
                   ? Colors.white.withValues(alpha: 0.28)
                   : AppColors.hairline,
             ),
@@ -557,7 +561,11 @@ class _RoundIconButton extends StatelessWidget {
           child: Icon(
             icon,
             size: 21,
-            color: selected ? Colors.white : AppColors.text,
+            color: selected
+                ? Colors.white
+                : quiet
+                ? const Color(0xFF8A8A8A)
+                : AppColors.text,
           ),
         ),
       ),

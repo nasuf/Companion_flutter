@@ -606,39 +606,42 @@ class _MessageTextBubble extends StatelessWidget {
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 270),
       child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: message.isMine ? AppColors.accent : AppColors.surface,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(message.isMine ? 17 : 3),
-            topRight: Radius.circular(message.isMine ? 3 : 17),
-            bottomLeft: const Radius.circular(17),
-            bottomRight: const Radius.circular(17),
-          ),
-          border: Border.all(
-            color: message.isMine ? AppColors.accent : AppColors.hairline,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: message.isMine
-                  ? AppColors.accent.withValues(alpha: 0.18)
-                  : const Color(0xFF24344A).withValues(alpha: 0.08),
-              blurRadius: message.isMine ? 18 : 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
+        decoration: _bubbleDecoration(message.isMine),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           child: Text(
             message.content,
             style: TextStyle(
               color: message.isMine ? Colors.white : AppColors.text,
-              fontSize: 15,
+              fontSize: 14,
               height: 1.42,
             ),
           ),
         ),
       ),
+    );
+  }
+
+  BoxDecoration _bubbleDecoration(bool isMine) {
+    const mineColor = Color(0xFF06C893);
+    return BoxDecoration(
+      color: isMine ? mineColor : AppColors.surface,
+      borderRadius: BorderRadius.only(
+        topLeft: Radius.circular(isMine ? 20 : 3),
+        topRight: Radius.circular(isMine ? 3 : 20),
+        bottomLeft: const Radius.circular(20),
+        bottomRight: const Radius.circular(20),
+      ),
+      border: Border.all(color: isMine ? mineColor : Colors.transparent),
+      boxShadow: [
+        BoxShadow(
+          color: isMine
+              ? mineColor.withValues(alpha: 0.25)
+              : Colors.black.withValues(alpha: 0.10),
+          blurRadius: isMine ? 4 : 16,
+          offset: const Offset(0, 4),
+        ),
+      ],
     );
   }
 }

@@ -497,14 +497,14 @@ class _FloatingTabBar extends StatelessWidget {
       label: '聊天',
     ),
     (
-      icon: CupertinoIcons.antenna_radiowaves_left_right,
-      selectedIcon: CupertinoIcons.antenna_radiowaves_left_right,
-      label: '线上交互',
+      icon: CupertinoIcons.paperplane_fill,
+      selectedIcon: CupertinoIcons.paperplane_fill,
+      label: '互动',
     ),
     (
-      icon: CupertinoIcons.map_pin_ellipse,
-      selectedIcon: CupertinoIcons.map_pin_ellipse,
-      label: '线下交互',
+      icon: CupertinoIcons.heart_circle_fill,
+      selectedIcon: CupertinoIcons.heart_circle_fill,
+      label: '陪伴',
     ),
     (
       icon: CupertinoIcons.person_crop_circle,
@@ -524,97 +524,35 @@ class _FloatingTabBar extends StatelessWidget {
         final next = velocity < 0 ? selectedIndex + 1 : selectedIndex - 1;
         onSelected(next.clamp(0, _items.length - 1).toInt());
       },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(26),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-          child: Container(
-            height: 64,
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
-            decoration: BoxDecoration(
+      child: Container(
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 9),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF121A24) : const Color(0xFFFAFFFE),
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: [
+            BoxShadow(
               color: isDark
-                  ? const Color(0xCC121A24)
-                  : Colors.white.withValues(alpha: 0.66),
-              borderRadius: BorderRadius.circular(26),
-              border: Border.all(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.12)
-                    : Colors.white.withValues(alpha: 0.72),
+                  ? Colors.black.withValues(alpha: 0.52)
+                  : const Color(0xFF06C893).withValues(alpha: 0.15),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            for (var i = 0; i < _items.length; i += 1)
+              Expanded(
+                child: _TabBarItem(
+                  icon: _items[i].icon,
+                  selectedIcon: _items[i].selectedIcon,
+                  label: _items[i].label,
+                  selected: selectedIndex == i,
+                  onTap: () => onSelected(i),
+                ),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: isDark
-                      ? Colors.black.withValues(alpha: 0.52)
-                      : const Color(0xFF315B88).withValues(alpha: 0.12),
-                  blurRadius: 28,
-                  offset: const Offset(0, 14),
-                ),
-                BoxShadow(
-                  color: Colors.white.withValues(alpha: isDark ? 0.08 : 0.70),
-                  blurRadius: 1,
-                  offset: const Offset(0, 1),
-                ),
-              ],
-            ),
-            child: Stack(
-              children: [
-                AnimatedAlign(
-                  alignment: Alignment(
-                    -1 + (selectedIndex * 2 / (_items.length - 1)),
-                    0,
-                  ),
-                  duration: const Duration(milliseconds: 260),
-                  curve: Curves.easeOutCubic,
-                  child: FractionallySizedBox(
-                    widthFactor: 1 / _items.length,
-                    heightFactor: 1,
-                    child: Center(
-                      child: Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              isDark
-                                  ? const Color(0xFF172231)
-                                  : Colors.white.withValues(alpha: 0.96),
-                              isDark
-                                  ? const Color(0xFF101820)
-                                  : Colors.white.withValues(alpha: 0.56),
-                            ],
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.accent.withValues(alpha: 0.16),
-                              blurRadius: 18,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                Row(
-                  children: [
-                    for (var i = 0; i < _items.length; i += 1)
-                      Expanded(
-                        child: _TabBarItem(
-                          icon: _items[i].icon,
-                          selectedIcon: _items[i].selectedIcon,
-                          label: _items[i].label,
-                          selected: selectedIndex == i,
-                          onTap: () => onSelected(i),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          ],
         ),
       ),
     );
@@ -649,20 +587,24 @@ class _TabBarItem extends StatelessWidget {
             children: [
               Icon(
                 selected ? selectedIcon : icon,
-                size: 23,
+                size: 24,
                 color: selected
-                    ? AppColors.accent
-                    : AppColors.muted.withValues(alpha: 0.64),
+                    ? const Color(0xFF06C893)
+                    : const Color(0xFFC7C7C7),
               ),
-              const SizedBox(height: 5),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                width: selected ? 5 : 0,
-                height: 5,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.accent,
+              const SizedBox(height: 2),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.visible,
+                style: TextStyle(
+                  fontSize: 10,
+                  height: 1.1,
+                  color: selected
+                      ? const Color(0xFF06C893)
+                      : const Color(0xFFC7C7C7),
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  decoration: TextDecoration.none,
                 ),
               ),
             ],
