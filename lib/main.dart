@@ -67,6 +67,8 @@ part 'src/screens/gomoku_game_page.dart';
 part 'src/screens/go_game_page.dart';
 part 'src/screens/chess_family_game_page.dart';
 part 'src/screens/native_casual_game_pages.dart';
+part 'src/screens/native_fullscreen_game_surface.dart';
+part 'src/screens/native_game_haptics.dart';
 part 'src/screens/native_game_runtime.dart';
 part 'src/screens/minesweeper_game_page.dart';
 part 'src/screens/number_merge_game_page.dart';

@@ -149,13 +149,13 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
         _resolving = true;
       });
     }
-    if (result.action.hitMine) {
-      unawaited(HapticFeedback.heavyImpact());
-    } else if (result.action.revealed.length >= 8) {
-      unawaited(HapticFeedback.mediumImpact());
-    } else {
-      unawaited(HapticFeedback.selectionClick());
-    }
+    _NativeGameHaptics.mineAction(
+      hitMine: result.action.hitMine,
+      revealedCount: result.action.revealed.length,
+      flagAction:
+          result.action.kind == MinesweeperActionKind.flag ||
+          result.action.kind == MinesweeperActionKind.unflag,
+    );
     final animationTime = result.action.hitMine
         ? const Duration(milliseconds: 980)
         : result.action.revealed.length >= 8
@@ -314,7 +314,10 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
                   engine: engine,
                   tool: _tool,
                   agentName: _runtime.agentName,
-                  onToolChanged: (tool) => setState(() => _tool = tool),
+                  onToolChanged: (tool) {
+                    _NativeGameHaptics.selection();
+                    setState(() => _tool = tool);
+                  },
                 ),
               ],
             ),

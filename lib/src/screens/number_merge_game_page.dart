@@ -89,7 +89,7 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
         _resolving ||
         !engine.canMove(direction)) {
       if (engine != null && !engine.isFinished) {
-        unawaited(HapticFeedback.selectionClick());
+        _NativeGameHaptics.rejected();
       }
       return;
     }
@@ -143,13 +143,7 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
         _resolving = true;
       });
     }
-    unawaited(
-      result.move.mergedValues.any((value) => value >= 128)
-          ? HapticFeedback.heavyImpact()
-          : result.move.mergedValues.isNotEmpty
-          ? HapticFeedback.mediumImpact()
-          : HapticFeedback.selectionClick(),
-    );
+    _NativeGameHaptics.merge(result.move.mergedValues);
     final duration = result.move.mergedValues.any((value) => value >= 128)
         ? const Duration(milliseconds: 820)
         : const Duration(milliseconds: 620);

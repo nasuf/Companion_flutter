@@ -99,6 +99,10 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
         _selected = null;
         _targets = const {};
       });
+      _NativeGameHaptics.jump(
+        hops: result.move.isJump ? math.max(2, result.move.path.length - 1) : 1,
+        keyMoment: result.move.moment != null,
+      );
       try {
         await Future.wait([
           _reportMove(result.move, before),
@@ -123,7 +127,7 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
       _selected = paths.isEmpty ? null : index;
       _targets = targets;
     });
-    if (paths.isNotEmpty) unawaited(HapticFeedback.selectionClick());
+    if (paths.isNotEmpty) _NativeGameHaptics.selection();
   }
 
   List<int> _shorterPath(List<int>? existing, List<int> candidate) =>
@@ -154,6 +158,10 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
           _moveAnimating = true;
         });
       }
+      _NativeGameHaptics.jump(
+        hops: result.move.isJump ? math.max(2, result.move.path.length - 1) : 1,
+        keyMoment: result.move.moment != null,
+      );
       try {
         await Future.wait([
           _reportMove(result.move, before),
@@ -374,11 +382,7 @@ class _Match3GamePageState extends State<_Match3GamePage> {
       _lastTurn = turn;
       _resolving = true;
     });
-    unawaited(
-      turn.cascades.length >= 3
-          ? HapticFeedback.heavyImpact()
-          : HapticFeedback.mediumImpact(),
-    );
+    _NativeGameHaptics.match3Turn(turn.cascades.length);
     try {
       await Future.wait([
         _reportMatchTurn(turn, before),
@@ -569,6 +573,8 @@ class _NativeGameExperienceScaffoldState
     final activeChild = widget.activeChild;
     if (_isFullscreen && activeChild != null) {
       return _NativeFullscreenGameSurface(
+        gameKey: widget.game.nativeGameKey,
+        gameTitle: widget.game.title,
         onExit: () => setState(() => _isFullscreen = false),
         onRestart: _start,
         restartLabel: widget.runtime.completed ? '再来一局' : '重新开一局',
@@ -1617,7 +1623,7 @@ class _Match3BoardState extends State<_Match3Board>
           weight: 66,
         ),
       ]).animate(_gesture);
-      unawaited(HapticFeedback.mediumImpact());
+      _NativeGameHaptics.rejected();
     } else {
       animation = Tween(begin: from, end: commit ? 1.0 : 0.0).animate(
         CurvedAnimation(

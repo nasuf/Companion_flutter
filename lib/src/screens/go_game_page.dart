@@ -84,8 +84,11 @@ class _GoGamePageState extends State<_GoGamePage> {
         engine.isFinished ||
         engine.turn != GoActor.user ||
         _runtime.aiThinking ||
-        _resolving ||
-        !engine.isLegal(index)) {
+        _resolving) {
+      return;
+    }
+    if (!engine.isLegal(index)) {
+      _NativeGameHaptics.rejected();
       return;
     }
     await _playAndReport(index);
@@ -140,11 +143,16 @@ class _GoGamePageState extends State<_GoGamePage> {
         _resolving = true;
       });
     }
-    unawaited(
-      result.move.captured.length >= 3
-          ? HapticFeedback.heavyImpact()
-          : HapticFeedback.selectionClick(),
-    );
+    if (result.move.index == null) {
+      _NativeGameHaptics.pass();
+    } else if (result.move.captured.isNotEmpty) {
+      _NativeGameHaptics.capture(
+        result.move.captured.length,
+        keyMoment: result.move.moment != null,
+      );
+    } else {
+      _NativeGameHaptics.placement(keyMoment: result.move.moment != null);
+    }
     try {
       await Future.wait([
         _reportMove(result.move, before),

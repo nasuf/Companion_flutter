@@ -84,8 +84,11 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
         engine.isFinished ||
         engine.turn != ReversiActor.user ||
         _runtime.aiThinking ||
-        _resolving ||
-        !engine.isLegal(index)) {
+        _resolving) {
+      return;
+    }
+    if (!engine.isLegal(index)) {
+      _NativeGameHaptics.rejected();
       return;
     }
     await _playAndReport(index);
@@ -145,12 +148,9 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
         _resolving = true;
       });
     }
-    unawaited(
-      result.move.cornerCaptured || result.move.flipped.length >= 8
-          ? HapticFeedback.heavyImpact()
-          : result.move.flipped.length >= 4
-          ? HapticFeedback.mediumImpact()
-          : HapticFeedback.selectionClick(),
+    _NativeGameHaptics.flip(
+      result.move.flipped.length,
+      corner: result.move.cornerCaptured,
     );
     try {
       await Future.wait([

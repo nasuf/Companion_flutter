@@ -105,7 +105,11 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
         _selectedSquare = null;
         _legalTargets = const {};
       });
-      unawaited(HapticFeedback.selectionClick());
+      if (result.move.capturedPiece != null) {
+        _NativeGameHaptics.capture(1, keyMoment: result.move.moment != null);
+      } else {
+        _NativeGameHaptics.placement(keyMoment: result.move.moment != null);
+      }
       await _reportMove(result.move, before);
       if (result.status != ChessFamilyStatus.playing) {
         await _finish(result.status);
@@ -118,6 +122,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
         .where((item) => item.square == square)
         .firstOrNull;
     if (piece == null || piece.actor != ChessFamilyActor.user) {
+      if (_selectedSquare != null) _NativeGameHaptics.rejected();
       setState(() {
         _selectedSquare = null;
         _legalTargets = const {};
@@ -129,7 +134,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       _selectedSquare = targets.isEmpty ? null : square;
       _legalTargets = targets;
     });
-    unawaited(HapticFeedback.selectionClick());
+    _NativeGameHaptics.selection();
   }
 
   Future<void> _playAgentTurn() async {
@@ -152,7 +157,11 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
         decision.algebraic,
         decision: decision,
       );
-      unawaited(HapticFeedback.lightImpact());
+      if (result.move.capturedPiece != null) {
+        _NativeGameHaptics.capture(1, keyMoment: result.move.moment != null);
+      } else {
+        _NativeGameHaptics.placement(keyMoment: result.move.moment != null);
+      }
       await _reportMove(result.move, before);
       if (result.status != ChessFamilyStatus.playing) {
         await _finish(result.status);
@@ -213,6 +222,8 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
     final engine = _engine;
     if (_isFullscreen && engine != null) {
       return _NativeFullscreenGameSurface(
+        gameKey: widget.game.nativeGameKey,
+        gameTitle: widget.game.title,
         onExit: () => setState(() => _isFullscreen = false),
         onRestart: _startGame,
         restartLabel: engine.isFinished ? '再来一局' : '重新开一局',
@@ -364,6 +375,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
   Widget _gameContents(ChessFamilyEngine engine) => Column(
     children: [
       _ChessPlayersStrip(
+        kind: widget.kind,
         agentName: _runtime.agentName,
         thinking: _runtime.aiThinking,
         moveCount: engine.moves.length,
@@ -440,45 +452,146 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
 
 class _ChessPlayersStrip extends StatelessWidget {
   const _ChessPlayersStrip({
+    required this.kind,
     required this.agentName,
     required this.thinking,
     required this.moveCount,
   });
 
+  final ChessFamilyKind kind;
   final String agentName;
   final bool thinking;
   final int moveCount;
 
   @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      const Icon(
-        CupertinoIcons.person_fill,
-        size: 16,
-        color: Color(0xFFCC594E),
-      ),
-      const SizedBox(width: 7),
-      Text(
-        '你',
-        style: TextStyle(color: AppColors.text, fontWeight: FontWeight.w900),
-      ),
-      const Spacer(),
-      Text(
-        thinking ? '$agentName 思考中' : '$moveCount 手',
-        style: TextStyle(
-          color: AppColors.text.withValues(alpha: 0.52),
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
+  Widget build(BuildContext context) {
+    if (kind == ChessFamilyKind.xiangqi) {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF4D7A0),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFF8B502D), width: 1.2),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x2B4A2516),
+              blurRadius: 10,
+              offset: Offset(0, 5),
+            ),
+          ],
         ),
+        child: Row(
+          children: [
+            const _XiangqiSeatToken(glyph: '帅', color: Color(0xFFB52F28)),
+            const SizedBox(width: 8),
+            const Text(
+              '你',
+              style: TextStyle(
+                color: Color(0xFF522D1C),
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const Spacer(),
+            Flexible(
+              flex: 2,
+              child: Text(
+                thinking ? '$agentName 思考中' : '$moveCount 手',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xA35A3420),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            const Spacer(),
+            Flexible(
+              child: Text(
+                agentName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF522D1C),
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const _XiangqiSeatToken(glyph: '将', color: Color(0xFF243A31)),
+          ],
+        ),
+      );
+    }
+    return Row(
+      children: [
+        const Icon(
+          CupertinoIcons.person_fill,
+          size: 16,
+          color: Color(0xFFCC594E),
+        ),
+        const SizedBox(width: 7),
+        Text(
+          '你',
+          style: TextStyle(color: AppColors.text, fontWeight: FontWeight.w900),
+        ),
+        const Spacer(),
+        Text(
+          thinking ? '$agentName 思考中' : '$moveCount 手',
+          style: TextStyle(
+            color: AppColors.text.withValues(alpha: 0.52),
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const Spacer(),
+        Text(
+          agentName,
+          style: TextStyle(color: AppColors.text, fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(width: 7),
+        const Icon(CupertinoIcons.sparkles, size: 16, color: Color(0xFF1F6FFF)),
+      ],
+    );
+  }
+}
+
+class _XiangqiSeatToken extends StatelessWidget {
+  const _XiangqiSeatToken({required this.glyph, required this.color});
+
+  final String glyph;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 28,
+    height: 28,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      gradient: const RadialGradient(
+        center: Alignment(-0.35, -0.4),
+        colors: [Color(0xFFFFEDC5), Color(0xFFE6B66D), Color(0xFF9B5C32)],
+        stops: [0, 0.72, 1],
       ),
-      const Spacer(),
-      Text(
-        agentName,
-        style: TextStyle(color: AppColors.text, fontWeight: FontWeight.w900),
+      border: Border.all(color: const Color(0xFF724022), width: 1.2),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x4A4A2516),
+          blurRadius: 4,
+          offset: Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Text(
+      glyph,
+      style: TextStyle(
+        color: color,
+        fontSize: 16,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 0,
       ),
-      const SizedBox(width: 7),
-      const Icon(CupertinoIcons.sparkles, size: 16, color: Color(0xFF1F6FFF)),
-    ],
+    ),
   );
 }
 
@@ -489,40 +602,69 @@ class _ChessAnalysisStrip extends StatelessWidget {
   final ChessFamilyKind kind;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-    decoration: BoxDecoration(
-      color: AppColors.subtleFill(context, light: 0.48),
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: AppColors.glassBorder(context)),
-    ),
-    child: Row(
-      children: [
-        _ChessStat(label: '可走', value: '${analysis.legalMoveCount}'),
-        _ChessStat(
-          label: '局面',
-          value: analysis.materialBalance == 0
-              ? '均衡'
-              : analysis.materialBalance > 0
-              ? '你稍优'
-              : '对方稍优',
+  Widget build(BuildContext context) {
+    final xiangqi = kind == ChessFamilyKind.xiangqi;
+    final valueColor = xiangqi ? const Color(0xFF4A291A) : AppColors.text;
+    final labelColor = xiangqi
+        ? const Color(0x995A3420)
+        : AppColors.text.withValues(alpha: 0.42);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: xiangqi
+            ? const Color(0xFFEBC58A)
+            : AppColors.subtleFill(context, light: 0.48),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: xiangqi
+              ? const Color(0x997A4528)
+              : AppColors.glassBorder(context),
         ),
-        _ChessStat(
-          label: '状态',
-          value: analysis.inCheck
-              ? (kind == ChessFamilyKind.chess ? '将军' : '被将')
-              : '进行中',
-        ),
-      ],
-    ),
-  );
+      ),
+      child: Row(
+        children: [
+          _ChessStat(
+            label: '可走',
+            value: '${analysis.legalMoveCount}',
+            valueColor: valueColor,
+            labelColor: labelColor,
+          ),
+          _ChessStat(
+            label: '局面',
+            value: analysis.materialBalance == 0
+                ? '均衡'
+                : analysis.materialBalance > 0
+                ? '你稍优'
+                : '对方稍优',
+            valueColor: valueColor,
+            labelColor: labelColor,
+          ),
+          _ChessStat(
+            label: '状态',
+            value: analysis.inCheck
+                ? (kind == ChessFamilyKind.chess ? '将军' : '被将')
+                : '进行中',
+            valueColor: valueColor,
+            labelColor: labelColor,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ChessStat extends StatelessWidget {
-  const _ChessStat({required this.label, required this.value});
+  const _ChessStat({
+    required this.label,
+    required this.value,
+    required this.valueColor,
+    required this.labelColor,
+  });
   final String label;
   final String value;
+  final Color valueColor;
+  final Color labelColor;
   @override
   Widget build(BuildContext context) => Expanded(
     child: Column(
@@ -530,7 +672,7 @@ class _ChessStat extends StatelessWidget {
         Text(
           value,
           style: TextStyle(
-            color: AppColors.text,
+            color: valueColor,
             fontSize: 12,
             fontWeight: FontWeight.w900,
           ),
@@ -539,7 +681,7 @@ class _ChessStat extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            color: AppColors.text.withValues(alpha: 0.42),
+            color: labelColor,
             fontSize: 9,
             fontWeight: FontWeight.w700,
           ),
@@ -758,70 +900,149 @@ class _ChessFamilyBoardPainter extends CustomPainter {
     final board = geometry.board;
     final step = geometry.step;
     final rect = Offset.zero & size;
-    final frame = RRect.fromRectAndRadius(rect, const Radius.circular(18));
+    final frame = RRect.fromRectAndRadius(rect, const Radius.circular(20));
+
+    // The dark walnut shell and pale maple playing surface are painted as
+    // separate layers so the board reads as a physical object, not a texture.
     canvas.drawRRect(
       frame,
       Paint()
         ..shader = const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFF3D49A), Color(0xFFE2AE68), Color(0xFFC98247)],
-          stops: [0, 0.58, 1],
+          colors: [Color(0xFF3B1C11), Color(0xFF8E4D28), Color(0xFF2B140D)],
+          stops: [0, 0.52, 1],
         ).createShader(rect),
     );
     canvas.save();
     canvas.clipRRect(frame);
-    final grain = Paint()
-      ..color = const Color(0xFF704127).withValues(alpha: 0.1)
+    final shellGrain = Paint()
+      ..color = const Color(0xFFF4C67B).withValues(alpha: 0.1)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(0.55, step * 0.018);
-    for (var index = 0; index < 17; index += 1) {
-      final y = size.height * (index + 0.5) / 17;
-      final wave = math.sin(index * 1.37) * step * 0.18;
+      ..strokeWidth = math.max(0.7, step * 0.024);
+    for (var index = 0; index < 15; index += 1) {
+      final x = size.width * (index + 0.35) / 15;
+      final wave = math.sin(index * 1.57) * step * 0.2;
       canvas.drawPath(
         Path()
-          ..moveTo(-8, y)
+          ..moveTo(x, -8)
           ..cubicTo(
-            size.width * 0.28,
-            y + wave,
-            size.width * 0.72,
-            y - wave,
-            size.width + 8,
-            y + wave * 0.35,
+            x + wave,
+            size.height * 0.3,
+            x - wave,
+            size.height * 0.7,
+            x + wave * 0.25,
+            size.height + 8,
           ),
-        grain,
+        shellGrain,
       );
     }
     canvas.restore();
+
     canvas.drawRRect(
-      frame.deflate(1.2),
+      frame.deflate(1.4),
       Paint()
-        ..color = const Color(0xFF7A4528).withValues(alpha: 0.72)
+        ..color = const Color(0xFFF2C16D).withValues(alpha: 0.46)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.5, step * 0.075),
+        ..strokeWidth = math.max(1.4, step * 0.052),
     );
-    final boardFrame = RRect.fromRectAndRadius(
-      board.inflate(step * 0.18),
-      Radius.circular(step * 0.12),
+
+    final panelRect = board.inflate(step * 0.5);
+    final panelFrame = RRect.fromRectAndRadius(
+      panelRect,
+      Radius.circular(step * 0.18),
     );
     canvas.drawRRect(
-      boardFrame,
+      panelFrame.shift(Offset(0, step * 0.1)),
       Paint()
-        ..color = const Color(0xFF6C3B23).withValues(alpha: 0.24)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.0, step * 0.045),
+        ..color = Colors.black.withValues(alpha: 0.38)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, step * 0.18),
     );
+    canvas.drawRRect(
+      panelFrame,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFC47A38), Color(0xFF7B3E20), Color(0xFF4A2416)],
+          stops: [0, 0.58, 1],
+        ).createShader(panelRect),
+    );
+
+    final surfaceRect = panelRect.deflate(step * 0.12);
+    final surface = RRect.fromRectAndRadius(
+      surfaceRect,
+      Radius.circular(step * 0.1),
+    );
+    canvas.drawRRect(
+      surface,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFF6DBA2), Color(0xFFE7BD78), Color(0xFFD49750)],
+          stops: [0, 0.62, 1],
+        ).createShader(surfaceRect),
+    );
+    canvas.save();
+    canvas.clipRRect(surface);
+    _paintXiangqiBoardGrain(canvas, surfaceRect, step);
+    canvas.restore();
+    canvas.drawRRect(
+      surface,
+      Paint()
+        ..color = const Color(0xFFFFE9B8).withValues(alpha: 0.5)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.0, step * 0.04),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        surfaceRect.deflate(step * 0.07),
+        Radius.circular(step * 0.07),
+      ),
+      Paint()
+        ..color = const Color(0xFF72401F).withValues(alpha: 0.44)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(0.8, step * 0.025),
+    );
+
+    _paintXiangqiFrameStuds(canvas, panelRect, step);
+
+    final lineShadow = Paint()
+      ..color = const Color(0xFF3B1E13).withValues(alpha: 0.23)
+      ..strokeWidth = math.max(2.2, step * 0.075)
+      ..strokeCap = StrokeCap.square;
     final line = Paint()
-      ..color = const Color(0xFF4E2B1A).withValues(alpha: 0.9)
-      ..strokeWidth = math.max(1.0, step * 0.038)
+      ..color = const Color(0xFF67351F).withValues(alpha: 0.86)
+      ..strokeWidth = math.max(1.0, step * 0.033)
       ..strokeCap = StrokeCap.square;
     for (var row = 0; row < 10; row++) {
+      canvas.drawLine(
+        geometry.point(0, row) + Offset(0, step * 0.018),
+        geometry.point(8, row) + Offset(0, step * 0.018),
+        lineShadow,
+      );
       canvas.drawLine(geometry.point(0, row), geometry.point(8, row), line);
     }
     for (var file = 0; file < 9; file++) {
       if (file == 0 || file == 8) {
+        canvas.drawLine(
+          geometry.point(file, 0) + Offset(step * 0.018, 0),
+          geometry.point(file, 9) + Offset(step * 0.018, 0),
+          lineShadow,
+        );
         canvas.drawLine(geometry.point(file, 0), geometry.point(file, 9), line);
       } else {
+        canvas.drawLine(
+          geometry.point(file, 0) + Offset(step * 0.018, 0),
+          geometry.point(file, 4) + Offset(step * 0.018, 0),
+          lineShadow,
+        );
+        canvas.drawLine(
+          geometry.point(file, 5) + Offset(step * 0.018, 0),
+          geometry.point(file, 9) + Offset(step * 0.018, 0),
+          lineShadow,
+        );
         canvas.drawLine(geometry.point(file, 0), geometry.point(file, 4), line);
         canvas.drawLine(geometry.point(file, 5), geometry.point(file, 9), line);
       }
@@ -851,16 +1072,32 @@ class _ChessFamilyBoardPainter extends CustomPainter {
     _paintCenteredText(
       canvas,
       '楚 河',
-      Offset(board.left + step * 2, board.top + step * 4.5),
-      step * 0.5,
-      const Color(0xC44E2B1A),
+      Offset(board.left + step * 2, board.top + step * 4.5) +
+          Offset(0, step * 0.035),
+      step * 0.49,
+      const Color(0x32421F14),
     );
     _paintCenteredText(
       canvas,
-      '漢 界',
+      '楚 河',
+      Offset(board.left + step * 2, board.top + step * 4.5),
+      step * 0.49,
+      const Color(0xA65C2C1B),
+    );
+    _paintCenteredText(
+      canvas,
+      '汉 界',
+      Offset(board.left + step * 6, board.top + step * 4.5) +
+          Offset(0, step * 0.035),
+      step * 0.49,
+      const Color(0x32421F14),
+    );
+    _paintCenteredText(
+      canvas,
+      '汉 界',
       Offset(board.left + step * 6, board.top + step * 4.5),
-      step * 0.5,
-      const Color(0xC44E2B1A),
+      step * 0.49,
+      const Color(0xA65C2C1B),
     );
     for (final piece in pieces) {
       _paintXiangqiPiece(
@@ -879,17 +1116,108 @@ class _ChessFamilyBoardPainter extends CustomPainter {
       if (piece == null) {
         canvas.drawCircle(
           center,
-          step * 0.13,
-          Paint()..color = const Color(0xE51C7B67),
+          step * 0.15,
+          Paint()
+            ..color = const Color(0xFF176B5E).withValues(alpha: 0.22)
+            ..style = PaintingStyle.fill,
         );
-      } else {
         canvas.drawCircle(
           center,
-          step * 0.47,
+          step * 0.1,
           Paint()
-            ..color = const Color(0xFF1C7B67)
+            ..color = const Color(0xFF176B5E)
             ..style = PaintingStyle.stroke
-            ..strokeWidth = math.max(2.0, step * 0.07),
+            ..strokeWidth = math.max(1.7, step * 0.052),
+        );
+      } else {
+        _paintXiangqiBrackets(
+          canvas,
+          center,
+          step * 0.52,
+          step * 0.16,
+          const Color(0xFF167765),
+          math.max(2.0, step * 0.065),
+        );
+      }
+    }
+  }
+
+  void _paintXiangqiBoardGrain(Canvas canvas, Rect rect, double step) {
+    final grain = Paint()
+      ..color = const Color(0xFF7A4327).withValues(alpha: 0.095)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = math.max(0.5, step * 0.016);
+    for (var index = 0; index < 19; index += 1) {
+      final x = rect.left + rect.width * (index + 0.4) / 19;
+      final wave = math.sin(index * 1.43) * step * 0.16;
+      canvas.drawPath(
+        Path()
+          ..moveTo(x, rect.top - 5)
+          ..cubicTo(
+            x + wave,
+            rect.top + rect.height * 0.3,
+            x - wave,
+            rect.top + rect.height * 0.7,
+            x + wave * 0.25,
+            rect.bottom + 5,
+          ),
+        grain,
+      );
+    }
+    final fiber = Paint()
+      ..color = const Color(0xFFFFE8B1).withValues(alpha: 0.1)
+      ..strokeWidth = math.max(0.45, step * 0.012);
+    for (var index = 0; index < 14; index += 1) {
+      final y = rect.top + rect.height * (index + 0.5) / 14;
+      canvas.drawLine(
+        Offset(rect.left, y),
+        Offset(rect.right, y + math.sin(index * 1.2) * step * 0.035),
+        fiber,
+      );
+    }
+  }
+
+  void _paintXiangqiFrameStuds(Canvas canvas, Rect panelRect, double step) {
+    final radius = math.max(2.2, step * 0.075);
+    final top = panelRect.top + step * 0.095;
+    final bottom = panelRect.bottom - step * 0.095;
+    for (var index = 0; index < 11; index += 1) {
+      final x = panelRect.left + panelRect.width * index / 10;
+      final studRect = Rect.fromCircle(center: Offset(x, top), radius: radius);
+      final studPaint = Paint()
+        ..shader = const RadialGradient(
+          center: Alignment(-0.35, -0.4),
+          colors: [Color(0xFFFFE28B), Color(0xFFD49429), Color(0xFF6C3519)],
+          stops: [0, 0.68, 1],
+        ).createShader(studRect);
+      canvas.drawCircle(Offset(x, top), radius, studPaint);
+      canvas.drawCircle(Offset(x, bottom), radius, studPaint);
+    }
+  }
+
+  void _paintXiangqiBrackets(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    double length,
+    Color color,
+    double width,
+  ) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = width
+      ..strokeCap = StrokeCap.round;
+    for (final xDirection in const [-1.0, 1.0]) {
+      for (final yDirection in const [-1.0, 1.0]) {
+        final corner =
+            center + Offset(radius * xDirection, radius * yDirection);
+        canvas.drawPath(
+          Path()
+            ..moveTo(corner.dx - length * xDirection, corner.dy)
+            ..lineTo(corner.dx, corner.dy)
+            ..lineTo(corner.dx, corner.dy - length * yDirection),
+          paint,
         );
       }
     }
@@ -936,56 +1264,115 @@ class _ChessFamilyBoardPainter extends CustomPainter {
     ChessBoardPiece piece, {
     required bool selected,
   }) {
-    final radius = step * 0.405;
+    final radius = step * 0.41;
     canvas.drawCircle(
-      center + Offset(0, radius * 0.18),
-      radius * 1.08,
+      center + Offset(radius * 0.05, radius * 0.2),
+      radius * 1.1,
       Paint()
-        ..color = Colors.black.withValues(alpha: 0.28)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, radius * 0.2),
+        ..color = const Color(0xFF32170E).withValues(alpha: 0.42)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, radius * 0.18),
     );
-    final rimRect = Rect.fromCircle(center: center, radius: radius * 1.05);
+    final rimRect = Rect.fromCircle(center: center, radius: radius * 1.08);
     canvas.drawCircle(
       center,
-      radius * 1.05,
+      radius * 1.08,
       Paint()
         ..shader = const RadialGradient(
           center: Alignment(-0.35, -0.42),
-          colors: [Color(0xFFFFE9B7), Color(0xFFD7A45F), Color(0xFF8A532E)],
-          stops: [0, 0.72, 1],
+          colors: [Color(0xFFFFEDB9), Color(0xFFD89A4C), Color(0xFF6D341D)],
+          stops: [0, 0.7, 1],
         ).createShader(rimRect),
     );
     canvas.drawCircle(
       center,
-      radius * 0.87,
-      Paint()..color = const Color(0xFFF6DDA3),
+      radius * 0.91,
+      Paint()
+        ..shader = const RadialGradient(
+          center: Alignment(-0.28, -0.32),
+          colors: [Color(0xFFFFF0C4), Color(0xFFE9BC72), Color(0xFFC47B38)],
+          stops: [0, 0.74, 1],
+        ).createShader(rimRect),
     );
     final actorColor = piece.actor == ChessFamilyActor.user
-        ? const Color(0xFFC63F34)
-        : const Color(0xFF253C32);
+        ? const Color(0xFFB62D27)
+        : const Color(0xFF25372F);
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius * 0.97),
+      math.pi * 1.08,
+      math.pi * 0.7,
+      false,
+      Paint()
+        ..color = const Color(0xFFFFF2C8).withValues(alpha: 0.78)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(0.9, step * 0.027)
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius * 0.95),
+      math.pi * 0.08,
+      math.pi * 0.72,
+      false,
+      Paint()
+        ..color = const Color(0xFF6C361E).withValues(alpha: 0.35)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(0.9, step * 0.03)
+        ..strokeCap = StrokeCap.round,
+    );
     canvas.drawCircle(
       center,
-      radius * 0.78,
+      radius * 0.76,
       Paint()
-        ..color = actorColor.withValues(alpha: 0.9)
+        ..color = actorColor.withValues(alpha: 0.84)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.3, step * 0.045),
+        ..strokeWidth = math.max(1.2, step * 0.04),
+    );
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius * 0.58),
+      math.pi * 1.2,
+      math.pi * 0.52,
+      false,
+      Paint()
+        ..color = const Color(0xFF8B512D).withValues(alpha: 0.13)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(0.7, step * 0.018),
     );
     if (selected) {
       canvas.drawCircle(
         center,
-        radius * 1.23,
+        radius * 1.22,
         Paint()
-          ..color = const Color(0xFF0E8C77)
+          ..color = const Color(0xFFD6A43A).withValues(alpha: 0.2)
+          ..style = PaintingStyle.fill,
+      );
+      _paintXiangqiBrackets(
+        canvas,
+        center,
+        radius * 1.3,
+        radius * 0.48,
+        const Color(0xFF0D806E),
+        math.max(2.2, step * 0.068),
+      );
+      canvas.drawCircle(
+        center,
+        radius * 1.14,
+        Paint()
+          ..color = const Color(0xFFF0C45F).withValues(alpha: 0.88)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(2.2, step * 0.075),
+          ..strokeWidth = math.max(1.4, step * 0.038),
       );
     }
     _paintCenteredText(
       canvas,
       _xiangqiGlyph(piece),
+      center - Offset(0, radius * 0.02) + Offset(0, radius * 0.055),
+      radius * 1.06,
+      const Color(0x4A31170E),
+    );
+    _paintCenteredText(
+      canvas,
+      _xiangqiGlyph(piece),
       center - Offset(0, radius * 0.02),
-      radius * 1.04,
+      radius * 1.06,
       actorColor,
     );
   }
@@ -1037,6 +1424,9 @@ class _ChessFamilyBoardPainter extends CustomPainter {
           color: color,
           fontSize: size,
           fontWeight: FontWeight.w900,
+          fontFamily: 'Kaiti SC',
+          fontFamilyFallback: const ['STKaiti', 'Noto Serif CJK SC'],
+          letterSpacing: 0,
         ),
       ),
       textDirection: TextDirection.ltr,

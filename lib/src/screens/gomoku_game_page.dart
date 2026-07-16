@@ -84,7 +84,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     }
     try {
       final result = engine.place(point, GomokuActor.user);
-      unawaited(HapticFeedback.selectionClick());
+      _NativeGameHaptics.placement(keyMoment: result.move.moment != null);
       if (mounted) setState(() {});
       await _reportMove(result.move);
       if (result.status != GomokuGameStatus.playing) {
@@ -95,6 +95,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     } on StateError catch (error) {
       final code = error.message.toString();
       if (code == 'occupied_position') {
+        _NativeGameHaptics.rejected();
         _runtime.showNotice('这里已经有棋子了，换一个交叉点。');
         unawaited(
           _runtime.reportEvent(
@@ -130,7 +131,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
       GomokuActor.agent,
       decision: decision,
     );
-    unawaited(HapticFeedback.lightImpact());
+    _NativeGameHaptics.placement(keyMoment: result.move.moment != null);
     if (mounted) setState(() => _runtime.aiThinking = false);
     await _reportMove(result.move);
     if (result.status != GomokuGameStatus.playing) {
@@ -181,6 +182,8 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     final engine = _engine;
     if (_isFullscreen && engine != null) {
       return _NativeFullscreenGameSurface(
+        gameKey: widget.game.nativeGameKey,
+        gameTitle: widget.game.title,
         onExit: () => setState(() => _isFullscreen = false),
         onRestart: _startGame,
         restartLabel: engine.isFinished ? '再来一盘' : '重新开一盘',
