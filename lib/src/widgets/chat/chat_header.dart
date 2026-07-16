@@ -192,60 +192,27 @@ class _InteractionMarkIcon extends StatelessWidget {
   final double size;
   final int stage;
 
-  static const _gradients = [
-    [Color(0xFF51FFD0), Color(0xFF06C893)],
-    [Color(0xFF84F7FF), Color(0xFF00D6DF)],
-    [Color(0xFF8CEBFF), Color(0xFF01A0FD)],
-    [Color(0xFFAED7FF), Color(0xFF915FFB)],
-    [Color(0xFFFFA8F8), Color(0xFFFF58D8)],
-    [Color(0xFFFFD2FB), Color(0xFF8A5CFF)],
+  static const _assets = [
+    'assets/interaction/streak-stage-0.png',
+    'assets/interaction/streak-stage-1.png',
+    'assets/interaction/streak-stage-2.png',
+    'assets/interaction/streak-stage-3.png',
+    'assets/interaction/streak-stage-4.png',
+    'assets/interaction/streak-stage-5.png',
   ];
 
   @override
   Widget build(BuildContext context) {
-    final colors = _gradients[stage.clamp(0, _gradients.length - 1)];
+    final index = stage.clamp(0, _assets.length - 1);
     return SizedBox(
       width: size,
       height: size,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
-        children: [
-          Container(
-            width: size * 0.86,
-            height: size * 0.86,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: colors,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: colors.last.withValues(alpha: 0.28),
-                  blurRadius: size * 0.34,
-                  offset: Offset(0, size * 0.12),
-                ),
-              ],
-            ),
-          ),
-          Icon(
-            CupertinoIcons.flame_fill,
-            size: size * 0.92,
-            color: Colors.white.withValues(alpha: 0.92),
-          ),
-          Icon(CupertinoIcons.star_fill, size: size * 0.40, color: colors.last),
-          Positioned(
-            right: size * 0.02,
-            top: size * 0.14,
-            child: Icon(
-              CupertinoIcons.sparkles,
-              size: size * 0.24,
-              color: const Color(0xFFFFF2A8),
-            ),
-          ),
-        ],
+      child: Image.asset(
+        _assets[index],
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
       ),
     );
   }
@@ -524,11 +491,15 @@ class _InteractionMarksCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(CupertinoIcons.sparkles, size: 16, color: Color(0xFF06C893)),
-              SizedBox(width: 4),
-              Text(
+              SvgPicture.asset(
+                'assets/interaction/section-star.svg',
+                width: 16,
+                height: 16,
+              ),
+              const SizedBox(width: 4),
+              const Text(
                 '互动标识',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
