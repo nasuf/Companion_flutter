@@ -139,6 +139,7 @@ class _Composer extends StatelessWidget {
                         ? CupertinoIcons.keyboard
                         : CupertinoIcons.smiley,
                     selected: activePanel == ComposerPanel.emoji,
+                    green: activePanel == ComposerPanel.emoji,
                     onTap: activePanel == ComposerPanel.emoji
                         ? onShowKeyboard
                         : onToggleEmoji,
@@ -173,6 +174,7 @@ class _Composer extends StatelessWidget {
                             : CupertinoIcons.plus,
                         selected: activePanel == ComposerPanel.more,
                         prominent: activePanel != ComposerPanel.more,
+                        green: true,
                         onTap: onToggleMore,
                       );
                     },
@@ -515,6 +517,7 @@ class _RoundIconButton extends StatelessWidget {
     this.selected = false,
     this.quiet = false,
     this.prominent = false,
+    this.green = false,
   });
 
   final String tooltip;
@@ -523,9 +526,12 @@ class _RoundIconButton extends StatelessWidget {
   final bool selected;
   final bool quiet;
   final bool prominent;
+  final bool green;
 
   @override
   Widget build(BuildContext context) {
+    const figmaGreen = Color(0xFF06C893);
+    const figmaGreenLight = Color(0xFF24D7D3);
     return Tooltip(
       message: tooltip,
       child: InkResponse(
@@ -547,13 +553,15 @@ class _RoundIconButton extends StatelessWidget {
             color: selected || quiet
                 ? null
                 : prominent
-                ? AppColors.accent
+                ? (green ? figmaGreen : AppColors.accent)
                 : AppColors.surface,
             gradient: selected && !prominent
                 ? LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [AppColors.accentDeep, AppColors.accentCyan],
+                    colors: green
+                        ? [figmaGreen, figmaGreenLight]
+                        : [AppColors.accentDeep, AppColors.accentCyan],
                   )
                 : null,
             border: Border.all(
@@ -568,7 +576,9 @@ class _RoundIconButton extends StatelessWidget {
             boxShadow: selected
                 ? [
                     BoxShadow(
-                      color: AppColors.accent.withValues(alpha: 0.18),
+                      color: (green ? figmaGreen : AppColors.accent).withValues(
+                        alpha: 0.18,
+                      ),
                       blurRadius: 18,
                       offset: const Offset(0, 8),
                     ),
