@@ -201,18 +201,86 @@ class _InteractionMarkIcon extends StatelessWidget {
     'assets/interaction/streak-stage-5.png',
   ];
 
+  static const _shadowColors = [
+    Color(0xFF00D7CD),
+    Color(0xFF00D6DF),
+    Color(0xFF01A0FD),
+    Color(0xFF8F6BFF),
+    Color(0xFFFF58D8),
+    Color(0xFF8A5CFF),
+  ];
+
+  static String assetForStage(int stage) {
+    final index = stage.clamp(0, _assets.length - 1);
+    return _assets[index];
+  }
+
+  static Color shadowColorForStage(int stage) {
+    final index = stage.clamp(0, _shadowColors.length - 1);
+    return _shadowColors[index];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final index = stage.clamp(0, _assets.length - 1);
     return SizedBox(
       width: size,
       height: size,
       child: Image.asset(
-        _assets[index],
+        assetForStage(stage),
         width: size,
         height: size,
         fit: BoxFit.contain,
         filterQuality: FilterQuality.high,
+      ),
+    );
+  }
+}
+
+class _CurrentInteractionMark extends StatelessWidget {
+  const _CurrentInteractionMark({required this.stage});
+
+  final int stage;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 124,
+      height: 124,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          Positioned(
+            left: 8,
+            top: 74,
+            child: SvgPicture.asset(
+              'assets/interaction/current-mark-shadow.svg',
+              width: 112,
+              height: 49,
+              fit: BoxFit.fill,
+              colorFilter: ColorFilter.mode(
+                _InteractionMarkIcon.shadowColorForStage(stage),
+                BlendMode.srcIn,
+              ),
+            ),
+          ),
+          Positioned(
+            left: 20,
+            top: 0,
+            child: Transform.rotate(
+              angle: math.pi / 12,
+              child: SizedBox(
+                width: 84,
+                height: 100,
+                child: Image.asset(
+                  _InteractionMarkIcon.assetForStage(stage),
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -238,10 +306,24 @@ class _InteractionStreakPage extends StatelessWidget {
     return 0;
   }
 
+  double get _stageProgress {
+    final days = interactionDays <= 0 ? 1 : interactionDays;
+    if (days >= 100) return 1;
+    final (start, end) = switch (_stage) {
+      0 => (0, 7),
+      1 => (8, 15),
+      2 => (16, 31),
+      3 => (32, 60),
+      4 => (61, 99),
+      _ => (100, 100),
+    };
+    final span = end - start + 1;
+    return ((days - start + 1) / span).clamp(0.08, 1).toDouble();
+  }
+
   @override
   Widget build(BuildContext context) {
     final days = interactionDays <= 0 ? 1 : interactionDays;
-    final progress = (days / 8).clamp(0.08, 1.0).toDouble();
     return Scaffold(
       backgroundColor: const Color(0xFFE3FBF4),
       body: DecoratedBox(
@@ -255,6 +337,21 @@ class _InteractionStreakPage extends StatelessWidget {
         child: SafeArea(
           child: Stack(
             children: [
+              ListView(
+                padding: const EdgeInsets.fromLTRB(16, 68, 16, 40),
+                physics: const BouncingScrollPhysics(),
+                children: [
+                  _InteractionSummaryCard(
+                    agentAvatarUrl: agentAvatarUrl,
+                    userAvatarUrl: userAvatarUrl,
+                    days: days,
+                    progress: _stageProgress,
+                    stage: _stage,
+                  ),
+                  const SizedBox(height: 24),
+                  _InteractionMarksCard(currentStage: _stage),
+                ],
+              ),
               Positioned(
                 left: 16,
                 top: 8,
@@ -284,21 +381,6 @@ class _InteractionStreakPage extends StatelessWidget {
                     ),
                   ),
                 ),
-              ),
-              ListView(
-                padding: const EdgeInsets.fromLTRB(16, 68, 16, 40),
-                physics: const BouncingScrollPhysics(),
-                children: [
-                  _InteractionSummaryCard(
-                    agentAvatarUrl: agentAvatarUrl,
-                    userAvatarUrl: userAvatarUrl,
-                    days: days,
-                    progress: progress,
-                    stage: _stage,
-                  ),
-                  const SizedBox(height: 24),
-                  _InteractionMarksCard(currentStage: _stage),
-                ],
               ),
             ],
           ),
@@ -401,9 +483,9 @@ class _InteractionSummaryCard extends StatelessWidget {
             ),
           ),
           Positioned(
-            right: 18,
-            top: 10,
-            child: _InteractionMarkIcon(size: 124, stage: stage),
+            right: 11,
+            top: 16,
+            child: _CurrentInteractionMark(stage: stage),
           ),
           Positioned(
             left: 24,
@@ -493,11 +575,7 @@ class _InteractionMarksCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              SvgPicture.asset(
-                'assets/interaction/section-star.svg',
-                width: 16,
-                height: 16,
-              ),
+              const _SectionSparkleIcon(size: 16),
               const SizedBox(width: 4),
               const Text(
                 '互动标识',
@@ -518,24 +596,22 @@ class _InteractionMarksCard extends StatelessWidget {
                 childAspectRatio: 0.82,
               ),
               itemBuilder: (context, index) {
-                final active = index <= currentStage;
-                return Opacity(
-                  opacity: active ? 1 : 0.55,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _InteractionMarkIcon(size: 84, stage: index),
-                      const SizedBox(height: 4),
-                      Text(
-                        _ranges[index],
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.black,
-                        ),
+                return Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _InteractionMarkIcon(size: 84, stage: index),
+                    const SizedBox(height: 4),
+                    Text(
+                      _ranges[index],
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: index <= currentStage
+                            ? Colors.black
+                            : const Color(0xFF5E5E5E),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 );
               },
             ),
@@ -544,6 +620,46 @@ class _InteractionMarksCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _SectionSparkleIcon extends StatelessWidget {
+  const _SectionSparkleIcon({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: size,
+      child: CustomPaint(painter: _SectionSparklePainter()),
+    );
+  }
+}
+
+class _SectionSparklePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()
+      ..moveTo(size.width * 0.5, 0)
+      ..lineTo(size.width * 0.635, size.height * 0.365)
+      ..lineTo(size.width, size.height * 0.5)
+      ..lineTo(size.width * 0.635, size.height * 0.635)
+      ..lineTo(size.width * 0.5, size.height)
+      ..lineTo(size.width * 0.365, size.height * 0.635)
+      ..lineTo(0, size.height * 0.5)
+      ..lineTo(size.width * 0.365, size.height * 0.365)
+      ..close();
+
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = const Color(0xFF06C893)
+        ..style = PaintingStyle.fill,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _SectionSparklePainter oldDelegate) => false;
 }
 
 class _ListeningBadge extends StatefulWidget {
