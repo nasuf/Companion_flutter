@@ -1,5 +1,8 @@
 part of 'package:companion_flutter/main.dart';
 
+const _agentCreateAccent = Color(0xFF06C893);
+const _agentCreateMintText = Color(0xFF90CBBB);
+const _agentCreateViewport = Size(390, 844);
 const _llmEstimatedSeconds = 45.0;
 const _llmPercentBase = 15.0;
 const _llmPercentRange = 55.0;
@@ -25,10 +28,11 @@ class AgentCreatePage extends StatefulWidget {
 
 class _AgentCreatePageState extends State<AgentCreatePage>
     with TickerProviderStateMixin {
-  late final AnimationController _breathController;
   late final AnimationController _traitMoveController;
   final _nameController = TextEditingController(text: '小芜');
   var _gender = _AgentGender.female;
+  var _step = _AgentCreateStep.gender;
+  int? _openTraitInfoIndex;
   late List<_TraitDraft> _traits;
   List<int>? _previousTraitValues;
   Timer? _provisionPollTimer;
@@ -42,13 +46,9 @@ class _AgentCreatePageState extends State<AgentCreatePage>
   @override
   void initState() {
     super.initState();
-    _breathController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2800),
-    )..repeat(reverse: true);
     _traitMoveController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 560),
+      duration: const Duration(milliseconds: 360),
       value: 1,
     );
     _traits = _defaultTraits
@@ -57,8 +57,10 @@ class _AgentCreatePageState extends State<AgentCreatePage>
             name: trait.name,
             low: trait.low,
             high: trait.high,
-            color: trait.color,
             value: trait.value,
+            description: trait.description,
+            lowDescription: trait.lowDescription,
+            highDescription: trait.highDescription,
           ),
         )
         .toList();
@@ -68,10 +70,34 @@ class _AgentCreatePageState extends State<AgentCreatePage>
   void dispose() {
     _provisionPollTimer?.cancel();
     _llmTickerTimer?.cancel();
-    _breathController.dispose();
     _traitMoveController.dispose();
     _nameController.dispose();
     super.dispose();
+  }
+
+  void _showTraits() {
+    setState(() {
+      _step = _AgentCreateStep.traits;
+      _openTraitInfoIndex = null;
+      _error = null;
+    });
+  }
+
+  void _showGender() {
+    setState(() {
+      _step = _AgentCreateStep.gender;
+      _openTraitInfoIndex = null;
+      _error = null;
+    });
+  }
+
+  void _handleBack() {
+    if (_submitting) return;
+    if (_step == _AgentCreateStep.traits) {
+      _showGender();
+      return;
+    }
+    Navigator.of(context).maybePop();
   }
 
   void _randomizeTraits() {
@@ -92,14 +118,14 @@ class _AgentCreatePageState extends State<AgentCreatePage>
               _traits[index].value)
           .round();
     }, growable: false);
-    final nextTraits = <_TraitDraft>[];
-    for (final trait in _traits) {
-      nextTraits.add(trait.copyWith(value: 42 + random.nextInt(35)));
-    }
+    final nextTraits = _traits
+        .map((trait) => trait.copyWith(value: random.nextInt(101)))
+        .toList(growable: false);
     _traitMoveController.value = 0;
     setState(() {
       _previousTraitValues = previousValues;
       _traits = nextTraits;
+      _openTraitInfoIndex = null;
     });
     _traitMoveController.forward();
   }
@@ -123,6 +149,7 @@ class _AgentCreatePageState extends State<AgentCreatePage>
     setState(() {
       _submitting = true;
       _error = null;
+      _openTraitInfoIndex = null;
     });
     try {
       final agent = await api.createAgent(
@@ -243,11 +270,10 @@ class _AgentCreatePageState extends State<AgentCreatePage>
       final messageIndex =
           (tick / _llmMessageRotationSeconds).floor() %
           _llmRotatingMessages.length;
-      final nextMessage = _llmRotatingMessages[messageIndex];
       setState(() {
         _provisionStatus = status.copyWith(
           percent: math.max(status.percent, localPercent.round()),
-          message: nextMessage,
+          message: _llmRotatingMessages[messageIndex],
         );
       });
     });
@@ -348,846 +374,811 @@ class _AgentCreatePageState extends State<AgentCreatePage>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      resizeToAvoidBottomInset: false,
-      body: AnimatedBuilder(
-        animation: Listenable.merge([_breathController, _traitMoveController]),
-        builder: (context, _) {
-          final progress = Curves.easeInOut.transform(_breathController.value);
-          final moveProgress = Curves.easeOutCubic.transform(
-            _traitMoveController.value,
-          );
-          return Stack(
-            children: [
-              _AgentCreateBackdrop(progress: progress),
-              SafeArea(
-                bottom: false,
-                child: CustomScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(30, 54, 30, 0),
-                        child: _CreateHero(progress: progress),
-                      ),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark.copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+      child: Scaffold(
+        backgroundColor: const Color(0xFFD1FFF4),
+        resizeToAvoidBottomInset: false,
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.contain,
+                  child: SizedBox.fromSize(
+                    size: _agentCreateViewport,
+                    child: AnimatedBuilder(
+                      animation: _traitMoveController,
+                      builder: (context, _) {
+                        final moveProgress = Curves.easeOutCubic.transform(
+                          _traitMoveController.value,
+                        );
+                        return MediaQuery.withNoTextScaling(
+                          child: _AgentCreateCanvas(
+                            step: _step,
+                            gender: _gender,
+                            traits: _traits,
+                            previousTraitValues: _previousTraitValues,
+                            traitMoveProgress: moveProgress,
+                            openTraitInfoIndex: _openTraitInfoIndex,
+                            submitting: _submitting,
+                            error: _error,
+                            onBack: _handleBack,
+                            onGenderChanged: (gender) =>
+                                setState(() => _gender = gender),
+                            onNext: _showTraits,
+                            onPrevious: _showGender,
+                            onRandomize: _randomizeTraits,
+                            onTraitInfoPressed: (index) {
+                              setState(() {
+                                _openTraitInfoIndex =
+                                    _openTraitInfoIndex == index ? null : index;
+                              });
+                            },
+                            onTraitChanged: (index, value) {
+                              _traitMoveController.value = 1;
+                              setState(() {
+                                _previousTraitValues = null;
+                                _openTraitInfoIndex = null;
+                                _traits[index] = _traits[index].copyWith(
+                                  value: value.round(),
+                                );
+                              });
+                            },
+                            onSubmit: _submit,
+                          ),
+                        );
+                      },
                     ),
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(30, 0, 30, 0),
-                        child: _SoulProfileIntro(),
-                      ),
-                    ),
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(30, 8, 30, 0),
-                        child: _AgentBasicFields(
-                          nameController: _nameController,
-                          gender: _gender,
-                          onGenderChanged: (gender) =>
-                              setState(() => _gender = gender),
-                        ),
-                      ),
-                    ),
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(30, 14, 30, 0),
-                        child: _TraitStudio(
-                          traits: _traits,
-                          previousTraitValues: _previousTraitValues,
-                          progress: progress,
-                          moveProgress: moveProgress,
-                          onRandomize: _randomizeTraits,
-                          onChanged: (index, value) {
-                            _traitMoveController.value = 1;
-                            setState(() {
-                              _previousTraitValues = null;
-                              _traits[index] = _traits[index].copyWith(
-                                value: value.round(),
-                              );
-                            });
-                          },
-                        ),
-                      ),
-                    ),
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(30, 26, 30, 36),
-                        child: Column(
-                          children: [
-                            if (_error != null) ...[
-                              Text(
-                                _error!,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Color(0xFFD95B5B),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                            ],
-                            _CreateAgentButton(
-                              loading: _submitting,
-                              onPressed: _submit,
-                            ),
-                            const SizedBox(height: 22),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
-              SafeArea(
-                child: Align(
-                  alignment: Alignment.topLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 16, top: 8),
-                    child: CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      minimumSize: const Size(42, 42),
-                      borderRadius: BorderRadius.circular(21),
-                      onPressed: () => Navigator.of(context).maybePop(),
-                      child: Icon(
-                        CupertinoIcons.chevron_left,
-                        color: AppColors.text.withValues(alpha: 0.68),
-                        size: 24,
+            ),
+            if (_provisionStatus != null) ...[
+              Positioned.fill(
+                child: AbsorbPointer(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                    child: ColoredBox(
+                      color: const Color(0xFFE8FEFB).withValues(alpha: 0.72),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: SafeArea(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 42),
+                      child: _ProvisionProgressOverlay(
+                        status: _provisionStatus!,
                       ),
                     ),
                   ),
                 ),
               ),
-              if (_provisionStatus != null) ...[
-                Positioned.fill(
-                  child: AbsorbPointer(
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                      child: ColoredBox(
-                        color: const Color(0xFFEAF4FF).withValues(alpha: 0.36),
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned.fill(
-                  child: SafeArea(
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 42),
-                        child: _ProvisionProgressOverlay(
-                          status: _provisionStatus!,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
             ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _AgentCreateBackdrop extends StatelessWidget {
-  const _AgentCreateBackdrop({required this.progress});
-
-  final double progress;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            colors.page,
-            Color.lerp(colors.page, colors.surfaceMuted, 0.44)!,
-            Color.lerp(colors.page, colors.accentSoft, 0.22)!,
           ],
-          stops: [0, 0.58, 1],
-        ),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: -142 + 20 * progress,
-            top: 76 + 26 * progress,
-            child: _AgentAuraBlob(
-              width: 340,
-              height: 300,
-              colors: const [Color(0x3658A8FF), Color(0x2618C6C0)],
-              opacity: 0.72,
-            ),
-          ),
-          Positioned(
-            left: -168 - 12 * progress,
-            top: 356 + 16 * progress,
-            child: _AgentAuraBlob(
-              width: 300,
-              height: 360,
-              colors: const [Color(0x247C3CFF), Color(0x1A18C6C0)],
-              opacity: 0.56,
-            ),
-          ),
-          Positioned(
-            right: -96,
-            bottom: 80 - 20 * progress,
-            child: _AgentAuraBlob(
-              width: 280,
-              height: 360,
-              colors: const [Color(0x1F1F6FFF), Color(0x1418C6C0)],
-              opacity: 0.48,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AgentAuraBlob extends StatelessWidget {
-  const _AgentAuraBlob({
-    required this.width,
-    required this.height,
-    required this.colors,
-    required this.opacity,
-  });
-
-  final double width;
-  final double height;
-  final List<Color> colors;
-  final double opacity;
-
-  @override
-  Widget build(BuildContext context) {
-    return Opacity(
-      opacity: opacity,
-      child: ImageFiltered(
-        imageFilter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
-        child: Container(
-          width: width,
-          height: height,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            gradient: RadialGradient(
-              center: const Alignment(-0.12, -0.54),
-              radius: 0.76,
-              colors: [colors.first, Colors.transparent],
-            ),
-          ),
-          foregroundDecoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            gradient: RadialGradient(
-              center: const Alignment(0.46, 0.42),
-              radius: 0.82,
-              colors: [colors.last, Colors.transparent],
-            ),
-          ),
         ),
       ),
     );
   }
 }
 
-class _CreateHero extends StatelessWidget {
-  const _CreateHero({required this.progress});
-
-  final double progress;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 264,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            right: -68 + 18 * progress,
-            top: 96 + 18 * (0.5 - progress),
-            child: _BreathingGlassOrb(progress: progress),
-          ),
-          const Positioned(
-            left: 0,
-            top: 36,
-            child: _ProfileKicker('FIRST PROFILE'),
-          ),
-          Positioned(
-            left: 0,
-            top: 88,
-            right: 0,
-            child: Text(
-              '没有偶然的相遇\n只有灵魂与灵魂的\n呼应',
-              style: TextStyle(
-                color: AppColors.text,
-                fontSize: 38,
-                height: 1.04,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0,
-              ),
-            ),
-          ),
-          const Positioned(
-            left: 0,
-            bottom: 8,
-            child: Text(
-              '在这里，你设定的每一笔，都是找寻的起点',
-              style: TextStyle(
-                color: Color(0x8A181F26),
-                fontSize: 15,
-                height: 1.5,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SoulProfileIntro extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(top: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _ProfileKicker('SOUL PROFILE'),
-          SizedBox(height: 12),
-          Text(
-            '灵魂印记',
-            style: TextStyle(
-              color: AppColors.text,
-              fontSize: 28,
-              height: 1.12,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-            ),
-          ),
-          SizedBox(height: 10),
-          Text(
-            '设定你的轮廓，让同频的TA找到你',
-            style: TextStyle(
-              color: Color(0x82181F26),
-              fontSize: 14,
-              height: 1.52,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileKicker extends StatelessWidget {
-  const _ProfileKicker(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: TextStyle(
-        color: AppColors.text,
-        fontSize: 13,
-        height: 1,
-        fontWeight: FontWeight.w900,
-        letterSpacing: 1.1,
-      ),
-    );
-  }
-}
-
-class _AgentBasicFields extends StatelessWidget {
-  const _AgentBasicFields({
-    required this.nameController,
+class _AgentCreateCanvas extends StatelessWidget {
+  const _AgentCreateCanvas({
+    required this.step,
     required this.gender,
+    required this.traits,
+    required this.previousTraitValues,
+    required this.traitMoveProgress,
+    required this.openTraitInfoIndex,
+    required this.submitting,
+    required this.error,
+    required this.onBack,
     required this.onGenderChanged,
+    required this.onNext,
+    required this.onPrevious,
+    required this.onRandomize,
+    required this.onTraitInfoPressed,
+    required this.onTraitChanged,
+    required this.onSubmit,
   });
 
-  final TextEditingController nameController;
+  final _AgentCreateStep step;
   final _AgentGender gender;
+  final List<_TraitDraft> traits;
+  final List<int>? previousTraitValues;
+  final double traitMoveProgress;
+  final int? openTraitInfoIndex;
+  final bool submitting;
+  final String? error;
+  final VoidCallback onBack;
   final ValueChanged<_AgentGender> onGenderChanged;
+  final VoidCallback onNext;
+  final VoidCallback onPrevious;
+  final VoidCallback onRandomize;
+  final ValueChanged<int> onTraitInfoPressed;
+  final void Function(int index, double value) onTraitChanged;
+  final VoidCallback onSubmit;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _DividerRow(
-          label: '名字',
-          child: TextField(
-            controller: nameController,
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              isDense: true,
-              contentPadding: EdgeInsets.zero,
+    return DefaultTextStyle(
+      style: const TextStyle(
+        color: Colors.black,
+        fontFamilyFallback: ['PingFang SC', 'Noto Sans CJK SC'],
+      ),
+      child: Stack(
+        children: [
+          const Positioned.fill(child: _AgentCreateBackground()),
+          _AgentCreateHeader(onBack: onBack),
+          if (step == _AgentCreateStep.gender)
+            _GenderStep(
+              gender: gender,
+              onGenderChanged: onGenderChanged,
+              onNext: onNext,
+            )
+          else
+            _TraitsStep(
+              traits: traits,
+              previousTraitValues: previousTraitValues,
+              moveProgress: traitMoveProgress,
+              openInfoIndex: openTraitInfoIndex,
+              submitting: submitting,
+              error: error,
+              onPrevious: onPrevious,
+              onRandomize: onRandomize,
+              onInfoPressed: onTraitInfoPressed,
+              onChanged: onTraitChanged,
+              onSubmit: onSubmit,
             ),
-            style: TextStyle(
-              color: AppColors.text,
-              fontSize: 21,
-              height: 1.08,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ),
-        _DividerRow(
-          label: '性别',
-          child: _GenderControl(value: gender, onChanged: onGenderChanged),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
-class _DividerRow extends StatelessWidget {
-  const _DividerRow({required this.label, required this.child});
-
-  final String label;
-  final Widget child;
+class _AgentCreateBackground extends StatelessWidget {
+  const _AgentCreateBackground();
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0x10181F26), width: 1)),
-      ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 58),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 72,
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: Color(0x7A181F26),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            Expanded(child: child),
-          ],
+        gradient: LinearGradient(
+          begin: Alignment(-0.66, -1),
+          end: Alignment(0.54, 1),
+          colors: [Color(0xFFE8FEFB), Color(0xFFD1FFF4)],
         ),
       ),
-    );
-  }
-}
-
-class _GenderControl extends StatelessWidget {
-  const _GenderControl({required this.value, required this.onChanged});
-
-  final _AgentGender value;
-  final ValueChanged<_AgentGender> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final selectedIndex = value.index;
-    return Container(
-      height: 38,
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        color: Colors.white.withValues(alpha: 0.34),
-        border: Border.all(color: const Color(0x12181F26)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.white.withValues(alpha: 0.58),
-            blurRadius: 1,
-            offset: const Offset(0, 1),
+      child: Stack(
+        children: [
+          Positioned(
+            left: -36,
+            top: -26,
+            width: 138,
+            height: 138,
+            child: Image.asset(
+              'assets/prototype/agent-creation-top-orb.png',
+              fit: BoxFit.fill,
+            ),
+          ),
+          Positioned(
+            right: -64,
+            bottom: -40,
+            width: 170,
+            height: 170,
+            child: Image.asset(
+              'assets/prototype/agent-creation-bottom-orb.png',
+              fit: BoxFit.fill,
+            ),
+          ),
+          Positioned(
+            right: -51,
+            top: 90,
+            width: 202,
+            height: 124,
+            child: Image.asset(
+              'assets/prototype/agent-creation-planet.png',
+              fit: BoxFit.fill,
+            ),
           ),
         ],
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final segmentWidth = constraints.maxWidth / 3;
-          return Stack(
-            children: [
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                left: segmentWidth * selectedIndex,
-                top: 0,
-                bottom: 0,
-                width: segmentWidth,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(999),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          AppColors.accentDeep.withValues(alpha: 0.94),
-                          AppColors.accentCyan.withValues(alpha: 0.88),
-                        ],
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.accentDeep.withValues(alpha: 0.16),
-                          blurRadius: 18,
-                          offset: const Offset(0, 7),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Row(
-                children: [
-                  _GenderPill(
-                    label: '男',
-                    selected: value == _AgentGender.male,
-                    onTap: () => onChanged(_AgentGender.male),
-                  ),
-                  _GenderPill(
-                    label: '女',
-                    selected: value == _AgentGender.female,
-                    onTap: () => onChanged(_AgentGender.female),
-                  ),
-                  _GenderPill(
-                    label: '随机',
-                    selected: value == _AgentGender.random,
-                    onTap: () => onChanged(_AgentGender.random),
-                  ),
-                ],
-              ),
-            ],
-          );
-        },
-      ),
     );
   }
 }
 
-class _GenderPill extends StatelessWidget {
-  const _GenderPill({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
+class _AgentCreateHeader extends StatelessWidget {
+  const _AgentCreateHeader({required this.onBack});
 
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: CupertinoButton(
-        minimumSize: Size.zero,
-        padding: EdgeInsets.zero,
-        borderRadius: BorderRadius.circular(999),
-        onPressed: onTap,
-        child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              color: selected ? Colors.white : const Color(0x8A181F26),
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TraitStudio extends StatelessWidget {
-  const _TraitStudio({
-    required this.traits,
-    required this.previousTraitValues,
-    required this.progress,
-    required this.moveProgress,
-    required this.onRandomize,
-    required this.onChanged,
-  });
-
-  final List<_TraitDraft> traits;
-  final List<int>? previousTraitValues;
-  final double progress;
-  final double moveProgress;
-  final VoidCallback onRandomize;
-  final void Function(int index, double value) onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
+    return Stack(
       children: [
-        ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 52),
-          child: Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  '灵魂倾向',
-                  style: TextStyle(
-                    color: Color(0x7A181F26),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(999),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppColors.accentDeep.withValues(alpha: 0.92),
-                      AppColors.accentCyan.withValues(alpha: 0.84),
-                    ],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.accentDeep.withValues(alpha: 0.13),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: CupertinoButton(
-                  minimumSize: Size.zero,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
-                  ),
-                  borderRadius: BorderRadius.circular(999),
-                  onPressed: onRandomize,
-                  child: const Text(
-                    '随机生成',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(
-          height: 138,
-          child: CustomPaint(
-            painter: _TraitMapPainter(
-              traits: traits,
-              previousTraitValues: previousTraitValues,
-              progress: progress,
-              moveProgress: moveProgress,
+        const Positioned(
+          top: 58,
+          left: 0,
+          right: 0,
+          child: Text(
+            '寻找专属你的TA',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.black,
+              fontSize: 18,
+              height: 25 / 18,
+              fontWeight: FontWeight.w600,
             ),
-            child: const SizedBox.expand(),
           ),
         ),
-        const SizedBox(height: 4),
-        Column(
-          children: [
-            for (var i = 0; i < traits.length; i += 1)
-              _TraitSliderRow(
-                trait: traits[i],
-                previousValue:
-                    previousTraitValues != null &&
-                        i < previousTraitValues!.length
-                    ? previousTraitValues![i]
-                    : null,
-                previousColor: i == 0 ? null : traits[i - 1].color,
-                nextColor: i == traits.length - 1 ? null : traits[i + 1].color,
-                fadeTop: i == 0,
-                fadeBottom: i == traits.length - 1,
-                progress: progress,
-                moveProgress: moveProgress,
-                onChanged: (value) => onChanged(i, value),
-              ),
-          ],
+        Positioned(
+          left: 16,
+          top: 54,
+          width: 36,
+          height: 36,
+          child: CupertinoButton(
+            key: const ValueKey('agent-create-back'),
+            padding: EdgeInsets.zero,
+            minimumSize: Size.zero,
+            borderRadius: BorderRadius.circular(18),
+            color: Colors.white.withValues(alpha: 0.62),
+            pressedOpacity: 0.72,
+            onPressed: onBack,
+            child: const Icon(
+              CupertinoIcons.chevron_left,
+              size: 25,
+              color: Color(0xFF111111),
+            ),
+          ),
         ),
       ],
     );
   }
 }
 
-class _TraitSliderRow extends StatelessWidget {
-  const _TraitSliderRow({
-    required this.trait,
-    required this.previousValue,
-    required this.previousColor,
-    required this.nextColor,
-    required this.fadeTop,
-    required this.fadeBottom,
-    required this.progress,
+class _GenderStep extends StatelessWidget {
+  const _GenderStep({
+    required this.gender,
+    required this.onGenderChanged,
+    required this.onNext,
+  });
+
+  final _AgentGender gender;
+  final ValueChanged<_AgentGender> onGenderChanged;
+  final VoidCallback onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned(
+          left: 36,
+          top: 122,
+          width: 133,
+          height: 71,
+          child: Image.asset(
+            'assets/prototype/agent-creation-hi.png',
+            fit: BoxFit.fill,
+          ),
+        ),
+        const Positioned(
+          left: 41,
+          top: 283,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'TA是男生还是女生？',
+                style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 16,
+                  height: 22 / 16,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                '性别设置后将无法修改',
+                style: TextStyle(
+                  color: _agentCreateMintText,
+                  fontSize: 12,
+                  height: 17 / 12,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Positioned(
+          left: 41,
+          top: 350,
+          child: Row(
+            children: [
+              _GenderCard(
+                gender: _AgentGender.female,
+                selected: gender == _AgentGender.female,
+                onPressed: () => onGenderChanged(_AgentGender.female),
+              ),
+              const SizedBox(width: 12),
+              _GenderCard(
+                gender: _AgentGender.male,
+                selected: gender == _AgentGender.male,
+                onPressed: () => onGenderChanged(_AgentGender.male),
+              ),
+            ],
+          ),
+        ),
+        Positioned(
+          left: 14,
+          top: 734,
+          width: 362,
+          height: 52,
+          child: _AgentCreateButton(
+            key: const ValueKey('agent-create-next'),
+            label: '下一步',
+            filled: true,
+            onPressed: onNext,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GenderCard extends StatelessWidget {
+  const _GenderCard({
+    required this.gender,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final _AgentGender gender;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final female = gender == _AgentGender.female;
+    return Semantics(
+      selected: selected,
+      button: true,
+      label: female ? '女生' : '男生',
+      child: CupertinoButton(
+        key: ValueKey(female ? 'agent-gender-female' : 'agent-gender-male'),
+        padding: EdgeInsets.zero,
+        minimumSize: Size.zero,
+        pressedOpacity: 0.82,
+        borderRadius: BorderRadius.circular(16),
+        onPressed: onPressed,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          width: 148,
+          height: 212,
+          decoration: BoxDecoration(
+            color: selected
+                ? const Color(0xFFD0FFF2)
+                : Colors.white.withValues(alpha: 0.40),
+            borderRadius: BorderRadius.circular(16),
+            border: selected
+                ? Border.all(color: _agentCreateAccent, width: 2)
+                : null,
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x2606C893),
+                blurRadius: 16,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Stack(
+            alignment: Alignment.topCenter,
+            children: [
+              Positioned(
+                top: 16,
+                width: 100,
+                height: 130,
+                child: Image.asset(
+                  female
+                      ? 'assets/prototype/agent-creation-female.png'
+                      : 'assets/prototype/agent-creation-male.png',
+                  fit: BoxFit.fill,
+                ),
+              ),
+              Positioned(
+                top: 155,
+                child: Text(
+                  female ? '女生' : '男生',
+                  style: TextStyle(
+                    color: selected
+                        ? _agentCreateAccent
+                        : _agentCreateAccent.withValues(alpha: 0.40),
+                    fontSize: 20,
+                    height: 28 / 20,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (selected)
+                const Positioned(
+                  bottom: 6,
+                  width: 60,
+                  height: 4,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: _agentCreateAccent,
+                      borderRadius: BorderRadius.all(Radius.circular(4)),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TraitsStep extends StatelessWidget {
+  const _TraitsStep({
+    required this.traits,
+    required this.previousTraitValues,
     required this.moveProgress,
+    required this.openInfoIndex,
+    required this.submitting,
+    required this.error,
+    required this.onPrevious,
+    required this.onRandomize,
+    required this.onInfoPressed,
+    required this.onChanged,
+    required this.onSubmit,
+  });
+
+  final List<_TraitDraft> traits;
+  final List<int>? previousTraitValues;
+  final double moveProgress;
+  final int? openInfoIndex;
+  final bool submitting;
+  final String? error;
+  final VoidCallback onPrevious;
+  final VoidCallback onRandomize;
+  final ValueChanged<int> onInfoPressed;
+  final void Function(int index, double value) onChanged;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final infoIndex = openInfoIndex;
+    return Stack(
+      children: [
+        const Positioned(
+          left: 20,
+          top: 104,
+          child: Text(
+            '灵魂倾向',
+            style: TextStyle(
+              color: Colors.black,
+              fontSize: 16,
+              height: 22 / 16,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+        ),
+        Positioned(
+          left: 286,
+          top: 104,
+          width: 84,
+          height: 29,
+          child: _RandomizeButton(onPressed: onRandomize),
+        ),
+        const Positioned(
+          left: 21,
+          top: 140,
+          width: 350,
+          height: 14,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(
+                CupertinoIcons.info_circle,
+                size: 14,
+                color: _agentCreateMintText,
+              ),
+              SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  '温馨提示：参数直接影响TA的寻找匹配，提交后无法修改，请谨慎选择。',
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: _agentCreateMintText,
+                    fontSize: 10,
+                    height: 14 / 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Positioned(
+          left: 20,
+          top: 174,
+          width: 350,
+          child: Column(
+            children: [
+              for (var i = 0; i < traits.length; i += 1) ...[
+                _TraitCard(
+                  trait: traits[i],
+                  displayedValue:
+                      (lerpDouble(
+                                previousTraitValues != null &&
+                                        i < previousTraitValues!.length
+                                    ? previousTraitValues![i]
+                                    : traits[i].value,
+                                traits[i].value,
+                                moveProgress,
+                              ) ??
+                              traits[i].value)
+                          .round(),
+                  onInfoPressed: () => onInfoPressed(i),
+                  onChanged: (value) => onChanged(i, value),
+                ),
+                if (i < traits.length - 1) const SizedBox(height: 12),
+              ],
+            ],
+          ),
+        ),
+        if (infoIndex != null)
+          Positioned(
+            left: 102,
+            top: _traitInfoTop[infoIndex],
+            width: 256,
+            child: _TraitInfoPanel(trait: traits[infoIndex]),
+          ),
+        if (error != null)
+          Positioned(
+            left: 20,
+            right: 20,
+            top: 644,
+            child: Text(
+              error!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFFD95B5B),
+                fontSize: 11,
+                height: 1.2,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        Positioned(
+          left: 14,
+          top: 670,
+          width: 362,
+          height: 52,
+          child: _AgentCreateButton(
+            key: const ValueKey('agent-create-previous'),
+            label: '上一步',
+            filled: false,
+            onPressed: submitting ? null : onPrevious,
+          ),
+        ),
+        Positioned(
+          left: 14,
+          top: 734,
+          width: 362,
+          height: 52,
+          child: _AgentCreateButton(
+            key: const ValueKey('agent-create-submit'),
+            label: '让故事开始',
+            filled: true,
+            loading: submitting,
+            onPressed: submitting ? null : onSubmit,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RandomizeButton extends StatelessWidget {
+  const _RandomizeButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoButton(
+      key: const ValueKey('agent-create-randomize'),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      minimumSize: Size.zero,
+      pressedOpacity: 0.76,
+      borderRadius: BorderRadius.circular(999),
+      color: Colors.white,
+      onPressed: onPressed,
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(CupertinoIcons.sparkles, color: _agentCreateAccent, size: 16),
+          SizedBox(width: 4),
+          Text(
+            '随机生成',
+            style: TextStyle(
+              color: _agentCreateAccent,
+              fontSize: 12,
+              height: 17 / 12,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TraitCard extends StatelessWidget {
+  const _TraitCard({
+    required this.trait,
+    required this.displayedValue,
+    required this.onInfoPressed,
     required this.onChanged,
   });
 
   final _TraitDraft trait;
-  final int? previousValue;
-  final Color? previousColor;
-  final Color? nextColor;
-  final bool fadeTop;
-  final bool fadeBottom;
-  final double progress;
-  final double moveProgress;
+  final int displayedValue;
+  final VoidCallback onInfoPressed;
   final ValueChanged<double> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final value =
-        lerpDouble(previousValue ?? trait.value, trait.value, moveProgress) ??
-        trait.value.toDouble();
-    final displayedValue = value.round();
-    return SizedBox(
-      height: 58,
-      child: Stack(
+    return Container(
+      width: 350,
+      height: 56,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x2606C893),
+            blurRadius: 16,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
         children: [
-          Positioned.fill(
-            child: CustomPaint(
-              painter: _TraitRowBackgroundPainter(
-                color: trait.color,
-                progress: progress,
-                fadeTop: fadeTop,
-                fadeBottom: fadeBottom,
-              ),
+          SizedBox(
+            width: 62,
+            height: 32,
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  top: 5,
+                  child: Text(
+                    trait.name,
+                    style: const TextStyle(
+                      color: Color(0xFF333333),
+                      fontSize: 16,
+                      height: 22 / 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 50,
+                  top: 0,
+                  width: 12,
+                  height: 12,
+                  child: CupertinoButton(
+                    key: ValueKey('agent-trait-info-${trait.name}'),
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    pressedOpacity: 0.62,
+                    onPressed: onInfoPressed,
+                    child: const Icon(
+                      CupertinoIcons.question_circle,
+                      size: 12,
+                      color: Color(0xFF8B8B8B),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          Row(
-            children: [
-              SizedBox(
-                width: 18,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Positioned.fill(
-                      child: Align(
-                        alignment: Alignment.center,
-                        child: Container(
-                          width: 1,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                (previousColor ?? trait.color).withValues(
-                                  alpha: previousColor == null ? 0.02 : 0.16,
-                                ),
-                                trait.color.withValues(alpha: 0.24),
-                                (nextColor ?? trait.color).withValues(
-                                  alpha: nextColor == null ? 0.02 : 0.16,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 206,
+            height: 16,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 14,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      trait.low,
+                      maxLines: 1,
+                      style: const TextStyle(
+                        color: Color(0x80000000),
+                        fontSize: 10,
+                        height: 14 / 10,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    AnimatedScale(
-                      scale: 1 + 0.05 * progress,
-                      duration: const Duration(milliseconds: 120),
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: trait.color,
-                          boxShadow: [
-                            BoxShadow(
-                              color: trait.color.withValues(
-                                alpha: 0.12 + 0.10 * progress,
-                              ),
-                              blurRadius: 10 + 6 * progress,
-                              spreadRadius: 3 + 3 * progress,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            trait.name,
-                            style: TextStyle(
-                              color: AppColors.text,
-                              fontSize: 13,
-                              height: 1,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          displayedValue.toString(),
-                          style: TextStyle(
-                            color: AppColors.text,
-                            fontSize: 11,
-                            height: 1,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    Row(
-                      children: [
-                        Text(
-                          trait.low,
-                          style: const TextStyle(
-                            color: Color(0x66181F26),
-                            fontSize: 8.5,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          trait.high,
-                          style: const TextStyle(
-                            color: Color(0x66181F26),
-                            fontSize: 8.5,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        trackHeight: 2.6,
-                        activeTrackColor: trait.color.withValues(alpha: 0.72),
-                        inactiveTrackColor: const Color(0x12181F26),
-                        thumbColor: Colors.white,
-                        overlayColor: trait.color.withValues(alpha: 0.12),
-                        trackShape: const _FullWidthSliderTrackShape(),
-                        thumbShape: _RingSliderThumbShape(color: trait.color),
-                        overlayShape: const RoundSliderOverlayShape(
-                          overlayRadius: 12,
-                        ),
-                      ),
-                      child: Slider(
-                        min: 0,
-                        max: 100,
-                        value: value,
-                        onChanged: onChanged,
-                      ),
-                    ),
-                  ],
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 150,
+                  height: 16,
+                  child: _FigmaTraitSlider(
+                    value: displayedValue.toDouble(),
+                    onChanged: onChanged,
+                  ),
                 ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 20,
+                  height: 14,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      trait.high,
+                      maxLines: 1,
+                      style: const TextStyle(
+                        color: Color(0xFF808080),
+                        fontSize: 10,
+                        height: 14 / 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            width: 42,
+            height: 32,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _agentCreateAccent),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x4006C893),
+                  blurRadius: 4,
+                  offset: Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Text(
+              '$displayedValue',
+              style: const TextStyle(
+                color: _agentCreateAccent,
+                fontFamily: 'SF Pro',
+                fontFamilyFallback: ['SF Pro Display', 'Arial'],
+                fontSize: 16,
+                height: 19 / 16,
+                fontWeight: FontWeight.w900,
               ),
-            ],
+            ),
           ),
         ],
       ),
@@ -1195,273 +1186,220 @@ class _TraitSliderRow extends StatelessWidget {
   }
 }
 
-class _TraitRowBackgroundPainter extends CustomPainter {
-  const _TraitRowBackgroundPainter({
-    required this.color,
-    required this.progress,
-    required this.fadeTop,
-    required this.fadeBottom,
-  });
+class _FigmaTraitSlider extends StatelessWidget {
+  const _FigmaTraitSlider({required this.value, required this.onChanged});
 
-  final Color color;
-  final double progress;
-  final bool fadeTop;
-  final bool fadeBottom;
+  final double value;
+  final ValueChanged<double> onChanged;
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    canvas.saveLayer(rect, Paint());
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [
-            Colors.transparent,
-            color.withValues(alpha: 0.026 + 0.018 * progress),
-            color.withValues(alpha: 0.038 + 0.022 * progress),
-            Colors.transparent,
-          ],
-          stops: const [0, 0.24, 0.58, 1],
-        ).createShader(rect),
-    );
-
-    if (fadeTop || fadeBottom) {
-      final stops = fadeTop ? const [0.0, 0.42, 1.0] : const [0.0, 0.58, 1.0];
-      final colors = fadeTop
-          ? const [Colors.transparent, Colors.white, Colors.white]
-          : const [Colors.white, Colors.white, Colors.transparent];
-      canvas.drawRect(
-        rect,
-        Paint()
-          ..blendMode = BlendMode.dstIn
-          ..shader = LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: colors,
-            stops: stops,
-          ).createShader(rect),
-      );
-    }
-    canvas.restore();
+  void _update(Offset localPosition, double width) {
+    if (width <= 0) return;
+    onChanged((localPosition.dx / width * 100).clamp(0, 100));
   }
 
   @override
-  bool shouldRepaint(covariant _TraitRowBackgroundPainter oldDelegate) {
-    return oldDelegate.color != color ||
-        oldDelegate.progress != progress ||
-        oldDelegate.fadeTop != fadeTop ||
-        oldDelegate.fadeBottom != fadeBottom;
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final normalized = (value / 100).clamp(0.0, 1.0);
+        final thumbLeft = (width - 16) * normalized;
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (details) => _update(details.localPosition, width),
+          onHorizontalDragUpdate: (details) =>
+              _update(details.localPosition, width),
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.centerLeft,
+            children: [
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 4,
+                height: 8,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: _agentCreateAccent),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                top: 4,
+                width: math.max(8, thumbLeft + 8),
+                height: 8,
+                child: const DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: _agentCreateAccent,
+                    borderRadius: BorderRadius.all(Radius.circular(4)),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: thumbLeft,
+                top: 0,
+                width: 16,
+                height: 16,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: _agentCreateAccent, width: 2),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x4006C893),
+                        blurRadius: 4,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }
 
-class _TraitMapPainter extends CustomPainter {
-  const _TraitMapPainter({
-    required this.traits,
-    required this.previousTraitValues,
-    required this.progress,
-    required this.moveProgress,
-  });
+class _TraitInfoPanel extends StatelessWidget {
+  const _TraitInfoPanel({required this.trait});
 
-  final List<_TraitDraft> traits;
-  final List<int>? previousTraitValues;
-  final double progress;
-  final double moveProgress;
+  final _TraitDraft trait;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    canvas.saveLayer(rect, Paint());
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0x12FFFFFF),
-            Color(0x0E18C6C0),
-            Color(0x0B1F6FFF),
-            Color(0x12FFFFFF),
-          ],
-          stops: [0, 0.36, 0.72, 1],
-        ).createShader(rect),
-    );
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = RadialGradient(
-          center: const Alignment(0.78, -0.68),
-          radius: 0.9,
-          colors: [
-            AppColors.accentDeep.withValues(alpha: 0.10),
-            Colors.transparent,
-          ],
-        ).createShader(rect),
-    );
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = RadialGradient(
-          center: const Alignment(-0.72, 0.72),
-          radius: 0.86,
-          colors: [
-            AppColors.accentCyan.withValues(alpha: 0.10),
-            Colors.transparent,
-          ],
-        ).createShader(rect),
-    );
-
-    final gridPaint = Paint()
-      ..color = const Color(0x0E181F26)
-      ..strokeWidth = 1;
-    for (var x = 34.0; x < size.width; x += 34) {
-      canvas.drawLine(Offset(x, 12), Offset(x, size.height - 12), gridPaint);
-    }
-
-    final axisPaint = Paint()
-      ..color = const Color(0x24181F26)
-      ..strokeWidth = 1.2;
-    final axisY = size.height * 0.5;
-    for (var y = axisY - 34; y >= 12; y -= 34) {
-      canvas.drawLine(Offset(12, y), Offset(size.width - 12, y), gridPaint);
-    }
-    for (var y = axisY + 34; y < size.height - 12; y += 34) {
-      canvas.drawLine(Offset(12, y), Offset(size.width - 12, y), gridPaint);
-    }
-    canvas.drawLine(
-      Offset(30, axisY),
-      Offset(size.width - 30, axisY),
-      axisPaint,
-    );
-
-    for (var i = 0; i < traits.length; i += 1) {
-      final trait = traits[i];
-      final x = size.width * (0.18 + i * 0.105);
-      final previousValue =
-          previousTraitValues != null && i < previousTraitValues!.length
-          ? previousTraitValues![i]
-          : trait.value;
-      final displayedValue =
-          lerpDouble(previousValue, trait.value, moveProgress) ?? trait.value;
-      final valueY = (100 - displayedValue) / 100;
-      final y = 22 + valueY * (size.height - 54);
-      final center = Offset(x, y);
-      final haloRadius = 13 + 7 * progress;
-      final dotRadius = 6.5 + 1.5 * progress;
-      final haloPaint = Paint()
-        ..color = trait.color.withValues(alpha: 0.11 - 0.04 * progress);
-      canvas.drawCircle(center, haloRadius, haloPaint);
-      final glowPaint = Paint()
-        ..color = trait.color.withValues(alpha: 0.16 + 0.08 * progress)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 8 + 3 * progress);
-      canvas.drawCircle(center.translate(0, 7), 10 + 5 * progress, glowPaint);
-      final dotPaint = Paint()..color = trait.color;
-      canvas.drawCircle(center, dotRadius, dotPaint);
-    }
-
-    _applyEdgeMask(canvas, size);
-    canvas.restore();
-  }
-
-  void _applyEdgeMask(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    final maskPaint = Paint()
-      ..blendMode = BlendMode.dstIn
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Colors.transparent,
-          Colors.white,
-          Colors.white,
-          Colors.transparent,
+  Widget build(BuildContext context) {
+    return Container(
+      height: 95,
+      color: const Color(0xFF737373),
+      child: Stack(
+        children: [
+          Positioned(
+            left: 16,
+            right: 16,
+            top: 16,
+            height: 17,
+            child: Text(
+              trait.description,
+              maxLines: 1,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                height: 17 / 12,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ),
+          Positioned(
+            left: 16,
+            right: 16,
+            top: 41,
+            height: 19,
+            child: _TraitInfoLine(
+              label: '数值偏低',
+              description: trait.lowDescription,
+            ),
+          ),
+          Positioned(
+            left: 16,
+            right: 16,
+            top: 60,
+            height: 19,
+            child: _TraitInfoLine(
+              label: '数值偏高',
+              description: trait.highDescription,
+            ),
+          ),
         ],
-        stops: [0, 0.22, 0.78, 1],
-      ).createShader(rect);
-    canvas.drawRect(rect, maskPaint);
-
-    maskPaint.shader = const LinearGradient(
-      begin: Alignment.centerLeft,
-      end: Alignment.centerRight,
-      colors: [
-        Colors.transparent,
-        Colors.white,
-        Colors.white,
-        Colors.transparent,
-      ],
-      stops: [0, 0.08, 0.92, 1],
-    ).createShader(rect);
-    canvas.drawRect(rect, maskPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _TraitMapPainter oldDelegate) {
-    return oldDelegate.traits != traits ||
-        oldDelegate.previousTraitValues != previousTraitValues ||
-        oldDelegate.progress != progress ||
-        oldDelegate.moveProgress != moveProgress;
-  }
-}
-
-class _RingSliderThumbShape extends SliderComponentShape {
-  const _RingSliderThumbShape({required this.color});
-
-  final Color color;
-
-  @override
-  Size getPreferredSize(bool isEnabled, bool isDiscrete) {
-    return const Size(15, 15);
-  }
-
-  @override
-  void paint(
-    PaintingContext context,
-    Offset center, {
-    required Animation<double> activationAnimation,
-    required Animation<double> enableAnimation,
-    required bool isDiscrete,
-    required TextPainter labelPainter,
-    required RenderBox parentBox,
-    required SliderThemeData sliderTheme,
-    required TextDirection textDirection,
-    required double value,
-    required double textScaleFactor,
-    required Size sizeWithOverflow,
-  }) {
-    final canvas = context.canvas;
-    canvas.drawCircle(
-      center,
-      11,
-      Paint()
-        ..color = color.withValues(alpha: 0.18)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+      ),
     );
-    canvas.drawCircle(center, 7.5, Paint()..color = color);
-    canvas.drawCircle(center, 3.5, Paint()..color = Colors.white);
   }
 }
 
-class _FullWidthSliderTrackShape extends RoundedRectSliderTrackShape {
-  const _FullWidthSliderTrackShape();
+class _TraitInfoLine extends StatelessWidget {
+  const _TraitInfoLine({required this.label, required this.description});
+
+  final String label;
+  final String description;
 
   @override
-  Rect getPreferredRect({
-    required RenderBox parentBox,
-    Offset offset = Offset.zero,
-    required SliderThemeData sliderTheme,
-    bool isEnabled = false,
-    bool isDiscrete = false,
-  }) {
-    final trackHeight = sliderTheme.trackHeight ?? 2;
-    final trackTop = offset.dy + (parentBox.size.height - trackHeight) / 2;
-    return Rect.fromLTWH(
-      offset.dx,
-      trackTop,
-      parentBox.size.width,
-      trackHeight,
+  Widget build(BuildContext context) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: label,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            TextSpan(text: '——$description'),
+          ],
+        ),
+        maxLines: 1,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          height: 19 / 12,
+          fontWeight: FontWeight.w400,
+        ),
+      ),
+    );
+  }
+}
+
+class _AgentCreateButton extends StatelessWidget {
+  const _AgentCreateButton({
+    super.key,
+    required this.label,
+    required this.filled,
+    required this.onPressed,
+    this.loading = false,
+  });
+
+  final String label;
+  final bool filled;
+  final VoidCallback? onPressed;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: filled ? _agentCreateAccent : Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: filled ? null : Border.all(color: _agentCreateAccent),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x2606C893),
+            blurRadius: 16,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: CupertinoButton(
+        padding: EdgeInsets.zero,
+        minimumSize: Size.zero,
+        pressedOpacity: 0.78,
+        borderRadius: BorderRadius.circular(999),
+        onPressed: onPressed,
+        child: loading
+            ? const CupertinoActivityIndicator(color: Colors.white)
+            : Text(
+                label,
+                style: TextStyle(
+                  color: filled ? Colors.white : _agentCreateAccent,
+                  fontSize: 18,
+                  height: 25 / 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+      ),
     );
   }
 }
@@ -1475,7 +1413,7 @@ class _ProvisionProgressOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final failed = status.isFailed;
     final percent = status.percent.clamp(0, 100).toInt();
-    final color = failed ? const Color(0xFFD95B5B) : AppColors.accent;
+    final color = failed ? const Color(0xFFD95B5B) : _agentCreateAccent;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: percent / 100),
       duration: const Duration(milliseconds: 360),
@@ -1489,12 +1427,11 @@ class _ProvisionProgressOverlay extends StatelessWidget {
             Text(
               failed ? '创建遇到问题' : '正在创建你的 AI 伙伴',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: AppColors.text,
+              style: const TextStyle(
+                color: Color(0xFF111111),
                 fontSize: 21,
                 height: 1.15,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0,
+                fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 16),
@@ -1506,7 +1443,7 @@ class _ProvisionProgressOverlay extends StatelessWidget {
                     child: LinearProgressIndicator(
                       minHeight: 7,
                       value: failed ? null : value,
-                      backgroundColor: Colors.white.withValues(alpha: 0.58),
+                      backgroundColor: Colors.white.withValues(alpha: 0.68),
                       valueColor: AlwaysStoppedAnimation<Color>(color),
                     ),
                   ),
@@ -1515,9 +1452,7 @@ class _ProvisionProgressOverlay extends StatelessWidget {
                 Text(
                   failed ? '--' : '$percent%',
                   style: TextStyle(
-                    color: failed
-                        ? const Color(0xFFD95B5B)
-                        : AppColors.accentDeep,
+                    color: color,
                     fontSize: 17,
                     fontWeight: FontWeight.w900,
                   ),
@@ -1529,10 +1464,10 @@ class _ProvisionProgressOverlay extends StatelessWidget {
               status.message.isEmpty ? '正在初始化...' : status.message,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: Color(0x9A181F26),
+                color: Color(0x99111111),
                 fontSize: 14,
                 height: 1.4,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
@@ -1586,7 +1521,6 @@ class _ProvisionBreathingIconState extends State<_ProvisionBreathingIcon>
             final second = Curves.easeOutCubic.transform((t + 0.48) % 1);
             final centerPulse =
                 0.5 + 0.5 * math.sin((t * math.pi * 2) - math.pi / 2);
-            final centerScale = 0.94 + 0.12 * centerPulse;
             return Stack(
               alignment: Alignment.center,
               children: [
@@ -1601,22 +1535,13 @@ class _ProvisionBreathingIconState extends State<_ProvisionBreathingIcon>
                   maxSize: 92,
                 ),
                 Transform.scale(
-                  scale: centerScale,
+                  scale: 0.94 + 0.12 * centerPulse,
                   child: Container(
                     width: 66,
                     height: 66,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        center: const Alignment(-0.25, -0.30),
-                        radius: 0.92,
-                        colors: [
-                          Colors.white.withValues(alpha: 0.76),
-                          widget.color.withValues(alpha: 0.13),
-                          Colors.white.withValues(alpha: 0.34),
-                        ],
-                        stops: const [0, 0.62, 1],
-                      ),
+                      color: Colors.white.withValues(alpha: 0.72),
                     ),
                     child: Icon(
                       widget.failed
@@ -1672,65 +1597,15 @@ class _ProvisionHalo extends StatelessWidget {
   }
 }
 
-class _CreateAgentButton extends StatelessWidget {
-  const _CreateAgentButton({required this.loading, required this.onPressed});
+enum _AgentCreateStep { gender, traits }
 
-  final bool loading;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 50,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(17),
-          gradient: LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [AppColors.accentDeep, AppColors.accentCyan],
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.accentDeep.withValues(alpha: 0.22),
-              blurRadius: 40,
-              offset: const Offset(0, 18),
-            ),
-          ],
-        ),
-        child: FilledButton(
-          onPressed: loading ? null : onPressed,
-          style: FilledButton.styleFrom(
-            backgroundColor: Colors.transparent,
-            disabledBackgroundColor: Colors.transparent,
-            shadowColor: Colors.transparent,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(17),
-            ),
-          ),
-          child: loading
-              ? const CupertinoActivityIndicator(color: Colors.white)
-              : const Text(
-                  '让故事开始',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
-                ),
-        ),
-      ),
-    );
-  }
-}
-
-enum _AgentGender { male, female, random }
+enum _AgentGender { male, female }
 
 extension _AgentGenderApi on _AgentGender {
   String get apiValue {
     return switch (this) {
       _AgentGender.male => 'male',
       _AgentGender.female => 'female',
-      _AgentGender.random =>
-        math.Random.secure().nextBool() ? 'male' : 'female',
     };
   }
 }
@@ -1740,75 +1615,97 @@ class _TraitDraft {
     required this.name,
     required this.low,
     required this.high,
-    required this.color,
     required this.value,
+    required this.description,
+    required this.lowDescription,
+    required this.highDescription,
   });
 
   final String name;
   final String low;
   final String high;
-  final Color color;
   final int value;
+  final String description;
+  final String lowDescription;
+  final String highDescription;
 
   _TraitDraft copyWith({int? value}) {
     return _TraitDraft(
       name: name,
       low: low,
       high: high,
-      color: color,
       value: value ?? this.value,
+      description: description,
+      lowDescription: lowDescription,
+      highDescription: highDescription,
     );
   }
 }
+
+const _traitInfoTop = [196.0, 265.0, 333.0, 401.0, 469.0, 537.0, 605.0];
 
 const _defaultTraits = [
   _TraitDraft(
     name: '活泼度',
     low: '内敛',
     high: '活泼',
-    color: Color(0xFF18C6C0),
-    value: 62,
+    value: 100,
+    description: '代表日常表达与相处状态',
+    lowDescription: '偏内敛安静',
+    highDescription: '外向热情、乐于主动互动',
   ),
   _TraitDraft(
     name: '理性度',
     low: '感性',
     high: '理性',
-    color: Color(0xFF2F6FFF),
-    value: 54,
+    value: 55,
+    description: '代表遇事思考方式',
+    lowDescription: '更侧重情绪感受',
+    highDescription: '习惯客观冷静、逻辑优先',
   ),
   _TraitDraft(
     name: '感性度',
     low: '冷静',
     high: '感性',
-    color: Color(0xFF7C3CFF),
-    value: 68,
+    value: 100,
+    description: '代表共情感知能力',
+    lowDescription: '情绪克制沉稳',
+    highDescription: '心思细腻，容易共情他人情绪',
   ),
   _TraitDraft(
     name: '计划度',
     low: '随性',
     high: '计划',
-    color: Color(0xFFFF6A3D),
-    value: 47,
+    value: 100,
+    description: '代表生活处事习惯',
+    lowDescription: '随性松弛，不爱拘束',
+    highDescription: '做事有条理，偏爱提前规划',
   ),
   _TraitDraft(
     name: '随性度',
     low: '规矩',
     high: '随性',
-    color: Color(0xFF22C66B),
-    value: 58,
+    value: 100,
+    description: '代表行事包容程度',
+    lowDescription: '守规矩、偏爱稳定流程',
+    highDescription: '不受条条框框束缚，灵活自在',
   ),
   _TraitDraft(
     name: '脑洞度',
     low: '务实',
     high: '脑洞',
-    color: Color(0xFFFFC936),
-    value: 73,
+    value: 100,
+    description: '代表想象力与思维模式',
+    lowDescription: '务实落地、看重现实',
+    highDescription: '想象力丰富，浪漫富有奇思',
   ),
   _TraitDraft(
     name: '幽默度',
     low: '严肃',
     high: '幽默',
-    color: Color(0xFFE85B6D),
-    value: 61,
+    value: 100,
+    description: '代表相处趣味感',
+    lowDescription: '稳重严肃，不爱玩笑',
+    highDescription: '风趣轻松，擅长制造轻松氛围',
   ),
 ];

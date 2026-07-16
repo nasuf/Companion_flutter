@@ -75,6 +75,12 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/prototype/agent-creation-bottom-orb.png
+    - assets/prototype/agent-creation-female.png
+    - assets/prototype/agent-creation-hi.png
+    - assets/prototype/agent-creation-male.png
+    - assets/prototype/agent-creation-planet.png
+    - assets/prototype/agent-creation-top-orb.png
     - assets/prototype/logo.png
     - assets/prototype/agent-avatar.png
     - assets/prototype/user-avatar-shanmu.jpg
