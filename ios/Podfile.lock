@@ -87,20 +87,20 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/url_launcher_ios/ios"
 
 SPEC CHECKSUMS:
-  audioplayers_darwin: f15e209a3e856d1a7edcf98dc029f484fead2242
-  device_info_plus: bf2e3232933866d73fe290f2942f2156cdd10342
+  audioplayers_darwin: 835ced6edd4c9fc8ebb0a7cc9e294a91d99917d5
+  device_info_plus: 21fcca2080fbcd348be798aa36c3e5ed849eefbe
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_local_notifications: ff50f8405aaa0ccdc7dcfb9022ca192e8ad9688f
-  flutter_secure_storage_darwin: 557817588b80e60213cbecb573c45c76b788018d
-  fluwx: 95a2274c23418c1098940bd00dcfe7c975bb0550
-  geocoding_ios: eafacae6ad11a1eb56681f7d11df602a5fd49416
-  geolocator_apple: 66b711889fd333205763b83c9dcf0a57a28c7afd
-  image_picker_ios: c560581cceedb403a6ff17f2f816d7fea1421fc1
-  package_info_plus: c0502532a26c7662a62a356cebe2692ec5fe4ec4
-  path_provider_foundation: 2b6b4c569c0fb62ec74538f866245ac84301af46
-  receive_sharing_intent: 79c848f5b045674ad60b9fea3bafea59962ad2c1
-  record_ios: 3b171007ae5de51221a3a76d2b379a7105ca98b5
-  url_launcher_ios: bb13df5870e8c4234ca12609d04010a21be43dfa
+  flutter_local_notifications: a5a732f069baa862e728d839dd2ebb904737effb
+  flutter_secure_storage_darwin: acdb3f316ed05a3e68f856e0353b133eec373a23
+  fluwx: 2ef787502fccb3f3596b380509001a8ea71cbbff
+  geocoding_ios: 33776c9ebb98d037b5e025bb0e7537f6dd19646e
+  geolocator_apple: ab36aa0e8b7d7a2d7639b3b4e48308394e8cef5e
+  image_picker_ios: 7fe1ff8e34c1790d6fff70a32484959f563a928a
+  package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
+  path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
+  receive_sharing_intent: 222384f00ffe7e952bbfabaa9e3967cb87e5fe00
+  record_ios: 980fd386a97a35987d0fce3dfda4b26a38c90f4c
+  url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
   WechatOpenSDK-XCFramework: ff342ae616bb86df3d236aca38059dfd4bc4a949
 
 PODFILE CHECKSUM: 6617c6b94cc50475da51dab4d6bc80ce00da8791
