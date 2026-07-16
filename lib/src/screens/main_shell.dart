@@ -259,7 +259,9 @@ class _MainShellState extends State<MainShell> with RouteAware {
 
   @override
   Widget build(BuildContext context) {
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    final media = MediaQuery.of(context);
+    final safeBottom = media.padding.bottom;
+    final tabBarWidth = math.min(336.0, media.size.width - 54.0);
     final chatPage = widget.session.conversationId == null
         ? NoAgentPage(
             api: widget.api,
@@ -313,8 +315,8 @@ class _MainShellState extends State<MainShell> with RouteAware {
                 children: [
                   IndexedStack(index: _index, children: pages),
                   AnimatedPositioned(
-                    left: 28,
-                    right: 28,
+                    left: 0,
+                    right: 0,
                     bottom: _activeAchievement != null
                         ? -92
                         : math.max(10, safeBottom - 2),
@@ -325,9 +327,15 @@ class _MainShellState extends State<MainShell> with RouteAware {
                       child: AnimatedOpacity(
                         opacity: _activeAchievement != null ? 0 : 1,
                         duration: const Duration(milliseconds: 180),
-                        child: _FloatingTabBar(
-                          selectedIndex: _index,
-                          onSelected: (value) => setState(() => _index = value),
+                        child: Center(
+                          child: SizedBox(
+                            width: tabBarWidth,
+                            child: _FloatingTabBar(
+                              selectedIndex: _index,
+                              onSelected: (value) =>
+                                  setState(() => _index = value),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -516,6 +524,9 @@ class _FloatingTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = isDark
+        ? const Color(0xFF121A24)
+        : const Color(0xFFFAFFFE);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onHorizontalDragEnd: (details) {
@@ -526,9 +537,8 @@ class _FloatingTabBar extends StatelessWidget {
       },
       child: Container(
         height: 64,
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 9),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF121A24) : const Color(0xFFFAFFFE),
+          color: backgroundColor,
           borderRadius: BorderRadius.circular(999),
           boxShadow: [
             BoxShadow(
@@ -540,19 +550,24 @@ class _FloatingTabBar extends StatelessWidget {
             ),
           ],
         ),
-        child: Row(
-          children: [
-            for (var i = 0; i < _items.length; i += 1)
-              Expanded(
-                child: _TabBarItem(
-                  icon: _items[i].icon,
-                  selectedIcon: _items[i].selectedIcon,
-                  label: _items[i].label,
-                  selected: selectedIndex == i,
-                  onTap: () => onSelected(i),
-                ),
-              ),
-          ],
+        child: Center(
+          child: SizedBox(
+            width: 272,
+            height: 44,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                for (var i = 0; i < _items.length; i += 1)
+                  _TabBarItem(
+                    icon: _items[i].icon,
+                    selectedIcon: _items[i].selectedIcon,
+                    label: _items[i].label,
+                    selected: selectedIndex == i,
+                    onTap: () => onSelected(i),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -580,31 +595,41 @@ class _TabBarItem extends StatelessWidget {
       message: label,
       child: InkResponse(
         onTap: onTap,
-        radius: 28,
-        child: SizedBox.expand(
+        radius: 24,
+        child: SizedBox(
+          width: 28,
+          height: 44,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                selected ? selectedIcon : icon,
-                size: 24,
-                color: selected
-                    ? const Color(0xFF06C893)
-                    : const Color(0xFFC7C7C7),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.visible,
-                style: TextStyle(
-                  fontSize: 10,
-                  height: 1.1,
+              SizedBox.square(
+                dimension: 24,
+                child: Icon(
+                  selected ? selectedIcon : icon,
+                  size: 24,
                   color: selected
                       ? const Color(0xFF06C893)
                       : const Color(0xFFC7C7C7),
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                  decoration: TextDecoration.none,
+                ),
+              ),
+              const SizedBox(height: 2),
+              SizedBox(
+                width: 28,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.visible,
+                  textAlign: TextAlign.center,
+                  textScaler: TextScaler.noScaling,
+                  style: TextStyle(
+                    fontSize: 10,
+                    height: 1.0,
+                    color: selected
+                        ? const Color(0xFF06C893)
+                        : const Color(0xFFC7C7C7),
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
               ),
             ],
