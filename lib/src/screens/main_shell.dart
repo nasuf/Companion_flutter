@@ -1029,6 +1029,8 @@ class _ProfilePageState extends State<ProfilePage>
                             agentAvatarUrl: widget.session.agentAvatarUrl,
                             memberActive:
                                 _profileStats?.memberIsActive ?? false,
+                            showAdminEntry:
+                                widget.session.role == UserRole.admin,
                             onUserTap: () => _pushPage(
                               _ProfileInfoPage(session: widget.session),
                             ),
@@ -1038,6 +1040,7 @@ class _ProfilePageState extends State<ProfilePage>
                                 agentAvatarUrl: widget.session.agentAvatarUrl,
                               ),
                             ),
+                            onAdminTap: _openAdminPanel,
                           ),
                           Padding(
                             padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
@@ -1192,12 +1195,6 @@ class _ProfilePageState extends State<ProfilePage>
                           ),
                         ],
                       ),
-                      if (widget.session.role == UserRole.admin)
-                        Positioned(
-                          top: topPadding,
-                          right: 18,
-                          child: _ProfileAdminButton(onTap: _openAdminPanel),
-                        ),
                     ],
                   ),
                 ),
@@ -1299,6 +1296,8 @@ class _SettingsRelationHeader extends StatelessWidget {
     this.userAvatarUrl,
     this.agentAvatarUrl,
     this.memberActive = false,
+    this.showAdminEntry = false,
+    this.onAdminTap,
   });
 
   final double progress;
@@ -1308,14 +1307,15 @@ class _SettingsRelationHeader extends StatelessWidget {
   final String? userAvatarUrl;
   final String? agentAvatarUrl;
   final bool memberActive;
+  final bool showAdminEntry;
   final VoidCallback onUserTap;
   final VoidCallback onAgentTap;
+  final VoidCallback? onAdminTap;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       height: topPadding + 214,
-      padding: EdgeInsets.fromLTRB(16, topPadding + 30, 16, 20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -1340,57 +1340,70 @@ class _SettingsRelationHeader extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
+      child: Stack(
         children: [
-          const Spacer(),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: _SettingsAvatarColumn(
-                  progress: progress,
-                  phase: 0,
-                  name: agentName,
-                  assetPath: 'assets/prototype/agent-avatar.png',
-                  imageUrl: agentAvatarUrl,
-                  accent: _SettingsColors.orangeDark,
-                  onTap: onAgentTap,
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, topPadding + 30, 16, 20),
+            child: Column(
+              children: [
+                const Spacer(),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: _SettingsAvatarColumn(
+                        progress: progress,
+                        phase: 0,
+                        name: agentName,
+                        assetPath: 'assets/prototype/agent-avatar.png',
+                        imageUrl: agentAvatarUrl,
+                        accent: _SettingsColors.orangeDark,
+                        onTap: onAgentTap,
+                      ),
+                    ),
+                    SizedBox(
+                      width: 58,
+                      height: 64,
+                      child: _SettingsConnectionBridge(progress: progress),
+                    ),
+                    Expanded(
+                      child: _SettingsAvatarColumn(
+                        progress: progress,
+                        phase: 0.28,
+                        name: userName,
+                        assetPath: 'assets/prototype/user-avatar-shanmu.jpg',
+                        imageUrl: userAvatarUrl,
+                        accent: memberActive
+                            ? _SettingsColors.gold
+                            : _SettingsColors.blueDark,
+                        showCrown: memberActive,
+                        onTap: onUserTap,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              SizedBox(
-                width: 58,
-                height: 64,
-                child: _SettingsConnectionBridge(progress: progress),
-              ),
-              Expanded(
-                child: _SettingsAvatarColumn(
-                  progress: progress,
-                  phase: 0.28,
-                  name: userName,
-                  assetPath: 'assets/prototype/user-avatar-shanmu.jpg',
-                  imageUrl: userAvatarUrl,
-                  accent: memberActive
-                      ? _SettingsColors.gold
-                      : _SettingsColors.blueDark,
-                  showCrown: memberActive,
-                  onTap: onUserTap,
+                const SizedBox(height: 14),
+                Text(
+                  '✦ 故事从这里开始 ✦',
+                  style: TextStyle(
+                    color: _SettingsColors.isDark
+                        ? _SettingsColors.orangeDark
+                        : const Color(0xFF9A8C82),
+                    fontSize: 14,
+                    fontStyle: FontStyle.italic,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.6,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            '✦ 故事从这里开始 ✦',
-            style: TextStyle(
-              color: _SettingsColors.isDark
-                  ? _SettingsColors.orangeDark
-                  : const Color(0xFF9A8C82),
-              fontSize: 14,
-              fontStyle: FontStyle.italic,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.6,
+              ],
             ),
           ),
+          if (showAdminEntry && onAdminTap != null)
+            Positioned(
+              top: topPadding,
+              right: 18,
+              child: _ProfileAdminButton(onTap: onAdminTap!),
+            ),
         ],
       ),
     );
