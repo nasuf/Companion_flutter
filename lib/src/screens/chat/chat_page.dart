@@ -2322,9 +2322,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             curve: _animationCurve,
             child: IgnorePointer(
               child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF6FDFC).withValues(alpha: 0.96),
-                ),
+                decoration: const BoxDecoration(color: Color(0xFFF6FDFC)),
               ),
             ),
           ),
