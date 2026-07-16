@@ -35,55 +35,23 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       api: widget.api,
       authSession: widget.authSession,
       gameKey: _gameKey,
-      gameTitle: widget.game.title,
       onChanged: () {
         if (mounted) setState(() {});
       },
     );
-    unawaited(_initialize());
+    unawaited(_runtime.initialize());
   }
 
-  Future<void> _initialize() async {
-    final resume = await _runtime.initialize();
-    if (resume != null) await _restoreResume(resume);
-  }
-
-  Future<void> _resumeRound(GameSession session) async {
-    if (_runtime.session?.id == session.id && _engine != null) {
-      if (mounted) setState(() => _isFullscreen = true);
-      return;
-    }
-    final resume = await _runtime.resumeRound(session);
-    if (resume != null) await _restoreResume(resume);
-  }
-
-  Future<bool> _restoreResume(_NativeGameResume resume) async {
-    if (!mounted) return false;
-    try {
-      final engine = resume.state.isEmpty
-          ? ChessFamilyEngine(kind: widget.kind)
-          : ChessFamilyEngine.restore(
-              kind: widget.kind,
-              state: resume.state,
-              moveCount: resume.actionCount,
-            );
-      setState(() {
-        _engine = engine;
-        _selectedSquare = null;
-        _legalTargets = const {};
-        _isFullscreen = true;
-      });
-      if (engine.isFinished) {
-        unawaited(_finish(engine.status));
-      } else if (engine.isAgentTurn) {
-        unawaited(_playAgentTurn());
-      }
-      return true;
-    } catch (caught) {
-      _runtime.syncNotice = '上一局棋盘无法恢复，可以重新开一局：$caught';
-      if (mounted) setState(() {});
-      return false;
-    }
+  @override
+  void dispose() {
+    unawaited(
+      _runtime.abort(
+        'page_closed',
+        _engine?.summaryJson() ?? const {},
+        updateUi: false,
+      ),
+    );
+    super.dispose();
   }
 
   Future<void> _deleteRound(GameSession session) async {
@@ -245,8 +213,6 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
     final engine = _engine;
     if (_isFullscreen && engine != null) {
       return _NativeFullscreenGameSurface(
-        title: widget.game.title,
-        subtitle: _statusSubtitle(engine),
         onExit: () => setState(() => _isFullscreen = false),
         onRestart: _startGame,
         restartLabel: engine.isFinished ? '再来一局' : '重新开一局',
@@ -270,8 +236,6 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
                   child: engine == null ? _cover() : _gamePanel(engine),
                 ),
               ),
-              if (_runtime.timeline.isNotEmpty)
-                SliverToBoxAdapter(child: _companionPanel()),
               SliverToBoxAdapter(child: _history()),
               const SliverToBoxAdapter(child: SizedBox(height: 42)),
             ],
@@ -360,8 +324,8 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
           const SizedBox(height: 12),
           _PrimaryGameButton(
             label: '开始游戏',
-            loading: _runtime.starting || _runtime.recovering,
-            disabled: _runtime.starting || _runtime.recovering,
+            loading: _runtime.starting || _runtime.initializing,
+            disabled: _runtime.starting || _runtime.initializing,
             onPressed: _startGame,
           ),
         ],
@@ -423,33 +387,6 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
     ],
   );
 
-  Widget _companionPanel() => Padding(
-    padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-    child: _GlassPanel(
-      radius: 22,
-      padding: const EdgeInsets.fromLTRB(15, 14, 15, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '${_runtime.agentName} 在棋盘边',
-            style: TextStyle(
-              color: AppColors.text,
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 10),
-          for (final item in _runtime.timeline.reversed.take(3))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _TimelineRow(item: item),
-            ),
-        ],
-      ),
-    ),
-  );
-
   Widget _history() => Padding(
     padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
     child: Column(
@@ -490,7 +427,6 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
                     _handleGameRoundTap(
                       context: context,
                       session: round,
-                      onResume: () => _resumeRound(round),
                       onDelete: () => _deleteRound(round),
                     ),
                   );

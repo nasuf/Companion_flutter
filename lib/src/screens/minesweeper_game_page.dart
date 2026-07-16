@@ -32,55 +32,19 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
       api: widget.api,
       authSession: widget.authSession,
       gameKey: _nativeMinesweeperGameKey,
-      gameTitle: widget.game.title,
       onChanged: () {
         if (mounted) setState(() {});
       },
     );
-    unawaited(_initialize());
+    unawaited(_runtime.initialize());
   }
 
-  Future<void> _initialize() async {
-    final resume = await _runtime.initialize();
-    if (resume != null) await _restoreResume(resume);
-  }
-
-  Future<bool> _resumeRound(GameSession session) async {
-    if (_runtime.session?.id == session.id && _engine != null) return true;
-    final resume = await _runtime.resumeRound(session);
-    return resume != null && await _restoreResume(resume);
-  }
-
-  Future<bool> _restoreResume(_NativeGameResume resume) async {
-    if (!mounted) return false;
-    try {
-      final engine = resume.state.isEmpty
-          ? MinesweeperEngine(seed: resume.session.id.hashCode)
-          : MinesweeperEngine.restore(
-              resume.state,
-              actionCount: resume.actionCount,
-              seed: resume.session.id.hashCode,
-            );
-      setState(() {
-        _engine = engine;
-        _lastAction = null;
-        _actionHistory
-          ..clear()
-          ..addAll(resume.actions);
-        _tool = _MinesweeperTool.reveal;
-        _resolving = false;
-      });
-      if (engine.isFinished) {
-        unawaited(_finish(engine.status));
-      } else if (engine.turn == MinesweeperActor.agent) {
-        unawaited(_agentTurn());
-      }
-      return true;
-    } catch (caught) {
-      _runtime.syncNotice = '上一局扫雷无法恢复，可以重新开一局：$caught';
-      if (mounted) setState(() {});
-      return false;
-    }
+  @override
+  void dispose() {
+    unawaited(
+      _runtime.abort('page_closed', _sessionSummary(), updateUi: false),
+    );
+    super.dispose();
   }
 
   void _clearActiveRound() {
@@ -317,7 +281,6 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
           ? '轮到你，点开或标记一格'
           : '轮到 ${_runtime.agentName} 推理',
       onStart: _start,
-      onResumeRound: _resumeRound,
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每次揭格、标雷、约束推理、冒险判断和最终雷盘都会保存。',

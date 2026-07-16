@@ -205,30 +205,6 @@ class GoEngine {
        _board = List<int>.from(board),
        _positionHistory = {...?positionHistory, _goBoardHash(board)};
 
-  factory GoEngine.restore(Map<String, dynamic> state, {int moveCount = 0}) {
-    final board = (state['board'] as List? ?? const [])
-        .whereType<num>()
-        .map((item) => item.round())
-        .toList(growable: false);
-    if (board.length != boardArea) throw const FormatException('invalid_board');
-    final engine = GoEngine.debug(
-      board,
-      turn: GoActor.values.firstWhere(
-        (item) => item.name == state['turn'],
-        orElse: () => GoActor.user,
-      ),
-      consecutivePasses: (state['consecutive_passes'] as num?)?.round() ?? 0,
-      userCaptures: (state['user_captures'] as num?)?.round() ?? 0,
-      agentCaptures: (state['agent_captures'] as num?)?.round() ?? 0,
-      positionHistory: (state['position_history'] as List?)
-          ?.whereType<num>()
-          .map((item) => item.round())
-          .toSet(),
-    );
-    engine._moveOffset = moveCount;
-    return engine;
-  }
-
   static const int boardSize = 9;
   static const int boardArea = boardSize * boardSize;
   static const int _empty = 0;
@@ -239,7 +215,6 @@ class GoEngine {
   final List<int> _board;
   final Set<int> _positionHistory;
   final List<GoMove> _moves = [];
-  int _moveOffset = 0;
   GoActor turn = GoActor.user;
   int consecutivePasses = 0;
   int userCaptures = 0;
@@ -247,7 +222,7 @@ class GoEngine {
 
   List<int> get board => List.unmodifiable(_board);
   List<GoMove> get moves => List.unmodifiable(_moves);
-  int get moveCount => _moveOffset + _moves.length;
+  int get moveCount => _moves.length;
   bool get isFinished => status != GoStatus.playing;
   int get stateHash => _goStateHash(_board, turn.index, consecutivePasses);
   GoScore get score => _scoreGoBoard(_board, komi);
@@ -311,7 +286,7 @@ class GoEngine {
       consecutivePasses: consecutivePasses,
     );
     final move = GoMove(
-      number: _moveOffset + _moves.length + 1,
+      number: _moves.length + 1,
       actor: actor,
       index: index,
       captured: captured,

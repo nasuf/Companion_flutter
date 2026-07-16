@@ -125,39 +125,8 @@ class ChineseCheckersEngine {
   }) : assert(board.length == 121),
        _board = List<int>.from(board);
 
-  factory ChineseCheckersEngine.restore(
-    Map<String, dynamic> state, {
-    int actionCount = 0,
-  }) {
-    final board = List<int>.filled(_boardCells.length, -1);
-    final pieces = state['pieces'];
-    if (pieces is! List) throw const FormatException('missing_pieces');
-    for (final raw in pieces.whereType<Map>()) {
-      final piece = Map<String, dynamic>.from(raw);
-      final index = (piece['index'] as num?)?.round();
-      final actor = ChineseCheckersActor.values.firstWhere(
-        (item) => item.name == piece['actor'],
-        orElse: () => throw const FormatException('invalid_actor'),
-      );
-      if (index == null || index < 0 || index >= board.length) {
-        throw const FormatException('invalid_piece');
-      }
-      board[index] = actor.index;
-    }
-    final engine = ChineseCheckersEngine.debug(
-      board,
-      turn: ChineseCheckersActor.values.firstWhere(
-        (item) => item.name == state['turn'],
-        orElse: () => ChineseCheckersActor.user,
-      ),
-    );
-    engine._moveOffset = actionCount;
-    return engine;
-  }
-
   final List<int> _board;
   final List<ChineseCheckersMove> _moves = [];
-  int _moveOffset = 0;
   ChineseCheckersActor turn = ChineseCheckersActor.user;
 
   static List<ChineseCheckersCell> get cells => _boardCells;
@@ -165,7 +134,7 @@ class ChineseCheckersEngine {
   List<ChineseCheckersMove> get moves => List.unmodifiable(_moves);
   int get stateHash => _hashBoard(_board, turn.index);
   bool get isFinished => status != ChineseCheckersStatus.playing;
-  int get moveCount => _moveOffset + _moves.length;
+  int get moveCount => _moves.length;
   ChineseCheckersStatus get status {
     if (_topCamp.every(
       (index) => _board[index] == ChineseCheckersActor.user.index,
@@ -219,7 +188,7 @@ class ChineseCheckersEngine {
         ? ChineseCheckersActor.agent
         : ChineseCheckersActor.user;
     final move = ChineseCheckersMove(
-      number: _moveOffset + _moves.length + 1,
+      number: _moves.length + 1,
       actor: actor,
       path: List.unmodifiable(selected),
       stateBeforeHash: beforeHash,

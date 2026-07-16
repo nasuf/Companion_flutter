@@ -174,45 +174,6 @@ class Match3Engine {
        _random = math.Random(seed),
        _board = List<Match3Tile>.from(board);
 
-  factory Match3Engine.restore(
-    Map<String, dynamic> state, {
-    int actionCount = 0,
-    int seed = 20260714,
-    int turnLimit = 30,
-    int targetScore = 12000,
-  }) {
-    final rawBoard = state['board'];
-    if (rawBoard is! List || rawBoard.length != size * size) {
-      throw const FormatException('invalid_board');
-    }
-    final board = rawBoard
-        .map((raw) {
-          final tile = Map<String, dynamic>.from(raw as Map);
-          return Match3Tile(
-            color: (tile['color'] as num).round(),
-            special: Match3Special.values.firstWhere(
-              (item) => item.name == tile['special'],
-              orElse: () => Match3Special.none,
-            ),
-          );
-        })
-        .toList(growable: false);
-    final engine = Match3Engine.debug(
-      board,
-      seed: seed,
-      turnLimit: turnLimit,
-      targetScore: targetScore,
-    );
-    engine.turn = Match3Actor.values.firstWhere(
-      (item) => item.name == state['turn'],
-      orElse: () => Match3Actor.user,
-    );
-    engine.userScore = (state['user_score'] as num?)?.round() ?? 0;
-    engine.agentScore = (state['agent_score'] as num?)?.round() ?? 0;
-    engine._turnOffset = actionCount;
-    return engine;
-  }
-
   static const int size = 8;
   static const int colorCount = 6;
 
@@ -222,7 +183,6 @@ class Match3Engine {
   final int targetScore;
   late List<Match3Tile> _board;
   final List<Match3Turn> _turns = [];
-  int _turnOffset = 0;
   Match3Actor turn = Match3Actor.user;
   int userScore = 0;
   int agentScore = 0;
@@ -230,8 +190,7 @@ class Match3Engine {
   List<Match3Tile> get board => List.unmodifiable(_board);
   List<Match3Turn> get turns => List.unmodifiable(_turns);
   int get totalScore => userScore + agentScore;
-  int get turnsRemaining =>
-      math.max(0, turnLimit - _turnOffset - _turns.length);
+  int get turnsRemaining => math.max(0, turnLimit - _turns.length);
   int get stateHash =>
       _hashMatch3(_board, turn.index, totalScore, turnsRemaining);
   Match3Status get status {
@@ -354,10 +313,10 @@ class Match3Engine {
       _board,
       turn.index,
       totalScore,
-      math.max(0, turnLimit - _turnOffset - _turns.length - 1),
+      math.max(0, turnLimit - _turns.length - 1),
     );
     final record = Match3Turn(
-      number: _turnOffset + _turns.length + 1,
+      number: _turns.length + 1,
       actor: actor,
       swap: swap,
       stateBeforeHash: beforeHash,
@@ -400,7 +359,7 @@ class Match3Engine {
 
   Map<String, dynamic> summaryJson() => {
     'status': status.name,
-    'turn_count': _turnOffset + _turns.length,
+    'turn_count': _turns.length,
     'user_score': userScore,
     'agent_score': agentScore,
     'total_score': totalScore,

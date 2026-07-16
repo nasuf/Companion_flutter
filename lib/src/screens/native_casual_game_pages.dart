@@ -28,50 +28,23 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
       api: widget.api,
       authSession: widget.authSession,
       gameKey: _nativeChineseCheckersGameKey,
-      gameTitle: widget.game.title,
       onChanged: () {
         if (mounted) setState(() {});
       },
     );
-    unawaited(_initialize());
+    unawaited(_runtime.initialize());
   }
 
-  Future<void> _initialize() async {
-    final resume = await _runtime.initialize();
-    if (resume != null) await _restoreResume(resume);
-  }
-
-  Future<bool> _resumeRound(GameSession session) async {
-    if (_runtime.session?.id == session.id && _engine != null) return true;
-    final resume = await _runtime.resumeRound(session);
-    return resume != null && await _restoreResume(resume);
-  }
-
-  Future<bool> _restoreResume(_NativeGameResume resume) async {
-    if (!mounted) return false;
-    try {
-      final engine = resume.state.isEmpty
-          ? ChineseCheckersEngine()
-          : ChineseCheckersEngine.restore(
-              resume.state,
-              actionCount: resume.actionCount,
-            );
-      setState(() {
-        _engine = engine;
-        _selected = null;
-        _targets = const {};
-      });
-      if (engine.isFinished) {
-        unawaited(_finish(engine.status));
-      } else if (engine.turn == ChineseCheckersActor.agent) {
-        unawaited(_agentTurn());
-      }
-      return true;
-    } catch (caught) {
-      _runtime.syncNotice = '上一局棋盘无法恢复，可以重新开一局：$caught';
-      if (mounted) setState(() {});
-      return false;
-    }
+  @override
+  void dispose() {
+    unawaited(
+      _runtime.abort(
+        'page_closed',
+        _engine?.summaryJson() ?? const {},
+        updateUi: false,
+      ),
+    );
+    super.dispose();
   }
 
   void _clearActiveRound() {
@@ -212,7 +185,6 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
           ? '这一局结束了'
           : '轮到你移动棋子',
       onStart: _start,
-      onResumeRound: _resumeRound,
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking,
       historySubtitle: '每条连续跳路径和进营过程都会保存。',
@@ -270,52 +242,23 @@ class _Match3GamePageState extends State<_Match3GamePage> {
       api: widget.api,
       authSession: widget.authSession,
       gameKey: _nativeMatch3GameKey,
-      gameTitle: widget.game.title,
       onChanged: () {
         if (mounted) setState(() {});
       },
     );
-    unawaited(_initialize());
+    unawaited(_runtime.initialize());
   }
 
-  Future<void> _initialize() async {
-    final resume = await _runtime.initialize();
-    if (resume != null) await _restoreResume(resume);
-  }
-
-  Future<bool> _resumeRound(GameSession session) async {
-    if (_runtime.session?.id == session.id && _engine != null) return true;
-    final resume = await _runtime.resumeRound(session);
-    return resume != null && await _restoreResume(resume);
-  }
-
-  Future<bool> _restoreResume(_NativeGameResume resume) async {
-    if (!mounted) return false;
-    try {
-      final engine = resume.state.isEmpty
-          ? Match3Engine(seed: resume.session.id.hashCode)
-          : Match3Engine.restore(
-              resume.state,
-              actionCount: resume.actionCount,
-              seed: resume.session.id.hashCode,
-            );
-      setState(() {
-        _engine = engine;
-        _selected = null;
-        _lastTurn = null;
-        _resolving = false;
-      });
-      if (engine.isFinished) {
-        unawaited(_finishMatch3(engine.status));
-      } else if (engine.turn == Match3Actor.agent) {
-        unawaited(_match3AgentTurn());
-      }
-      return true;
-    } catch (caught) {
-      _runtime.syncNotice = '上一局消消乐无法恢复，可以重新开一局：$caught';
-      if (mounted) setState(() {});
-      return false;
-    }
+  @override
+  void dispose() {
+    unawaited(
+      _runtime.abort(
+        'page_closed',
+        _engine?.summaryJson() ?? const {},
+        updateUi: false,
+      ),
+    );
+    super.dispose();
   }
 
   void _clearActiveRound() {
@@ -506,7 +449,6 @@ class _Match3GamePageState extends State<_Match3GamePage> {
                 : '这一关差一点'
           : '轮到你交换相邻方块',
       onStart: _start,
-      onResumeRound: _resumeRound,
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每次交换、连消、特殊块和贡献分都会保存。',
@@ -551,7 +493,6 @@ class _NativeGameExperienceScaffold extends StatefulWidget {
     required this.game,
     required this.subtitle,
     required this.onStart,
-    required this.onResumeRound,
     required this.onActiveRoundDeleted,
     required this.restartDisabled,
     required this.historySubtitle,
@@ -562,7 +503,6 @@ class _NativeGameExperienceScaffold extends StatefulWidget {
   final _GameTile game;
   final String subtitle;
   final Future<void> Function() onStart;
-  final Future<bool> Function(GameSession session) onResumeRound;
   final VoidCallback onActiveRoundDeleted;
   final bool restartDisabled;
   final String historySubtitle;
@@ -598,16 +538,6 @@ class _NativeGameExperienceScaffoldState
     });
   }
 
-  Future<void> _resumeRound(GameSession session) async {
-    if (widget.runtime.session?.id != session.id && widget.restartDisabled) {
-      widget.runtime.showNotice('当前这一步还在完成，请稍等一下。');
-      return;
-    }
-    final restored = await widget.onResumeRound(session);
-    if (!mounted || !restored) return;
-    setState(() => _isFullscreen = true);
-  }
-
   Future<void> _deleteRound(GameSession session) async {
     final wasActive = widget.runtime.session?.id == session.id;
     if (wasActive && widget.restartDisabled) {
@@ -625,8 +555,6 @@ class _NativeGameExperienceScaffoldState
     final activeChild = widget.activeChild;
     if (_isFullscreen && activeChild != null) {
       return _NativeFullscreenGameSurface(
-        title: widget.game.title,
-        subtitle: widget.subtitle,
         onExit: () => setState(() => _isFullscreen = false),
         onRestart: _start,
         restartLabel: widget.runtime.completed ? '再来一局' : '重新开一局',
@@ -720,10 +648,10 @@ class _NativeGameExperienceScaffoldState
                                 label: '开始游戏',
                                 loading:
                                     widget.runtime.starting ||
-                                    widget.runtime.recovering,
+                                    widget.runtime.initializing,
                                 disabled:
                                     widget.runtime.starting ||
-                                    widget.runtime.recovering,
+                                    widget.runtime.initializing,
                                 onPressed: _start,
                               ),
                             ],
@@ -763,41 +691,10 @@ class _NativeGameExperienceScaffoldState
                   ),
                 ),
               ),
-              if (widget.runtime.timeline.isNotEmpty)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-                    child: _GlassPanel(
-                      radius: 22,
-                      padding: const EdgeInsets.fromLTRB(15, 14, 15, 8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${widget.runtime.agentName} 在旁边',
-                            style: TextStyle(
-                              color: AppColors.text,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          for (final item
-                              in widget.runtime.timeline.reversed.take(3))
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: _TimelineRow(item: item),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
               SliverToBoxAdapter(
                 child: _NativeGameHistory(
                   runtime: widget.runtime,
                   subtitle: widget.historySubtitle,
-                  onResumeRound: _resumeRound,
                   onDeleteRound: _deleteRound,
                 ),
               ),
@@ -814,12 +711,10 @@ class _NativeGameHistory extends StatelessWidget {
   const _NativeGameHistory({
     required this.runtime,
     required this.subtitle,
-    required this.onResumeRound,
     required this.onDeleteRound,
   });
   final _NativeGameRuntime runtime;
   final String subtitle;
-  final Future<void> Function(GameSession session) onResumeRound;
   final Future<void> Function(GameSession session) onDeleteRound;
 
   @override
@@ -872,7 +767,6 @@ class _NativeGameHistory extends StatelessWidget {
                     _handleGameRoundTap(
                       context: context,
                       session: round,
-                      onResume: () => onResumeRound(round),
                       onDelete: () => onDeleteRound(round),
                     ),
                   );

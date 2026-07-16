@@ -28,47 +28,23 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
       api: widget.api,
       authSession: widget.authSession,
       gameKey: _nativeReversiGameKey,
-      gameTitle: widget.game.title,
       onChanged: () {
         if (mounted) setState(() {});
       },
     );
-    unawaited(_initialize());
+    unawaited(_runtime.initialize());
   }
 
-  Future<void> _initialize() async {
-    final resume = await _runtime.initialize();
-    if (resume != null) await _restoreResume(resume);
-  }
-
-  Future<bool> _resumeRound(GameSession session) async {
-    if (_runtime.session?.id == session.id && _engine != null) return true;
-    final resume = await _runtime.resumeRound(session);
-    return resume != null && await _restoreResume(resume);
-  }
-
-  Future<bool> _restoreResume(_NativeGameResume resume) async {
-    if (!mounted) return false;
-    try {
-      final engine = resume.state.isEmpty
-          ? ReversiEngine()
-          : ReversiEngine.restore(resume.state, moveCount: resume.actionCount);
-      setState(() {
-        _engine = engine;
-        _lastMove = null;
-        _resolving = false;
-      });
-      if (engine.isFinished) {
-        unawaited(_finish(engine.status));
-      } else if (engine.turn == ReversiActor.agent) {
-        unawaited(_agentLoop());
-      }
-      return true;
-    } catch (caught) {
-      _runtime.syncNotice = '上一局黑白棋无法恢复，可以重新开一局：$caught';
-      if (mounted) setState(() {});
-      return false;
-    }
+  @override
+  void dispose() {
+    unawaited(
+      _runtime.abort(
+        'page_closed',
+        _engine?.summaryJson() ?? const {},
+        updateUi: false,
+      ),
+    );
+    super.dispose();
   }
 
   void _clearActiveRound() {
@@ -151,7 +127,6 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
         }
         await _playAndReport(decision.point.index, decision: decision);
         if (!engine.isFinished && engine.turn == ReversiActor.agent) {
-          _runtime.addLocalComment('这一轮你没有能落的位置，我就再走一步啦。');
           await Future<void>.delayed(const Duration(milliseconds: 420));
         }
       }
@@ -189,8 +164,6 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
     }
     if (result.status != ReversiStatus.playing) {
       await _finish(result.status);
-    } else if (result.move.forcedPass == ReversiActor.agent) {
-      _runtime.addLocalComment('我这一步没地方落，你继续。别客气。');
     }
   }
 
@@ -267,7 +240,6 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
           ? '你执黑，落在发光的位置'
           : '${_runtime.agentName} 执白，轮到对方落子',
       onStart: _start,
-      onResumeRound: _resumeRound,
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每次落子、翻面、抢角、迫停、搜索判断和最终比分都会保存。',

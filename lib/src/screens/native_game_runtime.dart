@@ -5,26 +5,22 @@ class _NativeGameRuntime {
     required this.api,
     required this.authSession,
     required this.gameKey,
-    required this.gameTitle,
     required this.onChanged,
   });
 
   final CompanionApi api;
   final AuthSession authSession;
   final String gameKey;
-  final String gameTitle;
   final VoidCallback onChanged;
 
   GameSession? session;
   List<GameSession> rounds = const [];
-  final List<_GameTimelineItem> timeline = [];
   DateTime? startedAt;
   bool starting = false;
   bool aiThinking = false;
   bool roundsLoading = true;
-  bool recovering = true;
+  bool initializing = true;
   bool completed = false;
-  bool resumed = false;
   bool deleting = false;
   String? error;
   String? syncNotice;
@@ -43,100 +39,64 @@ class _NativeGameRuntime {
     return math.max(0, DateTime.now().difference(value).inSeconds);
   }
 
-  Future<_NativeGameResume?> initialize() async {
+  Future<void> initialize() async {
     await _eventOutbox.replay();
     try {
       final sessions = await api.listNativeGameSessions(gameKey: gameKey);
-      rounds = sessions.where(_GameRoundSummary.canShow).toList();
-      final agentId = authSession.agentId;
-      final active = sessions.where(
-        (candidate) =>
-            candidate.status == 'playing' &&
-            (agentId == null || candidate.agentId == agentId),
-      );
-      final candidate = active.firstOrNull;
-      if (candidate != null) {
-        return _activateResume(candidate);
+      final closed = <GameSession>[];
+      final activeAgentId = authSession.agentId;
+      for (final candidate in sessions.where(
+        (item) =>
+            activeAgentId != null &&
+            item.agentId == activeAgentId &&
+            {'created', 'playing'}.contains(item.status),
+      )) {
+        final terminated = await _terminateLegacySession(candidate);
+        if (terminated != null) closed.add(terminated);
       }
-      return null;
+      rounds = [
+        ...closed,
+        ...sessions,
+      ].where(_GameRoundSummary.canShow).toList();
     } catch (caught) {
       syncNotice = _formatError(caught);
-      return null;
     } finally {
-      recovering = false;
+      initializing = false;
       roundsLoading = false;
       _notify();
     }
   }
 
-  Future<_NativeGameResume?> resumeRound(GameSession candidate) async {
-    if (starting || recovering || aiThinking) {
-      syncNotice = aiThinking ? '$agentName 还在走当前这一步，请稍等一下。' : '正在恢复棋局，请稍等一下。';
-      _notify();
-      return null;
-    }
-    if (!_isResumable(candidate)) {
-      syncNotice = '这局已经结束，可以在回忆里查看完整数据。';
-      _notify();
-      return null;
-    }
-    recovering = true;
-    syncNotice = null;
-    _notify();
+  Future<GameSession?> _terminateLegacySession(GameSession candidate) async {
+    final clientEventId = '${candidate.id}:game_aborted:resume-disabled';
+    const payload = {
+      'schema_version': 1,
+      'reason': 'progress_resume_disabled',
+      'duration_seconds': 0,
+    };
     try {
-      final sessions = await api.listNativeGameSessions(gameKey: gameKey);
-      rounds = sessions.where(_GameRoundSummary.canShow).toList();
-      final latest = sessions
-          .where((item) => item.id == candidate.id)
-          .firstOrNull;
-      if (latest == null || !_isResumable(latest)) {
-        syncNotice = '这局的状态已经更新，请重新选择。';
-        return null;
-      }
-      return await _activateResume(latest);
+      await _eventOutbox.enqueue(
+        sessionId: candidate.id,
+        eventType: 'game_aborted',
+        state: 'aborted',
+        payload: payload,
+        clientEventId: clientEventId,
+      );
+      final response = await api.sendNativeGameEvent(
+        sessionId: candidate.id,
+        eventType: 'game_aborted',
+        state: 'aborted',
+        payload: payload,
+        clientEventId: clientEventId,
+      );
+      await _eventOutbox.remove(clientEventId);
+      return response.session;
     } catch (caught) {
-      syncNotice = '这局暂时无法恢复：${_formatError(caught)}';
+      debugPrint(
+        'Failed to terminate obsolete native game ${candidate.id}: $caught',
+      );
       return null;
-    } finally {
-      recovering = false;
-      roundsLoading = false;
-      _notify();
     }
-  }
-
-  bool _isResumable(GameSession candidate) {
-    final agentId = authSession.agentId;
-    return candidate.status == 'playing' &&
-        (candidate.gameKey == null || candidate.gameKey == gameKey) &&
-        (agentId == null || candidate.agentId == agentId);
-  }
-
-  Future<_NativeGameResume> _activateResume(GameSession candidate) async {
-    final resume = _NativeGameResume.fromSession(candidate, gameKey);
-    if (resume.actionCount > 0 && resume.state.isEmpty) {
-      throw const FormatException('saved_game_state_missing');
-    }
-    session = candidate;
-    // A resumed page starts a new active segment. Time spent away from the
-    // game must not be reported as play time for this visit.
-    startedAt = DateTime.now();
-    completed = false;
-    resumed = true;
-    aiThinking = false;
-    timeline
-      ..clear()
-      ..add(_GameTimelineItem.ai(agentName, '这局还在。棋盘和走过的每一步我都替你留着，我们接着来。'));
-    await reportEvent(
-      'game_state_snapshot',
-      state: 'playing',
-      payload: {
-        'reason': 'resumed',
-        'action_count': resume.actionCount,
-        'state_after': resume.state,
-      },
-      updateUi: false,
-    );
-    return resume;
   }
 
   Future<void> loadRounds() async {
@@ -154,7 +114,7 @@ class _NativeGameRuntime {
 
   Future<bool> deleteRound(GameSession candidate) async {
     final isActive = session?.id == candidate.id;
-    if (deleting || starting || recovering || (isActive && aiThinking)) {
+    if (deleting || starting || initializing || (isActive && aiThinking)) {
       showNotice(
         isActive && aiThinking
             ? '$agentName 还在完成当前这一步，请稍等一下。'
@@ -183,9 +143,7 @@ class _NativeGameRuntime {
         session = null;
         startedAt = null;
         completed = false;
-        resumed = false;
         aiThinking = false;
-        timeline.clear();
       }
       syncNotice = '游戏记录已删除。';
       return true;
@@ -200,8 +158,8 @@ class _NativeGameRuntime {
 
   Future<GameSession?> start(Map<String, dynamic> payload) async {
     final agentId = authSession.agentId;
-    if (recovering) {
-      syncNotice = '正在补齐上一局的结算，请稍等一下。';
+    if (initializing) {
+      syncNotice = '正在清理上一局，请稍等一下。';
       _notify();
       return null;
     }
@@ -216,9 +174,7 @@ class _NativeGameRuntime {
     error = null;
     syncNotice = null;
     session = null;
-    timeline.clear();
     completed = false;
-    resumed = false;
     aiThinking = false;
     _eventSequence = 0;
     _notify();
@@ -230,10 +186,6 @@ class _NativeGameRuntime {
         gameKey: gameKey,
       );
       startedAt = DateTime.now();
-      final intro = session?.companionReply;
-      if (intro != null && intro.isNotEmpty) {
-        timeline.add(_GameTimelineItem.ai(agentName, intro));
-      }
       _notify();
       await reportEvent(
         'game_started',
@@ -260,21 +212,13 @@ class _NativeGameRuntime {
     completed = true;
     aiThinking = false;
     _notify();
-    final terminalPayload = Map<String, dynamic>.from(payload);
-    if (resumed) {
-      // The server already owns the canonical pre-resume action stream. New
-      // actions have also been appended one-by-one, so a partial local history
-      // must not replace or fail validation against that stream at settlement.
-      terminalPayload.remove('actions');
-      terminalPayload.remove('moves');
-    }
     final response = await reportEvent(
       'game_finished',
       state: 'settled',
       payload: {
         'schema_version': 1,
         'duration_seconds': elapsedSeconds,
-        ...terminalPayload,
+        ...payload,
       },
     );
     unawaited(loadRounds());
@@ -357,11 +301,6 @@ class _NativeGameRuntime {
         if (critical) await _eventOutbox.remove(clientEventId);
         session = response.session;
         syncNotice = null;
-        final reply = response.companionReply;
-        if (updateUi && reply != null && reply.isNotEmpty) {
-          timeline.add(_GameTimelineItem.ai(agentName, reply));
-          _trimTimeline();
-        }
         _notify(updateUi);
         return response;
       } catch (caught) {
@@ -382,21 +321,9 @@ class _NativeGameRuntime {
     return null;
   }
 
-  void addLocalComment(String message) {
-    timeline.add(_GameTimelineItem.ai(agentName, message));
-    _trimTimeline();
-    _notify();
-  }
-
   void showNotice(String message) {
     syncNotice = message;
     _notify();
-  }
-
-  void _trimTimeline() {
-    if (timeline.length > 6) {
-      timeline.removeRange(0, timeline.length - 6);
-    }
   }
 
   String _formatError(Object caught) {
@@ -409,60 +336,8 @@ class _NativeGameRuntime {
   }
 }
 
-class _NativeGameResume {
-  const _NativeGameResume({
-    required this.session,
-    required this.process,
-    required this.state,
-    required this.actions,
-    required this.actionCount,
-  });
-
-  final GameSession session;
-  final Map<String, dynamic> process;
-  final Map<String, dynamic> state;
-  final List<Map<String, dynamic>> actions;
-  final int actionCount;
-
-  factory _NativeGameResume.fromSession(GameSession session, String gameKey) {
-    final result = session.result ?? const <String, dynamic>{};
-    final processRoot = _asNativeGameMap(result['process']);
-    final process = _asNativeGameMap(processRoot[gameKey]);
-    final actions = _asNativeGameMapList(
-      process['actions'] ?? process['moves'],
-    );
-    return _NativeGameResume(
-      session: session,
-      process: process,
-      state: _asNativeGameMap(process['final_state']),
-      actions: actions,
-      actionCount: _asNativeGameInt(
-        process['action_count'] ?? process['move_count'],
-        fallback: actions.length,
-      ),
-    );
-  }
-}
-
-Map<String, dynamic> _asNativeGameMap(Object? value) =>
-    value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
-
-List<Map<String, dynamic>> _asNativeGameMapList(Object? value) => value is List
-    ? value
-          .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item))
-          .toList(growable: false)
-    : const <Map<String, dynamic>>[];
-
-int _asNativeGameInt(Object? value, {required int fallback}) {
-  if (value is int) return value;
-  return int.tryParse(value?.toString() ?? '') ?? fallback;
-}
-
 class _NativeFullscreenGameSurface extends StatefulWidget {
   const _NativeFullscreenGameSurface({
-    required this.title,
-    required this.subtitle,
     required this.child,
     required this.onExit,
     required this.onRestart,
@@ -471,8 +346,6 @@ class _NativeFullscreenGameSurface extends StatefulWidget {
     required this.restartLoading,
   });
 
-  final String title;
-  final String subtitle;
   final Widget child;
   final VoidCallback onExit;
   final Future<void> Function() onRestart;
@@ -492,8 +365,7 @@ class _NativeFullscreenGameSurfaceState
     super.initState();
     unawaited(
       SystemChrome.setPreferredOrientations(const [
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
+        DeviceOrientation.portraitUp,
       ]),
     );
     unawaited(
@@ -524,92 +396,41 @@ class _NativeFullscreenGameSurfaceState
         children: [
           const _GameBackground(progress: 0.5),
           SafeArea(
-            minimum: const EdgeInsets.all(8),
-            child: LayoutBuilder(
-              builder: (context, constraints) => Stack(
-                children: [
-                  Positioned.fill(
-                    child: Center(
-                      child: _GlassPanel(
-                        radius: 20,
-                        padding: const EdgeInsets.all(10),
-                        child: FittedBox(
-                          fit: BoxFit.contain,
-                          child: SizedBox(width: 620, child: widget.child),
-                        ),
+            minimum: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+            child: Column(
+              children: [
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _NativeFullscreenActionButton(
+                        tooltip: widget.restartLabel,
+                        icon: Icons.refresh_rounded,
+                        loading: widget.restartLoading,
+                        onPressed: widget.restartDisabled
+                            ? null
+                            : widget.onRestart,
                       ),
-                    ),
-                  ),
-                  Positioned(
-                    left: 10,
-                    top: 10,
-                    child: IgnorePointer(
-                      child: Container(
-                        constraints: BoxConstraints(
-                          maxWidth: constraints.maxWidth * .45,
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 13,
-                          vertical: 9,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface.withValues(alpha: .9),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: AppColors.text.withValues(alpha: .08),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: AppColors.text,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            Text(
-                              widget.subtitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: AppColors.text.withValues(alpha: .5),
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
+                      const SizedBox(width: 8),
+                      _NativeFullscreenToggleButton(
+                        expanded: true,
+                        onPressed: widget.onExit,
                       ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: widget.child,
                     ),
                   ),
-                  Positioned(
-                    right: 10,
-                    top: 10,
-                    child: Row(
-                      children: [
-                        _NativeFullscreenActionButton(
-                          tooltip: widget.restartLabel,
-                          icon: Icons.refresh_rounded,
-                          loading: widget.restartLoading,
-                          onPressed: widget.restartDisabled
-                              ? null
-                              : widget.onRestart,
-                        ),
-                        const SizedBox(width: 8),
-                        _NativeFullscreenToggleButton(
-                          expanded: true,
-                          onPressed: widget.onExit,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],

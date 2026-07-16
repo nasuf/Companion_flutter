@@ -28,47 +28,23 @@ class _GoGamePageState extends State<_GoGamePage> {
       api: widget.api,
       authSession: widget.authSession,
       gameKey: _nativeGoGameKey,
-      gameTitle: widget.game.title,
       onChanged: () {
         if (mounted) setState(() {});
       },
     );
-    unawaited(_initialize());
+    unawaited(_runtime.initialize());
   }
 
-  Future<void> _initialize() async {
-    final resume = await _runtime.initialize();
-    if (resume != null) await _restoreResume(resume);
-  }
-
-  Future<bool> _resumeRound(GameSession session) async {
-    if (_runtime.session?.id == session.id && _engine != null) return true;
-    final resume = await _runtime.resumeRound(session);
-    return resume != null && await _restoreResume(resume);
-  }
-
-  Future<bool> _restoreResume(_NativeGameResume resume) async {
-    if (!mounted) return false;
-    try {
-      final engine = resume.state.isEmpty
-          ? GoEngine()
-          : GoEngine.restore(resume.state, moveCount: resume.actionCount);
-      setState(() {
-        _engine = engine;
-        _lastMove = null;
-        _resolving = false;
-      });
-      if (engine.isFinished) {
-        unawaited(_finish(engine.status));
-      } else if (engine.turn == GoActor.agent) {
-        unawaited(_agentTurn());
-      }
-      return true;
-    } catch (caught) {
-      _runtime.syncNotice = '上一局围棋无法恢复，可以重新开一局：$caught';
-      if (mounted) setState(() {});
-      return false;
-    }
+  @override
+  void dispose() {
+    unawaited(
+      _runtime.abort(
+        'page_closed',
+        _engine?.summaryJson() ?? const {},
+        updateUi: false,
+      ),
+    );
+    super.dispose();
   }
 
   void _clearActiveRound() {
@@ -239,7 +215,6 @@ class _GoGamePageState extends State<_GoGamePage> {
           ? '这一手正在落定'
           : '你执黑，轮到你落子',
       onStart: _start,
-      onResumeRound: _resumeRound,
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每一手、提子、叫吃、停着与最终数目都会保存。',

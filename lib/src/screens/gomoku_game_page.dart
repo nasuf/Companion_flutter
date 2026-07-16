@@ -16,327 +16,72 @@ class _NativeGomokuGamePage extends StatefulWidget {
 }
 
 class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
+  late final _NativeGameRuntime _runtime;
   GomokuEngine? _engine;
-  GameSession? _session;
-  List<GameSession> _rounds = const [];
-  final List<_GameTimelineItem> _timeline = [];
-  DateTime? _startedAt;
-  bool _starting = false;
-  bool _aiThinking = false;
-  bool _roundsLoading = true;
-  bool _recoveringTerminalEvents = true;
-  bool _completedLocally = false;
   bool _isFullscreen = false;
-  bool _deletingRound = false;
-  int _eventSequence = 0;
-  String? _error;
-  String? _syncNotice;
-  late final NativeGameEventOutbox _eventOutbox;
 
-  String get _agentName =>
-      _session?.aiPlayer.nickName ?? widget.authSession.agentName ?? 'AI';
+  String get _agentName => _runtime.agentName;
 
   @override
   void initState() {
     super.initState();
-    _eventOutbox = NativeGameEventOutbox.forApi(
+    _runtime = _NativeGameRuntime(
       api: widget.api,
       authSession: widget.authSession,
+      gameKey: _nativeGomokuGameKey,
+      onChanged: () {
+        if (mounted) setState(() {});
+      },
     );
-    unawaited(_initialize());
+    unawaited(_runtime.initialize());
   }
 
-  Future<void> _initialize() async {
-    await _eventOutbox.replay();
-    GomokuEngine? restoredEngine;
-    GameSession? resumableSession;
-    try {
-      final sessions = await widget.api.listNativeGameSessions(
-        gameKey: _nativeGomokuGameKey,
-      );
-      final agentId = widget.authSession.agentId;
-      final active = sessions
-          .where(
-            (candidate) =>
-                candidate.status == 'playing' &&
-                (agentId == null || candidate.agentId == agentId),
-          )
-          .firstOrNull;
-      resumableSession = active;
-      if (active != null) {
-        final process = _asNativeGameMap(
-          _asNativeGameMap(active.result?['process'])['gomoku'],
-        );
-        final moves = _asNativeGameMapList(process['moves']);
-        restoredEngine = GomokuEngine.restore(moves);
-      }
-      if (!mounted) return;
-      setState(() {
-        _rounds = sessions.where(_GameRoundSummary.canShow).toList();
-        _roundsLoading = false;
-        _recoveringTerminalEvents = false;
-        if (active != null && restoredEngine != null) {
-          _session = active;
-          _engine = restoredEngine;
-          _startedAt = DateTime.now();
-          _completedLocally = false;
-          _isFullscreen = true;
-          _timeline
-            ..clear()
-            ..add(
-              _GameTimelineItem.ai(_agentName, '这盘还在，我把棋谱接回来了。轮到谁、走到哪一步都没丢。'),
-            );
-        }
-      });
-      if (active != null && restoredEngine != null) {
-        await _reportEvent(
-          'game_state_snapshot',
-          state: 'playing',
-          payload: {
-            'reason': 'resumed',
-            'move_count': restoredEngine.moves.length,
-            'analysis': restoredEngine.analyze().toJson(),
-          },
-          updateUi: false,
-        );
-      }
-      if (restoredEngine?.isFinished == true) {
-        unawaited(_finishGame(restoredEngine!.status));
-      } else if (restoredEngine?.currentActor == GomokuActor.agent) {
-        unawaited(_playAgentTurn());
-      }
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _session = resumableSession;
-        _completedLocally = false;
-        _roundsLoading = false;
-        _recoveringTerminalEvents = false;
-        _syncNotice = '上一局五子棋无法恢复，可以重新开一局：${_formatError(error)}';
-      });
-    }
-  }
-
-  Future<void> _loadRounds() async {
-    try {
-      final sessions = await widget.api.listNativeGameSessions(
-        gameKey: _nativeGomokuGameKey,
-      );
-      if (!mounted) return;
-      setState(() {
-        _rounds = sessions.where(_GameRoundSummary.canShow).toList();
-        _roundsLoading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _roundsLoading = false;
-        _syncNotice = _formatError(error);
-      });
-    }
-  }
-
-  Future<void> _resumeRound(GameSession candidate) async {
-    if (_session?.id == candidate.id && _engine != null) {
-      if (mounted) setState(() => _isFullscreen = true);
-      return;
-    }
-    if (_starting || _recoveringTerminalEvents || _aiThinking) {
-      if (mounted) {
-        setState(() {
-          _syncNotice = _aiThinking
-              ? '$_agentName 还在走当前这一步，请稍等一下。'
-              : '正在恢复棋局，请稍等一下。';
-        });
-      }
-      return;
-    }
-    setState(() {
-      _recoveringTerminalEvents = true;
-      _syncNotice = null;
-    });
-    try {
-      final sessions = await widget.api.listNativeGameSessions(
-        gameKey: _nativeGomokuGameKey,
-      );
-      final session = sessions
-          .where((item) => item.id == candidate.id)
-          .firstOrNull;
-      final agentId = widget.authSession.agentId;
-      if (session == null ||
-          session.status != 'playing' ||
-          (agentId != null && session.agentId != agentId)) {
-        if (!mounted) return;
-        setState(() {
-          _rounds = sessions.where(_GameRoundSummary.canShow).toList();
-          _syncNotice = '这局的状态已经更新，请重新选择。';
-        });
-        return;
-      }
-      final process = _asNativeGameMap(
-        _asNativeGameMap(session.result?['process'])[_nativeGomokuGameKey],
-      );
-      final engine = GomokuEngine.restore(
-        _asNativeGameMapList(process['moves']),
-      );
-      if (!mounted) return;
-      setState(() {
-        _rounds = sessions.where(_GameRoundSummary.canShow).toList();
-        _session = session;
-        _engine = engine;
-        _startedAt = DateTime.now();
-        _completedLocally = false;
-        _isFullscreen = true;
-        _timeline
-          ..clear()
-          ..add(
-            _GameTimelineItem.ai(_agentName, '这盘还在，我把棋谱接回来了。轮到谁、走到哪一步都没丢。'),
-          );
-      });
-      await _reportEvent(
-        'game_state_snapshot',
-        state: 'playing',
-        payload: {
-          'reason': 'resumed_from_history',
-          'move_count': engine.moves.length,
-          'analysis': engine.analyze().toJson(),
-        },
+  @override
+  void dispose() {
+    unawaited(
+      _runtime.abort(
+        'page_closed',
+        _engine?.summaryJson() ?? const {},
         updateUi: false,
-      );
-      if (engine.isFinished) {
-        unawaited(_finishGame(engine.status));
-      } else if (engine.currentActor == GomokuActor.agent) {
-        unawaited(_playAgentTurn());
-      }
-    } catch (error) {
-      if (mounted) {
-        setState(() {
-          _syncNotice = '这局五子棋暂时无法恢复：${_formatError(error)}';
-        });
-      }
-    } finally {
-      if (mounted) setState(() => _recoveringTerminalEvents = false);
-    }
+      ),
+    );
+    super.dispose();
   }
 
   Future<void> _deleteRound(GameSession candidate) async {
-    final isActive = _session?.id == candidate.id;
-    if (_deletingRound ||
-        _starting ||
-        _recoveringTerminalEvents ||
-        (isActive && _aiThinking)) {
-      if (mounted) {
-        setState(() {
-          _syncNotice = isActive && _aiThinking
-              ? '$_agentName 还在完成当前这一步，请稍等一下。'
-              : '正在处理游戏记录，请稍等一下。';
-        });
-      }
-      return;
-    }
+    final wasActive = _runtime.session?.id == candidate.id;
+    final deleted = await _runtime.deleteRound(candidate);
+    if (!mounted || !deleted || !wasActive) return;
     setState(() {
-      _deletingRound = true;
-      _syncNotice = null;
+      _engine = null;
+      _isFullscreen = false;
     });
-    try {
-      try {
-        await widget.api.deleteNativeGameSession(candidate.id);
-      } on ApiException catch (error) {
-        if (!_isMissingNativeGameSession(error)) rethrow;
-      }
-      try {
-        await _eventOutbox.removeSession(candidate.id);
-      } catch (error) {
-        debugPrint('Failed to clear gomoku outbox for ${candidate.id}: $error');
-      }
-      if (!mounted) return;
-      setState(() {
-        _rounds = _rounds.where((round) => round.id != candidate.id).toList();
-        if (isActive) {
-          _session = null;
-          _engine = null;
-          _startedAt = null;
-          _completedLocally = false;
-          _aiThinking = false;
-          _isFullscreen = false;
-          _timeline.clear();
-        }
-        _syncNotice = '游戏记录已删除。';
-      });
-    } catch (error) {
-      if (mounted) {
-        setState(() {
-          _syncNotice = '暂时无法删除这局：${_formatError(error)}';
-        });
-      }
-    } finally {
-      if (mounted) setState(() => _deletingRound = false);
-    }
   }
 
   Future<void> _startGame() async {
-    final agentId = widget.authSession.agentId;
-    if (_recoveringTerminalEvents) {
-      setState(() => _syncNotice = '正在补齐上一局的结算，请稍等一下。');
-      return;
+    final current = _engine;
+    if (_runtime.session != null && !_runtime.completed) {
+      await _runtime.abort('restarted', current?.summaryJson() ?? const {});
     }
-    if (agentId == null || agentId.isEmpty || _starting) {
-      if (agentId == null || agentId.isEmpty) {
-        setState(() => _error = '还没有可用的 AI 伙伴，暂时不能开局。');
-      }
-      return;
-    }
-    if (_session != null && !_completedLocally) {
-      await _reportAbort('restarted');
-    }
-    setState(() {
-      _starting = true;
-      _error = null;
-      _syncNotice = null;
-      _timeline.clear();
-      _engine = null;
-      _session = null;
-      _completedLocally = false;
-      _aiThinking = false;
-      _eventSequence = 0;
+    final session = await _runtime.start({
+      'board_size': GomokuEngine.boardSize,
+      'first_actor': 'user',
     });
-    try {
-      final session = await widget.api.createNativeGameSession(
-        agentId: agentId,
-        workspaceId: widget.authSession.workspaceId,
-        conversationId: widget.authSession.conversationId,
-        gameKey: _nativeGomokuGameKey,
-      );
-      if (!mounted) return;
-      setState(() {
-        _session = session;
-        _engine = GomokuEngine();
-        _isFullscreen = true;
-        _startedAt = DateTime.now();
-        final intro = session.companionReply;
-        if (intro != null && intro.isNotEmpty) {
-          _timeline.add(_GameTimelineItem.ai(_agentName, intro));
-        }
-      });
-      await _reportEvent(
-        'game_started',
-        state: 'playing',
-        payload: {
-          'board_size': GomokuEngine.boardSize,
-          'play_style': 'natural_companion',
-          'first_actor': 'user',
-        },
-      );
-    } catch (error) {
-      if (mounted) setState(() => _error = _formatError(error));
-    } finally {
-      if (mounted) setState(() => _starting = false);
-    }
+    if (session == null || !mounted) return;
+    setState(() {
+      _engine = GomokuEngine();
+      _isFullscreen = true;
+    });
   }
 
   Future<void> _handleBoardTap(GomokuPoint point) async {
     final engine = _engine;
-    if (engine == null || engine.isFinished || _aiThinking || _starting) return;
+    if (engine == null ||
+        engine.isFinished ||
+        _runtime.aiThinking ||
+        _runtime.starting) {
+      return;
+    }
     try {
       final result = engine.place(point, GomokuActor.user);
       unawaited(HapticFeedback.selectionClick());
@@ -350,9 +95,9 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     } on StateError catch (error) {
       final code = error.message.toString();
       if (code == 'occupied_position') {
-        if (mounted) setState(() => _syncNotice = '这里已经有棋子了，换一个交叉点。');
+        _runtime.showNotice('这里已经有棋子了，换一个交叉点。');
         unawaited(
-          _reportEvent(
+          _runtime.reportEvent(
             'invalid_move',
             payload: {'reason': code, 'row': point.row, 'col': point.col},
           ),
@@ -364,8 +109,8 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
   Future<void> _playAgentTurn() async {
     final engine = _engine;
     if (engine == null || engine.isFinished) return;
-    setState(() => _aiThinking = true);
-    await _reportEvent(
+    setState(() => _runtime.aiThinking = true);
+    await _runtime.reportEvent(
       'ai_thinking_started',
       payload: {
         'move_number': engine.moves.length + 1,
@@ -376,7 +121,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     await Future<void>.delayed(const Duration(milliseconds: 520));
     if (!mounted || engine.isFinished) return;
     final decision = engine.chooseAiMove();
-    await _reportEvent(
+    await _runtime.reportEvent(
       'ai_move_decided',
       payload: {...decision.toJson(), 'play_style': 'natural_companion'},
     );
@@ -386,7 +131,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
       decision: decision,
     );
     unawaited(HapticFeedback.lightImpact());
-    if (mounted) setState(() => _aiThinking = false);
+    if (mounted) setState(() => _runtime.aiThinking = false);
     await _reportMove(result.move);
     if (result.status != GomokuGameStatus.playing) {
       await _finishGame(result.status);
@@ -394,13 +139,13 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
   }
 
   Future<void> _reportMove(GomokuMove move) async {
-    final response = await _reportEvent(
+    await _runtime.reportEvent(
       'move_placed',
       state: 'playing',
       payload: move.toJson(),
     );
     if (move.moment != null) {
-      await _reportEvent(
+      await _runtime.reportEvent(
         'threat_detected',
         payload: {
           ...move.moment!,
@@ -412,157 +157,23 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
         },
       );
     }
-    if (response?.companionReply == null) {
-      final local = _localCommentFor(move);
-      if (local != null && mounted) {
-        setState(() {
-          _timeline.add(_GameTimelineItem.ai(_agentName, local));
-          _trimTimeline();
-        });
-      }
-    }
   }
 
   Future<void> _finishGame(GomokuGameStatus status) async {
     final engine = _engine;
-    if (engine == null || _completedLocally) return;
-    _completedLocally = true;
-    if (mounted) setState(() => _aiThinking = false);
+    if (engine == null || _runtime.completed) return;
+    if (mounted) setState(() => _runtime.aiThinking = false);
     final summary = engine.summaryJson();
-    await _reportEvent(
-      'game_finished',
-      state: 'settled',
-      payload: {
-        ...summary,
-        'user_outcome': switch (status) {
-          GomokuGameStatus.userWon => 'win',
-          GomokuGameStatus.agentWon => 'lose',
-          GomokuGameStatus.draw => 'draw',
-          GomokuGameStatus.playing => 'draw',
-        },
-        'duration_seconds': _elapsedSeconds,
-        'analysis': engine.analyze().toJson(),
+    await _runtime.finish({
+      ...summary,
+      'user_outcome': switch (status) {
+        GomokuGameStatus.userWon => 'win',
+        GomokuGameStatus.agentWon => 'lose',
+        GomokuGameStatus.draw => 'draw',
+        GomokuGameStatus.playing => 'draw',
       },
-    );
-    unawaited(_loadRounds());
-  }
-
-  Future<void> _reportAbort(String reason, {bool updateUi = true}) async {
-    final engine = _engine;
-    final session = _session;
-    if (session == null || _completedLocally) return;
-    _completedLocally = true;
-    await _reportEvent(
-      'game_aborted',
-      state: 'aborted',
-      payload: {
-        ...?engine?.summaryJson(),
-        'reason': reason,
-        'duration_seconds': _elapsedSeconds,
-      },
-      updateUi: updateUi,
-    );
-  }
-
-  Future<GameEventResponse?> _reportEvent(
-    String eventType, {
-    String? state,
-    Map<String, dynamic> payload = const {},
-    bool updateUi = true,
-  }) async {
-    final session = _session;
-    if (session == null) return null;
-    _eventSequence += 1;
-    final clientEventId =
-        '${session.id}:$eventType:${DateTime.now().microsecondsSinceEpoch}:$_eventSequence';
-    final critical = {
-      'game_started',
-      'move_placed',
-      'game_finished',
-      'game_aborted',
-    }.contains(eventType);
-    final eventPayload = {'schema_version': 1, ...payload};
-    if (critical) {
-      try {
-        await _eventOutbox.enqueue(
-          sessionId: session.id,
-          eventType: eventType,
-          state: state,
-          payload: eventPayload,
-          clientEventId: clientEventId,
-        );
-      } catch (error) {
-        if (mounted && updateUi) {
-          setState(() => _syncNotice = '本地过程日志暂时无法写入：${_formatError(error)}');
-        }
-      }
-    }
-    final attempts = critical ? 3 : 2;
-    Object? lastError;
-    for (var attempt = 0; attempt < attempts; attempt += 1) {
-      try {
-        final response = await widget.api.sendNativeGameEvent(
-          sessionId: session.id,
-          eventType: eventType,
-          state: state,
-          payload: eventPayload,
-          clientEventId: clientEventId,
-        );
-        if (critical) await _eventOutbox.remove(clientEventId);
-        if (mounted && updateUi) {
-          setState(() {
-            _session = response.session;
-            _syncNotice = null;
-            final reply = response.companionReply;
-            if (reply != null && reply.isNotEmpty) {
-              _timeline.add(_GameTimelineItem.ai(_agentName, reply));
-              _trimTimeline();
-            }
-          });
-        }
-        return response;
-      } catch (error) {
-        lastError = error;
-        if (attempt + 1 < attempts) {
-          await Future<void>.delayed(
-            Duration(milliseconds: 280 * (attempt + 1)),
-          );
-        }
-      }
-    }
-    if (mounted && updateUi) {
-      setState(
-        () => _syncNotice = critical
-            ? '这一步已保存在手机里，联网后会按顺序自动同步。'
-            : '对局仍可继续，结算时会补齐棋谱：${_formatError(lastError!)}',
-      );
-    }
-    return null;
-  }
-
-  int get _elapsedSeconds {
-    final startedAt = _startedAt;
-    if (startedAt == null) return 0;
-    return math.max(0, DateTime.now().difference(startedAt).inSeconds);
-  }
-
-  void _trimTimeline() {
-    if (_timeline.length > 6) {
-      _timeline.removeRange(0, _timeline.length - 6);
-    }
-  }
-
-  String? _localCommentFor(GomokuMove move) {
-    if (move.actor == GomokuActor.user && move.number == 1) {
-      return '从 ${move.point.coordinate} 开始啊。好，我跟着你的方向看。';
-    }
-    if (move.actor == GomokuActor.agent && move.number == 6) {
-      return '棋盘开始热起来了。你不用急着追我，先把自己的线铺舒服。';
-    }
-    if (move.actor == GomokuActor.user && move.analysis.userLongestChain >= 3) {
-      return '我看到你在连这边了。再不管你，我可能真要吃亏。';
-    }
-    return null;
+      'analysis': engine.analyze().toJson(),
+    });
   }
 
   @override
@@ -570,13 +181,11 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     final engine = _engine;
     if (_isFullscreen && engine != null) {
       return _NativeFullscreenGameSurface(
-        title: '五子棋',
-        subtitle: _statusText(engine),
         onExit: () => setState(() => _isFullscreen = false),
         onRestart: _startGame,
         restartLabel: engine.isFinished ? '再来一盘' : '重新开一盘',
-        restartDisabled: _starting || _aiThinking,
-        restartLoading: _starting,
+        restartDisabled: _runtime.starting || _runtime.aiThinking,
+        restartLoading: _runtime.starting,
         child: _activeGameContents(engine),
       );
     }
@@ -615,8 +224,6 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
                   ),
                 ),
               ),
-              if (_timeline.isNotEmpty)
-                SliverToBoxAdapter(child: _companionPanel()),
               SliverToBoxAdapter(child: _roundHistory()),
               const SliverToBoxAdapter(child: SizedBox(height: 42)),
             ],
@@ -659,7 +266,9 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
           ),
           const SizedBox(height: 8),
           Text(
-            _session == null ? '和 $_agentName 安静下一盘' : _statusText(_engine),
+            _runtime.session == null
+                ? '和 $_agentName 安静下一盘'
+                : _statusText(_engine),
             style: TextStyle(
               color: AppColors.text.withValues(alpha: 0.55),
               fontSize: 13,
@@ -686,15 +295,15 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
                 child: _GamePlaceholderStage(game: widget.game),
               ),
             ),
-            if (_error != null) ...[
+            if (_runtime.error != null) ...[
               const SizedBox(height: 10),
-              _GomokuNotice(text: _error!, isError: true),
+              _GomokuNotice(text: _runtime.error!, isError: true),
             ],
             const SizedBox(height: 12),
             _PrimaryGameButton(
               label: '开始游戏',
-              loading: _starting || _recoveringTerminalEvents,
-              disabled: _starting || _recoveringTerminalEvents,
+              loading: _runtime.starting || _runtime.initializing,
+              disabled: _runtime.starting || _runtime.initializing,
               onPressed: _startGame,
             ),
           ],
@@ -724,14 +333,14 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
             if (engine.isFinished)
               _PrimaryGameButton(
                 label: '再来一盘',
-                loading: _starting,
-                disabled: _starting,
+                loading: _runtime.starting,
+                disabled: _runtime.starting,
                 onPressed: _startGame,
               )
             else
               _GomokuRestartButton(
-                loading: _starting,
-                disabled: _starting || _aiThinking,
+                loading: _runtime.starting,
+                disabled: _runtime.starting || _runtime.aiThinking,
                 onPressed: _startGame,
               ),
           ],
@@ -747,68 +356,26 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
         agentAvatarUrl: widget.authSession.agentAvatarUrl,
         userAvatarUrl: widget.authSession.userAvatarUrl,
         status: engine.status,
-        aiThinking: _aiThinking,
+        aiThinking: _runtime.aiThinking,
         moveCount: engine.moves.length,
       ),
       const SizedBox(height: 14),
       _GomokuBoardFrame(
         child: _GomokuBoard(
           engine: engine,
-          enabled: !_aiThinking && !engine.isFinished,
-          aiThinking: _aiThinking,
+          enabled: !_runtime.aiThinking && !engine.isFinished,
+          aiThinking: _runtime.aiThinking,
           onPointTap: _handleBoardTap,
         ),
       ),
       const SizedBox(height: 11),
       _GomokuAnalysisStrip(analysis: engine.analyze(), agentName: _agentName),
-      if (_syncNotice != null) ...[
+      if (_runtime.syncNotice != null) ...[
         const SizedBox(height: 10),
-        _GomokuNotice(text: _syncNotice!, isError: false),
+        _GomokuNotice(text: _runtime.syncNotice!, isError: false),
       ],
     ],
   );
-
-  Widget _companionPanel() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-      child: _GlassPanel(
-        radius: 22,
-        padding: const EdgeInsets.fromLTRB(15, 14, 15, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF20AA72),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '$_agentName 在棋盘边',
-                  style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            for (final item in _timeline.reversed.take(3))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _TimelineRow(item: item),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _roundHistory() {
     return Padding(
@@ -827,8 +394,8 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
                 ),
               ),
               const Spacer(),
-              if (_rounds.isNotEmpty)
-                _SoftCountPill(text: '${_rounds.length} 局'),
+              if (_runtime.rounds.isNotEmpty)
+                _SoftCountPill(text: '${_runtime.rounds.length} 局'),
             ],
           ),
           const SizedBox(height: 5),
@@ -841,16 +408,16 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
             ),
           ),
           const SizedBox(height: 11),
-          if (_roundsLoading)
+          if (_runtime.roundsLoading)
             const Center(child: CupertinoActivityIndicator())
-          else if (_rounds.isEmpty)
+          else if (_runtime.rounds.isEmpty)
             const _GameRoundEmptyState(
               icon: CupertinoIcons.square_grid_3x2,
               title: '第一盘还在等你',
               subtitle: '下完以后，这里会出现你们共同的一局棋。',
             )
           else
-            for (final round in _rounds.take(8))
+            for (final round in _runtime.rounds.take(8))
               Padding(
                 padding: const EdgeInsets.only(bottom: 9),
                 child: _GameRoundCard(
@@ -860,7 +427,6 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
                       _handleGameRoundTap(
                         context: context,
                         session: round,
-                        onResume: () => _resumeRound(round),
                         onDelete: () => _deleteRound(round),
                       ),
                     );
@@ -874,18 +440,13 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
 
   String _statusText(GomokuEngine? engine) {
     if (engine == null) return '准备中';
-    if (_aiThinking) return '$_agentName 正在想';
+    if (_runtime.aiThinking) return '$_agentName 正在想';
     return switch (engine.status) {
       GomokuGameStatus.playing => '轮到你落子',
       GomokuGameStatus.userWon => '你赢了',
       GomokuGameStatus.agentWon => '$_agentName 赢了',
       GomokuGameStatus.draw => '平局',
     };
-  }
-
-  String _formatError(Object error) {
-    if (error is ApiException) return error.message;
-    return error.toString();
   }
 }
 

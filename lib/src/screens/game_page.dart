@@ -13,8 +13,7 @@ class GamePage extends StatefulWidget {
 class _GamePageState extends State<GamePage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  GameSession? _activeSession;
-  Set<String> _resumableGameKeys = const {};
+  GameSession? _latestSession;
   _GameGroup? _activeGroup = _gameGroupCatalog.first;
   _GameTile _activeGame = _gameGroupCatalog.first.games[1];
   String? _error;
@@ -47,15 +46,9 @@ class _GamePageState extends State<GamePage>
           .where((session) => agentId == null || session.agentId == agentId)
           .toList(growable: false);
       setState(() {
-        _activeSession = relevantSessions
-            .where((session) => session.status == 'playing')
+        _latestSession = relevantSessions
+            .where(_GameRoundSummary.canShow)
             .firstOrNull;
-        _activeSession ??= relevantSessions.firstOrNull;
-        _resumableGameKeys = relevantSessions
-            .where((session) => session.status == 'playing')
-            .map((session) => session.gameKey)
-            .whereType<String>()
-            .toSet();
       });
     } catch (error) {
       if (mounted) setState(() => _error = _formatError(error));
@@ -200,7 +193,7 @@ class _GamePageState extends State<GamePage>
   }
 
   Widget _intro() {
-    final session = _activeSession;
+    final session = _latestSession;
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
       child: Column(
@@ -254,7 +247,7 @@ class _GamePageState extends State<GamePage>
               Expanded(
                 child: _MetricCard(
                   value: session?.status ?? '未开局',
-                  label: '状态',
+                  label: '最近一局',
                 ),
               ),
               const SizedBox(width: 10),
@@ -287,7 +280,6 @@ class _GamePageState extends State<GamePage>
                 group: group,
                 isOpen: group == _activeGroup,
                 activeGame: _activeGame,
-                resumableGameKeys: _resumableGameKeys,
                 onTap: () => setState(() {
                   _activeGroup = group == _activeGroup ? null : group;
                 }),
@@ -389,7 +381,6 @@ class _GameRoundSummary {
   final String roomId;
 
   static bool canShow(GameSession session) {
-    if (session.status == 'playing') return true;
     return session.result != null &&
         {'settled', 'aborted'}.contains(session.status);
   }
@@ -435,7 +426,6 @@ class _GameRoundSummary {
 
   bool get isWin => outcome == 'win';
   bool get isLose => outcome == 'lose';
-  bool get isPlaying => session.status == 'playing';
   bool get isAborted => outcome == 'aborted' || session.status == 'aborted';
   bool get isGomoku => gomoku.isNotEmpty;
   bool get isCooperative => {
@@ -450,7 +440,6 @@ class _GameRoundSummary {
       _intValue(gameData['action_count']);
 
   String get resultLabel {
-    if (isPlaying) return '继续游戏';
     if (isAborted) return '未完成';
     if (isCooperative && isWin) return '共同过关';
     if (isCooperative && isLose) return '这次没过';
@@ -461,7 +450,6 @@ class _GameRoundSummary {
   }
 
   String get title {
-    if (isPlaying) return '这局还在进行';
     if (isAborted) return '这局先停在半路';
     if (isCooperative && isWin) return '这一关你们一起拿下了';
     if (isCooperative && isLose) return '差一点就一起解开了';
@@ -482,10 +470,6 @@ class _GameRoundSummary {
     final genericText = genericLine;
     if (genericText != null) fragments.add(genericText);
     if (fragments.isEmpty && durationText != null) fragments.add(durationText!);
-    if (isPlaying) {
-      final progress = fragments.isEmpty ? '进度已经保存' : fragments.join(' · ');
-      return '$progress，点开继续。';
-    }
     return fragments.isEmpty ? '点开看看这一局发生了什么。' : fragments.join(' · ');
   }
 
@@ -742,7 +726,6 @@ class _GameRoundSummary {
   }
 
   Color get accent {
-    if (isPlaying) return const Color(0xFF16A56F);
     if (isWin) return const Color(0xFF19A56F);
     if (isLose) return const Color(0xFF178BFF);
     if (isAborted) return const Color(0xFF8996A6);
@@ -757,7 +740,7 @@ class _RoundDetailMetric {
   final String value;
 }
 
-enum _GameRoundAction { resume, details, delete }
+enum _GameRoundAction { details, delete }
 
 bool _isMissingNativeGameSession(ApiException error) =>
     error.statusCode == 404 && error.message.contains('session_not_found');
@@ -765,7 +748,6 @@ bool _isMissingNativeGameSession(ApiException error) =>
 Future<void> _handleGameRoundTap({
   required BuildContext context,
   required GameSession session,
-  required Future<void> Function() onResume,
   required Future<void> Function() onDelete,
 }) async {
   final summary = _GameRoundSummary.fromSession(session);
@@ -776,14 +758,10 @@ Future<void> _handleGameRoundTap({
       message: Text(summary.subtitle),
       actions: [
         CupertinoActionSheetAction(
-          isDefaultAction: summary.isPlaying,
-          onPressed: () => Navigator.pop(
-            sheetContext,
-            summary.isPlaying
-                ? _GameRoundAction.resume
-                : _GameRoundAction.details,
-          ),
-          child: Text(summary.isPlaying ? '继续游戏' : '查看详情'),
+          isDefaultAction: true,
+          onPressed: () =>
+              Navigator.pop(sheetContext, _GameRoundAction.details),
+          child: const Text('查看详情'),
         ),
         CupertinoActionSheetAction(
           isDestructiveAction: true,
@@ -799,9 +777,6 @@ Future<void> _handleGameRoundTap({
   );
   if (!context.mounted || action == null) return;
   switch (action) {
-    case _GameRoundAction.resume:
-      await onResume();
-      break;
     case _GameRoundAction.details:
       _showGameRoundDetails(context, summary);
       break;
@@ -879,9 +854,7 @@ class _GameRoundCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(15),
               ),
               child: Icon(
-                summary.isPlaying
-                    ? CupertinoIcons.play_fill
-                    : summary.isAborted
+                summary.isAborted
                     ? CupertinoIcons.pause_fill
                     : summary.isWin
                     ? CupertinoIcons.sparkles
@@ -1626,7 +1599,6 @@ class _GameGroupCard extends StatelessWidget {
     required this.group,
     required this.isOpen,
     required this.activeGame,
-    required this.resumableGameKeys,
     required this.onTap,
     required this.onGameSelected,
   });
@@ -1634,7 +1606,6 @@ class _GameGroupCard extends StatelessWidget {
   final _GameGroup group;
   final bool isOpen;
   final _GameTile activeGame;
-  final Set<String> resumableGameKeys;
   final VoidCallback onTap;
   final ValueChanged<_GameTile> onGameSelected;
 
@@ -1776,9 +1747,6 @@ class _GameGroupCard extends StatelessWidget {
                               _SmallGameTile(
                                 game: game,
                                 selected: game == activeGame,
-                                resumable: resumableGameKeys.contains(
-                                  game.nativeGameKey,
-                                ),
                                 onTap: () => onGameSelected(game),
                               ),
                           ],
@@ -1798,13 +1766,11 @@ class _SmallGameTile extends StatefulWidget {
   const _SmallGameTile({
     required this.game,
     required this.selected,
-    required this.resumable,
     required this.onTap,
   });
 
   final _GameTile game;
   final bool selected;
-  final bool resumable;
   final VoidCallback onTap;
 
   @override
@@ -1897,10 +1863,7 @@ class _SmallGameTileState extends State<_SmallGameTile>
             Positioned(
               left: 8,
               top: 8,
-              child: _GameStatusTag(
-                isOnline: widget.game.isOnline,
-                resumable: widget.resumable,
-              ),
+              child: _GameStatusTag(isOnline: widget.game.isOnline),
             ),
             Positioned(
               left: 10,
@@ -1940,10 +1903,9 @@ class _SmallGameTileState extends State<_SmallGameTile>
 }
 
 class _GameStatusTag extends StatelessWidget {
-  const _GameStatusTag({required this.isOnline, required this.resumable});
+  const _GameStatusTag({required this.isOnline});
 
   final bool isOnline;
-  final bool resumable;
 
   @override
   Widget build(BuildContext context) {
@@ -1956,17 +1918,11 @@ class _GameStatusTag extends StatelessWidget {
             ? LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: resumable
-                    ? const [
-                        Color(0xFF74C8FF),
-                        Color(0xFF2987F5),
-                        Color(0xFF1556C6),
-                      ]
-                    : const [
-                        Color(0xFF64EAA2),
-                        Color(0xFF19C778),
-                        Color(0xFF078E55),
-                      ],
+                colors: const [
+                  Color(0xFF64EAA2),
+                  Color(0xFF19C778),
+                  Color(0xFF078E55),
+                ],
                 stops: const [0.0, 0.52, 1.0],
               )
             : null,
@@ -1979,11 +1935,7 @@ class _GameStatusTag extends StatelessWidget {
         boxShadow: isOnline
             ? [
                 BoxShadow(
-                  color:
-                      (resumable
-                              ? const Color(0xFF287FF0)
-                              : const Color(0xFF03A85E))
-                          .withValues(alpha: 0.28),
+                  color: const Color(0xFF03A85E).withValues(alpha: 0.28),
                   blurRadius: 16,
                   offset: const Offset(0, 7),
                 ),
@@ -2032,11 +1984,7 @@ class _GameStatusTag extends StatelessWidget {
                 const SizedBox(width: 5),
               ],
               Text(
-                resumable
-                    ? '继续上局'
-                    : isOnline
-                    ? '已上线'
-                    : '待上线',
+                isOnline ? '已上线' : '待上线',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: isOnline ? 1 : 0.86),
                   fontSize: 10,
@@ -2074,63 +2022,6 @@ class _WhiteChip extends StatelessWidget {
             fontWeight: FontWeight.w900,
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _TimelineRow extends StatelessWidget {
-  const _TimelineRow({required this.item});
-
-  final _GameTimelineItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.70),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            margin: const EdgeInsets.only(top: 5),
-            decoration: const BoxDecoration(
-              color: Color(0xFF22A06B),
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.title,
-                  style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  item.detail,
-                  style: TextStyle(
-                    color: AppColors.text.withValues(alpha: 0.58),
-                    fontSize: 12,
-                    height: 1.36,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -2201,16 +2092,6 @@ BoxDecoration _glassDecoration(double radius) {
       ),
     ],
   );
-}
-
-class _GameTimelineItem {
-  const _GameTimelineItem(this.title, this.detail);
-
-  factory _GameTimelineItem.ai(String title, String detail) =>
-      _GameTimelineItem(title, detail);
-
-  final String title;
-  final String detail;
 }
 
 class _GameGroup {

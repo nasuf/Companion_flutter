@@ -140,35 +140,12 @@ class ReversiEngine {
     _updateStatus();
   }
 
-  factory ReversiEngine.restore(
-    Map<String, dynamic> state, {
-    int moveCount = 0,
-  }) {
-    final board = (state['board'] as List? ?? const [])
-        .whereType<num>()
-        .map((item) => item.round())
-        .toList(growable: false);
-    if (board.length != size * size) {
-      throw const FormatException('invalid_board');
-    }
-    final engine = ReversiEngine.debug(
-      board,
-      turn: ReversiActor.values.firstWhere(
-        (item) => item.name == state['turn'],
-        orElse: () => ReversiActor.user,
-      ),
-    );
-    engine._moveOffset = moveCount;
-    return engine;
-  }
-
   static const int size = 8;
   static const int userDisc = 1;
   static const int agentDisc = -1;
 
   List<int> _board;
   final List<ReversiMove> _moves = [];
-  int _moveOffset = 0;
   ReversiActor turn = ReversiActor.user;
   ReversiStatus _status = ReversiStatus.playing;
 
@@ -176,7 +153,7 @@ class ReversiEngine {
   List<ReversiMove> get moves => List<ReversiMove>.unmodifiable(_moves);
   ReversiStatus get status => _status;
   bool get isFinished => _status != ReversiStatus.playing;
-  int get moveCount => _moveOffset + _moves.length;
+  int get moveCount => _moves.length;
   int get userCount => _board.where((value) => value == userDisc).length;
   int get agentCount => _board.where((value) => value == agentDisc).length;
   int get emptyCount => _board.where((value) => value == 0).length;
@@ -279,7 +256,7 @@ class ReversiEngine {
         },
     ];
     final move = ReversiMove(
-      number: _moveOffset + _moves.length + 1,
+      number: _moves.length + 1,
       actor: actor,
       point: ReversiPoint(index),
       flipped: [for (final value in flips) ReversiPoint(value)],
