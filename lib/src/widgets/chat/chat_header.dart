@@ -3,6 +3,7 @@ part of 'package:companion_flutter/main.dart';
 class _ChatHeader extends StatelessWidget {
   const _ChatHeader({
     required this.agentName,
+    required this.topInset,
     this.interactionDays,
     this.aiStatus,
     this.aiStatusLabel,
@@ -17,6 +18,7 @@ class _ChatHeader extends StatelessWidget {
   });
 
   final String agentName;
+  final double topInset;
   final int? interactionDays;
   final String? aiStatus;
   final String? aiStatusLabel;
@@ -38,8 +40,8 @@ class _ChatHeader extends StatelessWidget {
     );
     final statusColor = _agentStatusColor(aiStatus);
     return Container(
-      height: 76,
-      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+      height: topInset + 76,
+      padding: EdgeInsets.fromLTRB(16, topInset + 10, 12, 10),
       decoration: BoxDecoration(
         color: AppColors.surface,
         boxShadow: [
