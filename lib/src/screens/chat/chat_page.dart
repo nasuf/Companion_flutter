@@ -186,7 +186,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _recordingVoice = false;
   bool _transcribingVoice = false;
   bool _voiceGestureActive = false;
+  bool _tapRecordingMode = false;
+  bool _ignoreNextVoicePointerUp = false;
   int _voiceSeconds = 0;
+  DateTime? _voicePointerDownAt;
+  DateTime? _voiceRecordingStartedAt;
   VoiceReleaseAction _voiceReleaseAction = VoiceReleaseAction.sendVoice;
   VoiceReleaseAction? _pendingVoiceReleaseAction;
   String? _linkPreviewInFlightText;
@@ -331,7 +335,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _preparingVoice = false;
       _recordingVoice = false;
       _transcribingVoice = false;
+      _voiceGestureActive = false;
+      _tapRecordingMode = false;
+      _ignoreNextVoicePointerUp = false;
       _voiceSeconds = 0;
+      _voicePointerDownAt = null;
+      _voiceRecordingStartedAt = null;
       _readyCapsule = null;
       _conversationMeta = null;
       _musicStation.reset();
@@ -1908,12 +1917,29 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _handleVoicePressStart(Offset position) {
-    if (_preparingVoice || _transcribingVoice || _uploadingImage || _sending) {
+    if (_tapRecordingMode && _recordingVoice) {
+      HapticFeedback.selectionClick();
+      setState(() {
+        _tapRecordingMode = false;
+        _ignoreNextVoicePointerUp = true;
+        _voiceGestureActive = false;
+      });
+      unawaited(_stopVoiceRecording(VoiceReleaseAction.sendVoice));
+      return;
+    }
+    if (_preparingVoice ||
+        _recordingVoice ||
+        _transcribingVoice ||
+        _uploadingImage ||
+        _sending) {
       return;
     }
     HapticFeedback.selectionClick();
     setState(() {
       _voiceGestureActive = true;
+      _tapRecordingMode = false;
+      _ignoreNextVoicePointerUp = false;
+      _voicePointerDownAt = DateTime.now();
       _voiceReleaseAction = _voiceActionForPosition(position);
       _pendingVoiceReleaseAction = null;
     });
@@ -1931,10 +1957,37 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _handleVoicePressEnd(Offset position) {
+    if (_ignoreNextVoicePointerUp) {
+      _ignoreNextVoicePointerUp = false;
+      return;
+    }
     if (!_voiceGestureActive) return;
     final action = _voiceActionForPosition(position);
+    final now = DateTime.now();
+    final pointerDownAt = _voicePointerDownAt ?? now;
+    final recordingStartedAt = _voiceRecordingStartedAt;
+    final shouldLatch = shouldLatchVoiceRecordingAfterRelease(
+      action: action,
+      pressDuration: now.difference(pointerDownAt),
+      preparing: _preparingVoice,
+      capturedDuration: recordingStartedAt == null
+          ? null
+          : now.difference(recordingStartedAt),
+    );
+    if (shouldLatch) {
+      setState(() {
+        _voiceGestureActive = false;
+        _tapRecordingMode = true;
+        _voicePointerDownAt = null;
+        _voiceReleaseAction = VoiceReleaseAction.sendVoice;
+        _pendingVoiceReleaseAction = null;
+      });
+      return;
+    }
     setState(() {
       _voiceGestureActive = false;
+      _tapRecordingMode = false;
+      _voicePointerDownAt = null;
       _voiceReleaseAction = action;
       _pendingVoiceReleaseAction = action;
     });
@@ -1947,6 +2000,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (!_voiceGestureActive && !_preparingVoice && !_recordingVoice) return;
     setState(() {
       _voiceGestureActive = false;
+      _tapRecordingMode = false;
+      _voicePointerDownAt = null;
       _voiceReleaseAction = VoiceReleaseAction.cancel;
       _pendingVoiceReleaseAction = VoiceReleaseAction.cancel;
     });
@@ -1973,7 +2028,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _startVoiceRecording() async {
-    if (_preparingVoice || _transcribingVoice || _uploadingImage || _sending) {
+    if (_preparingVoice ||
+        _recordingVoice ||
+        _transcribingVoice ||
+        _uploadingImage ||
+        _sending) {
       return;
     }
     setState(() {
@@ -1987,6 +2046,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         if (mounted) {
           setState(() {
             _voiceGestureActive = false;
+            _tapRecordingMode = false;
+            _voicePointerDownAt = null;
             _pendingVoiceReleaseAction = null;
             _historyError = '需要麦克风权限才能进行语音输入。';
           });
@@ -2014,6 +2075,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _preparingVoice = false;
         _recordingVoice = true;
         _voiceSeconds = 0;
+        _voiceRecordingStartedAt = DateTime.now();
       });
       _voiceTimer?.cancel();
       _voiceTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -2027,6 +2089,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           timer.cancel();
           setState(() {
             _voiceGestureActive = false;
+            _tapRecordingMode = false;
             _voiceReleaseAction = VoiceReleaseAction.sendVoice;
           });
           unawaited(_stopVoiceRecording(VoiceReleaseAction.sendVoice));
@@ -2041,6 +2104,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         setState(() {
           _recordingVoice = false;
           _voiceGestureActive = false;
+          _tapRecordingMode = false;
+          _voicePointerDownAt = null;
+          _voiceRecordingStartedAt = null;
           _pendingVoiceReleaseAction = null;
           _historyError = error is MissingPluginException
               ? '语音功能需要完整重启 App 后才能使用。'
@@ -2058,10 +2124,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (!_recordingVoice || _transcribingVoice) return;
     _voiceTimer?.cancel();
     _voiceTimer = null;
-    final durationSeconds = math.max(1, _voiceSeconds);
+    final startedAt = _voiceRecordingStartedAt;
+    final elapsedMilliseconds = startedAt == null
+        ? _voiceSeconds * 1000
+        : DateTime.now().difference(startedAt).inMilliseconds;
+    final durationSeconds = math.max(1, (elapsedMilliseconds / 1000).ceil());
     final conversationId = _conversationId;
     setState(() {
       _recordingVoice = false;
+      _tapRecordingMode = false;
+      _voiceRecordingStartedAt = null;
       _transcribingVoice = true;
     });
 
@@ -2133,6 +2205,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       setState(() {
         _recordingVoice = false;
         _voiceGestureActive = false;
+        _tapRecordingMode = false;
+        _voicePointerDownAt = null;
+        _voiceRecordingStartedAt = null;
         _voiceSeconds = 0;
       });
     }
@@ -2608,6 +2683,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               preparingVoice: _preparingVoice,
               recordingVoice: _recordingVoice,
               transcribingVoice: _transcribingVoice,
+              tapRecordingMode: _tapRecordingMode,
               voiceSeconds: _voiceSeconds,
               resolvingLink:
                   _linkPreviewInFlightText != null &&
@@ -2724,12 +2800,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 150),
                 child:
-                    _voiceGestureActive && (_preparingVoice || _recordingVoice)
+                    (_voiceGestureActive || _tapRecordingMode) &&
+                        (_preparingVoice || _recordingVoice)
                     ? VoiceRecordingOverlay(
                         key: const ValueKey('voice-recording-overlay'),
                         action: _voiceReleaseAction,
                         seconds: _voiceSeconds,
                         preparing: _preparingVoice,
+                        tapMode: _tapRecordingMode,
                       )
                     : const SizedBox.shrink(),
               ),

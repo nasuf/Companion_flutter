@@ -10,6 +10,7 @@ class _Composer extends StatelessWidget {
     required this.preparingVoice,
     required this.recordingVoice,
     required this.transcribingVoice,
+    required this.tapRecordingMode,
     required this.voiceSeconds,
     required this.resolvingLink,
     required this.pendingImages,
@@ -40,6 +41,7 @@ class _Composer extends StatelessWidget {
   final bool preparingVoice;
   final bool recordingVoice;
   final bool transcribingVoice;
+  final bool tapRecordingMode;
   final int voiceSeconds;
   final bool resolvingLink;
   final List<_PendingChatImage> pendingImages;
@@ -107,6 +109,7 @@ class _Composer extends StatelessWidget {
                         ? _VoiceComposerStatus(
                             preparing: preparingVoice,
                             recording: recordingVoice,
+                            tapMode: tapRecordingMode,
                             seconds: voiceSeconds,
                             onCancel: onCancelVoice,
                           )
@@ -277,12 +280,14 @@ class _VoiceComposerStatus extends StatelessWidget {
   const _VoiceComposerStatus({
     required this.preparing,
     required this.recording,
+    required this.tapMode,
     required this.seconds,
     required this.onCancel,
   });
 
   final bool preparing;
   final bool recording;
+  final bool tapMode;
   final int seconds;
   final VoidCallback onCancel;
 
@@ -293,7 +298,9 @@ class _VoiceComposerStatus extends StatelessWidget {
     final label = preparing
         ? '正在准备麦克风…'
         : recording
-        ? '正在录音  $minutes:$remaining · 点击左侧完成'
+        ? tapMode
+              ? '正在录音  $minutes:$remaining · 点击麦克风发送'
+              : '正在录音  $minutes:$remaining · 松开发送'
         : '正在识别语音…';
     return Container(
       height: 36,

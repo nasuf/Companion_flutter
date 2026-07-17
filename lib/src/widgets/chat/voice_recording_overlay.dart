@@ -3,17 +3,34 @@ import 'package:flutter/material.dart';
 
 enum VoiceReleaseAction { sendVoice, cancel, sendText }
 
+const voiceQuickTapThreshold = Duration(milliseconds: 450);
+const voiceMinimumCapturedDuration = Duration(milliseconds: 650);
+
+bool shouldLatchVoiceRecordingAfterRelease({
+  required VoiceReleaseAction action,
+  required Duration pressDuration,
+  required bool preparing,
+  Duration? capturedDuration,
+}) {
+  if (action != VoiceReleaseAction.sendVoice) return false;
+  if (preparing || pressDuration < voiceQuickTapThreshold) return true;
+  return capturedDuration != null &&
+      capturedDuration < voiceMinimumCapturedDuration;
+}
+
 class VoiceRecordingOverlay extends StatelessWidget {
   const VoiceRecordingOverlay({
     super.key,
     required this.action,
     required this.seconds,
     required this.preparing,
+    this.tapMode = false,
   });
 
   final VoiceReleaseAction action;
   final int seconds;
   final bool preparing;
+  final bool tapMode;
 
   @override
   Widget build(BuildContext context) {
@@ -97,7 +114,11 @@ class VoiceRecordingOverlay extends StatelessWidget {
                 ),
               ),
               child: Text(
-                action == VoiceReleaseAction.sendVoice ? '松开  发送' : '移回这里  发送',
+                tapMode
+                    ? '再次点击麦克风  发送'
+                    : action == VoiceReleaseAction.sendVoice
+                    ? '松开  发送'
+                    : '移回这里  发送',
                 style: const TextStyle(
                   color: Color(0xFF202422),
                   fontSize: 18,
