@@ -179,6 +179,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Timer? _capsuleScanTimer;
   Timer? _conversationMetaTimer;
   TimeCapsule? _readyCapsule;
+  String? _autoShownReadyCapsuleId;
+  bool _readyCapsuleNoticeShowing = false;
   Conversation? _conversationMeta;
   bool _loadingInitial = true;
   bool _loadingOlder = false;
@@ -980,7 +982,22 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     try {
       final ready = await widget.api.listTimeCapsules(state: 'ready');
       if (!mounted) return;
-      setState(() => _readyCapsule = ready.isEmpty ? null : ready.first);
+      final nextReady = ready.isEmpty ? null : ready.first;
+      setState(() => _readyCapsule = nextReady);
+      if (nextReady != null &&
+          nextReady.id != _autoShownReadyCapsuleId &&
+          !_readyCapsuleNoticeShowing &&
+          (ModalRoute.of(context)?.isCurrent ?? true)) {
+        _autoShownReadyCapsuleId = nextReady.id;
+        Future<void>.delayed(const Duration(milliseconds: 360), () {
+          if (!mounted ||
+              _readyCapsule?.id != nextReady.id ||
+              _readyCapsuleNoticeShowing) {
+            return;
+          }
+          unawaited(_openReadyCapsuleNotice());
+        });
+      }
     } catch (error) {
       debugPrint('[capsule.ready] scan failed: $error');
     }
@@ -1015,22 +1032,28 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   Future<void> _openReadyCapsuleNotice() async {
     final capsule = _readyCapsule;
-    if (capsule == null) return;
+    if (capsule == null || _readyCapsuleNoticeShowing) return;
+    _readyCapsuleNoticeShowing = true;
     _dismissInputSurfaces();
-    final shouldOpen = await showGeneralDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'capsule-ready',
-      transitionDuration: const Duration(milliseconds: 420),
-      pageBuilder: (_, __, ___) => _CapsuleReadyOverlay(capsule: capsule),
-      transitionBuilder: (_, animation, __, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-        );
-        return FadeTransition(opacity: curved, child: child);
-      },
-    );
+    final bool? shouldOpen;
+    try {
+      shouldOpen = await showGeneralDialog<bool>(
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: 'capsule-ready',
+        transitionDuration: const Duration(milliseconds: 420),
+        pageBuilder: (_, __, ___) => _CapsuleReadyOverlay(capsule: capsule),
+        transitionBuilder: (_, animation, __, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
+          return FadeTransition(opacity: curved, child: child);
+        },
+      );
+    } finally {
+      _readyCapsuleNoticeShowing = false;
+    }
     if (!mounted || shouldOpen != true) return;
     try {
       await _waitForNavigatorUnlock();

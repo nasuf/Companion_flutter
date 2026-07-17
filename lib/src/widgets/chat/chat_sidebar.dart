@@ -256,9 +256,10 @@ class _ShopVipIconPainter extends CustomPainter {
 }
 
 class _CapsuleSidebarIconPainter extends CustomPainter {
-  const _CapsuleSidebarIconPainter({required this.accent});
+  const _CapsuleSidebarIconPainter({required this.accent, this.showDot = true});
 
   final Color accent;
+  final bool showDot;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -309,18 +310,20 @@ class _CapsuleSidebarIconPainter extends CustomPainter {
         ..strokeWidth = 1.7,
     );
 
-    canvas.drawCircle(
-      Offset(capsuleRect.right - 8, capsuleRect.top + 5),
-      2.2,
-      Paint()..color = Colors.white.withValues(alpha: 0.92),
-    );
+    if (showDot) {
+      canvas.drawCircle(
+        Offset(capsuleRect.right - 8, capsuleRect.top + 5),
+        2.2,
+        Paint()..color = Colors.white.withValues(alpha: 0.92),
+      );
+    }
 
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(covariant _CapsuleSidebarIconPainter oldDelegate) {
-    return oldDelegate.accent != accent;
+    return oldDelegate.accent != accent || oldDelegate.showDot != showDot;
   }
 }
 

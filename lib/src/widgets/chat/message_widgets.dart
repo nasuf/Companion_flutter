@@ -2078,7 +2078,10 @@ class _ComponentCardIcon extends StatelessWidget {
           child: Center(
             child: CustomPaint(
               size: const Size(23, 23),
-              painter: _CapsuleSidebarIconPainter(accent: accent),
+              painter: _CapsuleSidebarIconPainter(
+                accent: accent,
+                showDot: false,
+              ),
             ),
           ),
         ),
