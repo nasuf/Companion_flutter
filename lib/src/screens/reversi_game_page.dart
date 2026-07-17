@@ -37,6 +37,7 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
 
   @override
   void dispose() {
+    _runtime.dispose();
     unawaited(
       _runtime.abort(
         'page_closed',
@@ -243,6 +244,18 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每次落子、翻面、抢角、迫停、搜索判断和最终比分都会保存。',
+      userTurnActive:
+          engine != null &&
+          !engine.isFinished &&
+          engine.turn == ReversiActor.user &&
+          !_runtime.aiThinking &&
+          !_resolving,
+      turnToken: engine == null
+          ? 'idle'
+          : '${engine.moveCount}:${engine.turn.name}',
+      turnLabel: _runtime.aiThinking ? '${_runtime.agentName} 在落子' : '轮到你',
+      moveCount: engine?.moveCount ?? 0,
+      currentSummary: () => _engine?.summaryJson() ?? const {},
       activeChild: engine == null
           ? null
           : Column(
@@ -714,7 +727,6 @@ class _ReversiBoardPainter extends CustomPainter {
       );
       if (moveProgress < 1) _paintFlipTrails(canvas, lastMove!, moveProgress);
     }
-    if (thinking) _paintThinkingSweep(canvas, grid);
     canvas.drawRRect(
       shape.deflate(1),
       Paint()
@@ -818,27 +830,6 @@ class _ReversiBoardPainter extends CustomPainter {
         );
       }
     }
-  }
-
-  void _paintThinkingSweep(Canvas canvas, Rect grid) {
-    final x = grid.left + grid.width * ambientProgress;
-    final sweep = Rect.fromLTWH(
-      x - grid.width * 0.1,
-      grid.top,
-      grid.width * 0.2,
-      grid.height,
-    );
-    canvas.drawRect(
-      sweep,
-      Paint()
-        ..shader = LinearGradient(
-          colors: [
-            Colors.transparent,
-            const Color(0xFFFFD071).withValues(alpha: 0.1),
-            Colors.transparent,
-          ],
-        ).createShader(sweep),
-    );
   }
 
   @override

@@ -38,6 +38,7 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
 
   @override
   void dispose() {
+    _runtime.dispose();
     unawaited(
       _runtime.abort('page_closed', _sessionSummary(), updateUi: false),
     );
@@ -255,6 +256,22 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每次滑动、方块轨迹、合并得分、出生位置和搜索判断都会保存。',
+      userTurnActive:
+          engine != null &&
+          !engine.isFinished &&
+          engine.turn == NumberMergeActor.user &&
+          !_runtime.aiThinking &&
+          !_resolving,
+      turnToken: engine == null
+          ? 'idle'
+          : '${engine.moveCount}:${engine.turn.name}',
+      turnLabel: _runtime.aiThinking
+          ? '${_runtime.agentName} 在合并'
+          : _resolving
+          ? '数字移动中'
+          : '轮到你滑动',
+      moveCount: engine?.moveCount ?? 0,
+      currentSummary: _sessionSummary,
       activeChild: engine == null
           ? null
           : Column(
@@ -453,7 +470,6 @@ class _NumberMergeBoard extends StatefulWidget {
 class _NumberMergeBoardState extends State<_NumberMergeBoard>
     with TickerProviderStateMixin {
   late final AnimationController _moveController;
-  late final AnimationController _ambientController;
   Offset _drag = Offset.zero;
   bool _handled = false;
 
@@ -465,10 +481,6 @@ class _NumberMergeBoardState extends State<_NumberMergeBoard>
       duration: const Duration(milliseconds: 620),
       value: 1,
     );
-    _ambientController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2200),
-    )..repeat(reverse: true);
   }
 
   @override
@@ -487,7 +499,6 @@ class _NumberMergeBoardState extends State<_NumberMergeBoard>
   @override
   void dispose() {
     _moveController.dispose();
-    _ambientController.dispose();
     super.dispose();
   }
 
@@ -509,7 +520,7 @@ class _NumberMergeBoardState extends State<_NumberMergeBoard>
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: Listenable.merge([_moveController, _ambientController]),
+    animation: _moveController,
     builder: (context, _) => GestureDetector(
       behavior: HitTestBehavior.opaque,
       onPanStart: widget.enabled
@@ -528,7 +539,6 @@ class _NumberMergeBoardState extends State<_NumberMergeBoard>
           engine: widget.engine,
           lastMove: widget.lastMove,
           moveProgress: Curves.easeOutCubic.transform(_moveController.value),
-          ambientProgress: _ambientController.value,
           thinking: widget.thinking,
         ),
       ),
@@ -541,14 +551,12 @@ class _NumberMergeBoardPainter extends CustomPainter {
     required this.engine,
     required this.lastMove,
     required this.moveProgress,
-    required this.ambientProgress,
     required this.thinking,
   });
 
   final NumberMergeEngine engine;
   final NumberMergeMove? lastMove;
   final double moveProgress;
-  final double ambientProgress;
   final bool thinking;
 
   @override
@@ -638,26 +646,6 @@ class _NumberMergeBoardPainter extends CustomPainter {
           );
         }
       }
-    }
-
-    if (thinking && !engine.isFinished) {
-      final x = inner.left + inner.width * ambientProgress;
-      canvas.save();
-      canvas.clipRRect(
-        RRect.fromRectAndRadius(inner, const Radius.circular(18)),
-      );
-      canvas.drawRect(
-        Rect.fromLTWH(x - 24, inner.top, 48, inner.height),
-        Paint()
-          ..shader = LinearGradient(
-            colors: [
-              Colors.transparent,
-              const Color(0xFF54E6D5).withValues(alpha: 0.12),
-              Colors.transparent,
-            ],
-          ).createShader(Rect.fromLTWH(x - 24, inner.top, 48, inner.height)),
-      );
-      canvas.restore();
     }
   }
 
@@ -764,6 +752,5 @@ class _NumberMergeBoardPainter extends CustomPainter {
       oldDelegate.engine.stateHash != engine.stateHash ||
       oldDelegate.lastMove?.number != lastMove?.number ||
       oldDelegate.moveProgress != moveProgress ||
-      oldDelegate.ambientProgress != ambientProgress ||
       oldDelegate.thinking != thinking;
 }

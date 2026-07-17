@@ -41,6 +41,7 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
 
   @override
   void dispose() {
+    _runtime.dispose();
     unawaited(
       _runtime.abort('page_closed', _sessionSummary(), updateUi: false),
     );
@@ -284,6 +285,22 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每次揭格、标雷、约束推理、冒险判断和最终雷盘都会保存。',
+      userTurnActive:
+          engine != null &&
+          !engine.isFinished &&
+          engine.turn == MinesweeperActor.user &&
+          !_runtime.aiThinking &&
+          !_resolving,
+      turnToken: engine == null
+          ? 'idle'
+          : '${engine.actions.length}:${engine.turn.name}',
+      turnLabel: _runtime.aiThinking
+          ? '${_runtime.agentName} 在推理'
+          : _resolving
+          ? '线索展开中'
+          : '轮到你判断',
+      moveCount: engine?.actions.length ?? 0,
+      currentSummary: _sessionSummary,
       activeChild: engine == null
           ? null
           : Column(
@@ -684,28 +701,6 @@ class _MinesweeperBoardPainter extends CustomPainter {
         localReveal = ((actionProgress - delay) / (1 - delay)).clamp(0.0, 1.0);
       }
       _paintCell(canvas, rect, index, localReveal);
-    }
-
-    if (thinking && !engine.isFinished) {
-      final y = inner.top + inner.height * ambientProgress;
-      canvas.save();
-      canvas.clipRRect(
-        RRect.fromRectAndRadius(inner, const Radius.circular(18)),
-      );
-      canvas.drawRect(
-        Rect.fromLTWH(inner.left, y - 18, inner.width, 36),
-        Paint()
-          ..shader = LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.transparent,
-              const Color(0xFF75F0D1).withValues(alpha: 0.18),
-              Colors.transparent,
-            ],
-          ).createShader(Rect.fromLTWH(inner.left, y - 18, inner.width, 36)),
-      );
-      canvas.restore();
     }
 
     final origin = lastAction?.point.index(engine.columns);

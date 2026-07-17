@@ -109,6 +109,11 @@ class _GamePageState extends State<GamePage>
         authSession: widget.session,
         game: game,
       ),
+      _nativeTetrisDuelGameKey => _TetrisDuelGamePage(
+        api: widget.api,
+        authSession: widget.session,
+        game: game,
+      ),
       _ => null,
     };
     if (page == null) return;
@@ -396,6 +401,7 @@ class _GameRoundSummary {
     final storedGame = _asMap(process[gameKey]);
     final resultGame = _asMap(result[gameKey]);
     final finalPayload = _asMap(result['final_payload']);
+    final score = _asMap(finalPayload['score']);
     final gameSummary = {
       ...storedGame,
       ...resultGame,
@@ -408,8 +414,13 @@ class _GameRoundSummary {
       session: session,
       outcome: outcome,
       userScore:
-          _intValue(user['score']) ?? _intValue(gameSummary['user_score']),
-      aiScore: _intValue(ai['score']) ?? _intValue(gameSummary['agent_score']),
+          _intValue(user['score']) ??
+          _intValue(gameSummary['user_score']) ??
+          _intValue(score['user']),
+      aiScore:
+          _intValue(ai['score']) ??
+          _intValue(gameSummary['agent_score']) ??
+          _intValue(score['agent']),
       durationSeconds:
           session.durationSeconds ?? _intValue(result['duration_seconds']),
       playedAt: session.endedAt ?? session.startedAt ?? session.createdAt,
@@ -540,6 +551,12 @@ class _GameRoundSummary {
       final score = _intValue(gameData['score']);
       final maxTile = _intValue(gameData['max_tile']);
       if (score != null && maxTile != null) return '$score 分 · 最大 $maxTile';
+    }
+    if (gameKey == _nativeTetrisDuelGameKey) {
+      final score = _asMap(gameData['score']);
+      final user = _intValue(score['user']);
+      final agent = _intValue(score['agent']);
+      if (user != null && agent != null) return '竞速 $user : $agent';
     }
     final count = actionCount;
     if (count == null || count <= 0) return null;
@@ -715,6 +732,41 @@ class _GameRoundSummary {
             _RoundDetailMetric(
               '合并表现',
               '$totalMerges 次合并 · 单步最多 ${bestCombo ?? 0} 次',
+            ),
+          );
+        }
+      case _nativeTetrisDuelGameKey:
+        final score = _asMap(gameData['score']);
+        final user = _asMap(gameData['user']);
+        final agent = _asMap(gameData['agent']);
+        final userScore = _intValue(score['user']);
+        final agentScore = _intValue(score['agent']);
+        if (userScore != null && agentScore != null) {
+          items.add(
+            _RoundDetailMetric('限时得分', '你 $userScore : $agentScore $aiName'),
+          );
+        }
+        final userLines = _intValue(user['lines']);
+        final agentLines = _intValue(agent['lines']);
+        if (userLines != null && agentLines != null) {
+          items.add(
+            _RoundDetailMetric('消除行数', '你 $userLines : $agentLines $aiName'),
+          );
+        }
+        final userCombo = _intValue(user['max_combo']);
+        final agentCombo = _intValue(agent['max_combo']);
+        if (userCombo != null && agentCombo != null) {
+          items.add(
+            _RoundDetailMetric('最高连击', '你 $userCombo : $agentCombo $aiName'),
+          );
+        }
+        final userTetrises = _intValue(user['tetrises']);
+        final agentTetrises = _intValue(agent['tetrises']);
+        if (userTetrises != null && agentTetrises != null) {
+          items.add(
+            _RoundDetailMetric(
+              '四行消除',
+              '你 $userTetrises : $agentTetrises $aiName',
             ),
           );
         }
@@ -2143,6 +2195,7 @@ const _nativeChineseCheckersGameKey = 'chinese_checkers';
 const _nativeMatch3GameKey = 'match3';
 const _nativeMinesweeperGameKey = 'minesweeper';
 const _nativeNumberMergeGameKey = 'number_merge';
+const _nativeTetrisDuelGameKey = 'tetris_duel';
 
 const _gameGroupCatalog = [
   _GameGroup(
@@ -2242,7 +2295,7 @@ const _gameGroupCatalog = [
     kicker: 'quick match',
     title: '联机对战',
     badge: '热血一局',
-    metric: '4 个竞技场',
+    metric: '5 个竞技场',
     hero: 'assets/prototype/games/category-versus-hero.jpg',
     accent: Color(0xFF7C3CFF),
     description: '想把注意力切走的时候，打一局刚刚好，不把输赢看太重。',
@@ -2252,6 +2305,12 @@ const _gameGroupCatalog = [
         note: '连消攒分，过程数据更适合伴聊。',
         image: 'assets/prototype/games/monster-crush.png',
         nativeGameKey: _nativeMatch3GameKey,
+      ),
+      _GameTile(
+        title: '双人方块竞速',
+        note: '90 秒同步落块，消行和进攻都算进比分。',
+        image: 'assets/prototype/games/tetris-duel.jpg',
+        nativeGameKey: _nativeTetrisDuelGameKey,
       ),
       _GameTile(
         title: '拳皇',

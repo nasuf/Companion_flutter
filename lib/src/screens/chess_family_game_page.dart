@@ -23,6 +23,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
   int? _selectedSquare;
   Set<int> _legalTargets = const {};
   bool _isFullscreen = false;
+  bool _chessAssetsPrecached = false;
 
   String get _gameKey => widget.kind == ChessFamilyKind.chess
       ? _nativeChessGameKey
@@ -43,7 +44,21 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (widget.kind != ChessFamilyKind.chess || _chessAssetsPrecached) return;
+    _chessAssetsPrecached = true;
+    unawaited(
+      Future.wait([
+        for (final asset in _chessPieceAssets)
+          precacheImage(AssetImage(asset), context),
+      ]),
+    );
+  }
+
+  @override
   void dispose() {
+    _runtime.dispose();
     unawaited(
       _runtime.abort(
         'page_closed',
@@ -87,6 +102,24 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       _selectedSquare = null;
       _legalTargets = const {};
       _isFullscreen = true;
+    });
+  }
+
+  Future<void> _closeGame() async {
+    final engine = _engine;
+    if (_runtime.session != null && !_runtime.completed) {
+      await _runtime.abort(
+        _runtime.turnTimeoutVisible ? 'turn_timeout_ended' : 'closed',
+        engine?.summaryJson() ?? const {},
+      );
+    }
+    _runtime.clearPresentation();
+    if (!mounted) return;
+    setState(() {
+      _engine = null;
+      _selectedSquare = null;
+      _legalTargets = const {};
+      _isFullscreen = false;
     });
   }
 
@@ -377,31 +410,40 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
     ),
   );
 
-  Widget _gameContents(ChessFamilyEngine engine) => Column(
-    children: [
-      _ChessPlayersStrip(
-        kind: widget.kind,
-        agentName: _runtime.agentName,
-        thinking: _runtime.aiThinking,
-        moveCount: engine.moves.length,
-      ),
-      const SizedBox(height: 12),
-      AspectRatio(
-        aspectRatio: widget.kind == ChessFamilyKind.chess ? 1 : 0.9,
-        child: _ChessFamilyBoard(
-          engine: engine,
-          selectedSquare: _selectedSquare,
-          legalTargets: _legalTargets,
-          onSquareTap: _handleSquareTap,
+  Widget _gameContents(ChessFamilyEngine engine) => _NativeGameInteractionLayer(
+    runtime: _runtime,
+    game: widget.game,
+    onPlayAgain: _startGame,
+    onCloseGame: _closeGame,
+    userTurnActive:
+        !engine.isFinished &&
+        !engine.isAgentTurn &&
+        !_runtime.aiThinking &&
+        !_runtime.starting,
+    turnToken:
+        '${_runtime.session?.id}:${engine.moveCount}:${engine.isAgentTurn ? 'agent' : 'user'}',
+    turnTimeout: _nativeGameTurnTimeout(_gameKey),
+    turnLabel: _runtime.aiThinking ? '${_runtime.agentName} 在走棋' : '轮到你走棋',
+    moveCount: engine.moveCount,
+    child: Column(
+      children: [
+        AspectRatio(
+          aspectRatio: widget.kind == ChessFamilyKind.chess ? 1 : 0.9,
+          child: _ChessFamilyBoard(
+            engine: engine,
+            selectedSquare: _selectedSquare,
+            legalTargets: _legalTargets,
+            onSquareTap: _handleSquareTap,
+          ),
         ),
-      ),
-      const SizedBox(height: 10),
-      _ChessAnalysisStrip(analysis: engine.analyze(), kind: widget.kind),
-      if (_runtime.syncNotice != null) ...[
         const SizedBox(height: 10),
-        _GomokuNotice(text: _runtime.syncNotice!, isError: false),
+        _ChessAnalysisStrip(analysis: engine.analyze(), kind: widget.kind),
+        if (_runtime.syncNotice != null) ...[
+          const SizedBox(height: 10),
+          _GomokuNotice(text: _runtime.syncNotice!, isError: false),
+        ],
       ],
-    ],
+    ),
   );
 
   Widget _history() => Padding(
@@ -451,151 +493,6 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
               ),
             ),
       ],
-    ),
-  );
-}
-
-class _ChessPlayersStrip extends StatelessWidget {
-  const _ChessPlayersStrip({
-    required this.kind,
-    required this.agentName,
-    required this.thinking,
-    required this.moveCount,
-  });
-
-  final ChessFamilyKind kind;
-  final String agentName;
-  final bool thinking;
-  final int moveCount;
-
-  @override
-  Widget build(BuildContext context) {
-    if (kind == ChessFamilyKind.xiangqi) {
-      return Container(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF4D7A0),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFF8B502D), width: 1.2),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x2B4A2516),
-              blurRadius: 10,
-              offset: Offset(0, 5),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            const _XiangqiSeatToken(glyph: '帅', color: Color(0xFFB52F28)),
-            const SizedBox(width: 8),
-            const Text(
-              '你',
-              style: TextStyle(
-                color: Color(0xFF522D1C),
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const Spacer(),
-            Flexible(
-              flex: 2,
-              child: Text(
-                thinking ? '$agentName 思考中' : '$moveCount 手',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xA35A3420),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            const Spacer(),
-            Flexible(
-              child: Text(
-                agentName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF522D1C),
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            const _XiangqiSeatToken(glyph: '将', color: Color(0xFF243A31)),
-          ],
-        ),
-      );
-    }
-    return Row(
-      children: [
-        const Icon(
-          CupertinoIcons.person_fill,
-          size: 16,
-          color: Color(0xFFCC594E),
-        ),
-        const SizedBox(width: 7),
-        Text(
-          '你',
-          style: TextStyle(color: AppColors.text, fontWeight: FontWeight.w900),
-        ),
-        const Spacer(),
-        Text(
-          thinking ? '$agentName 思考中' : '$moveCount 手',
-          style: TextStyle(
-            color: AppColors.text.withValues(alpha: 0.52),
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const Spacer(),
-        Text(
-          agentName,
-          style: TextStyle(color: AppColors.text, fontWeight: FontWeight.w900),
-        ),
-        const SizedBox(width: 7),
-        const Icon(CupertinoIcons.sparkles, size: 16, color: Color(0xFF1F6FFF)),
-      ],
-    );
-  }
-}
-
-class _XiangqiSeatToken extends StatelessWidget {
-  const _XiangqiSeatToken({required this.glyph, required this.color});
-
-  final String glyph;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 28,
-    height: 28,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      gradient: const RadialGradient(
-        center: Alignment(-0.35, -0.4),
-        colors: [Color(0xFFFFEDC5), Color(0xFFE6B66D), Color(0xFF9B5C32)],
-        stops: [0, 0.72, 1],
-      ),
-      border: Border.all(color: const Color(0xFF724022), width: 1.2),
-      boxShadow: const [
-        BoxShadow(
-          color: Color(0x4A4A2516),
-          blurRadius: 4,
-          offset: Offset(0, 2),
-        ),
-      ],
-    ),
-    child: Text(
-      glyph,
-      style: TextStyle(
-        color: color,
-        fontSize: 16,
-        fontWeight: FontWeight.w900,
-        letterSpacing: 0,
-      ),
     ),
   );
 }
@@ -724,9 +621,13 @@ class _ChessFamilyBoard extends StatelessWidget {
           files: engine.files,
           ranks: engine.ranks,
           pieces: engine.pieces,
+          lastMove: engine.moves.isEmpty ? null : engine.moves.last,
           selectedSquare: selectedSquare,
           legalTargets: legalTargets,
         ),
+        child: engine.kind == ChessFamilyKind.chess
+            ? _ChessPieceLayer(size: constraints.biggest, pieces: engine.pieces)
+            : null,
       ),
     ),
   );
@@ -752,6 +653,69 @@ class _ChessFamilyBoard extends StatelessWidget {
     return engine.squareAt(file, 9 - row);
   }
 }
+
+class _ChessPieceLayer extends StatelessWidget {
+  const _ChessPieceLayer({required this.size, required this.pieces});
+
+  final Size size;
+  final List<ChessBoardPiece> pieces;
+
+  @override
+  Widget build(BuildContext context) {
+    const padding = 12.0;
+    final side = math.min(size.width, size.height) - padding * 2;
+    final cell = side / 8;
+    final origin = Offset((size.width - side) / 2, (size.height - side) / 2);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        for (final piece in pieces)
+          Positioned(
+            left: origin.dx + piece.file * cell - cell * .025,
+            top: origin.dy + (7 - piece.rank) * cell - cell * .055,
+            width: cell * 1.05,
+            height: cell * 1.05,
+            child: IgnorePointer(
+              child: Image.asset(
+                _chessPieceAsset(piece),
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.high,
+                gaplessPlayback: true,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _chessPieceAsset(ChessBoardPiece piece) {
+    final color = piece.actor == ChessFamilyActor.user ? 'white' : 'black';
+    final name = switch (piece.symbol.toUpperCase()) {
+      'K' => 'king',
+      'Q' => 'queen',
+      'R' => 'rook',
+      'B' => 'bishop',
+      'N' => 'knight',
+      _ => 'pawn',
+    };
+    return 'assets/prototype/games/chess-$color-$name.png';
+  }
+}
+
+const _chessPieceAssets = <String>[
+  'assets/prototype/games/chess-white-king.png',
+  'assets/prototype/games/chess-white-queen.png',
+  'assets/prototype/games/chess-white-rook.png',
+  'assets/prototype/games/chess-white-bishop.png',
+  'assets/prototype/games/chess-white-knight.png',
+  'assets/prototype/games/chess-white-pawn.png',
+  'assets/prototype/games/chess-black-king.png',
+  'assets/prototype/games/chess-black-queen.png',
+  'assets/prototype/games/chess-black-rook.png',
+  'assets/prototype/games/chess-black-bishop.png',
+  'assets/prototype/games/chess-black-knight.png',
+  'assets/prototype/games/chess-black-pawn.png',
+];
 
 class _XiangqiBoardGeometry {
   _XiangqiBoardGeometry(Size size) {
@@ -789,6 +753,7 @@ class _ChessFamilyBoardPainter extends CustomPainter {
     required this.files,
     required this.ranks,
     required this.pieces,
+    required this.lastMove,
     required this.selectedSquare,
     required this.legalTargets,
   });
@@ -797,6 +762,7 @@ class _ChessFamilyBoardPainter extends CustomPainter {
   final int files;
   final int ranks;
   final List<ChessBoardPiece> pieces;
+  final ChessFamilyMove? lastMove;
   final int? selectedSquare;
   final Set<int> legalTargets;
 
@@ -823,6 +789,25 @@ class _ChessFamilyBoardPainter extends CustomPainter {
     final side = math.min(size.width, size.height) - pad * 2;
     final cell = side / 8;
     final origin = Offset((size.width - side) / 2, (size.height - side) / 2);
+    final boardRect = Rect.fromLTWH(origin.dx, origin.dy, side, side);
+    final outerRect = boardRect.inflate(cell * .13);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(outerRect, Radius.circular(cell * .15)),
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF3A2118), Color(0xFF8A5A38), Color(0xFF24140F)],
+          stops: [0, .48, 1],
+        ).createShader(outerRect),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(boardRect, Radius.circular(cell * .055)),
+      Paint()
+        ..color = Colors.black.withValues(alpha: .38)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, cell * .08),
+    );
+    final previousSquares = _chessLastMoveSquares();
     for (var row = 0; row < 8; row++) {
       for (var file = 0; file < 8; file++) {
         final square = Rect.fromLTWH(
@@ -832,18 +817,59 @@ class _ChessFamilyBoardPainter extends CustomPainter {
           cell,
         );
         final dark = (row + file).isOdd;
+        final squareColors = dark
+            ? const [Color(0xFF6C4B35), Color(0xFF4C3126)]
+            : const [Color(0xFFF2DFC0), Color(0xFFD9B98B)];
         canvas.drawRect(
           square,
           Paint()
-            ..color = dark ? const Color(0xFF6D8A72) : const Color(0xFFF0E5CC),
+            ..shader = LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: squareColors,
+            ).createShader(square),
+        );
+        canvas.drawRect(
+          square.deflate(cell * .025),
+          Paint()
+            ..color = Colors.white.withValues(alpha: dark ? .018 : .08)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.max(.45, cell * .012),
         );
         final piece = pieces.firstWhereOrNull(
           (item) => item.file == file && item.rank == 7 - row,
         );
-        if (piece?.square == selectedSquare) {
-          canvas.drawRect(square, Paint()..color = const Color(0x8054A8FF));
+        final squareName = '${String.fromCharCode(97 + file)}${8 - row}';
+        if (previousSquares.contains(squareName)) {
+          canvas.drawRect(
+            square.deflate(cell * .045),
+            Paint()..color = const Color(0x99E5B64D),
+          );
         }
-        if (piece != null) _paintChessPiece(canvas, square.center, cell, piece);
+        if (piece?.square == selectedSquare) {
+          canvas.drawRect(
+            square.deflate(cell * .035),
+            Paint()..color = const Color(0xB054A8FF),
+          );
+        }
+        if (row == 7) {
+          _paintChessCoordinate(
+            canvas,
+            String.fromCharCode(97 + file),
+            square.bottomRight - Offset(cell * .09, cell * .19),
+            cell,
+            dark: dark,
+          );
+        }
+        if (file == 0) {
+          _paintChessCoordinate(
+            canvas,
+            '${8 - row}',
+            square.topLeft + Offset(cell * .075, cell * .035),
+            cell,
+            dark: dark,
+          );
+        }
       }
     }
     for (final target in legalTargets) {
@@ -854,50 +880,52 @@ class _ChessFamilyBoardPainter extends CustomPainter {
         origin.dx + (file + .5) * cell,
         origin.dy + (7 - rank + .5) * cell,
       );
-      canvas.drawCircle(
-        center,
-        piece == null ? cell * .12 : cell * .34,
-        Paint()
-          ..color = piece == null
-              ? const Color(0xB02E7D65)
-              : const Color(0x552E7D65)
-          ..style = piece == null ? PaintingStyle.fill : PaintingStyle.stroke
-          ..strokeWidth = 3,
-      );
+      if (piece == null) {
+        canvas.drawCircle(
+          center,
+          cell * .105,
+          Paint()..color = const Color(0xCC58B58A),
+        );
+      } else {
+        canvas.drawCircle(
+          center,
+          cell * .39,
+          Paint()
+            ..color = const Color(0x9958B58A)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.max(2, cell * .055),
+        );
+      }
     }
   }
 
-  void _paintChessPiece(
+  Set<String> _chessLastMoveSquares() {
+    final move = lastMove;
+    if (move == null || kind != ChessFamilyKind.chess) return const {};
+    return {move.from.toLowerCase(), move.to.toLowerCase()};
+  }
+
+  void _paintChessCoordinate(
     Canvas canvas,
-    Offset center,
-    double cell,
-    ChessBoardPiece piece,
-  ) {
-    final symbol = _chessGlyph(piece.symbol);
+    String text,
+    Offset offset,
+    double cell, {
+    required bool dark,
+  }) {
     final painter = TextPainter(
       text: TextSpan(
-        text: symbol,
+        text: text,
         style: TextStyle(
-          color: piece.actor == ChessFamilyActor.user
-              ? const Color(0xFFFDF8EA)
-              : const Color(0xFF17202B),
-          fontSize: cell * .72,
-          fontWeight: FontWeight.w700,
-          shadows: const [
-            Shadow(
-              color: Color(0x55000000),
-              blurRadius: 3,
-              offset: Offset(0, 2),
-            ),
-          ],
+          color: dark
+              ? const Color(0xFFE7CEAA).withValues(alpha: .72)
+              : const Color(0xFF5A3A28).withValues(alpha: .7),
+          fontSize: cell * .15,
+          fontWeight: FontWeight.w900,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    painter.paint(
-      canvas,
-      center - Offset(painter.width / 2, painter.height / 2),
-    );
+    painter.paint(canvas, offset);
   }
 
   void _paintXiangqi(Canvas canvas, Size size) {
@@ -1398,22 +1426,6 @@ class _ChessFamilyBoardPainter extends CustomPainter {
       _ => piece.symbol,
     };
   }
-
-  String _chessGlyph(String symbol) => switch (symbol) {
-    'K' => '♔',
-    'Q' => '♕',
-    'R' => '♖',
-    'B' => '♗',
-    'N' => '♘',
-    'P' => '♙',
-    'k' => '♚',
-    'q' => '♛',
-    'r' => '♜',
-    'b' => '♝',
-    'n' => '♞',
-    'p' => '♟',
-    _ => symbol,
-  };
 
   void _paintCenteredText(
     Canvas canvas,

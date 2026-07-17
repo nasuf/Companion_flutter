@@ -38,6 +38,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
 
   @override
   void dispose() {
+    _runtime.dispose();
     unawaited(
       _runtime.abort(
         'page_closed',
@@ -71,6 +72,22 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     setState(() {
       _engine = GomokuEngine();
       _isFullscreen = true;
+    });
+  }
+
+  Future<void> _closeGame() async {
+    final engine = _engine;
+    if (_runtime.session != null && !_runtime.completed) {
+      await _runtime.abort(
+        _runtime.turnTimeoutVisible ? 'turn_timeout_ended' : 'closed',
+        engine?.summaryJson() ?? const {},
+      );
+    }
+    _runtime.clearPresentation();
+    if (!mounted) return;
+    setState(() {
+      _engine = null;
+      _isFullscreen = false;
     });
   }
 
@@ -357,33 +374,50 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     );
   }
 
-  Widget _activeGameContents(GomokuEngine engine) => Column(
-    children: [
-      _GomokuPlayersBar(
-        agentName: _agentName,
-        agentAvatarUrl: widget.authSession.agentAvatarUrl,
-        userAvatarUrl: widget.authSession.userAvatarUrl,
-        status: engine.status,
-        aiThinking: _runtime.aiThinking,
+  Widget _activeGameContents(GomokuEngine engine) =>
+      _NativeGameInteractionLayer(
+        runtime: _runtime,
+        game: widget.game,
+        onPlayAgain: _startGame,
+        onCloseGame: _closeGame,
+        userTurnActive:
+            !engine.isFinished && !_runtime.aiThinking && !_runtime.starting,
+        turnToken: '${_runtime.session?.id}:${engine.moves.length}:user',
+        turnTimeout: _nativeGameTurnTimeout(_nativeGomokuGameKey),
+        turnLabel: _runtime.aiThinking ? '$_agentName 在落子' : '轮到你',
         moveCount: engine.moves.length,
-      ),
-      const SizedBox(height: 14),
-      _GomokuBoardFrame(
-        child: _GomokuBoard(
-          engine: engine,
-          enabled: !_runtime.aiThinking && !engine.isFinished,
-          aiThinking: _runtime.aiThinking,
-          onPointTap: _handleBoardTap,
+        showPlayers: false,
+        child: Column(
+          children: [
+            _GomokuPlayersBar(
+              agentName: _agentName,
+              agentAvatarUrl: widget.authSession.agentAvatarUrl,
+              userAvatarUrl: widget.authSession.userAvatarUrl,
+              status: engine.status,
+              aiThinking: _runtime.aiThinking,
+              moveCount: engine.moves.length,
+            ),
+            const SizedBox(height: 14),
+            _GomokuBoardFrame(
+              child: _GomokuBoard(
+                engine: engine,
+                enabled: !_runtime.aiThinking && !engine.isFinished,
+                aiThinking: _runtime.aiThinking,
+                onPointTap: _handleBoardTap,
+              ),
+            ),
+            const SizedBox(height: 11),
+            _GomokuAnalysisStrip(
+              analysis: engine.analyze(),
+              agentName: _agentName,
+            ),
+            if (_runtime.syncNotice != null) ...[
+              const SizedBox(height: 10),
+              _GomokuNotice(text: _runtime.syncNotice!, isError: false),
+            ],
+          ],
         ),
-      ),
-      const SizedBox(height: 11),
-      _GomokuAnalysisStrip(analysis: engine.analyze(), agentName: _agentName),
-      if (_runtime.syncNotice != null) ...[
-        const SizedBox(height: 10),
-        _GomokuNotice(text: _runtime.syncNotice!, isError: false),
-      ],
-    ],
-  );
+      );
 
   Widget _roundHistory() {
     return Padding(
@@ -840,8 +874,6 @@ class _GomokuBoard extends StatefulWidget {
 class _GomokuBoardState extends State<_GomokuBoard>
     with TickerProviderStateMixin {
   late final AnimationController _placement;
-  late final AnimationController _thinking;
-  late final Listenable _boardAnimation;
   late int _lastMoveCount;
   GomokuPoint? _previewPoint;
 
@@ -853,13 +885,7 @@ class _GomokuBoardState extends State<_GomokuBoard>
       duration: const Duration(milliseconds: 260),
       value: 1,
     );
-    _thinking = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    );
-    _boardAnimation = Listenable.merge([_placement, _thinking]);
     _lastMoveCount = widget.engine.moves.length;
-    _syncThinking();
   }
 
   @override
@@ -869,22 +895,11 @@ class _GomokuBoardState extends State<_GomokuBoard>
       _lastMoveCount = widget.engine.moves.length;
       _placement.forward(from: 0);
     }
-    if (oldWidget.aiThinking != widget.aiThinking) _syncThinking();
-  }
-
-  void _syncThinking() {
-    if (widget.aiThinking) {
-      if (!_thinking.isAnimating) _thinking.repeat();
-    } else {
-      _thinking.stop();
-      _thinking.value = 0;
-    }
   }
 
   @override
   void dispose() {
     _placement.dispose();
-    _thinking.dispose();
     super.dispose();
   }
 
@@ -895,7 +910,7 @@ class _GomokuBoardState extends State<_GomokuBoard>
       child: LayoutBuilder(
         builder: (context, constraints) {
           return AnimatedBuilder(
-            animation: _boardAnimation,
+            animation: _placement,
             builder: (context, _) => Semantics(
               label: '十五乘十五五子棋棋盘',
               child: GestureDetector(
@@ -932,7 +947,6 @@ class _GomokuBoardState extends State<_GomokuBoard>
                     placementProgress: Curves.easeOutBack.transform(
                       _placement.value,
                     ),
-                    thinkingProgress: _thinking.value,
                     aiThinking: widget.aiThinking,
                     darkMode: AppColors.isDark(context),
                   ),
@@ -969,7 +983,6 @@ class _GomokuBoardPainter extends CustomPainter {
     required this.previewPoint,
     required this.winningLine,
     required this.placementProgress,
-    required this.thinkingProgress,
     required this.aiThinking,
     required this.darkMode,
   });
@@ -979,7 +992,6 @@ class _GomokuBoardPainter extends CustomPainter {
   final GomokuPoint? previewPoint;
   final List<GomokuPoint> winningLine;
   final double placementProgress;
-  final double thinkingProgress;
   final bool aiThinking;
   final bool darkMode;
 
@@ -1059,26 +1071,6 @@ class _GomokuBoardPainter extends CustomPainter {
       GomokuPoint(11, 11),
     ]) {
       canvas.drawCircle(_offset(point, padding, cell), cell * 0.09, star);
-    }
-
-    if (aiThinking) {
-      final scanX = size.width * (-0.12 + thinkingProgress * 1.24);
-      final scanRect = Rect.fromCenter(
-        center: Offset(scanX, size.height / 2),
-        width: size.width * 0.24,
-        height: size.height * 1.4,
-      );
-      canvas.drawRect(
-        rect,
-        Paint()
-          ..shader = LinearGradient(
-            colors: [
-              Colors.transparent,
-              const Color(0xFFB6F4E2).withValues(alpha: 0.055),
-              Colors.transparent,
-            ],
-          ).createShader(scanRect),
-      );
     }
 
     if (previewPoint != null &&
@@ -1174,7 +1166,6 @@ class _GomokuBoardPainter extends CustomPainter {
       oldDelegate.winningLine != winningLine ||
       oldDelegate.board != board ||
       oldDelegate.placementProgress != placementProgress ||
-      oldDelegate.thinkingProgress != thinkingProgress ||
       oldDelegate.aiThinking != aiThinking ||
       oldDelegate.darkMode != darkMode;
 }

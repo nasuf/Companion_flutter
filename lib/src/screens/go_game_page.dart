@@ -37,6 +37,7 @@ class _GoGamePageState extends State<_GoGamePage> {
 
   @override
   void dispose() {
+    _runtime.dispose();
     unawaited(
       _runtime.abort(
         'page_closed',
@@ -226,6 +227,18 @@ class _GoGamePageState extends State<_GoGamePage> {
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每一手、提子、叫吃、停着与最终数目都会保存。',
+      userTurnActive:
+          engine != null &&
+          !engine.isFinished &&
+          engine.turn == GoActor.user &&
+          !_runtime.aiThinking &&
+          !_resolving,
+      turnToken: engine == null
+          ? 'idle'
+          : '${engine.moveCount}:${engine.turn.name}',
+      turnLabel: _runtime.aiThinking ? '${_runtime.agentName} 在落子' : '轮到你',
+      moveCount: engine?.moveCount ?? 0,
+      currentSummary: () => _engine?.summaryJson() ?? const {},
       activeChild: engine == null
           ? null
           : Column(
@@ -440,7 +453,6 @@ class _GoBoard extends StatefulWidget {
 
 class _GoBoardState extends State<_GoBoard> with TickerProviderStateMixin {
   late final AnimationController _moveController;
-  late final AnimationController _ambientController;
 
   @override
   void initState() {
@@ -450,10 +462,6 @@ class _GoBoardState extends State<_GoBoard> with TickerProviderStateMixin {
       duration: const Duration(milliseconds: 620),
       value: 1,
     );
-    _ambientController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2200),
-    )..repeat(reverse: true);
   }
 
   @override
@@ -467,7 +475,6 @@ class _GoBoardState extends State<_GoBoard> with TickerProviderStateMixin {
   @override
   void dispose() {
     _moveController.dispose();
-    _ambientController.dispose();
     super.dispose();
   }
 
@@ -488,7 +495,7 @@ class _GoBoardState extends State<_GoBoard> with TickerProviderStateMixin {
           behavior: HitTestBehavior.opaque,
           onTapUp: (details) => _handleTap(details, size),
           child: AnimatedBuilder(
-            animation: Listenable.merge([_moveController, _ambientController]),
+            animation: _moveController,
             builder: (context, _) => CustomPaint(
               size: size,
               painter: _GoBoardPainter(
@@ -497,7 +504,6 @@ class _GoBoardState extends State<_GoBoard> with TickerProviderStateMixin {
                 moveProgress: Curves.easeOutCubic.transform(
                   _moveController.value,
                 ),
-                ambientProgress: _ambientController.value,
                 thinking: widget.thinking,
                 darkMode: AppColors.isDark(context),
               ),
@@ -541,7 +547,6 @@ class _GoBoardPainter extends CustomPainter {
     required this.board,
     required this.lastMove,
     required this.moveProgress,
-    required this.ambientProgress,
     required this.thinking,
     required this.darkMode,
   });
@@ -549,7 +554,6 @@ class _GoBoardPainter extends CustomPainter {
   final List<int> board;
   final GoMove? lastMove;
   final double moveProgress;
-  final double ambientProgress;
   final bool thinking;
   final bool darkMode;
 
@@ -625,26 +629,6 @@ class _GoBoardPainter extends CustomPainter {
         geometry.point(point),
         geometry.step * 0.085,
         starPaint,
-      );
-    }
-
-    if (thinking) {
-      final sweep = (ambientProgress * 1.4 - 0.2) * size.width;
-      final rect = Rect.fromCenter(
-        center: Offset(sweep, size.height / 2),
-        width: size.width * 0.34,
-        height: size.height * 1.4,
-      );
-      canvas.drawRect(
-        rect,
-        Paint()
-          ..shader = LinearGradient(
-            colors: [
-              Colors.transparent,
-              Colors.white.withValues(alpha: darkMode ? 0.035 : 0.09),
-              Colors.transparent,
-            ],
-          ).createShader(rect),
       );
     }
 

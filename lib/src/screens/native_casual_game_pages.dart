@@ -39,6 +39,7 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
 
   @override
   void dispose() {
+    _runtime.dispose();
     unawaited(
       _runtime.abort(
         'page_closed',
@@ -229,6 +230,17 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking,
       historySubtitle: '每条连续跳路径和进营过程都会保存。',
+      userTurnActive:
+          engine != null &&
+          !engine.isFinished &&
+          !_runtime.aiThinking &&
+          !_moveAnimating,
+      turnToken: engine == null
+          ? 'idle'
+          : '${engine.moveCount}:${_runtime.aiThinking ? 'agent' : 'user'}',
+      turnLabel: _runtime.aiThinking ? '${_runtime.agentName} 在走' : '轮到你',
+      moveCount: engine?.moveCount ?? 0,
+      currentSummary: () => _engine?.summaryJson() ?? const {},
       activeChild: engine == null
           ? null
           : Column(
@@ -292,6 +304,7 @@ class _Match3GamePageState extends State<_Match3GamePage> {
 
   @override
   void dispose() {
+    _runtime.dispose();
     unawaited(
       _runtime.abort(
         'page_closed',
@@ -466,6 +479,22 @@ class _Match3GamePageState extends State<_Match3GamePage> {
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
       historySubtitle: '每次交换、连消、特殊块和贡献分都会保存。',
+      userTurnActive:
+          engine != null &&
+          !engine.isFinished &&
+          engine.turn == Match3Actor.user &&
+          !_resolving &&
+          !_runtime.aiThinking,
+      turnToken: engine == null
+          ? 'idle'
+          : '${engine.turns.length}:${engine.turn.name}',
+      turnLabel: _runtime.aiThinking
+          ? '${_runtime.agentName} 在交换'
+          : _resolving
+          ? '连消结算中'
+          : '轮到你交换',
+      moveCount: engine?.turns.length ?? 0,
+      currentSummary: () => _engine?.summaryJson() ?? const {},
       activeChild: engine == null
           ? null
           : Column(
@@ -515,6 +544,12 @@ class _NativeGameExperienceScaffold extends StatefulWidget {
     required this.restartDisabled,
     required this.historySubtitle,
     this.activeChild,
+    this.userTurnActive = false,
+    this.turnToken = '',
+    this.turnLabel = '等待开局',
+    this.moveCount = 0,
+    this.currentSummary,
+    this.showPlayers = true,
   });
 
   final _NativeGameRuntime runtime;
@@ -525,6 +560,12 @@ class _NativeGameExperienceScaffold extends StatefulWidget {
   final bool restartDisabled;
   final String historySubtitle;
   final Widget? activeChild;
+  final bool userTurnActive;
+  final String turnToken;
+  final String turnLabel;
+  final int moveCount;
+  final Map<String, dynamic> Function()? currentSummary;
+  final bool showPlayers;
 
   @override
   State<_NativeGameExperienceScaffold> createState() =>
@@ -568,9 +609,36 @@ class _NativeGameExperienceScaffoldState
     setState(() => _isFullscreen = false);
   }
 
+  Future<void> _closeGame() async {
+    if (widget.runtime.session != null && !widget.runtime.completed) {
+      await widget.runtime.abort(
+        widget.runtime.turnTimeoutVisible ? 'turn_timeout_ended' : 'closed',
+        widget.currentSummary?.call() ?? const {},
+      );
+    }
+    widget.runtime.clearPresentation();
+    widget.onActiveRoundDeleted();
+    if (mounted) setState(() => _isFullscreen = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final activeChild = widget.activeChild;
+    final interactiveChild = activeChild == null
+        ? null
+        : _NativeGameInteractionLayer(
+            runtime: widget.runtime,
+            game: widget.game,
+            onPlayAgain: _start,
+            onCloseGame: _closeGame,
+            userTurnActive: widget.userTurnActive,
+            turnToken: '${widget.runtime.session?.id}:${widget.turnToken}',
+            turnTimeout: _nativeGameTurnTimeout(widget.game.nativeGameKey),
+            turnLabel: widget.turnLabel,
+            moveCount: widget.moveCount,
+            showPlayers: widget.showPlayers,
+            child: activeChild,
+          );
     final compact = Scaffold(
       backgroundColor: AppColors.page,
       body: Stack(
@@ -675,7 +743,7 @@ class _NativeGameExperienceScaffoldState
                                 ),
                               ),
                               const SizedBox(height: 6),
-                              activeChild,
+                              interactiveChild!,
                               if (widget.runtime.syncNotice != null) ...[
                                 const SizedBox(height: 10),
                                 _GomokuNotice(
@@ -722,7 +790,7 @@ class _NativeGameExperienceScaffoldState
             restartLabel: widget.runtime.completed ? '再来一局' : '重新开一局',
             restartDisabled: widget.runtime.starting || widget.restartDisabled,
             restartLoading: widget.runtime.starting,
-            child: activeChild,
+            child: interactiveChild!,
           );
     return _NativeGameFullscreenTransition(
       expanded: _isFullscreen && activeChild != null,
@@ -2082,7 +2150,6 @@ class _Match3BoardPainter extends CustomPainter {
     if (presentation.cascadeAnchor != null) {
       _paintCascadeFeedback(canvas, presentation);
     }
-    if (thinking) _paintThinkingSweep(canvas, bounds, ambient);
 
     canvas.drawRRect(
       boardShape.deflate(1),
@@ -2531,29 +2598,6 @@ class _Match3BoardPainter extends CustomPainter {
       Offset(-text.width / 2, -geometry.tileSize * (.62 + progress * .55)),
     );
     canvas.restore();
-  }
-
-  void _paintThinkingSweep(Canvas canvas, Rect bounds, double progress) {
-    final y = bounds.top + bounds.height * progress;
-    final sweep = Rect.fromLTWH(
-      bounds.left,
-      y - bounds.height * .08,
-      bounds.width,
-      bounds.height * .16,
-    );
-    canvas.drawRect(
-      sweep,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.transparent,
-            const Color(0xFF7DD8FF).withValues(alpha: .12),
-            Colors.transparent,
-          ],
-        ).createShader(sweep),
-    );
   }
 
   @override

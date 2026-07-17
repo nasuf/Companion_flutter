@@ -21,10 +21,16 @@ class _NativeGameRuntime {
   bool roundsLoading = true;
   bool initializing = true;
   bool completed = false;
+  Map<String, dynamic>? terminalPayload;
+  DateTime? terminalPresentedAt;
+  bool turnTimeoutVisible = false;
   bool deleting = false;
   String? error;
   String? syncNotice;
   int _eventSequence = 0;
+  Timer? _turnTimer;
+  String? _turnToken;
+  Duration? _turnDuration;
   late final NativeGameEventOutbox _eventOutbox = NativeGameEventOutbox.forApi(
     api: api,
     authSession: authSession,
@@ -140,9 +146,12 @@ class _NativeGameRuntime {
       }
       rounds = rounds.where((round) => round.id != candidate.id).toList();
       if (isActive) {
+        clearTurnTimeout();
         session = null;
         startedAt = null;
         completed = false;
+        terminalPayload = null;
+        terminalPresentedAt = null;
         aiThinking = false;
       }
       syncNotice = '游戏记录已删除。';
@@ -170,11 +179,20 @@ class _NativeGameRuntime {
       }
       return null;
     }
+    final previousSession = session;
+    final previousStartedAt = startedAt;
+    final previousCompleted = completed;
+    final previousTerminalPayload = terminalPayload;
+    final previousTerminalPresentedAt = terminalPresentedAt;
+    final previousEventSequence = _eventSequence;
     starting = true;
     error = null;
     syncNotice = null;
     session = null;
     completed = false;
+    terminalPayload = null;
+    terminalPresentedAt = null;
+    clearTurnTimeout();
     aiThinking = false;
     _eventSequence = 0;
     _notify();
@@ -198,6 +216,14 @@ class _NativeGameRuntime {
       );
       return session;
     } catch (caught) {
+      if (previousTerminalPayload != null) {
+        session = previousSession;
+        startedAt = previousStartedAt;
+        completed = previousCompleted;
+        terminalPayload = previousTerminalPayload;
+        terminalPresentedAt = previousTerminalPresentedAt;
+        _eventSequence = previousEventSequence;
+      }
       error = _formatError(caught);
       _notify();
       return null;
@@ -211,6 +237,9 @@ class _NativeGameRuntime {
     if (completed || session == null) return null;
     completed = true;
     aiThinking = false;
+    clearTurnTimeout();
+    terminalPayload = Map<String, dynamic>.unmodifiable(payload);
+    terminalPresentedAt = DateTime.now();
     _notify();
     _NativeGameHaptics.outcome(payload['user_outcome'] as String?);
     final response = await reportEvent(
@@ -233,6 +262,7 @@ class _NativeGameRuntime {
   }) async {
     if (completed || session == null) return null;
     completed = true;
+    clearTurnTimeout();
     return reportEvent(
       'game_aborted',
       state: 'aborted',
@@ -270,10 +300,22 @@ class _NativeGameRuntime {
           'tiles_swapped',
           'cell_action',
           'board_slid',
+          'tetromino_locked',
+          'garbage_sent',
+          'turn_timed_out',
         }.contains(eventType);
     final eventPayload = {'schema_version': 1, ...payload};
+    var blockedByEarlierCriticalEvent = false;
     if (critical) {
       try {
+        final pending = await _eventOutbox.read();
+        if (pending.any((event) => event['session_id'] == active.id)) {
+          await _eventOutbox.replay();
+          final remaining = await _eventOutbox.read();
+          blockedByEarlierCriticalEvent = remaining.any(
+            (event) => event['session_id'] == active.id,
+          );
+        }
         await _eventOutbox.enqueue(
           sessionId: active.id,
           eventType: eventType,
@@ -287,6 +329,13 @@ class _NativeGameRuntime {
           _notify();
         }
       }
+    }
+    if (blockedByEarlierCriticalEvent) {
+      if (updateUi) {
+        syncNotice = '前一步仍在等待同步，这一步已按顺序保存在手机里。';
+        _notify();
+      }
+      return null;
     }
     final attempts = critical ? 3 : 2;
     Object? lastError;
@@ -325,6 +374,87 @@ class _NativeGameRuntime {
   void showNotice(String message) {
     syncNotice = message;
     _notify();
+  }
+
+  void syncUserTurnTimeout({
+    required bool active,
+    required String token,
+    required Duration duration,
+  }) {
+    if (!active || completed || session == null) {
+      clearTurnTimeout();
+      return;
+    }
+    if (_turnToken == token &&
+        _turnDuration == duration &&
+        (_turnTimer?.isActive == true || turnTimeoutVisible)) {
+      return;
+    }
+    _turnTimer?.cancel();
+    _turnToken = token;
+    _turnDuration = duration;
+    turnTimeoutVisible = false;
+    _turnTimer = Timer(duration, () => _handleTurnTimeout(token, duration));
+  }
+
+  void continueAfterTurnTimeout() {
+    final token = _turnToken;
+    final duration = _turnDuration;
+    if (token == null || duration == null) return;
+    turnTimeoutVisible = false;
+    _turnTimer?.cancel();
+    _turnTimer = Timer(duration, () => _handleTurnTimeout(token, duration));
+    unawaited(
+      reportEvent(
+        'turn_timeout_continued',
+        payload: {
+          'actor': 'user',
+          'turn_token': token,
+          'timeout_seconds': duration.inSeconds,
+        },
+        updateUi: false,
+      ),
+    );
+    _notify();
+  }
+
+  void _handleTurnTimeout(String token, Duration duration) {
+    if (completed || session == null || _turnToken != token) return;
+    turnTimeoutVisible = true;
+    _turnTimer = null;
+    _NativeGameHaptics.rejected();
+    unawaited(
+      reportEvent(
+        'turn_timed_out',
+        payload: {
+          'actor': 'user',
+          'turn_token': token,
+          'timeout_seconds': duration.inSeconds,
+        },
+        updateUi: false,
+      ),
+    );
+    _notify();
+  }
+
+  void clearTurnTimeout() {
+    _turnTimer?.cancel();
+    _turnTimer = null;
+    _turnToken = null;
+    _turnDuration = null;
+    turnTimeoutVisible = false;
+  }
+
+  void clearPresentation() {
+    clearTurnTimeout();
+    terminalPayload = null;
+    terminalPresentedAt = null;
+    _notify();
+  }
+
+  void dispose() {
+    _turnTimer?.cancel();
+    _turnTimer = null;
   }
 
   String _formatError(Object caught) {

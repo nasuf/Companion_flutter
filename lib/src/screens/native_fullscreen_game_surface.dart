@@ -569,6 +569,19 @@ class _NativeFullscreenVisual {
       shadow: Color(0xFF0B211E),
       icon: Icons.grid_view_rounded,
     ),
+    _nativeTetrisDuelGameKey => const _NativeFullscreenVisual(
+      backgroundTop: Color(0xFF090B1D),
+      backgroundBottom: Color(0xFF26134B),
+      accent: Color(0xFF51DFFF),
+      secondary: Color(0xFFFF5A9B),
+      ink: Color(0xFF070815),
+      stageTint: Color(0xFF211D4C),
+      chromeBackground: Color(0xEEF3F1FF),
+      chromeForeground: Color(0xFF19162B),
+      chromeBorder: Color(0x8851DFFF),
+      shadow: Color(0xFF03040C),
+      icon: Icons.view_column_outlined,
+    ),
     _ => const _NativeFullscreenVisual(
       backgroundTop: Color(0xFF1A3F4B),
       backgroundBottom: Color(0xFF347B7B),
@@ -625,6 +638,8 @@ class _NativeFullscreenBackdropPainter extends CustomPainter {
         _paintMinesweeper(canvas, size);
       case _nativeNumberMergeGameKey:
         _paintNumberMerge(canvas, size);
+      case _nativeTetrisDuelGameKey:
+        _paintTetrisDuel(canvas, size);
       default:
         _paintFallback(canvas, size);
     }
@@ -1124,6 +1139,76 @@ class _NativeFullscreenBackdropPainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()..color = visual.accent.withValues(alpha: 0.2),
+    );
+  }
+
+  void _paintTetrisDuel(Canvas canvas, Size size) {
+    final grid = Paint()
+      ..color = Colors.white.withValues(alpha: 0.035)
+      ..strokeWidth = 1;
+    final cell = size.width / 10;
+    for (var column = -2; column <= 12; column++) {
+      canvas.drawLine(
+        Offset(column * cell, 0),
+        Offset(column * cell + size.height * 0.08, size.height),
+        grid,
+      );
+    }
+    for (var row = 0; row <= size.height / cell + 1; row++) {
+      canvas.drawLine(
+        Offset(0, row * cell),
+        Offset(size.width, row * cell),
+        grid,
+      );
+    }
+    const blocks = [
+      (0.04, 0.13, 0xFF51DFFF),
+      (0.14, 0.13, 0xFF51DFFF),
+      (0.24, 0.13, 0xFF51DFFF),
+      (0.34, 0.13, 0xFF51DFFF),
+      (0.72, 0.78, 0xFFFF5A9B),
+      (0.82, 0.78, 0xFFFF5A9B),
+      (0.82, 0.68, 0xFFFF5A9B),
+      (0.92, 0.68, 0xFFFF5A9B),
+      (0.06, 0.82, 0xFFB36CFF),
+      (0.16, 0.82, 0xFFB36CFF),
+      (0.26, 0.82, 0xFFB36CFF),
+      (0.16, 0.72, 0xFFB36CFF),
+    ];
+    for (final block in blocks) {
+      final rect = Rect.fromLTWH(
+        size.width * block.$1,
+        size.height * block.$2,
+        size.width * 0.085,
+        size.width * 0.085,
+      );
+      final color = Color(block.$3);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(6)),
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              color.withValues(alpha: 0.28),
+              color.withValues(alpha: 0.1),
+            ],
+          ).createShader(rect),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect.deflate(1), const Radius.circular(5)),
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.08)
+          ..style = PaintingStyle.stroke,
+      );
+    }
+    final divider = Paint()
+      ..color = visual.accent.withValues(alpha: 0.18)
+      ..strokeWidth = 2;
+    canvas.drawLine(
+      Offset(size.width * 0.5, size.height * 0.08),
+      Offset(size.width * 0.5, size.height * 0.92),
+      divider,
     );
   }
 
