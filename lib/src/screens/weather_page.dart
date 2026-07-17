@@ -21,7 +21,8 @@ class WeatherPage extends StatefulWidget {
 class _WeatherPageState extends State<WeatherPage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _breathController;
-  late Future<_WeatherForecast> _forecast;
+  late _WeatherForecast _forecast;
+  bool _isRefreshing = true;
 
   @override
   void initState() {
@@ -30,19 +31,14 @@ class _WeatherPageState extends State<WeatherPage>
       vsync: this,
       duration: const Duration(milliseconds: 8600),
     )..repeat(reverse: true);
-    _forecast = _loadForecast();
+    _forecast = _WeatherService.placeholderForCity(widget.initialCity);
+    _refreshForecast(initial: true);
   }
 
   @override
   void dispose() {
     _breathController.dispose();
     super.dispose();
-  }
-
-  void _reload() {
-    setState(() {
-      _forecast = _loadForecast();
-    });
   }
 
   Future<_WeatherForecast> _loadForecast() async {
@@ -57,6 +53,25 @@ class _WeatherPageState extends State<WeatherPage>
       }
     }
     return _WeatherService.fetchForCity(city);
+  }
+
+  Future<void> _refreshForecast({bool initial = false}) async {
+    if (!initial && mounted) {
+      setState(() => _isRefreshing = true);
+    }
+    try {
+      final forecast = await _loadForecast();
+      if (!mounted) return;
+      setState(() {
+        _forecast = forecast;
+      });
+    } catch (_) {
+      // 保留首屏占位或上一份天气数据；天气页不因刷新失败切到空态。
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
   }
 
   void _handleBack() {
@@ -85,34 +100,14 @@ class _WeatherPageState extends State<WeatherPage>
               Positioned.fill(child: _WeatherBackground(progress: progress)),
               SafeArea(
                 bottom: false,
-                child: FutureBuilder<_WeatherForecast>(
-                  future: _forecast,
-                  builder: (context, snapshot) {
-                    final bottom = MediaQuery.paddingOf(context).bottom;
-                    if (snapshot.connectionState != ConnectionState.done) {
-                      return _WeatherLoading(
-                        onBack: _handleBack,
-                        bottomPadding: bottom,
-                      );
-                    }
-                    if (snapshot.hasError || !snapshot.hasData) {
-                      return _WeatherError(
-                        onBack: _handleBack,
-                        onRetry: _reload,
-                        bottomPadding: bottom,
-                      );
-                    }
-
-                    final forecast = snapshot.data!;
-                    return _WeatherHome(
-                      forecast: forecast,
-                      agentName: widget.agentName,
-                      progress: progress,
-                      onBack: _handleBack,
-                      onShowFuture: () => _openFutureForecast(forecast),
-                      bottomPadding: bottom,
-                    );
-                  },
+                child: _WeatherHome(
+                  forecast: _forecast,
+                  agentName: widget.agentName,
+                  progress: progress,
+                  isRefreshing: _isRefreshing,
+                  onBack: _handleBack,
+                  onShowFuture: () => _openFutureForecast(_forecast),
+                  bottomPadding: MediaQuery.paddingOf(context).bottom,
                 ),
               ),
             ],
@@ -185,6 +180,7 @@ class _WeatherHome extends StatelessWidget {
     required this.forecast,
     required this.agentName,
     required this.progress,
+    required this.isRefreshing,
     required this.onBack,
     required this.onShowFuture,
     required this.bottomPadding,
@@ -193,6 +189,7 @@ class _WeatherHome extends StatelessWidget {
   final _WeatherForecast forecast;
   final String agentName;
   final double progress;
+  final bool isRefreshing;
   final VoidCallback onBack;
   final VoidCallback onShowFuture;
   final double bottomPadding;
@@ -207,6 +204,7 @@ class _WeatherHome extends StatelessWidget {
         _WeatherTopBar(
           location: forecast.location,
           agentName: agentName,
+          isRefreshing: isRefreshing,
           onBack: onBack,
         ),
         const SizedBox(height: 28),
@@ -249,6 +247,7 @@ class _FutureWeatherList extends StatelessWidget {
         _WeatherTopBar(
           location: forecast.location,
           agentName: agentName,
+          isRefreshing: false,
           onBack: onBack,
         ),
         const SizedBox(height: 24),
@@ -265,11 +264,13 @@ class _WeatherTopBar extends StatelessWidget {
   const _WeatherTopBar({
     required this.location,
     required this.agentName,
+    required this.isRefreshing,
     required this.onBack,
   });
 
   final _WeatherLocation location;
   final String agentName;
+  final bool isRefreshing;
   final VoidCallback onBack;
 
   @override
@@ -280,6 +281,22 @@ class _WeatherTopBar extends StatelessWidget {
         children: [
           _WeatherBackButton(onTap: onBack),
           const Spacer(),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: isRefreshing
+                ? const SizedBox(
+                    key: ValueKey('weather-refreshing'),
+                    width: 16,
+                    height: 16,
+                    child: CupertinoActivityIndicator(radius: 7),
+                  )
+                : const SizedBox(
+                    key: ValueKey('weather-idle'),
+                    width: 0,
+                    height: 16,
+                  ),
+          ),
+          if (isRefreshing) const SizedBox(width: 8),
           Icon(
             CupertinoIcons.location_solid,
             color: const Color(0xFF333333).withValues(alpha: 0.92),
@@ -1184,111 +1201,63 @@ class _FutureWeatherRow extends StatelessWidget {
   }
 }
 
-class _WeatherLoading extends StatelessWidget {
-  const _WeatherLoading({required this.onBack, required this.bottomPadding});
-
-  final VoidCallback onBack;
-  final double bottomPadding;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: EdgeInsets.fromLTRB(20, 18, 20, bottomPadding + 34),
-      children: [
-        Row(children: [_WeatherBackButton(onTap: onBack)]),
-        const SizedBox(height: 84),
-        const Center(child: CupertinoActivityIndicator(radius: 16)),
-      ],
-    );
-  }
-}
-
-class _WeatherError extends StatelessWidget {
-  const _WeatherError({
-    required this.onBack,
-    required this.onRetry,
-    required this.bottomPadding,
-  });
-
-  final VoidCallback onBack;
-  final VoidCallback onRetry;
-  final double bottomPadding;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: EdgeInsets.fromLTRB(20, 18, 20, bottomPadding + 34),
-      children: [
-        Row(children: [_WeatherBackButton(onTap: onBack)]),
-        const SizedBox(height: 42),
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF509AFD).withValues(alpha: 0.18),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '天气暂时没有回来',
-                style: TextStyle(
-                  color: Color(0xFF111111),
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                '网络或天气服务短暂波动，稍后再试就好。',
-                style: TextStyle(
-                  color: Color(0xFF8E97A3),
-                  fontSize: 14,
-                  height: 1.45,
-                ),
-              ),
-              const SizedBox(height: 22),
-              CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: onRetry,
-                child: Container(
-                  height: 48,
-                  padding: const EdgeInsets.symmetric(horizontal: 22),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF4B9AFF),
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: const Text(
-                    '重新加载',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _WeatherService {
   const _WeatherService._();
 
   static const _fallbackCity = '杭州';
   static const _fallbackTimezone = 'Asia/Shanghai';
   static const _forecastDays = 10;
+
+  static _WeatherForecast placeholderForCity(String? city) {
+    final displayName = _normalizeCityName(city);
+    final location = _WeatherLocation(
+      displayName: displayName.isEmpty ? _fallbackCity : displayName,
+      latitude: 30.29365,
+      longitude: 120.16142,
+      timezone: _fallbackTimezone,
+    );
+    final now = DateTime.now();
+    final baseDate = DateTime(now.year, now.month, now.day);
+    final days = List.generate(_forecastDays, (dayIndex) {
+      final date = baseDate.add(Duration(days: dayIndex));
+      final minTemp = 19.0 + (dayIndex % 3);
+      final maxTemp = 27.0 + (dayIndex % 4);
+      final code = dayIndex % 5 == 3 ? 61 : 2;
+      final hours = List.generate(24, (hour) {
+        final temperature =
+            minTemp +
+            (maxTemp - minTemp) *
+                (0.5 + 0.5 * math.sin((hour - 7) / 24 * math.pi * 2));
+        return _WeatherHour(
+          time: DateTime(date.year, date.month, date.day, hour),
+          temperature: temperature,
+          apparentTemperature: temperature + 1,
+          humidity: 58 + (hour % 6) * 2,
+          rainProbability: code == 61 ? 42 : 8,
+          weatherCode: code,
+          windSpeed: 8 + (hour % 4),
+          windDirection: '东南风',
+          aqi: 42 + dayIndex.toDouble(),
+        );
+      });
+      return _WeatherDay(
+        index: dayIndex,
+        date: date,
+        weatherCode: code,
+        minTemperature: minTemp,
+        maxTemperature: maxTemp,
+        maxRainProbability: code == 61 ? 42 : 8,
+        maxWindSpeed: 12,
+        dominantWindDirection: '东南风',
+        hours: hours,
+      );
+    });
+    return _WeatherForecast(
+      days: days,
+      current: days.first.displaySnapshot(null),
+      location: location,
+    );
+  }
 
   static Future<_WeatherForecast> fetchForCity(String? city) async {
     final location = await _resolveLocation(city);
