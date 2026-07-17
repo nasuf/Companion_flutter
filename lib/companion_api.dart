@@ -747,6 +747,54 @@ class CompanionApi {
     return _normalizeChatAttachment(ChatAttachment.fromJson(json));
   }
 
+  Future<ChatAudioTranscription> transcribeChatAudio({
+    required String conversationId,
+    required String name,
+    required String mime,
+    required int size,
+    required int durationSeconds,
+    required String displayMode,
+    required String base64Data,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/chat/transcribe',
+              body: {
+                'conversation_id': conversationId,
+                'name': name,
+                'mime': mime,
+                'size': size,
+                'duration_seconds': durationSeconds,
+                'display_mode': displayMode,
+                'base64': base64Data,
+              },
+              debugLabel: 'chat.audio.transcribe',
+            )
+            as Map<String, dynamic>;
+    final text = json['text']?.toString().trim() ?? '';
+    if (text.isEmpty) {
+      throw const ApiException(502, '没有识别到清晰的语音');
+    }
+    final rawAttachment = json['attachment'];
+    if (displayMode == 'voice' && rawAttachment is! Map) {
+      throw const ApiException(502, '语音文件保存失败');
+    }
+    final attachment = rawAttachment is Map
+        ? _normalizeChatAttachment(
+            ChatAttachment.fromJson(Map<String, dynamic>.from(rawAttachment)),
+          )
+        : null;
+    return ChatAudioTranscription(
+      text: text,
+      attachment: attachment,
+      durationSeconds:
+          (json['duration_seconds'] as num?)?.round() ?? durationSeconds,
+      model: json['model']?.toString() ?? '',
+      requestId: json['request_id']?.toString(),
+    );
+  }
+
   Future<ChatLinkCardResponse> previewChatLink({
     required String conversationId,
     String? url,

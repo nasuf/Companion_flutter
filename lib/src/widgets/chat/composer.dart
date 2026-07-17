@@ -7,6 +7,10 @@ class _Composer extends StatelessWidget {
     required this.height,
     required this.activePanel,
     required this.sending,
+    required this.preparingVoice,
+    required this.recordingVoice,
+    required this.transcribingVoice,
+    required this.voiceSeconds,
     required this.resolvingLink,
     required this.pendingImages,
     required this.pendingLink,
@@ -16,6 +20,11 @@ class _Composer extends StatelessWidget {
     required this.onShowKeyboard,
     required this.onToggleMore,
     required this.onSend,
+    required this.onVoicePressStart,
+    required this.onVoicePressMove,
+    required this.onVoicePressEnd,
+    required this.onVoicePressCancel,
+    required this.onCancelVoice,
     required this.onRemoveImage,
     required this.onPreviewImage,
     required this.onRemoveLink,
@@ -28,6 +37,10 @@ class _Composer extends StatelessWidget {
   final double height;
   final ComposerPanel activePanel;
   final bool sending;
+  final bool preparingVoice;
+  final bool recordingVoice;
+  final bool transcribingVoice;
+  final int voiceSeconds;
   final bool resolvingLink;
   final List<_PendingChatImage> pendingImages;
   final _PendingLinkPreview? pendingLink;
@@ -37,6 +50,11 @@ class _Composer extends StatelessWidget {
   final VoidCallback onShowKeyboard;
   final VoidCallback onToggleMore;
   final VoidCallback onSend;
+  final ValueChanged<Offset> onVoicePressStart;
+  final ValueChanged<Offset> onVoicePressMove;
+  final ValueChanged<Offset> onVoicePressEnd;
+  final VoidCallback onVoicePressCancel;
+  final VoidCallback onCancelVoice;
   final ValueChanged<String> onRemoveImage;
   final ValueChanged<_PendingChatImage> onPreviewImage;
   final VoidCallback onRemoveLink;
@@ -45,6 +63,7 @@ class _Composer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final voiceActive = preparingVoice || recordingVoice || transcribingVoice;
     return Container(
       height: height,
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
@@ -72,65 +91,76 @@ class _Composer extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  _RoundIconButton(
-                    tooltip: '语音',
-                    icon: CupertinoIcons.mic,
-                    quiet: true,
-                    onTap: () {},
+                  _VoiceHoldButton(
+                    enabled:
+                        !transcribingVoice &&
+                        (preparingVoice || recordingVoice || !sending),
+                    recording: recordingVoice,
+                    onStart: onVoicePressStart,
+                    onMove: onVoicePressMove,
+                    onEnd: onVoicePressEnd,
+                    onCancel: onVoicePressCancel,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Container(
-                      constraints: BoxConstraints(
-                        minHeight: 36,
-                        maxHeight: resolvingLink ? 36 : 86,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: TextField(
-                        controller: controller,
-                        focusNode: focusNode,
-                        minLines: 1,
-                        maxLines: resolvingLink ? 1 : 3,
-                        keyboardType: TextInputType.multiline,
-                        textInputAction: TextInputAction.newline,
-                        onTap: onFocusInput,
-                        contextMenuBuilder: _buildContextMenu,
-                        decoration: InputDecoration(
-                          hintText: '发消息...',
-                          hintStyle: const TextStyle(
-                            color: Color(0xFFBFBFBF),
-                            fontSize: 12,
+                    child: voiceActive
+                        ? _VoiceComposerStatus(
+                            preparing: preparingVoice,
+                            recording: recordingVoice,
+                            seconds: voiceSeconds,
+                            onCancel: onCancelVoice,
+                          )
+                        : Container(
+                            constraints: BoxConstraints(
+                              minHeight: 36,
+                              maxHeight: resolvingLink ? 36 : 86,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: TextField(
+                              controller: controller,
+                              focusNode: focusNode,
+                              minLines: 1,
+                              maxLines: resolvingLink ? 1 : 3,
+                              keyboardType: TextInputType.multiline,
+                              textInputAction: TextInputAction.newline,
+                              onTap: onFocusInput,
+                              contextMenuBuilder: _buildContextMenu,
+                              decoration: InputDecoration(
+                                hintText: '发消息...',
+                                hintStyle: const TextStyle(
+                                  color: Color(0xFFBFBFBF),
+                                  fontSize: 12,
+                                ),
+                                border: InputBorder.none,
+                                isDense: true,
+                                prefixIcon: resolvingLink
+                                    ? Center(
+                                        child: CupertinoActivityIndicator(
+                                          radius: 7,
+                                          color: AppColors.accent,
+                                        ),
+                                      )
+                                    : null,
+                                prefixIconConstraints: resolvingLink
+                                    ? const BoxConstraints(
+                                        minWidth: 34,
+                                        maxWidth: 34,
+                                        minHeight: 24,
+                                        maxHeight: 24,
+                                      )
+                                    : null,
+                                contentPadding: const EdgeInsets.fromLTRB(
+                                  14,
+                                  7,
+                                  14,
+                                  7,
+                                ),
+                              ),
+                            ),
                           ),
-                          border: InputBorder.none,
-                          isDense: true,
-                          prefixIcon: resolvingLink
-                              ? Center(
-                                  child: CupertinoActivityIndicator(
-                                    radius: 7,
-                                    color: AppColors.accent,
-                                  ),
-                                )
-                              : null,
-                          prefixIconConstraints: resolvingLink
-                              ? const BoxConstraints(
-                                  minWidth: 34,
-                                  maxWidth: 34,
-                                  minHeight: 24,
-                                  maxHeight: 24,
-                                )
-                              : null,
-                          contentPadding: const EdgeInsets.fromLTRB(
-                            14,
-                            7,
-                            14,
-                            7,
-                          ),
-                        ),
-                      ),
-                    ),
                   ),
                   const SizedBox(width: 10),
                   _RoundIconButton(
@@ -140,7 +170,9 @@ class _Composer extends StatelessWidget {
                         : CupertinoIcons.smiley,
                     selected: activePanel == ComposerPanel.emoji,
                     green: activePanel == ComposerPanel.emoji,
-                    onTap: activePanel == ComposerPanel.emoji
+                    onTap: voiceActive
+                        ? null
+                        : activePanel == ComposerPanel.emoji
                         ? onShowKeyboard
                         : onToggleEmoji,
                   ),
@@ -175,7 +207,7 @@ class _Composer extends StatelessWidget {
                         selected: activePanel == ComposerPanel.more,
                         prominent: activePanel != ComposerPanel.more,
                         green: true,
-                        onTap: onToggleMore,
+                        onTap: voiceActive ? null : onToggleMore,
                       );
                     },
                   ),
@@ -237,6 +269,128 @@ class _Composer extends StatelessWidget {
       text: nextText,
       selection: TextSelection.collapsed(offset: start + text.length),
       composing: TextRange.empty,
+    );
+  }
+}
+
+class _VoiceComposerStatus extends StatelessWidget {
+  const _VoiceComposerStatus({
+    required this.preparing,
+    required this.recording,
+    required this.seconds,
+    required this.onCancel,
+  });
+
+  final bool preparing;
+  final bool recording;
+  final int seconds;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final minutes = (seconds ~/ 60).toString().padLeft(2, '0');
+    final remaining = (seconds % 60).toString().padLeft(2, '0');
+    final label = preparing
+        ? '正在准备麦克风…'
+        : recording
+        ? '正在录音  $minutes:$remaining · 点击左侧完成'
+        : '正在识别语音…';
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.fromLTRB(12, 0, 4, 0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        children: [
+          if (recording)
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFF4D5E),
+                shape: BoxShape.circle,
+              ),
+            )
+          else
+            const CupertinoActivityIndicator(radius: 7),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF5F6967),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          if (recording)
+            IconButton(
+              tooltip: '取消录音',
+              onPressed: onCancel,
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(CupertinoIcons.xmark, size: 17),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VoiceHoldButton extends StatelessWidget {
+  const _VoiceHoldButton({
+    required this.enabled,
+    required this.recording,
+    required this.onStart,
+    required this.onMove,
+    required this.onEnd,
+    required this.onCancel,
+  });
+
+  final bool enabled;
+  final bool recording;
+  final ValueChanged<Offset> onStart;
+  final ValueChanged<Offset> onMove;
+  final ValueChanged<Offset> onEnd;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: '按住说话',
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: enabled ? (event) => onStart(event.position) : null,
+        onPointerMove: enabled ? (event) => onMove(event.position) : null,
+        onPointerUp: enabled ? (event) => onEnd(event.position) : null,
+        onPointerCancel: enabled ? (_) => onCancel() : null,
+        child: SizedBox(
+          width: 28,
+          height: 40,
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              width: recording ? 28 : 24,
+              height: recording ? 28 : 24,
+              decoration: BoxDecoration(
+                color: recording
+                    ? AppColors.accent.withValues(alpha: 0.16)
+                    : Colors.transparent,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                recording ? CupertinoIcons.mic_fill : CupertinoIcons.mic,
+                size: recording ? 19 : 18,
+                color: enabled || recording ? AppColors.text : AppColors.muted,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -515,16 +669,14 @@ class _RoundIconButton extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.selected = false,
-    this.quiet = false,
     this.prominent = false,
     this.green = false,
   });
 
   final String tooltip;
   final IconData icon;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool selected;
-  final bool quiet;
   final bool prominent;
   final bool green;
 
@@ -538,19 +690,11 @@ class _RoundIconButton extends StatelessWidget {
         onTap: onTap,
         radius: 23,
         child: Container(
-          width: quiet
-              ? 24
-              : prominent
-              ? 30
-              : 38,
-          height: quiet
-              ? 36
-              : prominent
-              ? 30
-              : 38,
+          width: prominent ? 30 : 38,
+          height: prominent ? 30 : 38,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: selected || quiet
+            color: selected
                 ? null
                 : prominent
                 ? (green ? figmaGreen : AppColors.accent)
@@ -565,9 +709,7 @@ class _RoundIconButton extends StatelessWidget {
                   )
                 : null,
             border: Border.all(
-              color: quiet
-                  ? Colors.transparent
-                  : selected
+              color: selected
                   ? Colors.white.withValues(alpha: 0.28)
                   : prominent
                   ? Colors.transparent
@@ -588,10 +730,10 @@ class _RoundIconButton extends StatelessWidget {
           child: Icon(
             icon,
             size: prominent ? 22 : 21,
-            color: selected
+            color: onTap == null
+                ? const Color(0xFFC8CECD)
+                : selected
                 ? Colors.white
-                : quiet
-                ? const Color(0xFF8A8A8A)
                 : prominent
                 ? Colors.white
                 : AppColors.text,

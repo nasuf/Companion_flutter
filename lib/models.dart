@@ -483,6 +483,10 @@ class ChatAttachment {
     this.durationSeconds,
     this.visionStatus = 'pending',
     this.visionSummary,
+    this.transcriptionStatus,
+    this.transcriptionText,
+    this.transcriptionModel,
+    this.transcriptionRequestId,
     this.createdAt,
   });
 
@@ -497,9 +501,15 @@ class ChatAttachment {
   final String url;
   final String visionStatus;
   final String? visionSummary;
+  final String? transcriptionStatus;
+  final String? transcriptionText;
+  final String? transcriptionModel;
+  final String? transcriptionRequestId;
   final DateTime? createdAt;
 
   bool get isImage => kind == 'image' && url.trim().isNotEmpty;
+  bool get isAudio => kind == 'audio' && url.trim().isNotEmpty;
+  bool get showsAsVoice => isAudio;
 
   factory ChatAttachment.fromJson(Map<String, dynamic> json) {
     return ChatAttachment(
@@ -514,6 +524,10 @@ class ChatAttachment {
       url: json['url'] as String? ?? '',
       visionStatus: json['vision_status'] as String? ?? 'pending',
       visionSummary: json['vision_summary'] as String?,
+      transcriptionStatus: json['transcription_status'] as String?,
+      transcriptionText: json['transcription_text'] as String?,
+      transcriptionModel: json['transcription_model'] as String?,
+      transcriptionRequestId: json['transcription_request_id'] as String?,
       createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
     );
   }
@@ -532,6 +546,13 @@ class ChatAttachment {
       'vision_status': visionStatus,
       if (visionSummary != null && visionSummary!.isNotEmpty)
         'vision_summary': visionSummary,
+      if (transcriptionStatus != null)
+        'transcription_status': transcriptionStatus,
+      if (transcriptionText != null && transcriptionText!.isNotEmpty)
+        'transcription_text': transcriptionText,
+      if (transcriptionModel != null) 'transcription_model': transcriptionModel,
+      if (transcriptionRequestId != null)
+        'transcription_request_id': transcriptionRequestId,
       if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
     };
   }
@@ -549,9 +570,29 @@ class ChatAttachment {
       url: url ?? this.url,
       visionStatus: visionStatus,
       visionSummary: visionSummary,
+      transcriptionStatus: transcriptionStatus,
+      transcriptionText: transcriptionText,
+      transcriptionModel: transcriptionModel,
+      transcriptionRequestId: transcriptionRequestId,
       createdAt: createdAt,
     );
   }
+}
+
+class ChatAudioTranscription {
+  const ChatAudioTranscription({
+    required this.text,
+    required this.durationSeconds,
+    required this.model,
+    this.attachment,
+    this.requestId,
+  });
+
+  final String text;
+  final ChatAttachment? attachment;
+  final int durationSeconds;
+  final String model;
+  final String? requestId;
 }
 
 class DailySharePhotoGroup {

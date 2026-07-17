@@ -501,9 +501,15 @@ class _Bubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final componentCard = message.componentCard;
-    final attachments = message.attachments
+    final imageAttachments = message.attachments
         .where((item) => item.isImage)
         .toList();
+    final audioAttachments = message.attachments
+        .where((item) => item.showsAsVoice)
+        .toList();
+    final audioAttachment = audioAttachments.isEmpty
+        ? null
+        : audioAttachments.first;
     final shouldHideExternalLinkText =
         componentCard?.type == 'external_link' &&
         _isShareTextRepresentedByExternalLinkCard(
@@ -516,7 +522,7 @@ class _Bubble extends StatelessWidget {
                 !shouldHideExternalLinkText)) &&
         message.content.trim().isNotEmpty;
     final showTextWithAttachments =
-        attachments.isNotEmpty && message.content.trim().isNotEmpty;
+        imageAttachments.isNotEmpty && message.content.trim().isNotEmpty;
     return Flexible(
       child: Column(
         crossAxisAlignment: message.isMine
@@ -560,9 +566,16 @@ class _Bubble extends StatelessWidget {
               authToken: authToken,
               apiBaseUrl: apiBaseUrl,
             )
-          else if (attachments.isNotEmpty) ...[
+          else if (audioAttachment != null)
+            _AudioAttachmentBubble(
+              attachment: audioAttachment,
+              isMine: message.isMine,
+              authToken: authToken,
+              apiBaseUrl: apiBaseUrl,
+            )
+          else if (imageAttachments.isNotEmpty) ...[
             _ImageAttachmentBubble(
-              attachments: attachments,
+              attachments: imageAttachments,
               isMine: message.isMine,
               authToken: authToken,
               onTap: onAttachmentTap,
@@ -642,6 +655,212 @@ class _MessageTextBubble extends StatelessWidget {
           offset: const Offset(0, 4),
         ),
       ],
+    );
+  }
+}
+
+class _AudioAttachmentBubble extends StatefulWidget {
+  const _AudioAttachmentBubble({
+    required this.attachment,
+    required this.isMine,
+    this.authToken,
+    this.apiBaseUrl,
+  });
+
+  final ChatAttachment attachment;
+  final bool isMine;
+  final String? authToken;
+  final String? apiBaseUrl;
+
+  @override
+  State<_AudioAttachmentBubble> createState() => _AudioAttachmentBubbleState();
+}
+
+class _AudioAttachmentBubbleState extends State<_AudioAttachmentBubble> {
+  late final AudioPlayer _player;
+  StreamSubscription<void>? _completeSubscription;
+  bool _playing = false;
+  bool _paused = false;
+  bool _loading = false;
+  String? _localPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _player = AudioPlayer();
+    _completeSubscription = _player.onPlayerComplete.listen((_) {
+      if (mounted) {
+        setState(() {
+          _playing = false;
+          _paused = false;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _completeSubscription?.cancel();
+    unawaited(_player.dispose());
+    final path = _localPath;
+    if (path != null) {
+      unawaited(File(path).delete().then<void>((_) {}, onError: (_) {}));
+    }
+    super.dispose();
+  }
+
+  Future<void> _togglePlayback() async {
+    if (_loading) return;
+    if (_playing) {
+      await _player.pause();
+      if (mounted) {
+        setState(() {
+          _playing = false;
+          _paused = true;
+        });
+      }
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      if (_paused) {
+        await _player.resume();
+      } else {
+        final path = _localPath ?? await _downloadAudio();
+        _localPath = path;
+        await _player.play(DeviceFileSource(path));
+      }
+      if (mounted) {
+        setState(() {
+          _playing = true;
+          _paused = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('语音加载失败，请稍后重试')));
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<String> _downloadAudio() async {
+    final uri = _audioUri();
+    final client = HttpClient();
+    try {
+      final request = await client.getUrl(uri);
+      final headers = _isApiOrigin(uri)
+          ? _mediaHeadersForUrl(uri.toString(), widget.authToken)
+          : null;
+      if (headers != null) {
+        headers.forEach(request.headers.set);
+      }
+      final response = await request.close();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException(
+          'Audio download failed (${response.statusCode})',
+          uri: uri,
+        );
+      }
+      final bytes = <int>[];
+      await for (final chunk in response) {
+        bytes.addAll(chunk);
+      }
+      final directory = await getTemporaryDirectory();
+      final path = '${directory.path}/chat_audio_${widget.attachment.id}.m4a';
+      await File(path).writeAsBytes(bytes, flush: true);
+      return path;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Uri _audioUri() {
+    final raw = widget.attachment.url.trim();
+    final parsed = Uri.tryParse(raw);
+    if (parsed == null) throw const FormatException('Invalid audio URL');
+    if (parsed.hasScheme) return parsed;
+    final base = widget.apiBaseUrl?.trim();
+    if (base == null || base.isEmpty) {
+      throw const FormatException('Missing API base URL');
+    }
+    if (raw.startsWith('/')) return Uri.parse('$base$raw');
+    return Uri.parse(base.endsWith('/') ? base : '$base/').resolve(raw);
+  }
+
+  bool _isApiOrigin(Uri uri) {
+    final rawBase = widget.apiBaseUrl?.trim();
+    if (rawBase == null || rawBase.isEmpty) return false;
+    final base = Uri.tryParse(rawBase);
+    if (base == null || !base.hasScheme || !uri.hasScheme) return false;
+    return uri.scheme == base.scheme &&
+        uri.host == base.host &&
+        uri.port == base.port;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = math.max(1, widget.attachment.durationSeconds ?? 1);
+    final width = (108.0 + duration * 2.2).clamp(116.0, 250.0).toDouble();
+    final foreground = widget.isMine ? Colors.white : AppColors.text;
+    const mineColor = Color(0xFF06C893);
+    return GestureDetector(
+      onTap: _togglePlayback,
+      child: Container(
+        width: width,
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 13),
+        decoration: BoxDecoration(
+          color: widget.isMine ? mineColor : AppColors.surface,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(widget.isMine ? 20 : 3),
+            topRight: Radius.circular(widget.isMine ? 3 : 20),
+            bottomLeft: const Radius.circular(20),
+            bottomRight: const Radius.circular(20),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: widget.isMine
+                  ? mineColor.withValues(alpha: 0.25)
+                  : Colors.black.withValues(alpha: 0.10),
+              blurRadius: widget.isMine ? 4 : 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            if (_loading)
+              CupertinoActivityIndicator(radius: 9, color: foreground)
+            else
+              Icon(
+                _playing ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
+                color: foreground,
+                size: 18,
+              ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Icon(
+                Icons.graphic_eq_rounded,
+                color: foreground.withValues(alpha: 0.88),
+                size: 30,
+              ),
+            ),
+            const SizedBox(width: 7),
+            Text(
+              '$duration″',
+              style: TextStyle(
+                color: foreground,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

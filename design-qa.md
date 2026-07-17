@@ -88,3 +88,60 @@ passed
 ## Final result
 
 passed
+
+---
+
+# Chat voice recording visual QA
+
+**Source visual truth**
+
+- `/Users/songtao/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/pp_tingfenging__03cb/temp/RWTemp/2026-07/ee9b29974a98b03945babe57c5ffa49e.jpg`
+
+**Rendered implementation**
+
+- `/tmp/companion_voice_overlay_v3_sim.png`
+- Full side-by-side comparison: `/tmp/companion_voice_overlay_comparison_v3_sim.png`
+- Viewport: iPhone 17 Pro Max simulator, 440 × 956 logical pixels, 1320 × 2868 physical pixels.
+- State: recording is active, pointer remains in the default release-to-send region.
+
+**Full-view comparison evidence**
+
+The source and implementation were normalized to the same height and placed in one comparison image. The implementation preserves the source hierarchy: dimmed conversation, bright lime recording surface near the middle, two lower gesture targets, and a high-contrast release-to-send surface at the bottom. The recording surface, target labels, and bottom action remain readable at the full comparison scale.
+
+**Focused region comparison evidence**
+
+A separate crop was not needed because the 2358 × 2556 full comparison keeps the central recording surface and bottom controls clearly readable. The simulator screenshot was also inspected at original resolution for typography, icon alignment, radii, shadows, and safe-area placement.
+
+**Findings**
+
+- No actionable P0/P1/P2 mismatch remains.
+- Fonts and typography: iOS system Chinese text renders cleanly; hierarchy and weights match the reference intent. Labels do not wrap or truncate.
+- Spacing and layout rhythm: the central recording surface and bottom actions follow the same vertical hierarchy and remain inside safe areas.
+- Colors and tokens: the lime recording color, dark scrim, neutral gesture targets, and white send surface closely match the reference.
+- Image and asset fidelity: no raster asset was needed; all visible symbols use the platform Material/Cupertino icon libraries. No handmade SVG or placeholder asset is present.
+- Copy and content: `取消`, `滑到这里  转文字`, and `松开  发送` are concise and match the requested interaction.
+- Accessibility and behavior: the microphone status has a semantic recording-duration label; the press interaction has explicit cancel, convert, and send states. Widget tests cover the visible labels and recording state.
+- P3 accepted difference: the reference uses organic curved gesture regions and a small speech-bubble tail. The implementation uses Companion's rounded control language and standard platform icons for clearer hit targets and avoids a code-drawn decorative asset.
+
+**Comparison history**
+
+1. Initial simulator capture `/tmp/companion_voice_overlay.png`: the recording card sat too high and exposed a timer not present in the source. The card was moved toward the visual center and the timer was retained only as an accessibility label.
+2. Second capture `/tmp/companion_voice_overlay_v2.png`: the card proportions were slightly taller than the source. Height was reduced from 106 to 96 logical pixels and vertical alignment was adjusted.
+3. Final capture `/tmp/companion_voice_overlay_v3_sim.png`: post-fix comparison shows no remaining P0/P1/P2 issue.
+
+**Primary interactions tested**
+
+- Default release-to-send state renders.
+- Cancel and convert-to-text targets render with distinct labels.
+- Recording status exposes an accessible duration label.
+- Simulator preview launched without a Dart/runtime exception.
+
+**Implementation checklist**
+
+- [x] Match source hierarchy and safe-area layout.
+- [x] Use real platform icons.
+- [x] Verify visible copy and Chinese font rendering on iOS.
+- [x] Verify central card and lower gesture targets at the target viewport.
+- [x] Re-run widget tests after visual fixes.
+
+final result: passed

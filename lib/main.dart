@@ -41,6 +41,7 @@ import 'src/games/native_game_event_outbox.dart';
 import 'src/games/number_merge_engine.dart';
 import 'src/games/reversi_engine.dart';
 import 'src/games/tetris_duel_engine.dart';
+import 'src/widgets/chat/voice_recording_overlay.dart';
 
 part 'src/app/auth_gate.dart';
 part 'src/app/auth_session_store.dart';
