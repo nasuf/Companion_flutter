@@ -168,22 +168,30 @@ class _AdminUserSummary {
   const _AdminUserSummary({
     required this.id,
     required this.username,
+    required this.email,
     required this.role,
     required this.createdAt,
     required this.status,
     required this.archivedAt,
+    required this.signupSource,
     required this.agentCount,
     required this.wechat,
+    required this.phone,
+    required this.authMethods,
   });
 
   final String id;
   final String username;
+  final String? email;
   final String role;
   final String? createdAt;
   final String status;
   final String? archivedAt;
+  final String? signupSource;
   final int agentCount;
   final _AdminWechatIdentity? wechat;
+  final _AdminPhoneIdentity? phone;
+  final List<_AdminAuthMethod> authMethods;
 
   bool get isAdmin => role == 'admin';
 
@@ -206,26 +214,37 @@ class _AdminUserSummary {
     return _AdminUserSummary(
       id: id,
       username: username,
+      email: email,
       role: role ?? this.role,
       createdAt: createdAt,
       status: status,
       archivedAt: archivedAt,
+      signupSource: signupSource,
       agentCount: agentCount,
       wechat: wechat,
+      phone: phone,
+      authMethods: authMethods,
     );
   }
 
   factory _AdminUserSummary.fromJson(Map<String, dynamic> json) {
     final wechat = _jsonMapOrNull(json['wechat']);
+    final phone = _jsonMapOrNull(json['phone']);
     return _AdminUserSummary(
       id: _jsonString(json['id']),
       username: _jsonString(json['username']),
+      email: _jsonNullableString(json['email']),
       role: _jsonString(json['role'], fallback: 'user'),
       createdAt: _jsonNullableString(json['created_at']),
       status: _jsonString(json['status'], fallback: 'active'),
       archivedAt: _jsonNullableString(json['archived_at']),
+      signupSource: _jsonNullableString(json['signup_source']),
       agentCount: _jsonInt(json['agent_count']),
       wechat: wechat == null ? null : _AdminWechatIdentity.fromJson(wechat),
+      phone: phone == null ? null : _AdminPhoneIdentity.fromJson(phone),
+      authMethods: _jsonList(
+        json['auth_methods'],
+      ).map(_AdminAuthMethod.fromJson).toList(growable: false),
     );
   }
 }
@@ -294,6 +313,54 @@ class _AdminWechatIdentity {
       province: _jsonNullableString(json['province']),
       city: _jsonNullableString(json['city']),
       country: _jsonNullableString(json['country']),
+      lastLoginAt: _jsonNullableString(json['last_login_at']),
+    );
+  }
+}
+
+class _AdminPhoneIdentity {
+  const _AdminPhoneIdentity({this.phone, this.phoneMasked, this.lastLoginAt});
+
+  final String? phone;
+  final String? phoneMasked;
+  final String? lastLoginAt;
+
+  factory _AdminPhoneIdentity.fromJson(Map<String, dynamic> json) {
+    return _AdminPhoneIdentity(
+      phone: _jsonNullableString(json['phone']),
+      phoneMasked: _jsonNullableString(json['phone_masked']),
+      lastLoginAt: _jsonNullableString(json['last_login_at']),
+    );
+  }
+}
+
+class _AdminAuthMethod {
+  const _AdminAuthMethod({
+    required this.type,
+    required this.label,
+    this.identifier,
+    this.phone,
+    this.phoneMasked,
+    this.email,
+    this.lastLoginAt,
+  });
+
+  final String type;
+  final String label;
+  final String? identifier;
+  final String? phone;
+  final String? phoneMasked;
+  final String? email;
+  final String? lastLoginAt;
+
+  factory _AdminAuthMethod.fromJson(Map<String, dynamic> json) {
+    return _AdminAuthMethod(
+      type: _jsonString(json['type'], fallback: 'password'),
+      label: _jsonString(json['label'], fallback: '账号密码'),
+      identifier: _jsonNullableString(json['identifier']),
+      phone: _jsonNullableString(json['phone']),
+      phoneMasked: _jsonNullableString(json['phone_masked']),
+      email: _jsonNullableString(json['email']),
       lastLoginAt: _jsonNullableString(json['last_login_at']),
     );
   }
@@ -407,6 +474,62 @@ String _adminDateLabel(String? value) {
   final hour = local.hour.toString().padLeft(2, '0');
   final minute = local.minute.toString().padLeft(2, '0');
   return '${local.year}.$month.$day $hour:$minute';
+}
+
+List<_AdminAuthMethod> _adminAuthMethods(_AdminUserSummary user) {
+  if (user.authMethods.isNotEmpty) return user.authMethods;
+  final methods = <_AdminAuthMethod>[];
+  if (user.email != null) {
+    methods.add(
+      _AdminAuthMethod(
+        type: 'password',
+        label: '邮箱密码',
+        identifier: user.email,
+        email: user.email,
+      ),
+    );
+  }
+  if (user.wechat != null) {
+    methods.add(
+      _AdminAuthMethod(
+        type: 'wechat',
+        label: '微信',
+        identifier:
+            user.wechat!.nickname ?? user.wechat!.openid ?? user.displayName,
+        lastLoginAt: user.wechat!.lastLoginAt,
+      ),
+    );
+  }
+  if (user.phone != null) {
+    methods.add(
+      _AdminAuthMethod(
+        type: 'phone',
+        label: '手机号',
+        identifier: user.phone!.phoneMasked ?? user.phone!.phone,
+        phone: user.phone!.phone,
+        phoneMasked: user.phone!.phoneMasked,
+        lastLoginAt: user.phone!.lastLoginAt,
+      ),
+    );
+  }
+  if (methods.isEmpty) {
+    methods.add(
+      _AdminAuthMethod(
+        type: 'password',
+        label: '账号密码',
+        identifier: user.username,
+      ),
+    );
+  }
+  return methods;
+}
+
+Color _adminAuthMethodColor(String type) {
+  return switch (type) {
+    'wechat' => const Color(0xFF1FA97A),
+    'phone' => const Color(0xFF2D73FF),
+    _ => const Color(0xFFD4A843),
+  };
 }
 
 class AdminToolsPage extends StatefulWidget {
@@ -1243,6 +1366,8 @@ class _AdminUserRow extends StatelessWidget {
                         decoration: TextDecoration.none,
                       ),
                     ),
+                    const SizedBox(height: 6),
+                    _AdminAuthMethodChips(user: user, compact: true),
                     const SizedBox(height: 4),
                     Text(
                       'ID ${user.id}',
@@ -1354,6 +1479,59 @@ class _AdminRolePill extends StatelessWidget {
         style: TextStyle(
           color: color,
           fontSize: 10.5,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0,
+          decoration: TextDecoration.none,
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminAuthMethodChips extends StatelessWidget {
+  const _AdminAuthMethodChips({required this.user, this.compact = false});
+
+  final _AdminUserSummary user;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final methods = _adminAuthMethods(user);
+    return Wrap(
+      spacing: 5,
+      runSpacing: 5,
+      children: [
+        for (final method in methods)
+          _AdminAuthMethodChip(method: method, compact: compact),
+      ],
+    );
+  }
+}
+
+class _AdminAuthMethodChip extends StatelessWidget {
+  const _AdminAuthMethodChip({required this.method, required this.compact});
+
+  final _AdminAuthMethod method;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _adminAuthMethodColor(method.type);
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 7 : 8,
+        vertical: compact ? 3 : 4,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
+      ),
+      child: Text(
+        method.label,
+        style: TextStyle(
+          color: color,
+          fontSize: compact ? 10 : 10.5,
           fontWeight: FontWeight.w900,
           letterSpacing: 0,
           decoration: TextDecoration.none,
@@ -1515,6 +1693,11 @@ class _AdminUserDetailSheetState extends State<_AdminUserDetailSheet> {
                               _AdminRolePill(
                                 role: detail?.user.role ?? widget.user.role,
                               ),
+                              const SizedBox(height: 6),
+                              _AdminAuthMethodChips(
+                                user: detail?.user ?? widget.user,
+                                compact: true,
+                              ),
                             ],
                           ),
                         ),
@@ -1568,6 +1751,23 @@ class _AdminUserDetailSheetState extends State<_AdminUserDetailSheet> {
                                     _AdminDetailLine(
                                       label: '角色',
                                       value: _adminRoleLabel(detail.user.role),
+                                    ),
+                                    _AdminDetailWidgetLine(
+                                      label: '登录方式',
+                                      child: Align(
+                                        alignment: Alignment.centerRight,
+                                        child: _AdminAuthMethodChips(
+                                          user: detail.user,
+                                        ),
+                                      ),
+                                    ),
+                                    _AdminDetailLine(
+                                      label: '邮箱',
+                                      value: detail.user.email ?? '暂无',
+                                    ),
+                                    _AdminDetailLine(
+                                      label: '手机号',
+                                      value: detail.user.phone?.phone ?? '暂无',
                                     ),
                                     _AdminDetailLine(
                                       label: '状态',
@@ -1752,6 +1952,41 @@ class _AdminDetailLine extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminDetailWidgetLine extends StatelessWidget {
+  const _AdminDetailWidgetLine({required this.label, required this.child});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 78,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: isDark ? const Color(0x9EEBF2EE) : AppColors.muted,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: child),
         ],
       ),
     );
