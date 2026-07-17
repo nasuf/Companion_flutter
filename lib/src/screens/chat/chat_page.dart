@@ -2,6 +2,20 @@ part of 'package:companion_flutter/main.dart';
 
 enum ComposerPanel { none, emoji, more }
 
+class VoiceRecordingOverlaySnapshot {
+  const VoiceRecordingOverlaySnapshot({
+    required this.action,
+    required this.seconds,
+    required this.preparing,
+    required this.amplitude,
+  });
+
+  final VoiceReleaseAction action;
+  final int seconds;
+  final bool preparing;
+  final ValueListenable<double> amplitude;
+}
+
 class ChatPage extends StatefulWidget {
   const ChatPage({
     super.key,
@@ -11,6 +25,7 @@ class ChatPage extends StatefulWidget {
     required this.onOpenSidebar,
     this.onAchievementDetailRequested,
     this.onAchievementOverlayChanged,
+    this.onVoiceRecordingOverlayChanged,
   });
 
   final CompanionApi api;
@@ -19,6 +34,8 @@ class ChatPage extends StatefulWidget {
   final VoidCallback onOpenSidebar;
   final ValueChanged<AchievementItem>? onAchievementDetailRequested;
   final ValueChanged<bool>? onAchievementOverlayChanged;
+  final ValueChanged<VoiceRecordingOverlaySnapshot?>?
+  onVoiceRecordingOverlayChanged;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -355,6 +372,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _favoriteMusicTrackIds.clear();
       _busyMusicFavoriteIds.clear();
     });
+    _syncVoiceRecordingOverlay();
     widget.onAchievementOverlayChanged?.call(false);
     await Future.wait([
       _loadLatestMessages(showLoading: true),
@@ -1940,6 +1958,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     setState(() {
       _voiceReleaseAction = action;
     });
+    _syncVoiceRecordingOverlay();
   }
 
   void _handleVoicePressEnd(Offset position) {
@@ -1961,6 +1980,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _pendingVoiceReleaseAction = action;
       if (tooShort) _historyError = '说话时间太短，请按住后再说。';
     });
+    _syncVoiceRecordingOverlay();
     if (!_preparingVoice) {
       unawaited(_completeVoiceGesture(action));
     }
@@ -1973,7 +1993,24 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _voiceReleaseAction = VoiceReleaseAction.cancel;
       _pendingVoiceReleaseAction = VoiceReleaseAction.cancel;
     });
+    _syncVoiceRecordingOverlay();
     unawaited(_cancelVoiceRecording());
+  }
+
+  void _syncVoiceRecordingOverlay() {
+    final callback = widget.onVoiceRecordingOverlayChanged;
+    if (callback == null) return;
+    final visible = _voiceGestureActive && (_preparingVoice || _recordingVoice);
+    callback(
+      visible
+          ? VoiceRecordingOverlaySnapshot(
+              action: _voiceReleaseAction,
+              seconds: _voiceSeconds,
+              preparing: _preparingVoice,
+              amplitude: _voiceAmplitude,
+            )
+          : null,
+    );
   }
 
   VoiceReleaseAction _voiceActionForPosition(Offset position) {
@@ -2007,6 +2044,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _panel = ComposerPanel.none;
       _historyError = null;
     });
+    _syncVoiceRecordingOverlay();
     _inputFocus.unfocus();
     try {
       if (!await _voiceRecorder.hasPermission()) {
@@ -2016,6 +2054,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             _pendingVoiceReleaseAction = null;
             _historyError = '需要麦克风权限才能进行语音输入。';
           });
+          _syncVoiceRecordingOverlay();
         }
         return;
       }
@@ -2046,6 +2085,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _voiceSeconds = 0;
         _voiceRecordingStartedAt = DateTime.now();
       });
+      _syncVoiceRecordingOverlay();
       _voiceAmplitudeSub = _voiceRecorder
           .onAmplitudeChanged(const Duration(milliseconds: 80))
           .listen((amplitude) {
@@ -2064,12 +2104,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         }
         final next = _voiceSeconds + 1;
         setState(() => _voiceSeconds = next);
+        _syncVoiceRecordingOverlay();
         if (next >= _maxVoiceSeconds) {
           timer.cancel();
           setState(() {
             _voiceGestureActive = false;
             _voiceReleaseAction = VoiceReleaseAction.sendVoice;
           });
+          _syncVoiceRecordingOverlay();
           HapticFeedback.heavyImpact();
           unawaited(_stopVoiceRecording(VoiceReleaseAction.sendVoice));
         }
@@ -2093,10 +2135,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               ? '语音功能需要完整重启 App 后才能使用。'
               : _asMessage(error);
         });
+        _syncVoiceRecordingOverlay();
       }
     } finally {
       if (mounted && _preparingVoice) {
         setState(() => _preparingVoice = false);
+        _syncVoiceRecordingOverlay();
       }
     }
   }
@@ -2135,6 +2179,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _transcribingVoice = true;
       _messages.add(processingMessage);
     });
+    _syncVoiceRecordingOverlay();
     scrollToLatest();
     await amplitudeSub?.cancel();
 
@@ -2203,8 +2248,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   Future<void> _cancelVoiceRecording() async {
     _pendingVoiceReleaseAction = VoiceReleaseAction.cancel;
-    if (_preparingVoice && !_recordingVoice) return;
-    if (!_recordingVoice) return;
+    if (_preparingVoice && !_recordingVoice) {
+      if (mounted && _voiceGestureActive) {
+        setState(() => _voiceGestureActive = false);
+      }
+      _syncVoiceRecordingOverlay();
+      return;
+    }
+    if (!_recordingVoice) {
+      _syncVoiceRecordingOverlay();
+      return;
+    }
     _voiceTimer?.cancel();
     _voiceTimer = null;
     final amplitudeSub = _voiceAmplitudeSub;
@@ -2217,6 +2271,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _voiceRecordingStartedAt = null;
         _voiceSeconds = 0;
       });
+      _syncVoiceRecordingOverlay();
     }
     await amplitudeSub?.cancel();
     try {
@@ -2819,23 +2874,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       capsule: _readyCapsule!,
                       onTap: _openReadyCapsuleNotice,
                     ),
-            ),
-          ),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 150),
-                child:
-                    _voiceGestureActive && (_preparingVoice || _recordingVoice)
-                    ? VoiceRecordingOverlay(
-                        key: const ValueKey('voice-recording-overlay'),
-                        action: _voiceReleaseAction,
-                        seconds: _voiceSeconds,
-                        preparing: _preparingVoice,
-                        amplitude: _voiceAmplitude,
-                      )
-                    : const SizedBox.shrink(),
-              ),
             ),
           ),
         ],

@@ -23,6 +23,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
   bool _chatSidebarOpen = false;
   bool _routeCovered = false;
   AchievementItem? _activeAchievement;
+  VoiceRecordingOverlaySnapshot? _voiceRecordingOverlay;
   AppNotificationEvent? _activeNotification;
   final _chatPageKey = GlobalKey<_ChatPageState>();
   PageRoute<dynamic>? _subscribedRoute;
@@ -58,6 +59,9 @@ class _MainShellState extends State<MainShell> with RouteAware {
   @override
   void didUpdateWidget(covariant MainShell oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.session.conversationId != widget.session.conversationId) {
+      _voiceRecordingOverlay = null;
+    }
     if (oldWidget.session != widget.session) {
       PushNotificationService.instance.setRouteContext(widget.session);
     }
@@ -106,6 +110,11 @@ class _MainShellState extends State<MainShell> with RouteAware {
   void _setAchievementOverlayOpen(bool value) {
     if (value || _activeAchievement == null) return;
     setState(() => _activeAchievement = null);
+  }
+
+  void _setVoiceRecordingOverlay(VoiceRecordingOverlaySnapshot? overlay) {
+    if (!mounted || identical(_voiceRecordingOverlay, overlay)) return;
+    setState(() => _voiceRecordingOverlay = overlay);
   }
 
   void _openAchievementOverlay(AchievementItem item) {
@@ -262,6 +271,8 @@ class _MainShellState extends State<MainShell> with RouteAware {
     final media = MediaQuery.of(context);
     final safeBottom = media.padding.bottom;
     final tabBarWidth = math.min(336.0, media.size.width - 54.0);
+    final voiceRecordingActive = _voiceRecordingOverlay != null;
+    final hideTabBar = _activeAchievement != null || voiceRecordingActive;
     final chatPage = widget.session.conversationId == null
         ? NoAgentPage(
             api: widget.api,
@@ -276,6 +287,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
             onOpenSidebar: () => _setChatSidebarOpen(true),
             onAchievementDetailRequested: _openAchievementOverlay,
             onAchievementOverlayChanged: _setAchievementOverlayOpen,
+            onVoiceRecordingOverlayChanged: _setVoiceRecordingOverlay,
           );
     final pages = [
       chatPage,
@@ -317,15 +329,13 @@ class _MainShellState extends State<MainShell> with RouteAware {
                   AnimatedPositioned(
                     left: 0,
                     right: 0,
-                    bottom: _activeAchievement != null
-                        ? -92
-                        : math.max(10, safeBottom - 2),
+                    bottom: hideTabBar ? -92 : math.max(10, safeBottom - 2),
                     duration: const Duration(milliseconds: 260),
                     curve: Curves.easeOutCubic,
                     child: IgnorePointer(
-                      ignoring: _activeAchievement != null,
+                      ignoring: hideTabBar,
                       child: AnimatedOpacity(
-                        opacity: _activeAchievement != null ? 0 : 1,
+                        opacity: hideTabBar ? 0 : 1,
                         duration: const Duration(milliseconds: 180),
                         child: Center(
                           child: SizedBox(
@@ -355,6 +365,23 @@ class _MainShellState extends State<MainShell> with RouteAware {
             visible: _chatSidebarOpen,
             onDismiss: () => _setChatSidebarOpen(false),
             onSelected: _openSidebarDestination,
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: !voiceRecordingActive,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 150),
+                child: _voiceRecordingOverlay == null
+                    ? const SizedBox.shrink()
+                    : VoiceRecordingOverlay(
+                        key: const ValueKey('voice-recording-overlay'),
+                        action: _voiceRecordingOverlay!.action,
+                        seconds: _voiceRecordingOverlay!.seconds,
+                        preparing: _voiceRecordingOverlay!.preparing,
+                        amplitude: _voiceRecordingOverlay!.amplitude,
+                      ),
+              ),
+            ),
           ),
         ],
       ),

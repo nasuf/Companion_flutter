@@ -9,6 +9,9 @@ enum VoiceReleaseAction { sendVoice, cancel, sendText }
 const chatVoiceAccent = Color(0xFF06C893);
 const chatVoiceAccentDeep = Color(0xFF068A66);
 const chatVoiceAccentSoft = Color(0xFFE7F8F2);
+const chatVoiceCancel = Color(0xFFFF5A5F);
+const chatVoiceCancelDeep = Color(0xFFC6383D);
+const chatVoiceCancelSoft = Color(0xFFFFE9EA);
 const voiceMinimumCapturedDuration = Duration(milliseconds: 650);
 
 const _voiceSelectionThresholdFromBottom = 146.0;
@@ -66,7 +69,7 @@ class VoiceRecordingOverlay extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        const ColoredBox(color: Color(0x8F101B17)),
+        const ColoredBox(color: Color(0x70101B17)),
         TweenAnimationBuilder<double>(
           tween: Tween(begin: 0, end: 1),
           duration: duration,
@@ -138,6 +141,7 @@ class _VoiceOverlayContent extends StatelessWidget {
                   semanticsLabel: '取消录音',
                   icon: CupertinoIcons.xmark,
                   selected: action == VoiceReleaseAction.cancel,
+                  danger: true,
                 ),
               ),
               const SizedBox(width: 12),
@@ -204,7 +208,7 @@ class _RecordingCapsule extends StatelessWidget {
         height: 58,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FCFA).withValues(alpha: 0.94),
+          color: const Color(0xFFF8FCFA).withValues(alpha: 0.80),
           borderRadius: BorderRadius.circular(29),
           border: Border.all(color: Colors.white.withValues(alpha: 0.74)),
         ),
@@ -350,15 +354,20 @@ class _VoiceActionTarget extends StatelessWidget {
     required this.semanticsLabel,
     required this.icon,
     required this.selected,
+    this.danger = false,
   });
 
   final String label;
   final String semanticsLabel;
   final IconData icon;
   final bool selected;
+  final bool danger;
 
   @override
   Widget build(BuildContext context) {
+    final selectedAccent = danger ? chatVoiceCancel : chatVoiceAccent;
+    final selectedDeep = danger ? chatVoiceCancelDeep : chatVoiceAccentDeep;
+    final selectedSoft = danger ? chatVoiceCancelSoft : chatVoiceAccentSoft;
     return Semantics(
       label: semanticsLabel,
       selected: selected,
@@ -372,13 +381,13 @@ class _VoiceActionTarget extends StatelessWidget {
           height: 62,
           decoration: BoxDecoration(
             color: selected
-                ? chatVoiceAccentSoft.withValues(alpha: 0.96)
-                : const Color(0xFFF7FBF9).withValues(alpha: 0.88),
+                ? selectedSoft.withValues(alpha: 0.78)
+                : const Color(0xFFF7FBF9).withValues(alpha: 0.70),
             borderRadius: BorderRadius.circular(31),
             border: Border.all(
               color: selected
-                  ? chatVoiceAccent.withValues(alpha: 0.74)
-                  : Colors.white.withValues(alpha: 0.70),
+                  ? selectedAccent.withValues(alpha: 0.70)
+                  : Colors.white.withValues(alpha: 0.56),
             ),
           ),
           child: Row(
@@ -386,16 +395,14 @@ class _VoiceActionTarget extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                color: selected ? chatVoiceAccentDeep : const Color(0xFF405049),
+                color: selected ? selectedDeep : const Color(0xFF405049),
                 size: 20,
               ),
               const SizedBox(width: 8),
               Text(
                 label,
                 style: TextStyle(
-                  color: selected
-                      ? chatVoiceAccentDeep
-                      : const Color(0xFF24302B),
+                  color: selected ? selectedDeep : const Color(0xFF24302B),
                   fontSize: 16,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                 ),
@@ -428,8 +435,8 @@ class _VoiceSendTarget extends StatelessWidget {
           height: 56,
           decoration: BoxDecoration(
             color: selected
-                ? chatVoiceAccent
-                : chatVoiceAccent.withValues(alpha: 0.66),
+                ? chatVoiceAccent.withValues(alpha: 0.80)
+                : chatVoiceAccent.withValues(alpha: 0.54),
             borderRadius: BorderRadius.circular(28),
           ),
           child: const Row(

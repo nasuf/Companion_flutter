@@ -173,3 +173,33 @@ final result: passed
 3. Compared the reference and implementation in one side-by-side image and retained the app-specific green token and bottom-navigation clearance.
 
 final result: passed
+
+---
+
+# Chat voice recording visual QA - full-screen modal correction
+
+## Source and implementation evidence
+
+- Device reference: `/var/folders/4d/sgc342hn4bg789gjfdsrl5t80000gn/T/codex-clipboard-9a879a92-b71c-4c1e-9262-e27b9d212b69.png`
+- iOS implementation capture: `/Users/songtao/.codex/visualizations/2026/07/16/019f6b7f-d443-72f0-a3f7-94e62a3918af/voice-recording-overlay-fullscreen-fix.png`
+- Side-by-side comparison: `/Users/songtao/.codex/visualizations/2026/07/16/019f6b7f-d443-72f0-a3f7-94e62a3918af/voice-recording-overlay-fullscreen-comparison.png`
+- Target viewport: 390 x 844 logical pixels, 1170 x 2532 physical pixels.
+- State: recording for seven seconds with the pointer inside the cancel target.
+
+## Findings
+
+- P0: none.
+- P1: none. The recording overlay now occupies the parent shell, so the floating bottom navigation is removed from the visible modal state instead of remaining above the chat-page scrim.
+- P2: none. The selected cancel target uses the requested red icon, label, outline, and pale red fill while convert-to-text remains neutral and send remains green.
+- Opacity: scrim alpha was reduced from `0x8F` to `0x70`; recording and action surfaces were also reduced while retaining readable contrast against the conversation.
+- Motion: the navigation exits with the existing 180/260 ms opacity and position transitions; the overlay entrance and 110 ms target transitions remain unchanged and fluid.
+- Behavior: the active long-press pointer continues to be handled by the chat composer, while the shell-level overlay prevents new touches from reaching underlying navigation controls.
+
+## Verification
+
+- The reference and simulator capture were normalized to the same viewport and inspected together.
+- The comparison confirms that the formerly visible floating navigation is absent in the corrected modal state.
+- The selected cancel target is visually distinct in red without introducing an additional animation or decorative effect.
+- Widget coverage verifies the lower scrim opacity and red cancel selected-state tokens.
+
+final result: passed

@@ -34,12 +34,54 @@ void main() {
       expect(find.text('转文字'), findsOneWidget);
       expect(find.text('左右滑动选择'), findsOneWidget);
       expect(find.text('松开发送'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is ColoredBox && widget.color == const Color(0x70101B17),
+        ),
+        findsOneWidget,
+      );
       await expectLater(
         find.byType(Scaffold),
         matchesGoldenFile('goldens/voice_recording_overlay.png'),
       );
     },
   );
+
+  testWidgets('cancel target uses the red selected treatment', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: VoiceRecordingOverlay(
+          action: VoiceReleaseAction.cancel,
+          seconds: 7,
+          preparing: false,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 220));
+
+    final cancelTarget = find.byKey(const ValueKey('voice-action-cancel'));
+    final cancelIcon = tester.widget<Icon>(
+      find.descendant(of: cancelTarget, matching: find.byType(Icon)),
+    );
+    final cancelContainer = tester.widget<AnimatedContainer>(
+      find.descendant(
+        of: cancelTarget,
+        matching: find.byType(AnimatedContainer),
+      ),
+    );
+    final decoration = cancelContainer.decoration! as BoxDecoration;
+
+    expect(cancelIcon.color, chatVoiceCancelDeep);
+    expect(decoration.color, chatVoiceCancelSoft.withValues(alpha: 0.78));
+    expect(
+      (decoration.border! as Border).top.color,
+      chatVoiceCancel.withValues(alpha: 0.70),
+    );
+  });
 
   test('voice release geometry maps send, cancel, and text actions', () {
     const screenSize = Size(390, 844);
