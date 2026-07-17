@@ -99,6 +99,7 @@ flutter:
     - assets/interaction/
     - assets/navigation/
     - assets/chat_sidebar/
+    - assets/weather/
     - assets/store/icons/
     - assets/legal/
     - assets/data/china_regions.json

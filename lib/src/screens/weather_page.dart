@@ -22,14 +22,14 @@ class _WeatherPageState extends State<WeatherPage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _breathController;
   late Future<_WeatherForecast> _forecast;
-  int _selectedDay = 0;
+  bool _showFutureList = false;
 
   @override
   void initState() {
     super.initState();
     _breathController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 8200),
+      duration: const Duration(milliseconds: 8600),
     )..repeat(reverse: true);
     _forecast = _loadForecast();
   }
@@ -60,6 +60,14 @@ class _WeatherPageState extends State<WeatherPage>
     return _WeatherService.fetchForCity(city);
   }
 
+  void _handleBack() {
+    if (_showFutureList) {
+      setState(() => _showFutureList = false);
+      return;
+    }
+    Navigator.of(context).maybePop();
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -67,7 +75,7 @@ class _WeatherPageState extends State<WeatherPage>
       builder: (context, _) {
         final progress = Curves.easeInOut.transform(_breathController.value);
         return Scaffold(
-          backgroundColor: AppColors.page,
+          backgroundColor: const Color(0xFFEFF3FC),
           body: Stack(
             children: [
               Positioned.fill(child: _WeatherBackground(progress: progress)),
@@ -78,45 +86,42 @@ class _WeatherPageState extends State<WeatherPage>
                   builder: (context, snapshot) {
                     final bottom = MediaQuery.paddingOf(context).bottom;
                     if (snapshot.connectionState != ConnectionState.done) {
-                      return _WeatherLoading(bottomPadding: bottom);
+                      return _WeatherLoading(
+                        onBack: _handleBack,
+                        bottomPadding: bottom,
+                      );
                     }
                     if (snapshot.hasError || !snapshot.hasData) {
                       return _WeatherError(
+                        onBack: _handleBack,
                         onRetry: _reload,
                         bottomPadding: bottom,
                       );
                     }
+
                     final forecast = snapshot.data!;
-                    final day = forecast
-                        .days[_selectedDay.clamp(0, forecast.days.length - 1)];
-                    return ListView(
-                      padding: EdgeInsets.fromLTRB(28, 18, 28, bottom + 32),
-                      children: [
-                        _WeatherTopBar(
-                          onBack: () => Navigator.of(context).maybePop(),
-                        ),
-                        const SizedBox(height: 32),
-                        _WeatherHeroCard(
-                          day: day,
-                          current: forecast.current,
-                          location: forecast.location,
-                          agentName: widget.agentName,
-                          progress: progress,
-                        ),
-                        const SizedBox(height: 18),
-                        _WeatherDayTabs(
-                          selectedIndex: _selectedDay,
-                          days: forecast.days,
-                          onSelected: (value) =>
-                              setState(() => _selectedDay = value),
-                        ),
-                        const SizedBox(height: 18),
-                        _WeatherChartCard(day: day),
-                        const SizedBox(height: 16),
-                        _WeatherInsightGrid(day: day),
-                        const SizedBox(height: 16),
-                        _WeatherSuggestionRow(day: day),
-                      ],
+                    return AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeOutCubic,
+                      child: _showFutureList
+                          ? _FutureWeatherList(
+                              key: const ValueKey('future'),
+                              forecast: forecast,
+                              agentName: widget.agentName,
+                              onBack: _handleBack,
+                              bottomPadding: bottom,
+                            )
+                          : _WeatherHome(
+                              key: const ValueKey('home'),
+                              forecast: forecast,
+                              agentName: widget.agentName,
+                              progress: progress,
+                              onBack: _handleBack,
+                              onShowFuture: () =>
+                                  setState(() => _showFutureList = true),
+                              bottomPadding: bottom,
+                            ),
                     );
                   },
                 ),
@@ -129,21 +134,172 @@ class _WeatherPageState extends State<WeatherPage>
   }
 }
 
-class _WeatherTopBar extends StatelessWidget {
-  const _WeatherTopBar({required this.onBack});
+class _WeatherHome extends StatelessWidget {
+  const _WeatherHome({
+    super.key,
+    required this.forecast,
+    required this.agentName,
+    required this.progress,
+    required this.onBack,
+    required this.onShowFuture,
+    required this.bottomPadding,
+  });
 
+  final _WeatherForecast forecast;
+  final String agentName;
+  final double progress;
+  final VoidCallback onBack;
+  final VoidCallback onShowFuture;
+  final double bottomPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    final today = forecast.days.first;
+    return ListView(
+      padding: EdgeInsets.fromLTRB(20, 18, 20, bottomPadding + 34),
+      physics: const BouncingScrollPhysics(),
+      children: [
+        _WeatherTopBar(
+          location: forecast.location,
+          agentName: agentName,
+          onBack: onBack,
+        ),
+        const SizedBox(height: 28),
+        _WeatherHeroCard(
+          day: today,
+          current: forecast.current,
+          progress: progress,
+        ),
+        const SizedBox(height: 36),
+        _WeatherMetricGrid(day: today, current: forecast.current),
+        const SizedBox(height: 36),
+        _TodayHourlyHeader(onShowFuture: onShowFuture),
+        const SizedBox(height: 16),
+        _HourlyWeatherStrip(day: today),
+      ],
+    );
+  }
+}
+
+class _FutureWeatherList extends StatelessWidget {
+  const _FutureWeatherList({
+    super.key,
+    required this.forecast,
+    required this.agentName,
+    required this.onBack,
+    required this.bottomPadding,
+  });
+
+  final _WeatherForecast forecast;
+  final String agentName;
+  final VoidCallback onBack;
+  final double bottomPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    final days = forecast.days.take(7).toList();
+    return ListView(
+      padding: EdgeInsets.fromLTRB(20, 18, 20, bottomPadding + 34),
+      physics: const BouncingScrollPhysics(),
+      children: [
+        _WeatherTopBar(
+          location: forecast.location,
+          agentName: agentName,
+          onBack: onBack,
+        ),
+        const SizedBox(height: 24),
+        for (var index = 0; index < days.length; index += 1) ...[
+          _FutureWeatherRow(day: days[index]),
+          if (index != days.length - 1) const SizedBox(height: 16),
+        ],
+      ],
+    );
+  }
+}
+
+class _WeatherTopBar extends StatelessWidget {
+  const _WeatherTopBar({
+    required this.location,
+    required this.agentName,
+    required this.onBack,
+  });
+
+  final _WeatherLocation location;
+  final String agentName;
   final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _AppNavCircleButton(
-          icon: CupertinoIcons.chevron_left,
-          onPressed: onBack,
+    return SizedBox(
+      height: 40,
+      child: Row(
+        children: [
+          _WeatherBackButton(onTap: onBack),
+          const Spacer(),
+          Icon(
+            CupertinoIcons.location_solid,
+            color: const Color(0xFF333333).withValues(alpha: 0.92),
+            size: 21,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            location.displayName,
+            style: const TextStyle(
+              color: Color(0xFF333333),
+              fontSize: 20,
+              height: 1,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+            ),
+          ),
+          Text(
+            ' · $agentName所在地',
+            style: const TextStyle(
+              color: Color(0xFF333333),
+              fontSize: 12,
+              height: 1,
+              fontWeight: FontWeight.w400,
+              letterSpacing: 0,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WeatherBackButton extends StatelessWidget {
+  const _WeatherBackButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoButton(
+      minimumSize: Size.zero,
+      padding: EdgeInsets.zero,
+      onPressed: onTap,
+      child: Container(
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF4B9AFF).withValues(alpha: 0.24),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
-        const Spacer(),
-      ],
+        child: const Icon(
+          CupertinoIcons.chevron_left,
+          color: Color(0xFF4B9AFF),
+          size: 24,
+        ),
+      ),
     );
   }
 }
@@ -155,52 +311,28 @@ class _WeatherBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            colors.page,
-            Color.lerp(colors.page, colors.surfaceMuted, 0.44)!,
-            Color.lerp(colors.page, colors.accentSoft, 0.20)!,
-          ],
-        ),
-      ),
+      decoration: const BoxDecoration(color: Color(0xFFEFF3FC)),
       child: Stack(
         children: [
           Positioned(
-            right: -64 + 10 * progress,
-            top: 110 + 8 * progress,
+            right: -96 + 10 * progress,
+            top: 104 + 8 * progress,
             child: _WeatherBlurBlob(
-              size: 248 + 12 * progress,
-              color: const Color(
-                0xFF1F8FFF,
-              ).withValues(alpha: 0.12 + 0.05 * progress),
-              radius: 86,
+              width: 220 + 18 * progress,
+              height: 170 + 12 * progress,
+              color: const Color(0xFF4B9AFF).withValues(alpha: 0.13),
+              radius: 62,
             ),
           ),
           Positioned(
-            left: -78 - 7 * progress,
-            bottom: 140 - 8 * progress,
+            left: -82 - 5 * progress,
+            bottom: 132 - 8 * progress,
             child: _WeatherBlurBlob(
-              size: 204 + 10 * progress,
-              color: const Color(
-                0xFFFFC63D,
-              ).withValues(alpha: 0.08 + 0.04 * progress),
-              radius: 76,
-            ),
-          ),
-          Positioned(
-            right: 34 + 8 * progress,
-            bottom: 70 + 7 * progress,
-            child: _WeatherBlurBlob(
-              size: 156 + 8 * progress,
-              color: const Color(
-                0xFF18C6C0,
-              ).withValues(alpha: 0.08 + 0.04 * progress),
-              radius: 60,
+              width: 210,
+              height: 162,
+              color: const Color(0xFFFFD86F).withValues(alpha: 0.11),
+              radius: 64,
             ),
           ),
         ],
@@ -211,22 +343,24 @@ class _WeatherBackground extends StatelessWidget {
 
 class _WeatherBlurBlob extends StatelessWidget {
   const _WeatherBlurBlob({
-    required this.size,
+    required this.width,
+    required this.height,
     required this.color,
     required this.radius,
   });
 
-  final double size;
+  final double width;
+  final double height;
   final Color color;
   final double radius;
 
   @override
   Widget build(BuildContext context) {
     return ImageFiltered(
-      imageFilter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+      imageFilter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
       child: Container(
-        width: size,
-        height: size * 0.78,
+        width: width,
+        height: height,
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(radius),
@@ -240,680 +374,349 @@ class _WeatherHeroCard extends StatelessWidget {
   const _WeatherHeroCard({
     required this.day,
     required this.current,
-    required this.location,
-    required this.agentName,
     required this.progress,
   });
 
   final _WeatherDay day;
   final _WeatherSnapshot? current;
-  final _WeatherLocation location;
-  final String agentName;
   final double progress;
 
   @override
   Widget build(BuildContext context) {
     final snapshot = day.displaySnapshot(current);
     final temp = snapshot.temperature.round();
-    final min = day.minTemperature.round();
-    final max = day.maxTemperature.round();
-    final windLevel = _windLevel(snapshot.windSpeed);
-    final advice = _weatherAdvice(day);
-    final isDark = AppColors.isDark(context);
+    final text = _weatherText(snapshot.weatherCode);
+    final mood = _weatherMoodLine(day);
+    final wave = (math.sin(progress * math.pi * 2) + 1) / 2;
 
     return Container(
-      height: 306,
-      padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+      height: 196,
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(21, 24, 18, 24),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(32),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            isDark
-                ? AppColors.surface.withValues(alpha: 0.92)
-                : Colors.white.withValues(alpha: 0.92),
-            isDark
-                ? AppColors.accentSoft.withValues(alpha: 0.72)
-                : const Color(0xFFEAF3FF).withValues(alpha: 0.72),
-          ],
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [Color(0xFFAACDFF), Color(0xFF4B9AFF)],
         ),
-        border: Border.all(color: AppColors.glassBorder(context)),
         boxShadow: [
           BoxShadow(
-            color: AppColors.shadow.withValues(alpha: isDark ? 0.80 : 0.13),
-            blurRadius: 34,
-            offset: const Offset(0, 20),
+            color: const Color(0xFF3892F9).withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
           ),
-          if (!isDark)
-            BoxShadow(
-              color: Colors.white.withValues(alpha: 0.82),
-              blurRadius: 1,
-              offset: const Offset(0, 1),
-            ),
         ],
       ),
-      child: Stack(
-        clipBehavior: Clip.none,
+      child: Row(
         children: [
-          Positioned(
-            right: -34,
-            bottom: -2,
-            child: _WeatherOrb(code: day.weatherCode, progress: progress),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'WEATHER CARD',
-                style: TextStyle(
-                  color: AppColors.accent,
-                  fontSize: 13,
-                  height: 1,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.8,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  text,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    height: 1,
+                    fontWeight: FontWeight.w400,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                height: 72,
-                child: Align(
-                  alignment: Alignment.centerLeft,
+                const SizedBox(height: 2),
+                ShaderMask(
+                  shaderCallback: (rect) {
+                    return const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.white, Color(0x33FFFFFF)],
+                      stops: [0.40, 1],
+                    ).createShader(rect);
+                  },
                   child: Text(
-                    '$temp° ${day.weatherText}，$advice',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: AppColors.text,
-                      fontSize: 30,
-                      height: 1.12,
-                      fontWeight: FontWeight.w900,
+                    '$temp℃',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 64,
+                      height: 1,
+                      fontWeight: FontWeight.w700,
                       letterSpacing: 0,
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              Padding(
-                padding: const EdgeInsets.only(right: 108),
-                child: Text(
-                  '$agentName所在地 · ${location.displayName}。全天 $min° - $max°，风力 $windLevel 级。',
+                const Spacer(),
+                Text(
+                  mood,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: AppColors.muted.withValues(alpha: 0.82),
-                    fontSize: 15,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
                     height: 1.42,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Padding(
-                padding: const EdgeInsets.only(right: 104),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _WeatherMetric(
-                        value: day.aqiText,
-                        label: day.aqi == null ? '降雨' : 'AQI',
-                      ),
-                    ),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: _WeatherMetric(
-                        value: '${snapshot.humidity.round()}%',
-                        label: '湿度',
-                      ),
-                    ),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: _WeatherMetric(
-                        value: '$windLevel级',
-                        label: snapshot.windDirection,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WeatherMetric extends StatelessWidget {
-  const _WeatherMetric({required this.value, required this.label});
-
-  final String value;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          height: 60,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: isDark
-                ? AppColors.surfaceMuted.withValues(alpha: 0.70)
-                : Colors.white.withValues(alpha: 0.57),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.glassBorder(context)),
-          ),
-          child: FittedBox(
-            alignment: Alignment.centerLeft,
-            fit: BoxFit.scaleDown,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  value,
-                  style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: 23,
-                    height: 1,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 7),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: AppColors.muted.withValues(alpha: 0.72),
-                    fontSize: 12,
-                    height: 1,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
           ),
-        ),
+          SizedBox(
+            width: 124,
+            height: 124,
+            child: Transform.translate(
+              offset: Offset(2 * wave, -4 * wave),
+              child: _AnimatedWeatherIcon(
+                weatherCode: snapshot.weatherCode,
+                hour: DateTime.now().hour,
+                size: 124,
+                progress: progress,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _WeatherOrb extends StatelessWidget {
-  const _WeatherOrb({required this.code, required this.progress});
+class _AnimatedWeatherIcon extends StatelessWidget {
+  const _AnimatedWeatherIcon({
+    required this.weatherCode,
+    required this.hour,
+    required this.size,
+    required this.progress,
+  });
 
-  final int code;
+  final int weatherCode;
+  final int hour;
+  final double size;
   final double progress;
 
   @override
   Widget build(BuildContext context) {
-    final wave = (math.sin(progress * math.pi * 2) + 1) / 2;
-    final scale = lerpDouble(0.96, 1.045, wave)!;
-    final opacity = lerpDouble(0.78, 0.98, wave)!;
+    final phase = progress % 1;
+    final pulse = math.sin(phase * math.pi * 2);
+    final scale = 0.985 + 0.025 * (pulse + 1) / 2;
     return SizedBox(
-      width: 150,
-      height: 132,
-      child: Transform.translate(
-        offset: Offset(4 * wave, -5 * wave),
-        child: Transform.rotate(
-          angle: (7 + 2.4 * wave) * math.pi / 180,
-          child: Transform.scale(
-            scale: scale,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Positioned.fill(
-                  child: ImageFiltered(
-                    imageFilter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(48),
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            const Color(
-                              0xFF20D2C8,
-                            ).withValues(alpha: 0.34 * opacity),
-                            AppColors.accent.withValues(alpha: 0.46 * opacity),
-                            const Color(
-                              0xFF4B7EFF,
-                            ).withValues(alpha: 0.38 * opacity),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                Center(
-                  child: Container(
-                    width: 100,
-                    height: 92,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(34),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          const Color(
-                            0xFF18C6C0,
-                          ).withValues(alpha: 0.74 * opacity),
-                          AppColors.accent.withValues(alpha: 0.88 * opacity),
-                          const Color(
-                            0xFF4B7EFF,
-                          ).withValues(alpha: 0.84 * opacity),
-                        ],
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.accent.withValues(
-                            alpha: 0.18 * opacity,
-                          ),
-                          blurRadius: 30,
-                          offset: const Offset(0, 14),
-                        ),
-                      ],
-                    ),
-                    child: Stack(
-                      children: [
-                        Positioned(
-                          left: 20,
-                          top: 16,
-                          child: Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: RadialGradient(
-                                colors: [
-                                  Colors.white.withValues(alpha: 0.86),
-                                  Colors.white.withValues(alpha: 0.13),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          right: 19,
-                          bottom: 18,
-                          child: Icon(
-                            _weatherIcon(code),
-                            color: Colors.white.withValues(alpha: 0.90),
-                            size: 29,
-                          ),
-                        ),
-                        Positioned.fill(
-                          child: Padding(
-                            padding: const EdgeInsets.all(17),
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(25),
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.32),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+      width: size,
+      height: size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _WeatherIconAuraPainter(
+                weatherCode: weatherCode,
+                progress: phase,
+              ),
             ),
           ),
-        ),
+          Transform.translate(
+            offset: Offset(1.8 * pulse, -2.2 * pulse),
+            child: Transform.scale(
+              scale: scale,
+              child: Image.asset(
+                _weatherAsset(weatherCode, hour: hour),
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _WeatherIconParticlePainter(
+                weatherCode: weatherCode,
+                progress: phase,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _WeatherDayTabs extends StatefulWidget {
-  const _WeatherDayTabs({
-    required this.selectedIndex,
-    required this.days,
-    required this.onSelected,
+class _WeatherIconAuraPainter extends CustomPainter {
+  const _WeatherIconAuraPainter({
+    required this.weatherCode,
+    required this.progress,
   });
 
-  final int selectedIndex;
-  final List<_WeatherDay> days;
-  final ValueChanged<int> onSelected;
+  final int weatherCode;
+  final double progress;
 
   @override
-  State<_WeatherDayTabs> createState() => _WeatherDayTabsState();
-}
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width * 0.54, size.height * 0.54);
+    final pulse = (math.sin(progress * math.pi * 2) + 1) / 2;
+    final auraPaint = Paint()
+      ..color = const Color(0xFF4B9AFF).withValues(alpha: 0.16 + 0.10 * pulse)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: center,
+        width: size.width * (0.86 + 0.08 * pulse),
+        height: size.height * (0.70 + 0.08 * pulse),
+      ),
+      auraPaint,
+    );
 
-class _WeatherDayTabsState extends State<_WeatherDayTabs> {
-  static const _gap = 4.0;
-  static const _itemWidth = 72.0;
-  late final ScrollController _scrollController;
+    if (_isSunnyWeather(weatherCode) || _isPartlyCloudyWeather(weatherCode)) {
+      final sunPaint = Paint()
+        ..color = const Color(0xFFFFD86F).withValues(alpha: 0.18 + 0.14 * pulse)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16);
+      canvas.drawCircle(
+        Offset(size.width * 0.68, size.height * 0.30),
+        size.width * (0.20 + 0.03 * pulse),
+        sunPaint,
+      );
+    }
 
-  @override
-  void initState() {
-    super.initState();
-    _scrollController = ScrollController();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToSelected());
-  }
-
-  @override
-  void didUpdateWidget(covariant _WeatherDayTabs oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedIndex != widget.selectedIndex ||
-        oldWidget.days.length != widget.days.length) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToSelected());
+    if (_isThunderWeather(weatherCode)) {
+      final flash = math
+          .pow((math.sin(progress * math.pi * 6) + 1) / 2, 5)
+          .toDouble();
+      if (flash > 0.32) {
+        final flashPaint = Paint()
+          ..color = const Color(0xFFFFF2A6).withValues(alpha: 0.28 * flash)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14);
+        canvas.drawCircle(
+          Offset(size.width * 0.48, size.height * 0.58),
+          size.width * 0.34,
+          flashPaint,
+        );
+      }
     }
   }
 
   @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _scrollToSelected() {
-    if (!_scrollController.hasClients) return;
-    final selected = widget.selectedIndex.clamp(0, widget.days.length - 1);
-    final max = _scrollController.position.maxScrollExtent;
-    final target = math.max(0.0, (selected - 3) * (_itemWidth + _gap));
-    _scrollController.animateTo(
-      target.clamp(0.0, max),
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onHorizontalDragEnd: (details) {
-        final velocity = details.primaryVelocity ?? 0;
-        if (velocity.abs() < 120) return;
-        final next = velocity < 0
-            ? widget.selectedIndex + 1
-            : widget.selectedIndex - 1;
-        widget.onSelected(next.clamp(0, widget.days.length - 1).toInt());
-      },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            height: 58,
-            padding: const EdgeInsets.all(5),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              color: AppColors.subtleFill(context, light: 0.58),
-              border: Border.all(color: AppColors.glassBorder(context)),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.shadow.withValues(
-                    alpha: AppColors.isDark(context) ? 0.62 : 0.07,
-                  ),
-                  blurRadius: 22,
-                  offset: const Offset(0, 12),
-                ),
-                if (!AppColors.isDark(context))
-                  BoxShadow(
-                    color: Colors.white.withValues(alpha: 0.70),
-                    blurRadius: 1,
-                    offset: const Offset(0, 1),
-                  ),
-              ],
-            ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final count = math.max(1, widget.days.length);
-                final contentWidth = math.max(
-                  constraints.maxWidth,
-                  count * _itemWidth + (count - 1) * _gap,
-                );
-                final selected = widget.selectedIndex.clamp(0, count - 1);
-                final left = selected * (_itemWidth + _gap);
-                return SingleChildScrollView(
-                  controller: _scrollController,
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  child: SizedBox(
-                    width: contentWidth,
-                    height: 48,
-                    child: Stack(
-                      children: [
-                        AnimatedPositioned(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOutCubic,
-                          left: left,
-                          top: 0,
-                          bottom: 0,
-                          width: _itemWidth,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(23),
-                              gradient: const LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [Color(0xFF1F6FFF), Color(0xFF18C6C0)],
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.accent.withValues(
-                                    alpha: 0.14,
-                                  ),
-                                  blurRadius: 14,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        Row(
-                          children: [
-                            for (
-                              var index = 0;
-                              index < widget.days.length;
-                              index += 1
-                            ) ...[
-                              SizedBox(
-                                width: _itemWidth,
-                                child: _WeatherDateTab(
-                                  day: widget.days[index],
-                                  selected: widget.selectedIndex == index,
-                                  onTap: () => widget.onSelected(index),
-                                ),
-                              ),
-                              if (index != widget.days.length - 1)
-                                const SizedBox(width: _gap),
-                            ],
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-      ),
-    );
+  bool shouldRepaint(covariant _WeatherIconAuraPainter oldDelegate) {
+    return oldDelegate.weatherCode != weatherCode ||
+        oldDelegate.progress != progress;
   }
 }
 
-class _WeatherDateTab extends StatelessWidget {
-  const _WeatherDateTab({
-    required this.day,
-    required this.selected,
-    required this.onTap,
+class _WeatherIconParticlePainter extends CustomPainter {
+  const _WeatherIconParticlePainter({
+    required this.weatherCode,
+    required this.progress,
   });
 
-  final _WeatherDay day;
-  final bool selected;
-  final VoidCallback onTap;
+  final int weatherCode;
+  final double progress;
 
   @override
-  Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
-    return CupertinoButton(
-      minimumSize: Size.zero,
-      padding: EdgeInsets.zero,
-      onPressed: onTap,
-      child: SizedBox(
-        height: 48,
-        child: AnimatedDefaultTextStyle(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          style: TextStyle(
-            color: selected
-                ? Colors.white
-                : (isDark ? const Color(0xDDEAF2F8) : AppColors.text),
-            fontSize: 14,
-            height: 1,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0,
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(day.dateLabel, maxLines: 1),
-              const SizedBox(height: 5),
-              Text(
-                day.weekdayLabel,
-                maxLines: 1,
-                style: TextStyle(
-                  color: selected
-                      ? Colors.white.withValues(alpha: 0.76)
-                      : AppColors.muted.withValues(alpha: 0.66),
-                  fontSize: 10,
-                  height: 1,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  void paint(Canvas canvas, Size size) {
+    if (_isRainWeather(weatherCode)) {
+      _paintRain(canvas, size);
+    }
+    if (_isSnowWeather(weatherCode)) {
+      _paintSnow(canvas, size);
+    }
+    if (_isThunderWeather(weatherCode)) {
+      _paintLightning(canvas, size);
+    }
   }
-}
 
-extension on DateTime {
-  String get _weatherDateLabel => '$month/${day.toString().padLeft(2, '0')}';
-
-  String get _weatherWeekdayLabel {
-    const labels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    return labels[weekday - 1];
+  void _paintRain(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF3CE7D6).withValues(alpha: 0.72)
+      ..strokeWidth = size.width * 0.035
+      ..strokeCap = StrokeCap.round;
+    for (var i = 0; i < 5; i += 1) {
+      final t = (progress + i * 0.17) % 1;
+      final x = size.width * (0.32 + i * 0.09);
+      final y = size.height * (0.58 + 0.28 * t);
+      final opacity = math.sin(t * math.pi).clamp(0.0, 1.0);
+      paint.color = const Color(
+        0xFF3CE7D6,
+      ).withValues(alpha: 0.22 + 0.50 * opacity);
+      canvas.drawLine(Offset(x, y), Offset(x - 4, y + 12), paint);
+    }
   }
-}
 
-class _WeatherChartCard extends StatelessWidget {
-  const _WeatherChartCard({required this.day});
+  void _paintSnow(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.78)
+      ..strokeWidth = size.width * 0.020
+      ..strokeCap = StrokeCap.round;
+    for (var i = 0; i < 4; i += 1) {
+      final t = (progress + i * 0.23) % 1;
+      final center = Offset(
+        size.width * (0.36 + i * 0.10 + 0.02 * math.sin(t * math.pi * 2)),
+        size.height * (0.58 + 0.26 * t),
+      );
+      final arm = size.width * 0.035;
+      final opacity = math.sin(t * math.pi).clamp(0.0, 1.0);
+      paint.color = Colors.white.withValues(alpha: 0.24 + 0.54 * opacity);
+      canvas.drawLine(
+        center.translate(-arm, 0),
+        center.translate(arm, 0),
+        paint,
+      );
+      canvas.drawLine(
+        center.translate(0, -arm),
+        center.translate(0, arm),
+        paint,
+      );
+    }
+  }
 
-  final _WeatherDay day;
+  void _paintLightning(Canvas canvas, Size size) {
+    final flash = math
+        .pow((math.sin(progress * math.pi * 6) + 1) / 2, 4)
+        .toDouble();
+    if (flash < 0.42) return;
+    final paint = Paint()
+      ..color = const Color(0xFFFFE15B).withValues(alpha: 0.42 * flash)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.width * 0.025
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final path = Path()
+      ..moveTo(size.width * 0.45, size.height * 0.48)
+      ..lineTo(size.width * 0.38, size.height * 0.62)
+      ..lineTo(size.width * 0.48, size.height * 0.62)
+      ..lineTo(size.width * 0.40, size.height * 0.78);
+    canvas.drawPath(path, paint);
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 156,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      decoration: BoxDecoration(
-        color: AppColors.elevatedSurface(context, light: 0.73),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: AppColors.glassBorder(context)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadow.withValues(
-              alpha: AppColors.isDark(context) ? 0.68 : 0.08,
-            ),
-            blurRadius: 28,
-            offset: const Offset(0, 14),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Text(
-                '温度曲线',
-                style: TextStyle(
-                  color: AppColors.text,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const Spacer(),
-              _LegendDot(color: AppColors.accent, label: '气温'),
-              const SizedBox(width: 10),
-              const _LegendDot(color: Color(0xFF22C66B), label: '降雨'),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: CustomPaint(
-              painter: _WeatherCurvePainter(hours: day.chartHours),
-              child: const SizedBox.expand(),
-            ),
-          ),
-        ],
-      ),
-    );
+  bool shouldRepaint(covariant _WeatherIconParticlePainter oldDelegate) {
+    return oldDelegate.weatherCode != weatherCode ||
+        oldDelegate.progress != progress;
   }
 }
 
-class _LegendDot extends StatelessWidget {
-  const _LegendDot({required this.color, required this.label});
-
-  final Color color;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: TextStyle(
-            color: AppColors.muted.withValues(alpha: 0.72),
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _WeatherInsightGrid extends StatelessWidget {
-  const _WeatherInsightGrid({required this.day});
+class _WeatherMetricGrid extends StatelessWidget {
+  const _WeatherMetricGrid({required this.day, required this.current});
 
   final _WeatherDay day;
+  final _WeatherSnapshot? current;
 
   @override
   Widget build(BuildContext context) {
-    final snapshot = day.displaySnapshot(null);
+    final snapshot = day.displaySnapshot(current);
     final items = [
-      (
-        '体感',
-        '${snapshot.apparentTemperature.round()}°',
-        CupertinoIcons.thermometer,
+      _WeatherMetricData(
+        title: '体感',
+        value: '${snapshot.apparentTemperature.round()}℃',
+        icon: CupertinoIcons.thermometer_sun,
       ),
-      (
-        '降雨概率',
-        '${day.maxRainProbability.round()}%',
-        CupertinoIcons.cloud_rain_fill,
+      _WeatherMetricData(
+        title: '降雨概率',
+        value: '${day.maxRainProbability.round()}%',
+        icon: CupertinoIcons.umbrella,
       ),
-      ('湿度', '${snapshot.humidity.round()}%', CupertinoIcons.drop_fill),
-      ('风速', '${snapshot.windSpeed.round()} km/h', CupertinoIcons.wind),
+      _WeatherMetricData(
+        title: '湿度',
+        value: '${snapshot.humidity.round()}%',
+        icon: CupertinoIcons.drop,
+      ),
+      _WeatherMetricData(
+        title: '风速',
+        value: '${snapshot.windSpeed.round()}km/h',
+        icon: CupertinoIcons.wind,
+      ),
     ];
 
     return GridView.builder(
@@ -922,159 +725,413 @@ class _WeatherInsightGrid extends StatelessWidget {
       itemCount: items.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 1.78,
+        crossAxisSpacing: 14,
+        mainAxisSpacing: 16,
+        childAspectRatio: 168 / 88,
       ),
-      itemBuilder: (context, index) {
-        final item = items[index];
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
-          decoration: BoxDecoration(
-            color: AppColors.elevatedSurface(context, light: 0.70),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.glassBorder(context)),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.shadow.withValues(
-                  alpha: AppColors.isDark(context) ? 0.62 : 0.07,
-                ),
-                blurRadius: 18,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: AppColors.accentSoft.withValues(
-                    alpha: AppColors.isDark(context) ? 0.82 : 1,
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(item.$3, color: AppColors.accent, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      item.$1,
-                      style: TextStyle(
-                        color: AppColors.muted.withValues(alpha: 0.78),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    FittedBox(
-                      alignment: Alignment.centerLeft,
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        item.$2,
-                        style: TextStyle(
-                          color: AppColors.text,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+      itemBuilder: (context, index) => _WeatherMetricCard(data: items[index]),
     );
   }
 }
 
-class _WeatherSuggestionRow extends StatelessWidget {
-  const _WeatherSuggestionRow({required this.day});
+class _WeatherMetricData {
+  const _WeatherMetricData({
+    required this.title,
+    required this.value,
+    required this.icon,
+  });
 
-  final _WeatherDay day;
+  final String title;
+  final String value;
+  final IconData icon;
+}
+
+class _WeatherMetricCard extends StatelessWidget {
+  const _WeatherMetricCard({required this.data});
+
+  final _WeatherMetricData data;
 
   @override
   Widget build(BuildContext context) {
-    final event = day.suggestionEvent;
     return Container(
-      constraints: const BoxConstraints(minHeight: 92),
-      padding: const EdgeInsets.all(16),
+      height: 88,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
       decoration: BoxDecoration(
-        color: AppColors.elevatedSurface(context, light: 0.82),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.glassBorder(context)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: AppColors.shadow.withValues(
-              alpha: AppColors.isDark(context) ? 0.66 : 0.08,
-            ),
-            blurRadius: 24,
-            offset: const Offset(0, 14),
+            color: const Color(0xFF4D9BFF).withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Row(
         children: [
-          Container(
-            width: 60,
-            height: 60,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.accentSoft.withValues(
-                alpha: AppColors.isDark(context) ? 0.90 : 1,
-              ),
-              borderRadius: BorderRadius.circular(22),
-            ),
-            child: Text(
-              event.hour,
-              style: TextStyle(
-                color: AppColors.accent,
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
+          SizedBox(
+            width: 36,
+            height: 36,
+            child: Icon(data.icon, color: const Color(0xFF4B9AFF), size: 31),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 24),
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  event.title,
-                  style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
+                  data.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFFBFBFBF),
+                    fontSize: 14,
+                    height: 1,
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
+                FittedBox(
+                  alignment: Alignment.centerLeft,
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    data.value,
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontSize: 20,
+                      height: 1,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TodayHourlyHeader extends StatelessWidget {
+  const _TodayHourlyHeader({required this.onShowFuture});
+
+  final VoidCallback onShowFuture;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Text(
+          '今天',
+          style: TextStyle(
+            color: Color(0xFF333333),
+            fontSize: 20,
+            height: 1,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const Spacer(),
+        CupertinoButton(
+          minimumSize: Size.zero,
+          padding: EdgeInsets.zero,
+          onPressed: onShowFuture,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Text(
+                '未来7天',
+                style: TextStyle(
+                  color: Color(0x99333333),
+                  fontSize: 14,
+                  height: 1,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              SizedBox(width: 4),
+              Icon(
+                CupertinoIcons.chevron_right,
+                color: Color(0x99333333),
+                size: 13,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HourlyWeatherStrip extends StatelessWidget {
+  const _HourlyWeatherStrip({required this.day});
+
+  final _WeatherDay day;
+
+  @override
+  Widget build(BuildContext context) {
+    final hours = day.stripHours;
+    if (hours.isEmpty) return const SizedBox.shrink();
+    final selectedIndex = _selectedHourIndex(hours);
+    return SizedBox(
+      height: 136,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        clipBehavior: Clip.none,
+        padding: EdgeInsets.zero,
+        itemCount: hours.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 16),
+        itemBuilder: (context, index) {
+          return _HourlyWeatherPill(
+            hour: hours[index],
+            selected: index == selectedIndex,
+          );
+        },
+      ),
+    );
+  }
+
+  int _selectedHourIndex(List<_WeatherHour> hours) {
+    final nowHour = DateTime.now().hour;
+    var best = 0;
+    var bestDistance = 100;
+    for (var i = 0; i < hours.length; i += 1) {
+      final distance = (hours[i].time.hour - nowHour).abs();
+      if (distance < bestDistance) {
+        best = i;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
+}
+
+class _HourlyWeatherPill extends StatelessWidget {
+  const _HourlyWeatherPill({required this.hour, required this.selected});
+
+  final _WeatherHour hour;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = selected ? Colors.white : const Color(0xFFBFBFBF);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      width: 68,
+      height: 120,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: selected ? null : Colors.white,
+        gradient: selected
+            ? const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF4B9AFF), Color(0xFF8ABAFF)],
+              )
+            : null,
+        boxShadow: [
+          BoxShadow(
+            color: selected
+                ? const Color(0xFF4E9BFF).withValues(alpha: 0.25)
+                : Colors.black.withValues(alpha: 0.10),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Text(
+            '${hour.time.hour.toString().padLeft(2, '0')}:00',
+            maxLines: 1,
+            style: TextStyle(
+              color: foreground,
+              fontSize: 14,
+              height: 1,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: 32,
+            height: 32,
+            child: Image.asset(
+              _weatherAsset(hour.weatherCode, hour: hour.time.hour),
+              fit: BoxFit.contain,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            '${hour.temperature.round()}℃',
+            style: TextStyle(
+              color: foreground,
+              fontSize: 20,
+              height: 1,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FutureWeatherRow extends StatelessWidget {
+  const _FutureWeatherRow({required this.day});
+
+  final _WeatherDay day;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 76,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF509AFD).withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 43,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
-                  event.subtitle,
-                  style: TextStyle(
-                    color: AppColors.muted.withValues(alpha: 0.82),
-                    fontSize: 13,
-                    height: 1.3,
+                  day.futureTitle,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    color: Color(0xFF333333),
+                    fontSize: 16,
+                    height: 1,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  day.dateLabel,
+                  style: const TextStyle(
+                    color: Color(0xFFAAAAAA),
+                    fontSize: 12,
+                    height: 1,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 24),
+          SizedBox(
+            width: 32,
+            height: 32,
+            child: Image.asset(
+              _weatherAsset(day.weatherCode, hour: 12),
+              fit: BoxFit.contain,
+            ),
+          ),
           const SizedBox(width: 12),
-          Text(
-            '${event.temperature.round()}°',
-            style: TextStyle(
-              color: AppColors.muted.withValues(alpha: 0.82),
-              fontSize: 19,
-              fontWeight: FontWeight.w900,
+          SizedBox(
+            width: 86,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  day.weatherText,
+                  style: const TextStyle(
+                    color: Color(0xFF333333),
+                    fontSize: 14,
+                    height: 1,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      CupertinoIcons.drop,
+                      color: const Color(0xFF4B9AFF).withValues(alpha: 0.70),
+                      size: 10,
+                    ),
+                    Text(
+                      '${day.maxRainProbability.round()}%',
+                      style: const TextStyle(
+                        color: Color(0xFFA5A5A5),
+                        fontSize: 10,
+                        height: 1,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(
+                      CupertinoIcons.wind,
+                      color: const Color(0xFF4B9AFF).withValues(alpha: 0.70),
+                      size: 10,
+                    ),
+                    Flexible(
+                      child: Text(
+                        '${day.maxWindSpeed.round()}km/h',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFFA5A5A5),
+                          fontSize: 10,
+                          height: 1,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const Spacer(),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              children: [
+                Text(
+                  '${day.minTemperature.round()}℃',
+                  style: const TextStyle(
+                    color: Color(0xFF4193FD),
+                    fontSize: 20,
+                    height: 1,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Text(
+                  '~',
+                  style: TextStyle(
+                    color: Color(0xFFA5A5A5),
+                    fontSize: 20,
+                    height: 1,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${day.maxTemperature.round()}℃',
+                  style: const TextStyle(
+                    color: Color(0xFFFE9D0B),
+                    fontSize: 20,
+                    height: 1,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1084,70 +1141,71 @@ class _WeatherSuggestionRow extends StatelessWidget {
 }
 
 class _WeatherLoading extends StatelessWidget {
-  const _WeatherLoading({required this.bottomPadding});
+  const _WeatherLoading({required this.onBack, required this.bottomPadding});
 
+  final VoidCallback onBack;
   final double bottomPadding;
 
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: EdgeInsets.fromLTRB(28, 18, 28, bottomPadding + 32),
+      padding: EdgeInsets.fromLTRB(20, 18, 20, bottomPadding + 34),
       children: [
-        _WeatherTopBar(onBack: () => Navigator.of(context).maybePop()),
-        const SizedBox(height: 72),
-        Center(
-          child: Container(
-            width: 88,
-            height: 88,
-            decoration: BoxDecoration(
-              color: AppColors.elevatedSurface(context, light: 0.78),
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.glassBorder(context)),
-            ),
-            child: const CupertinoActivityIndicator(radius: 16),
-          ),
-        ),
+        Row(children: [_WeatherBackButton(onTap: onBack)]),
+        const SizedBox(height: 84),
+        const Center(child: CupertinoActivityIndicator(radius: 16)),
       ],
     );
   }
 }
 
 class _WeatherError extends StatelessWidget {
-  const _WeatherError({required this.onRetry, required this.bottomPadding});
+  const _WeatherError({
+    required this.onBack,
+    required this.onRetry,
+    required this.bottomPadding,
+  });
 
+  final VoidCallback onBack;
   final VoidCallback onRetry;
   final double bottomPadding;
 
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: EdgeInsets.fromLTRB(28, 18, 28, bottomPadding + 32),
+      padding: EdgeInsets.fromLTRB(20, 18, 20, bottomPadding + 34),
       children: [
-        _WeatherTopBar(onBack: () => Navigator.of(context).maybePop()),
+        Row(children: [_WeatherBackButton(onTap: onBack)]),
         const SizedBox(height: 42),
         Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: AppColors.elevatedSurface(context, light: 0.82),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: AppColors.glassBorder(context)),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF509AFD).withValues(alpha: 0.18),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 '天气暂时没有回来',
                 style: TextStyle(
-                  color: AppColors.text,
+                  color: Color(0xFF111111),
                   fontSize: 24,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 10),
-              Text(
+              const Text(
                 '网络或天气服务短暂波动，稍后再试就好。',
                 style: TextStyle(
-                  color: AppColors.muted.withValues(alpha: 0.82),
+                  color: Color(0xFF8E97A3),
                   fontSize: 14,
                   height: 1.45,
                 ),
@@ -1161,7 +1219,7 @@ class _WeatherError extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 22),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: AppColors.accent,
+                    color: const Color(0xFF4B9AFF),
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: const Text(
@@ -1178,130 +1236,6 @@ class _WeatherError extends StatelessWidget {
         ),
       ],
     );
-  }
-}
-
-class _WeatherCurvePainter extends CustomPainter {
-  const _WeatherCurvePainter({required this.hours});
-
-  final List<_WeatherHour> hours;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (hours.length < 2) return;
-
-    final chartRect = Rect.fromLTWH(8, 8, size.width - 16, size.height - 24);
-    final gridPaint = Paint()
-      ..color = const Color(0xFFDCE7F1).withValues(alpha: 0.46)
-      ..strokeWidth = 1;
-    for (var i = 0; i < 4; i += 1) {
-      final y = chartRect.top + chartRect.height * i / 3;
-      canvas.drawLine(
-        Offset(chartRect.left, y),
-        Offset(chartRect.right, y),
-        gridPaint,
-      );
-    }
-
-    final temps = hours.map((h) => h.temperature).toList();
-    final minTemp = temps.reduce(math.min);
-    final maxTemp = temps.reduce(math.max);
-    final span = math.max(1, maxTemp - minTemp);
-
-    Offset tempPoint(int index) {
-      final hour = hours[index];
-      final x = chartRect.left + chartRect.width * index / (hours.length - 1);
-      final normalized = (hour.temperature - minTemp) / span;
-      final y = chartRect.bottom - normalized * chartRect.height;
-      return Offset(x, y);
-    }
-
-    Offset rainPoint(int index) {
-      final hour = hours[index];
-      final x = chartRect.left + chartRect.width * index / (hours.length - 1);
-      final y =
-          chartRect.bottom -
-          (hour.rainProbability.clamp(0, 100) / 100) * chartRect.height;
-      return Offset(x, y);
-    }
-
-    final tempPath = _smoothPath(List.generate(hours.length, tempPoint));
-    final rainPath = _smoothPath(List.generate(hours.length, rainPoint));
-
-    final tempShadow = Paint()
-      ..color = AppColors.accent.withValues(alpha: 0.16)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 9
-      ..strokeCap = StrokeCap.round;
-    canvas.drawPath(tempPath, tempShadow);
-
-    final tempPaint = Paint()
-      ..color = AppColors.accent
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 4
-      ..strokeCap = StrokeCap.round;
-    canvas.drawPath(tempPath, tempPaint);
-
-    final rainPaint = Paint()
-      ..color = const Color(0xFF22C66B)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.4
-      ..strokeCap = StrokeCap.round;
-    _drawDashedPath(canvas, rainPath, rainPaint);
-
-    final labelPaint = TextPainter(textDirection: TextDirection.ltr);
-    final labelStyle = TextStyle(
-      color: AppColors.muted.withValues(alpha: 0.58),
-      fontSize: 10,
-      fontWeight: FontWeight.w700,
-    );
-    for (final index in [0, hours.length ~/ 2, hours.length - 1]) {
-      final point = tempPoint(index);
-      labelPaint.text = TextSpan(
-        text: '${hours[index].time.hour}:00',
-        style: labelStyle,
-      );
-      labelPaint.layout();
-      labelPaint.paint(
-        canvas,
-        Offset(point.dx - labelPaint.width / 2, size.height - 12),
-      );
-    }
-  }
-
-  Path _smoothPath(List<Offset> points) {
-    final path = Path()..moveTo(points.first.dx, points.first.dy);
-    for (var i = 0; i < points.length - 1; i += 1) {
-      final current = points[i];
-      final next = points[i + 1];
-      final control = Offset((current.dx + next.dx) / 2, current.dy);
-      final control2 = Offset((current.dx + next.dx) / 2, next.dy);
-      path.cubicTo(
-        control.dx,
-        control.dy,
-        control2.dx,
-        control2.dy,
-        next.dx,
-        next.dy,
-      );
-    }
-    return path;
-  }
-
-  void _drawDashedPath(Canvas canvas, Path path, Paint paint) {
-    for (final metric in path.computeMetrics()) {
-      var distance = 0.0;
-      while (distance < metric.length) {
-        final next = math.min(distance + 8, metric.length);
-        canvas.drawPath(metric.extractPath(distance, next), paint);
-        distance += 14;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _WeatherCurvePainter oldDelegate) {
-    return oldDelegate.hours != hours;
   }
 }
 
@@ -1673,41 +1607,37 @@ class _WeatherDay {
 
   String get weatherText => _weatherText(weatherCode);
 
-  String get dateLabel => date._weatherDateLabel;
+  String get dateLabel =>
+      '${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';
 
-  String get weekdayLabel => index == 0 ? '今天' : date._weatherWeekdayLabel;
-
-  List<_WeatherHour> get chartHours {
-    if (hours.length <= 12) return hours;
-    final preferred = hours
-        .where((h) => h.time.hour >= 6 && h.time.hour <= 23)
-        .toList();
-    if (preferred.length <= 12) return preferred;
-    return [for (var i = 0; i < preferred.length; i += 2) preferred[i]];
+  String get futureTitle {
+    if (index == 0) return '今天';
+    if (index == 1) return '明天';
+    return date._weatherWeekdayLabel;
   }
 
-  double? get aqi {
-    final valid = hours.map((h) => h.aqi).whereType<double>().toList();
-    if (valid.isEmpty) return null;
-    return valid.reduce((a, b) => a + b) / valid.length;
+  List<_WeatherHour> get stripHours {
+    if (hours.isEmpty) return const [];
+    final selected = <_WeatherHour>[];
+    for (final target in const [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22]) {
+      selected.add(_nearestHour(target));
+    }
+    return selected;
   }
 
-  String get aqiText {
-    final value = aqi;
-    if (value == null) return '${maxRainProbability.round()}%';
-    return value.round().toString();
+  _WeatherHour _nearestHour(int targetHour) {
+    return hours.reduce((a, b) {
+      final aDistance = (a.time.hour - targetHour).abs();
+      final bDistance = (b.time.hour - targetHour).abs();
+      return aDistance <= bDistance ? a : b;
+    });
   }
 
   _WeatherSnapshot displaySnapshot(_WeatherSnapshot? current) {
     if (index == 0 && current != null) return current;
-    final targetHour = index == 0 ? DateTime.now().hour : 14;
     final hour = hours.isEmpty
         ? null
-        : hours.reduce((a, b) {
-            final aDistance = (a.time.hour - targetHour).abs();
-            final bDistance = (b.time.hour - targetHour).abs();
-            return aDistance <= bDistance ? a : b;
-          });
+        : _nearestHour(index == 0 ? DateTime.now().hour : 14);
     if (hour == null) {
       return _WeatherSnapshot(
         temperature: (minTemperature + maxTemperature) / 2,
@@ -1725,53 +1655,6 @@ class _WeatherDay {
       weatherCode: hour.weatherCode,
       windSpeed: hour.windSpeed,
       windDirection: hour.windDirection,
-    );
-  }
-
-  _WeatherSuggestion get suggestionEvent {
-    if (hours.isEmpty) {
-      return _WeatherSuggestion(
-        hour: '14',
-        title: '天气稳定',
-        subtitle: '适合把当天安排轻轻排开，小芜会继续看着天气。',
-        temperature: (minTemperature + maxTemperature) / 2,
-      );
-    }
-
-    final evening = hours
-        .where((h) => h.time.hour >= 17 && h.time.hour <= 20)
-        .toList();
-    if (evening.isNotEmpty) {
-      final first = evening.first;
-      final last = evening.last;
-      if (first.temperature - last.temperature >= 2) {
-        return _WeatherSuggestion(
-          hour: first.time.hour.toString(),
-          title: '${first.time.hour}:00 降温',
-          subtitle: '出门建议薄外套，小芜会在傍晚前提醒。',
-          temperature: last.temperature,
-        );
-      }
-    }
-
-    final rainHour = hours
-        .where((h) => h.rainProbability >= 45)
-        .fold<_WeatherHour?>(null, (prev, h) => prev ?? h);
-    if (rainHour != null) {
-      return _WeatherSuggestion(
-        hour: rainHour.time.hour.toString(),
-        title: '${rainHour.time.hour}:00 可能有雨',
-        subtitle: '记得带伞，行程可以稍微留一点缓冲。',
-        temperature: rainHour.temperature,
-      );
-    }
-
-    final midday = displaySnapshot(null);
-    return _WeatherSuggestion(
-      hour: '14',
-      title: '14:00 适合出门',
-      subtitle: '天气节奏比较平稳，短途散步或采购都可以。',
-      temperature: midday.temperature,
     );
   }
 }
@@ -1818,18 +1701,11 @@ class _WeatherSnapshot {
   final String windDirection;
 }
 
-class _WeatherSuggestion {
-  const _WeatherSuggestion({
-    required this.hour,
-    required this.title,
-    required this.subtitle,
-    required this.temperature,
-  });
-
-  final String hour;
-  final String title;
-  final String subtitle;
-  final double temperature;
+extension on DateTime {
+  String get _weatherWeekdayLabel {
+    const labels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    return labels[weekday - 1];
+  }
 }
 
 String _weatherText(int code) {
@@ -1844,35 +1720,44 @@ String _weatherText(int code) {
   return '多云';
 }
 
-IconData _weatherIcon(int code) {
-  if (code == 0) return CupertinoIcons.sun_max_fill;
-  if (code == 1 || code == 2) return CupertinoIcons.cloud_sun_fill;
-  if (code == 3) return CupertinoIcons.cloud_fill;
-  if (code >= 71 && code <= 77) return CupertinoIcons.snow;
-  if (code >= 51 && code <= 82) return CupertinoIcons.cloud_rain_fill;
-  if (code >= 95) return CupertinoIcons.cloud_bolt_rain_fill;
-  return CupertinoIcons.cloud_fill;
-}
-
-String _weatherAdvice(_WeatherDay day) {
-  if (day.maxRainProbability >= 55) return '记得带伞';
-  if (day.maxTemperature >= 30) return '注意防晒';
-  if (day.minTemperature <= 10) return '加件外套';
-  if (day.weatherCode == 0 || day.weatherCode == 1 || day.weatherCode == 2) {
-    return '适合短途散步';
+String _weatherAsset(int code, {required int hour}) {
+  final isNight = hour < 6 || hour >= 20;
+  if (code == 0) return 'assets/weather/sunny.png';
+  if (code == 1 || code == 2) {
+    return isNight
+        ? 'assets/weather/cloudy.png'
+        : 'assets/weather/partly_cloudy.png';
   }
-  return '傍晚适合短途散步';
+  if (code == 3 || code == 45 || code == 48) {
+    return 'assets/weather/cloudy.png';
+  }
+  if (code >= 71 && code <= 77) return 'assets/weather/snow.png';
+  if (code >= 95) return 'assets/weather/storm_rain.png';
+  if (code >= 51 && code <= 67) return 'assets/weather/rain.png';
+  if (code >= 80 && code <= 82) return 'assets/weather/storm_rain.png';
+  return isNight
+      ? 'assets/weather/cloudy.png'
+      : 'assets/weather/partly_cloudy.png';
 }
 
-int _windLevel(double speedKmH) {
-  final speedMs = speedKmH / 3.6;
-  if (speedMs < 0.3) return 0;
-  if (speedMs < 1.6) return 1;
-  if (speedMs < 3.4) return 2;
-  if (speedMs < 5.5) return 3;
-  if (speedMs < 8.0) return 4;
-  if (speedMs < 10.8) return 5;
-  return 6;
+bool _isSunnyWeather(int code) => code == 0;
+
+bool _isPartlyCloudyWeather(int code) => code == 1 || code == 2;
+
+bool _isRainWeather(int code) => (code >= 51 && code <= 67) || code >= 80;
+
+bool _isSnowWeather(int code) => code >= 71 && code <= 77;
+
+bool _isThunderWeather(int code) => code >= 95;
+
+String _weatherMoodLine(_WeatherDay day) {
+  if (day.maxRainProbability >= 55) return '今天是小雨天，\n我的心情也变得安静了一点';
+  if (day.maxTemperature >= 30) return '阳光有点认真，\n记得把防晒也放进行程里';
+  if (day.minTemperature <= 10) return '天气有点凉，\n适合把外套和温柔都带上';
+  if (day.weatherCode == 0 || day.weatherCode == 1 || day.weatherCode == 2) {
+    return '天气很轻快，\n适合出去走走也适合慢慢聊';
+  }
+  return '云层慢慢铺开，\n今天可以把节奏放柔一点';
 }
 
 String _windDirection(double degrees) {
