@@ -22,7 +22,6 @@ class _WeatherPageState extends State<WeatherPage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _breathController;
   late Future<_WeatherForecast> _forecast;
-  bool _showFutureList = false;
 
   @override
   void initState() {
@@ -61,11 +60,16 @@ class _WeatherPageState extends State<WeatherPage>
   }
 
   void _handleBack() {
-    if (_showFutureList) {
-      setState(() => _showFutureList = false);
-      return;
-    }
     Navigator.of(context).maybePop();
+  }
+
+  void _openFutureForecast(_WeatherForecast forecast) {
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (context) =>
+            _FutureWeatherPage(forecast: forecast, agentName: widget.agentName),
+      ),
+    );
   }
 
   @override
@@ -100,28 +104,13 @@ class _WeatherPageState extends State<WeatherPage>
                     }
 
                     final forecast = snapshot.data!;
-                    return AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 260),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeOutCubic,
-                      child: _showFutureList
-                          ? _FutureWeatherList(
-                              key: const ValueKey('future'),
-                              forecast: forecast,
-                              agentName: widget.agentName,
-                              onBack: _handleBack,
-                              bottomPadding: bottom,
-                            )
-                          : _WeatherHome(
-                              key: const ValueKey('home'),
-                              forecast: forecast,
-                              agentName: widget.agentName,
-                              progress: progress,
-                              onBack: _handleBack,
-                              onShowFuture: () =>
-                                  setState(() => _showFutureList = true),
-                              bottomPadding: bottom,
-                            ),
+                    return _WeatherHome(
+                      forecast: forecast,
+                      agentName: widget.agentName,
+                      progress: progress,
+                      onBack: _handleBack,
+                      onShowFuture: () => _openFutureForecast(forecast),
+                      bottomPadding: bottom,
                     );
                   },
                 ),
@@ -134,9 +123,65 @@ class _WeatherPageState extends State<WeatherPage>
   }
 }
 
+class _FutureWeatherPage extends StatefulWidget {
+  const _FutureWeatherPage({required this.forecast, required this.agentName});
+
+  final _WeatherForecast forecast;
+  final String agentName;
+
+  @override
+  State<_FutureWeatherPage> createState() => _FutureWeatherPageState();
+}
+
+class _FutureWeatherPageState extends State<_FutureWeatherPage>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _breathController;
+
+  @override
+  void initState() {
+    super.initState();
+    _breathController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 8600),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _breathController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _breathController,
+      builder: (context, _) {
+        final progress = Curves.easeInOut.transform(_breathController.value);
+        return Scaffold(
+          backgroundColor: const Color(0xFFEFF3FC),
+          body: Stack(
+            children: [
+              Positioned.fill(child: _WeatherBackground(progress: progress)),
+              SafeArea(
+                bottom: false,
+                child: _FutureWeatherList(
+                  forecast: widget.forecast,
+                  agentName: widget.agentName,
+                  onBack: () => Navigator.of(context).maybePop(),
+                  bottomPadding: MediaQuery.paddingOf(context).bottom,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _WeatherHome extends StatelessWidget {
   const _WeatherHome({
-    super.key,
     required this.forecast,
     required this.agentName,
     required this.progress,
@@ -183,7 +228,6 @@ class _WeatherHome extends StatelessWidget {
 
 class _FutureWeatherList extends StatelessWidget {
   const _FutureWeatherList({
-    super.key,
     required this.forecast,
     required this.agentName,
     required this.onBack,
