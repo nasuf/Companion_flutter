@@ -6,12 +6,11 @@ class _Composer extends StatelessWidget {
     required this.focusNode,
     required this.height,
     required this.activePanel,
+    required this.voiceInputMode,
     required this.sending,
     required this.preparingVoice,
     required this.recordingVoice,
     required this.transcribingVoice,
-    required this.tapRecordingMode,
-    required this.voiceSeconds,
     required this.resolvingLink,
     required this.pendingImages,
     required this.pendingLink,
@@ -20,12 +19,12 @@ class _Composer extends StatelessWidget {
     required this.onToggleEmoji,
     required this.onShowKeyboard,
     required this.onToggleMore,
+    required this.onToggleVoiceInput,
     required this.onSend,
     required this.onVoicePressStart,
     required this.onVoicePressMove,
     required this.onVoicePressEnd,
     required this.onVoicePressCancel,
-    required this.onCancelVoice,
     required this.onRemoveImage,
     required this.onPreviewImage,
     required this.onRemoveLink,
@@ -37,12 +36,11 @@ class _Composer extends StatelessWidget {
   final FocusNode focusNode;
   final double height;
   final ComposerPanel activePanel;
+  final bool voiceInputMode;
   final bool sending;
   final bool preparingVoice;
   final bool recordingVoice;
   final bool transcribingVoice;
-  final bool tapRecordingMode;
-  final int voiceSeconds;
   final bool resolvingLink;
   final List<_PendingChatImage> pendingImages;
   final _PendingLinkPreview? pendingLink;
@@ -51,12 +49,12 @@ class _Composer extends StatelessWidget {
   final VoidCallback onToggleEmoji;
   final VoidCallback onShowKeyboard;
   final VoidCallback onToggleMore;
+  final VoidCallback onToggleVoiceInput;
   final VoidCallback onSend;
   final ValueChanged<Offset> onVoicePressStart;
   final ValueChanged<Offset> onVoicePressMove;
   final ValueChanged<Offset> onVoicePressEnd;
   final VoidCallback onVoicePressCancel;
-  final VoidCallback onCancelVoice;
   final ValueChanged<String> onRemoveImage;
   final ValueChanged<_PendingChatImage> onPreviewImage;
   final VoidCallback onRemoveLink;
@@ -93,25 +91,25 @@ class _Composer extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  _VoiceHoldButton(
-                    enabled:
-                        !transcribingVoice &&
-                        (preparingVoice || recordingVoice || !sending),
-                    recording: recordingVoice,
-                    onStart: onVoicePressStart,
-                    onMove: onVoicePressMove,
-                    onEnd: onVoicePressEnd,
-                    onCancel: onVoicePressCancel,
+                  _VoiceInputToggleButton(
+                    enabled: !voiceActive,
+                    voiceMode: voiceInputMode,
+                    onTap: onToggleVoiceInput,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: voiceActive
-                        ? _VoiceComposerStatus(
+                    child: voiceInputMode
+                        ? _VoiceHoldToTalkButton(
+                            enabled:
+                                !transcribingVoice &&
+                                (preparingVoice || recordingVoice || !sending),
                             preparing: preparingVoice,
                             recording: recordingVoice,
-                            tapMode: tapRecordingMode,
-                            seconds: voiceSeconds,
-                            onCancel: onCancelVoice,
+                            transcribing: transcribingVoice,
+                            onStart: onVoicePressStart,
+                            onMove: onVoicePressMove,
+                            onEnd: onVoicePressEnd,
+                            onCancel: onVoicePressCancel,
                           )
                         : Container(
                             constraints: BoxConstraints(
@@ -276,82 +274,50 @@ class _Composer extends StatelessWidget {
   }
 }
 
-class _VoiceComposerStatus extends StatelessWidget {
-  const _VoiceComposerStatus({
-    required this.preparing,
-    required this.recording,
-    required this.tapMode,
-    required this.seconds,
-    required this.onCancel,
+class _VoiceInputToggleButton extends StatelessWidget {
+  const _VoiceInputToggleButton({
+    required this.enabled,
+    required this.voiceMode,
+    required this.onTap,
   });
 
-  final bool preparing;
-  final bool recording;
-  final bool tapMode;
-  final int seconds;
-  final VoidCallback onCancel;
+  final bool enabled;
+  final bool voiceMode;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final minutes = (seconds ~/ 60).toString().padLeft(2, '0');
-    final remaining = (seconds % 60).toString().padLeft(2, '0');
-    final label = preparing
-        ? '正在准备麦克风…'
-        : recording
-        ? tapMode
-              ? '正在录音  $minutes:$remaining · 点击麦克风发送'
-              : '正在录音  $minutes:$remaining · 松开发送'
-        : '正在识别语音…';
-    return Container(
-      height: 36,
-      padding: const EdgeInsets.fromLTRB(12, 0, 4, 0),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        children: [
-          if (recording)
-            Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(
-                color: Color(0xFFFF4D5E),
-                shape: BoxShape.circle,
-              ),
-            )
-          else
-            const CupertinoActivityIndicator(radius: 7),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFF5F6967),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
+    return Tooltip(
+      message: voiceMode ? '键盘' : '语音',
+      child: Semantics(
+        button: true,
+        label: voiceMode ? '切换到键盘输入' : '切换到语音输入',
+        child: IconButton(
+          onPressed: enabled ? onTap : null,
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 30, height: 40),
+          icon: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 160),
+            child: Icon(
+              voiceMode ? CupertinoIcons.keyboard : CupertinoIcons.mic,
+              key: ValueKey(voiceMode),
+              size: 21,
+              color: enabled ? AppColors.text : AppColors.muted,
             ),
           ),
-          if (recording)
-            IconButton(
-              tooltip: '取消录音',
-              onPressed: onCancel,
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(CupertinoIcons.xmark, size: 17),
-            ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _VoiceHoldButton extends StatelessWidget {
-  const _VoiceHoldButton({
+class _VoiceHoldToTalkButton extends StatelessWidget {
+  const _VoiceHoldToTalkButton({
     required this.enabled,
+    required this.preparing,
     required this.recording,
+    required this.transcribing,
     required this.onStart,
     required this.onMove,
     required this.onEnd,
@@ -359,7 +325,9 @@ class _VoiceHoldButton extends StatelessWidget {
   });
 
   final bool enabled;
+  final bool preparing;
   final bool recording;
+  final bool transcribing;
   final ValueChanged<Offset> onStart;
   final ValueChanged<Offset> onMove;
   final ValueChanged<Offset> onEnd;
@@ -367,34 +335,58 @@ class _VoiceHoldButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: '按住说话',
+    final label = transcribing
+        ? '正在转成文字…'
+        : preparing
+        ? '正在准备…'
+        : recording
+        ? '松开发送'
+        : '按住说话';
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: label,
       child: Listener(
         behavior: HitTestBehavior.opaque,
         onPointerDown: enabled ? (event) => onStart(event.position) : null,
         onPointerMove: enabled ? (event) => onMove(event.position) : null,
         onPointerUp: enabled ? (event) => onEnd(event.position) : null,
         onPointerCancel: enabled ? (_) => onCancel() : null,
-        child: SizedBox(
-          width: 28,
+        child: AnimatedContainer(
+          key: const ValueKey('hold-to-talk-button'),
+          duration: const Duration(milliseconds: 120),
           height: 40,
-          child: Center(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 120),
-              width: recording ? 28 : 24,
-              height: recording ? 28 : 24,
-              decoration: BoxDecoration(
-                color: recording
-                    ? AppColors.accent.withValues(alpha: 0.16)
-                    : Colors.transparent,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                recording ? CupertinoIcons.mic_fill : CupertinoIcons.mic,
-                size: recording ? 19 : 18,
-                color: enabled || recording ? AppColors.text : AppColors.muted,
-              ),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: recording ? chatVoiceAccentSoft : AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: recording
+                  ? chatVoiceAccent.withValues(alpha: 0.56)
+                  : AppColors.hairline,
             ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (preparing || transcribing) ...[
+                const CupertinoActivityIndicator(
+                  radius: 7,
+                  color: chatVoiceAccentDeep,
+                ),
+                const SizedBox(width: 8),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: enabled || recording
+                      ? AppColors.text
+                      : AppColors.muted,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ),

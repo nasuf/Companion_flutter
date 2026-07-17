@@ -143,6 +143,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _inputFocus = FocusNode();
   final _imagePicker = ImagePicker();
   final _voiceRecorder = AudioRecorder();
+  final ValueNotifier<double> _voiceAmplitude = ValueNotifier(0.12);
   final _playback = MusicPlaybackController.instance;
   final _stationCardKey = GlobalKey(debugLabel: 'chat-station-card');
   final _musicStation = ChatMusicStationState();
@@ -157,6 +158,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   ComposerPanel _heldPanel = ComposerPanel.none;
   Timer? _panelHoldTimer;
   Timer? _voiceTimer;
+  StreamSubscription<Amplitude>? _voiceAmplitudeSub;
   Timer? _capsuleScanTimer;
   Timer? _conversationMetaTimer;
   TimeCapsule? _readyCapsule;
@@ -185,11 +187,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _preparingVoice = false;
   bool _recordingVoice = false;
   bool _transcribingVoice = false;
+  bool _voiceInputMode = false;
   bool _voiceGestureActive = false;
-  bool _tapRecordingMode = false;
-  bool _ignoreNextVoicePointerUp = false;
   int _voiceSeconds = 0;
-  DateTime? _voicePointerDownAt;
   DateTime? _voiceRecordingStartedAt;
   VoiceReleaseAction _voiceReleaseAction = VoiceReleaseAction.sendVoice;
   VoiceReleaseAction? _pendingVoiceReleaseAction;
@@ -259,6 +259,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _socket?.close();
     _panelHoldTimer?.cancel();
     _voiceTimer?.cancel();
+    _voiceAmplitudeSub?.cancel();
+    _voiceAmplitude.dispose();
     _capsuleScanTimer?.cancel();
     _conversationMetaTimer?.cancel();
     _stationPauseTimer?.cancel();
@@ -335,11 +337,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _preparingVoice = false;
       _recordingVoice = false;
       _transcribingVoice = false;
+      _voiceInputMode = false;
       _voiceGestureActive = false;
-      _tapRecordingMode = false;
-      _ignoreNextVoicePointerUp = false;
       _voiceSeconds = 0;
-      _voicePointerDownAt = null;
       _voiceRecordingStartedAt = null;
       _readyCapsule = null;
       _conversationMeta = null;
@@ -1917,16 +1917,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _handleVoicePressStart(Offset position) {
-    if (_tapRecordingMode && _recordingVoice) {
-      HapticFeedback.selectionClick();
-      setState(() {
-        _tapRecordingMode = false;
-        _ignoreNextVoicePointerUp = true;
-        _voiceGestureActive = false;
-      });
-      unawaited(_stopVoiceRecording(VoiceReleaseAction.sendVoice));
-      return;
-    }
     if (_preparingVoice ||
         _recordingVoice ||
         _transcribingVoice ||
@@ -1934,12 +1924,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _sending) {
       return;
     }
-    HapticFeedback.selectionClick();
     setState(() {
       _voiceGestureActive = true;
-      _tapRecordingMode = false;
-      _ignoreNextVoicePointerUp = false;
-      _voicePointerDownAt = DateTime.now();
       _voiceReleaseAction = _voiceActionForPosition(position);
       _pendingVoiceReleaseAction = null;
     });
@@ -1957,39 +1943,23 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _handleVoicePressEnd(Offset position) {
-    if (_ignoreNextVoicePointerUp) {
-      _ignoreNextVoicePointerUp = false;
-      return;
-    }
     if (!_voiceGestureActive) return;
-    final action = _voiceActionForPosition(position);
     final now = DateTime.now();
-    final pointerDownAt = _voicePointerDownAt ?? now;
     final recordingStartedAt = _voiceRecordingStartedAt;
-    final shouldLatch = shouldLatchVoiceRecordingAfterRelease(
-      action: action,
-      pressDuration: now.difference(pointerDownAt),
-      preparing: _preparingVoice,
-      capturedDuration: recordingStartedAt == null
-          ? null
-          : now.difference(recordingStartedAt),
-    );
-    if (shouldLatch) {
-      setState(() {
-        _voiceGestureActive = false;
-        _tapRecordingMode = true;
-        _voicePointerDownAt = null;
-        _voiceReleaseAction = VoiceReleaseAction.sendVoice;
-        _pendingVoiceReleaseAction = null;
-      });
-      return;
-    }
+    final capturedDuration = recordingStartedAt == null
+        ? null
+        : now.difference(recordingStartedAt);
+    var action = _voiceActionForPosition(position);
+    final tooShort =
+        action != VoiceReleaseAction.cancel &&
+        isVoiceCaptureTooShort(capturedDuration);
+    if (tooShort) action = VoiceReleaseAction.cancel;
+    HapticFeedback.lightImpact();
     setState(() {
       _voiceGestureActive = false;
-      _tapRecordingMode = false;
-      _voicePointerDownAt = null;
       _voiceReleaseAction = action;
       _pendingVoiceReleaseAction = action;
+      if (tooShort) _historyError = '说话时间太短，请按住后再说。';
     });
     if (!_preparingVoice) {
       unawaited(_completeVoiceGesture(action));
@@ -2000,8 +1970,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (!_voiceGestureActive && !_preparingVoice && !_recordingVoice) return;
     setState(() {
       _voiceGestureActive = false;
-      _tapRecordingMode = false;
-      _voicePointerDownAt = null;
       _voiceReleaseAction = VoiceReleaseAction.cancel;
       _pendingVoiceReleaseAction = VoiceReleaseAction.cancel;
     });
@@ -2009,13 +1977,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   VoiceReleaseAction _voiceActionForPosition(Offset position) {
-    final size = MediaQuery.sizeOf(context);
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
-    final targetTop = size.height - safeBottom - 170;
-    if (position.dy >= targetTop) return VoiceReleaseAction.sendVoice;
-    return position.dx < size.width / 2
-        ? VoiceReleaseAction.cancel
-        : VoiceReleaseAction.sendText;
+    return voiceReleaseActionForPosition(
+      position: position,
+      screenSize: MediaQuery.sizeOf(context),
+      safeBottom: MediaQuery.paddingOf(context).bottom,
+      currentAction: _voiceReleaseAction,
+    );
   }
 
   Future<void> _completeVoiceGesture(VoiceReleaseAction action) async {
@@ -2046,8 +2013,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         if (mounted) {
           setState(() {
             _voiceGestureActive = false;
-            _tapRecordingMode = false;
-            _voicePointerDownAt = null;
             _pendingVoiceReleaseAction = null;
             _historyError = '需要麦克风权限才能进行语音输入。';
           });
@@ -2057,6 +2022,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       final directory = await getTemporaryDirectory();
       final path =
           '${directory.path}/chat_voice_${DateTime.now().microsecondsSinceEpoch}.m4a';
+      await _voiceAmplitudeSub?.cancel();
+      _voiceAmplitudeSub = null;
+      if (!mounted) return;
+      _voiceAmplitude.value = 0.12;
       await _voiceRecorder.start(
         const RecordConfig(
           encoder: AudioEncoder.aacLc,
@@ -2077,6 +2046,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _voiceSeconds = 0;
         _voiceRecordingStartedAt = DateTime.now();
       });
+      _voiceAmplitudeSub = _voiceRecorder
+          .onAmplitudeChanged(const Duration(milliseconds: 80))
+          .listen((amplitude) {
+            final current = amplitude.current.isFinite
+                ? amplitude.current
+                : -55.0;
+            _voiceAmplitude.value = ((current + 55) / 55)
+                .clamp(0.08, 1.0)
+                .toDouble();
+          }, onError: (_) {});
       _voiceTimer?.cancel();
       _voiceTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         if (!mounted || !_recordingVoice) {
@@ -2089,23 +2068,25 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           timer.cancel();
           setState(() {
             _voiceGestureActive = false;
-            _tapRecordingMode = false;
             _voiceReleaseAction = VoiceReleaseAction.sendVoice;
           });
+          HapticFeedback.heavyImpact();
           unawaited(_stopVoiceRecording(VoiceReleaseAction.sendVoice));
         }
       });
       final pendingAction = _pendingVoiceReleaseAction;
       if (pendingAction != null) {
         await _completeVoiceGesture(pendingAction);
+        return;
+      }
+      if (_voiceGestureActive) {
+        HapticFeedback.mediumImpact();
       }
     } catch (error) {
       if (mounted) {
         setState(() {
           _recordingVoice = false;
           _voiceGestureActive = false;
-          _tapRecordingMode = false;
-          _voicePointerDownAt = null;
           _voiceRecordingStartedAt = null;
           _pendingVoiceReleaseAction = null;
           _historyError = error is MissingPluginException
@@ -2124,18 +2105,38 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (!_recordingVoice || _transcribingVoice) return;
     _voiceTimer?.cancel();
     _voiceTimer = null;
+    final amplitudeSub = _voiceAmplitudeSub;
+    _voiceAmplitudeSub = null;
+    _voiceAmplitude.value = 0.12;
     final startedAt = _voiceRecordingStartedAt;
     final elapsedMilliseconds = startedAt == null
         ? _voiceSeconds * 1000
         : DateTime.now().difference(startedAt).inMilliseconds;
     final durationSeconds = math.max(1, (elapsedMilliseconds / 1000).ceil());
     final conversationId = _conversationId;
+    final processingId =
+        'voice-processing-${DateTime.now().microsecondsSinceEpoch}';
+    final processingMessage = ChatMessage.draft(
+      conversationId: conversationId,
+      role: 'user',
+      content: '',
+      clientId: processingId,
+      metadata: {
+        if (action == VoiceReleaseAction.sendText)
+          'voice_transcription_pending': true
+        else
+          'voice_upload_pending': true,
+        'voice_duration_seconds': durationSeconds,
+      },
+    );
     setState(() {
       _recordingVoice = false;
-      _tapRecordingMode = false;
       _voiceRecordingStartedAt = null;
       _transcribingVoice = true;
+      _messages.add(processingMessage);
     });
+    scrollToLatest();
+    await amplitudeSub?.cancel();
 
     String? path;
     try {
@@ -2159,11 +2160,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       if (!mounted || _conversationId != conversationId) return;
       setState(() {
+        _messages.removeWhere((message) => message.id == processingId);
         _transcribingVoice = false;
         _pendingVoiceReleaseAction = null;
         _voiceSeconds = 0;
         _historyError = null;
       });
+      if (action == VoiceReleaseAction.sendText) {
+        HapticFeedback.mediumImpact();
+      }
       final attachment = result.attachment;
       _sendText(
         result.text,
@@ -2173,6 +2178,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     } catch (error) {
       if (mounted && _conversationId == conversationId) {
         setState(() {
+          _messages.removeWhere((message) => message.id == processingId);
           _historyError = error is MissingPluginException
               ? '语音功能需要完整重启 App 后才能使用。'
               : _asMessage(error);
@@ -2201,16 +2207,18 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (!_recordingVoice) return;
     _voiceTimer?.cancel();
     _voiceTimer = null;
+    final amplitudeSub = _voiceAmplitudeSub;
+    _voiceAmplitudeSub = null;
+    _voiceAmplitude.value = 0.12;
     if (mounted) {
       setState(() {
         _recordingVoice = false;
         _voiceGestureActive = false;
-        _tapRecordingMode = false;
-        _voicePointerDownAt = null;
         _voiceRecordingStartedAt = null;
         _voiceSeconds = 0;
       });
     }
+    await amplitudeSub?.cancel();
     try {
       await _voiceRecorder.cancel();
     } on Exception {
@@ -2453,6 +2461,25 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
+  void _toggleVoiceInputMode() {
+    if (_preparingVoice || _recordingVoice || _transcribingVoice) return;
+    _panelHoldTimer?.cancel();
+    final next = !_voiceInputMode;
+    setState(() {
+      _voiceInputMode = next;
+      _panel = ComposerPanel.none;
+      _heldPanel = ComposerPanel.none;
+      _pinToBottomDuringKeyboard = false;
+    });
+    if (next) {
+      FocusScope.of(context).unfocus();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _inputFocus.requestFocus();
+      });
+    }
+  }
+
   void _dismissInputSurfaces() {
     FocusScope.of(context).unfocus();
     _panelHoldTimer?.cancel();
@@ -2674,6 +2701,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               focusNode: _inputFocus,
               height: composerHeight,
               activePanel: _panel,
+              voiceInputMode: _voiceInputMode,
               sending:
                   _sending ||
                   _uploadingImage ||
@@ -2683,8 +2711,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               preparingVoice: _preparingVoice,
               recordingVoice: _recordingVoice,
               transcribingVoice: _transcribingVoice,
-              tapRecordingMode: _tapRecordingMode,
-              voiceSeconds: _voiceSeconds,
               resolvingLink:
                   _linkPreviewInFlightText != null &&
                   _pendingLinkPreview == null,
@@ -2695,12 +2721,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               onToggleEmoji: () => _setPanel(ComposerPanel.emoji),
               onShowKeyboard: _focusInput,
               onToggleMore: () => _setPanel(ComposerPanel.more),
+              onToggleVoiceInput: _toggleVoiceInputMode,
               onSend: _sendMessage,
               onVoicePressStart: _handleVoicePressStart,
               onVoicePressMove: _handleVoicePressMove,
               onVoicePressEnd: _handleVoicePressEnd,
               onVoicePressCancel: _handleVoicePressCancel,
-              onCancelVoice: () => unawaited(_cancelVoiceRecording()),
               onRemoveImage: _removePendingImage,
               onPreviewImage: _previewPendingImage,
               onRemoveLink: _removePendingLink,
@@ -2800,14 +2826,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 150),
                 child:
-                    (_voiceGestureActive || _tapRecordingMode) &&
-                        (_preparingVoice || _recordingVoice)
+                    _voiceGestureActive && (_preparingVoice || _recordingVoice)
                     ? VoiceRecordingOverlay(
                         key: const ValueKey('voice-recording-overlay'),
                         action: _voiceReleaseAction,
                         seconds: _voiceSeconds,
                         preparing: _preparingVoice,
-                        tapMode: _tapRecordingMode,
+                        amplitude: _voiceAmplitude,
                       )
                     : const SizedBox.shrink(),
               ),

@@ -533,7 +533,13 @@ class _Bubble extends StatelessWidget {
             _MessageTextBubble(message: message),
             const SizedBox(height: 8),
           ],
-          if (componentCard != null)
+          if (message.isVoiceTranscriptionPending)
+            const _VoiceTranscriptionPendingBubble()
+          else if (message.isVoiceUploadPending)
+            _VoiceUploadPendingBubble(
+              durationSeconds: message.voicePendingDurationSeconds ?? 1,
+            )
+          else if (componentCard != null)
             _ComponentCardBubble(
               card: componentCard,
               isMine: message.isMine,
@@ -657,6 +663,94 @@ class _MessageTextBubble extends StatelessWidget {
       ],
     );
   }
+}
+
+class _VoiceTranscriptionPendingBubble extends StatelessWidget {
+  const _VoiceTranscriptionPendingBubble();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: _pendingVoiceBubbleDecoration(),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CupertinoActivityIndicator(radius: 8, color: Colors.white),
+          SizedBox(width: 9),
+          Text(
+            '正在转成文字…',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VoiceUploadPendingBubble extends StatelessWidget {
+  const _VoiceUploadPendingBubble({required this.durationSeconds});
+
+  final int durationSeconds;
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = math.max(1, durationSeconds);
+    final width = (108.0 + duration * 2.2).clamp(116.0, 250.0).toDouble();
+    return Container(
+      width: width,
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 13),
+      decoration: _pendingVoiceBubbleDecoration(),
+      child: Row(
+        children: [
+          const CupertinoActivityIndicator(radius: 8, color: Colors.white),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Icon(
+              Icons.graphic_eq_rounded,
+              color: Colors.white.withValues(alpha: 0.88),
+              size: 29,
+            ),
+          ),
+          const SizedBox(width: 7),
+          Text(
+            '$duration″',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+BoxDecoration _pendingVoiceBubbleDecoration() {
+  const mineColor = Color(0xFF06C893);
+  return BoxDecoration(
+    color: mineColor,
+    borderRadius: const BorderRadius.only(
+      topLeft: Radius.circular(20),
+      topRight: Radius.circular(3),
+      bottomLeft: Radius.circular(20),
+      bottomRight: Radius.circular(20),
+    ),
+    boxShadow: [
+      BoxShadow(
+        color: mineColor.withValues(alpha: 0.25),
+        blurRadius: 4,
+        offset: const Offset(0, 4),
+      ),
+    ],
+  );
 }
 
 class _AudioAttachmentBubble extends StatefulWidget {

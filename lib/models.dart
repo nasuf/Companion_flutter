@@ -373,6 +373,15 @@ class ChatMessage {
   bool get isGameStatus => metadata?['game_status'] != null;
   bool get isChatMessage => role == 'user' || role == 'assistant';
   bool get isDraft => id.startsWith('draft-');
+  bool get isVoiceTranscriptionPending =>
+      metadata?['voice_transcription_pending'] == true;
+  bool get isVoiceUploadPending => metadata?['voice_upload_pending'] == true;
+  int? get voicePendingDurationSeconds {
+    final raw = metadata?['voice_duration_seconds'];
+    if (raw is int) return raw;
+    return int.tryParse(raw?.toString() ?? '');
+  }
+
   String? get clientId => metadata?['client_id'] as String?;
   AchievementItem? get achievementItem {
     final raw = metadata?['achievement'];

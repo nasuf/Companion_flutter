@@ -6,7 +6,7 @@ void main() {
   testWidgets(
     'voice recording overlay matches the approved interaction state',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(393, 852));
+      await tester.binding.setSurfaceSize(const Size(390, 844));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       await tester.pumpWidget(
@@ -27,66 +27,61 @@ void main() {
           ),
         ),
       );
-      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump(const Duration(milliseconds: 220));
 
       expect(find.bySemanticsLabel('正在录音 00:08'), findsOneWidget);
       expect(find.text('取消'), findsOneWidget);
-      expect(find.text('滑到这里  转文字'), findsOneWidget);
-      expect(find.text('松开  发送'), findsOneWidget);
-      expect(find.byIcon(Icons.graphic_eq_rounded), findsOneWidget);
+      expect(find.text('转文字'), findsOneWidget);
+      expect(find.text('左右滑动选择'), findsOneWidget);
+      expect(find.text('松开发送'), findsOneWidget);
+      await expectLater(
+        find.byType(Scaffold),
+        matchesGoldenFile('goldens/voice_recording_overlay.png'),
+      );
     },
   );
 
-  test('quick tap or release while preparing latches recording', () {
+  test('voice release geometry maps send, cancel, and text actions', () {
+    const screenSize = Size(390, 844);
     expect(
-      shouldLatchVoiceRecordingAfterRelease(
-        action: VoiceReleaseAction.sendVoice,
-        pressDuration: const Duration(milliseconds: 200),
-        preparing: false,
-        capturedDuration: const Duration(milliseconds: 100),
+      voiceReleaseActionForPosition(
+        position: const Offset(195, 760),
+        screenSize: screenSize,
+        safeBottom: 34,
       ),
-      isTrue,
+      VoiceReleaseAction.sendVoice,
     );
     expect(
-      shouldLatchVoiceRecordingAfterRelease(
-        action: VoiceReleaseAction.sendVoice,
-        pressDuration: const Duration(seconds: 1),
-        preparing: true,
+      voiceReleaseActionForPosition(
+        position: const Offset(70, 610),
+        screenSize: screenSize,
+        safeBottom: 34,
       ),
-      isTrue,
+      VoiceReleaseAction.cancel,
     );
     expect(
-      shouldLatchVoiceRecordingAfterRelease(
-        action: VoiceReleaseAction.sendVoice,
-        pressDuration: const Duration(seconds: 2),
-        preparing: false,
-        capturedDuration: const Duration(seconds: 1),
+      voiceReleaseActionForPosition(
+        position: const Offset(320, 610),
+        screenSize: screenSize,
+        safeBottom: 34,
       ),
-      isFalse,
+      VoiceReleaseAction.sendText,
     );
     expect(
-      shouldLatchVoiceRecordingAfterRelease(
-        action: VoiceReleaseAction.sendText,
-        pressDuration: const Duration(milliseconds: 100),
-        preparing: false,
+      voiceReleaseActionForPosition(
+        position: const Offset(195, 610),
+        screenSize: screenSize,
+        safeBottom: 34,
+        currentAction: VoiceReleaseAction.sendText,
       ),
-      isFalse,
+      VoiceReleaseAction.sendText,
     );
   });
 
-  testWidgets('tap recording mode explains how to send', (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: VoiceRecordingOverlay(
-          action: VoiceReleaseAction.sendVoice,
-          seconds: 2,
-          preparing: false,
-          tapMode: true,
-        ),
-      ),
-    );
-
-    expect(find.text('再次点击麦克风  发送'), findsOneWidget);
+  test('recordings shorter than the minimum are cancelled', () {
+    expect(isVoiceCaptureTooShort(null), isTrue);
+    expect(isVoiceCaptureTooShort(const Duration(milliseconds: 649)), isTrue);
+    expect(isVoiceCaptureTooShort(const Duration(milliseconds: 650)), isFalse);
   });
 }
 

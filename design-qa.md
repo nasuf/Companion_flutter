@@ -145,3 +145,31 @@ A separate crop was not needed because the 2358 × 2556 full comparison keeps th
 - [x] Re-run widget tests after visual fixes.
 
 final result: passed
+
+---
+
+# Chat voice recording visual QA - restrained green redesign
+
+## Source and implementation evidence
+
+- Selected reference: `/Users/songtao/.codex/generated_images/019f6b7f-d443-72f0-a3f7-94e62a3918af/exec-2dde1d4a-aed3-4638-874a-4a6a8527c0ca.png`
+- iOS implementation capture: `/Users/songtao/.codex/visualizations/2026/07/16/019f6b7f-d443-72f0-a3f7-94e62a3918af/voice-recording-overlay-ios.png`
+- Side-by-side comparison: `/Users/songtao/.codex/visualizations/2026/07/16/019f6b7f-d443-72f0-a3f7-94e62a3918af/voice-recording-design-comparison.png`
+- Target viewport: 390 x 844 logical pixels.
+- State: recording for 12 seconds with send voice as the default release action.
+
+## Findings
+
+- P0: none.
+- P1: none. The action hierarchy, dimmed chat context, recording capsule, paired cancel/text targets, and green release target match the selected direction.
+- P2: the implementation keeps the release target above the app's persistent bottom navigation area; this is an intentional product-context adjustment from the standalone mock.
+- Motion: overlay entry uses a 190 ms opacity/translation transition; target changes use 110 ms scale/color transitions; waveform repainting is isolated and driven at 80 ms intervals.
+- Accessibility: recording state and all release targets expose explicit semantics labels; reduced-motion settings disable the overlay entrance transition.
+
+## Iteration history
+
+1. Replaced the previous neon/arc presentation with the selected restrained green layout.
+2. Rendered the implementation on an iOS 390 x 844 simulator with real Chinese system fonts.
+3. Compared the reference and implementation in one side-by-side image and retained the app-specific green token and bottom-navigation clearance.
+
+final result: passed
