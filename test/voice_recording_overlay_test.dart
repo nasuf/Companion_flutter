@@ -76,10 +76,10 @@ void main() {
     final decoration = cancelContainer.decoration! as BoxDecoration;
 
     expect(cancelIcon.color, chatVoiceCancelDeep);
-    expect(decoration.color, chatVoiceCancelSoft.withValues(alpha: 0.78));
+    expect(decoration.color, chatVoiceCancelSoft.withValues(alpha: 0.58));
     expect(
       (decoration.border! as Border).top.color,
-      chatVoiceCancel.withValues(alpha: 0.70),
+      chatVoiceCancel.withValues(alpha: 0.52),
     );
   });
 
@@ -156,6 +156,62 @@ void main() {
       isFalse,
     );
   });
+
+  testWidgets(
+    'hold gesture stays tracked after a full-screen overlay appears',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final events = <String>[];
+      var covered = false;
+      late StateSetter setHostState;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StatefulBuilder(
+            builder: (context, setState) {
+              setHostState = setState;
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: SizedBox(
+                      width: 260,
+                      height: 48,
+                      child: VoiceHoldGestureRegion(
+                        enabled: true,
+                        onStart: (_) => events.add('start'),
+                        onMove: (_) => events.add('move'),
+                        onEnd: (_) => events.add('end'),
+                        onCancel: () => events.add('cancel'),
+                        child: const ColoredBox(color: chatVoiceAccent),
+                      ),
+                    ),
+                  ),
+                  if (covered)
+                    const Positioned.fill(
+                      child: ColoredBox(color: Color(0x70101B17)),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      );
+
+      final gesture = await tester.startGesture(const Offset(195, 820));
+      expect(events, ['start']);
+
+      setHostState(() => covered = true);
+      await tester.pump();
+      await gesture.moveTo(const Offset(70, 610));
+      await gesture.up();
+
+      expect(events, containsAllInOrder(['start', 'move', 'end']));
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('waveform smoothly accepts rapid amplitude updates', (
     tester,

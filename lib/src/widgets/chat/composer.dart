@@ -344,12 +344,12 @@ class _VoiceHoldToTalkButton extends StatelessWidget {
       button: true,
       enabled: enabled,
       label: transcribing ? '正在转写语音' : label,
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: enabled ? (event) => onStart(event.position) : null,
-        onPointerMove: enabled ? (event) => onMove(event.position) : null,
-        onPointerUp: enabled ? (event) => onEnd(event.position) : null,
-        onPointerCancel: enabled ? (_) => onCancel() : null,
+      child: VoiceHoldGestureRegion(
+        enabled: enabled,
+        onStart: onStart,
+        onMove: onMove,
+        onEnd: onEnd,
+        onCancel: onCancel,
         child: AnimatedContainer(
           key: const ValueKey('hold-to-talk-button'),
           duration: const Duration(milliseconds: 120),

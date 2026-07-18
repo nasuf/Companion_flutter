@@ -1992,11 +1992,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       previous: _voiceReleaseAction,
       next: action,
     )) {
-      if (action == VoiceReleaseAction.cancel) {
-        unawaited(HapticFeedback.mediumImpact());
-      } else {
-        unawaited(HapticFeedback.selectionClick());
-      }
+      unawaited(HapticFeedback.heavyImpact());
     }
     setState(() {
       _voiceReleaseAction = action;

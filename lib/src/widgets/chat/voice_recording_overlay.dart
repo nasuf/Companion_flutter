@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 enum VoiceReleaseAction { sendVoice, cancel, sendText }
@@ -29,6 +30,82 @@ bool shouldHapticOnVoiceActionEntry({
   return previous != next &&
       (next == VoiceReleaseAction.cancel ||
           next == VoiceReleaseAction.sendText);
+}
+
+class VoiceHoldGestureRegion extends StatefulWidget {
+  const VoiceHoldGestureRegion({
+    super.key,
+    required this.enabled,
+    required this.onStart,
+    required this.onMove,
+    required this.onEnd,
+    required this.onCancel,
+    required this.child,
+  });
+
+  final bool enabled;
+  final ValueChanged<Offset> onStart;
+  final ValueChanged<Offset> onMove;
+  final ValueChanged<Offset> onEnd;
+  final VoidCallback onCancel;
+  final Widget child;
+
+  @override
+  State<VoiceHoldGestureRegion> createState() => _VoiceHoldGestureRegionState();
+}
+
+class _VoiceHoldGestureRegionState extends State<VoiceHoldGestureRegion> {
+  int? _trackedPointer;
+
+  void _handlePointerDown(PointerDownEvent event) {
+    if (!widget.enabled || _trackedPointer != null) return;
+    _trackedPointer = event.pointer;
+    GestureBinding.instance.pointerRouter.addRoute(
+      event.pointer,
+      _handleTrackedPointerEvent,
+    );
+    widget.onStart(event.position);
+  }
+
+  void _handleTrackedPointerEvent(PointerEvent event) {
+    if (event.pointer != _trackedPointer) return;
+    switch (event) {
+      case PointerMoveEvent():
+        widget.onMove(event.position);
+      case PointerUpEvent():
+        _stopTracking(event.pointer);
+        widget.onEnd(event.position);
+      case PointerCancelEvent():
+        _stopTracking(event.pointer);
+        widget.onCancel();
+      default:
+        break;
+    }
+  }
+
+  void _stopTracking(int pointer) {
+    GestureBinding.instance.pointerRouter.removeRoute(
+      pointer,
+      _handleTrackedPointerEvent,
+    );
+    if (_trackedPointer == pointer) _trackedPointer = null;
+  }
+
+  @override
+  void dispose() {
+    final pointer = _trackedPointer;
+    if (pointer != null) _stopTracking(pointer);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: widget.enabled ? _handlePointerDown : null,
+      child: widget.child,
+    );
+  }
 }
 
 VoiceReleaseAction voiceReleaseActionForPosition({
@@ -217,9 +294,9 @@ class _RecordingCapsule extends StatelessWidget {
         height: 58,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FCFA).withValues(alpha: 0.80),
+          color: const Color(0xFFF8FCFA).withValues(alpha: 0.64),
           borderRadius: BorderRadius.circular(29),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.74)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.48)),
         ),
         child: Stack(
           children: [
@@ -589,13 +666,13 @@ class _VoiceActionTarget extends StatelessWidget {
           height: 62,
           decoration: BoxDecoration(
             color: selected
-                ? selectedSoft.withValues(alpha: 0.78)
-                : const Color(0xFFF7FBF9).withValues(alpha: 0.70),
+                ? selectedSoft.withValues(alpha: 0.58)
+                : const Color(0xFFF7FBF9).withValues(alpha: 0.48),
             borderRadius: BorderRadius.circular(31),
             border: Border.all(
               color: selected
-                  ? selectedAccent.withValues(alpha: 0.70)
-                  : Colors.white.withValues(alpha: 0.56),
+                  ? selectedAccent.withValues(alpha: 0.52)
+                  : Colors.white.withValues(alpha: 0.36),
             ),
           ),
           child: Row(
@@ -643,8 +720,8 @@ class _VoiceSendTarget extends StatelessWidget {
           height: 56,
           decoration: BoxDecoration(
             color: selected
-                ? chatVoiceAccent.withValues(alpha: 0.80)
-                : chatVoiceAccent.withValues(alpha: 0.54),
+                ? chatVoiceAccent.withValues(alpha: 0.68)
+                : chatVoiceAccent.withValues(alpha: 0.46),
             borderRadius: BorderRadius.circular(28),
           ),
           child: const Row(
