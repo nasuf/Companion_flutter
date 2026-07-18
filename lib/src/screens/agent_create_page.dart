@@ -377,10 +377,8 @@ class _AgentCreatePageState extends State<AgentCreatePage>
   }
 
   Future<void> _precacheAgentAvatar(String? avatarUrl) async {
-    final url = avatarUrl?.trim();
-    if (url == null || url.isEmpty) return;
     try {
-      await precacheImage(NetworkImage(url), context);
+      await AgentAvatarImage.precache(context, avatarUrl);
     } catch (error) {
       debugPrint('[agent-avatar-precache] $error');
     }

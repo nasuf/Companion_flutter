@@ -2140,26 +2140,16 @@ class _Avatar extends StatelessWidget {
         border: Border.all(color: AppColors.hairline),
       ),
       child: ClipOval(
-        child: _hasImage
-            ? Image.network(
-                imageUrl!.trim(),
-                key: ValueKey(imageUrl!.trim()),
-                width: size,
-                height: size,
-                fit: BoxFit.cover,
-                gaplessPlayback: true,
-                errorBuilder: (_, __, ___) => _fallback,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return _fallback;
-                },
-              )
-            : _fallback,
+        child: AgentAvatarImage(
+          imageUrl: imageUrl,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          fallback: _fallback,
+        ),
       ),
     );
   }
-
-  bool get _hasImage => imageUrl != null && imageUrl!.trim().isNotEmpty;
 
   Widget get _fallback {
     return Center(

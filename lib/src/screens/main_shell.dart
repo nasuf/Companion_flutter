@@ -1527,19 +1527,11 @@ class _SettingsAvatarImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fallback = Image.asset(assetPath, fit: BoxFit.cover);
-    final trimmed = imageUrl?.trim();
-    final image = trimmed == null || trimmed.isEmpty
-        ? fallback
-        : Image.network(
-            trimmed,
-            fit: BoxFit.cover,
-            gaplessPlayback: true,
-            errorBuilder: (_, __, ___) => fallback,
-            loadingBuilder: (context, child, progress) {
-              if (progress == null) return child;
-              return fallback;
-            },
-          );
+    final image = AgentAvatarImage(
+      imageUrl: imageUrl,
+      fit: BoxFit.cover,
+      fallback: fallback,
+    );
     return Container(
       width: 64,
       height: 64,

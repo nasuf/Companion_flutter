@@ -37,6 +37,7 @@ class _AuthGateState extends State<AuthGate> {
       final session = await api.ensureConversation(loggedIn);
       await _sessionStore.save(baseUrl: api.baseUrl, token: session.token);
       unawaited(PushNotificationService.instance.configure(api, session));
+      await _precacheAgentAvatar(session.agentAvatarUrl);
       await minimumSplash;
       if (!mounted) return;
       setState(() {
@@ -53,12 +54,31 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   void _onAuthenticated(CompanionApi api, AuthSession session) {
+    setState(() => _restoring = true);
+    unawaited(_completeAuthentication(api, session));
+  }
+
+  Future<void> _completeAuthentication(
+    CompanionApi api,
+    AuthSession session,
+  ) async {
     unawaited(_sessionStore.save(baseUrl: api.baseUrl, token: session.token));
     unawaited(PushNotificationService.instance.configure(api, session));
+    await _precacheAgentAvatar(session.agentAvatarUrl);
+    if (!mounted) return;
     setState(() {
       _api = api;
       _session = session;
+      _restoring = false;
     });
+  }
+
+  Future<void> _precacheAgentAvatar(String? avatarUrl) async {
+    try {
+      await AgentAvatarImage.precache(context, avatarUrl);
+    } catch (error) {
+      debugPrint('[agent-avatar-precache] $error');
+    }
   }
 
   void _onSessionChanged(AuthSession session) {

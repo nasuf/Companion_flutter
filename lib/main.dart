@@ -42,6 +42,7 @@ import 'src/games/number_merge_engine.dart';
 import 'src/games/reversi_engine.dart';
 import 'src/games/tetris_duel_engine.dart';
 import 'src/widgets/chat/voice_recording_overlay.dart';
+import 'src/widgets/agent_avatar_image.dart';
 
 part 'src/app/auth_gate.dart';
 part 'src/app/auth_session_store.dart';
