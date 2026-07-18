@@ -210,6 +210,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _voiceInputMode = false;
   bool _voiceGestureActive = false;
   int _voiceSeconds = 0;
+  int _voiceAmplitudeSampleCount = 0;
+  int _voiceActiveMilliseconds = 0;
   DateTime? _voiceRecordingStartedAt;
   VoiceReleaseAction _voiceReleaseAction = VoiceReleaseAction.sendVoice;
   VoiceReleaseAction? _pendingVoiceReleaseAction;
@@ -360,6 +362,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _voiceInputMode = false;
       _voiceGestureActive = false;
       _voiceSeconds = 0;
+      _voiceAmplitudeSampleCount = 0;
+      _voiceActiveMilliseconds = 0;
       _voiceRecordingStartedAt = null;
       _readyCapsule = null;
       _conversationMeta = null;
@@ -1975,7 +1979,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _sending) {
       return;
     }
-    unawaited(HapticFeedback.lightImpact());
+    unawaited(triggerVoiceVibration());
     setState(() {
       _voiceGestureActive = true;
       _voiceReleaseAction = _voiceActionForPosition(position);
@@ -1992,7 +1996,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       previous: _voiceReleaseAction,
       next: action,
     )) {
-      unawaited(HapticFeedback.heavyImpact());
+      unawaited(triggerVoiceVibration());
     }
     setState(() {
       _voiceReleaseAction = action;
@@ -2012,11 +2016,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         action != VoiceReleaseAction.cancel &&
         isVoiceCaptureTooShort(capturedDuration);
     if (tooShort) action = VoiceReleaseAction.cancel;
-    if (action == VoiceReleaseAction.sendVoice) {
-      unawaited(HapticFeedback.lightImpact());
-    } else {
-      unawaited(HapticFeedback.mediumImpact());
-    }
+    unawaited(triggerVoiceVibration());
     setState(() {
       _voiceGestureActive = false;
       _voiceReleaseAction = action;
@@ -2108,16 +2108,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _voiceAmplitudeSub = null;
       if (!mounted) return;
       _voiceAmplitude.value = 0.12;
-      await _voiceRecorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.aacLc,
-          bitRate: 32000,
-          sampleRate: 16000,
-          numChannels: 1,
-          noiseSuppress: true,
-        ),
-        path: path,
-      );
+      _voiceAmplitudeSampleCount = 0;
+      _voiceActiveMilliseconds = 0;
+      await _voiceRecorder.start(chatVoiceRecordConfig, path: path);
       if (!mounted) {
         await _voiceRecorder.cancel();
         return;
@@ -2130,11 +2123,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       });
       _syncVoiceRecordingOverlay();
       _voiceAmplitudeSub = _voiceRecorder
-          .onAmplitudeChanged(const Duration(milliseconds: 80))
+          .onAmplitudeChanged(voiceAmplitudeSampleInterval)
           .listen((amplitude) {
             final current = amplitude.current.isFinite
                 ? amplitude.current
                 : -55.0;
+            _voiceAmplitudeSampleCount += 1;
+            if (current >= voiceSpeechThresholdDbfs) {
+              _voiceActiveMilliseconds +=
+                  voiceAmplitudeSampleInterval.inMilliseconds;
+            }
             _voiceAmplitude.value = ((current + 55) / 55)
                 .clamp(0.08, 1.0)
                 .toDouble();
@@ -2217,11 +2215,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _recordingVoice = false;
       _voiceRecordingStartedAt = null;
       _transcribingVoice = true;
-      _messages.add(processingMessage);
     });
     _syncVoiceRecordingOverlay();
     scrollToLatest();
     await amplitudeSub?.cancel();
+    final amplitudeSampleCount = _voiceAmplitudeSampleCount;
+    final activeMilliseconds = _voiceActiveMilliseconds;
 
     String? path;
     try {
@@ -2229,10 +2228,21 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (path == null || path.isEmpty) {
         throw Exception('没有录制到语音内容');
       }
+      if (shouldRejectSilentVoiceCapture(
+        amplitudeSampleCount: amplitudeSampleCount,
+        activeMilliseconds: activeMilliseconds,
+      )) {
+        unawaited(HapticFeedback.warningNotification());
+        throw Exception('没有检测到清晰的语音，请重新录制');
+      }
       final file = File(path);
       final bytes = await file.readAsBytes();
       if (bytes.length > _maxVoiceBytes) {
         throw Exception('语音文件过大，请录制更短的内容');
+      }
+      if (mounted && _conversationId == conversationId) {
+        setState(() => _messages.add(processingMessage));
+        scrollToLatest();
       }
       final result = await widget.api.transcribeChatAudio(
         conversationId: conversationId,
@@ -2281,6 +2291,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         setState(() {
           _transcribingVoice = false;
           _voiceSeconds = 0;
+          _voiceAmplitudeSampleCount = 0;
+          _voiceActiveMilliseconds = 0;
         });
       }
     }
@@ -2304,6 +2316,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final amplitudeSub = _voiceAmplitudeSub;
     _voiceAmplitudeSub = null;
     _voiceAmplitude.value = 0.12;
+    _voiceAmplitudeSampleCount = 0;
+    _voiceActiveMilliseconds = 0;
     if (mounted) {
       setState(() {
         _recordingVoice = false;
@@ -2319,6 +2333,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     } on Exception {
       // Cancellation is also used during app lifecycle changes and teardown.
     }
+    _voiceAmplitudeSampleCount = 0;
+    _voiceActiveMilliseconds = 0;
     _pendingVoiceReleaseAction = null;
   }
 

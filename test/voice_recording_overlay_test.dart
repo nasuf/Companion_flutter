@@ -1,5 +1,6 @@
 import 'package:companion_flutter/src/widgets/chat/voice_recording_overlay.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -76,10 +77,10 @@ void main() {
     final decoration = cancelContainer.decoration! as BoxDecoration;
 
     expect(cancelIcon.color, chatVoiceCancelDeep);
-    expect(decoration.color, chatVoiceCancelSoft.withValues(alpha: 0.58));
+    expect(decoration.color, chatVoiceCancelSoft.withValues(alpha: 0.34));
     expect(
       (decoration.border! as Border).top.color,
-      chatVoiceCancel.withValues(alpha: 0.52),
+      chatVoiceCancel.withValues(alpha: 0.40),
     );
   });
 
@@ -124,6 +125,69 @@ void main() {
     expect(isVoiceCaptureTooShort(null), isTrue);
     expect(isVoiceCaptureTooShort(const Duration(milliseconds: 649)), isTrue);
     expect(isVoiceCaptureTooShort(const Duration(milliseconds: 650)), isFalse);
+  });
+
+  test('silent capture check fails open without platform samples', () {
+    expect(
+      shouldRejectSilentVoiceCapture(
+        amplitudeSampleCount: 0,
+        activeMilliseconds: 0,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldRejectSilentVoiceCapture(
+        amplitudeSampleCount: 10,
+        activeMilliseconds: 160,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldRejectSilentVoiceCapture(
+        amplitudeSampleCount: 10,
+        activeMilliseconds: voiceMinimumActiveMilliseconds,
+      ),
+      isFalse,
+    );
+  });
+
+  test('iOS recording session keeps haptics enabled', () {
+    expect(
+      chatVoiceRecordConfig
+          .iosConfig
+          .allowHapticsAndSystemSoundsDuringRecording,
+      isTrue,
+    );
+  });
+
+  testWidgets('voice vibration uses the explicit system vibration call', (
+    tester,
+  ) async {
+    final calls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        calls.add(call);
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await triggerVoiceVibration();
+
+    expect(
+      calls,
+      contains(
+        isA<MethodCall>()
+            .having((call) => call.method, 'method', 'HapticFeedback.vibrate')
+            .having((call) => call.arguments, 'arguments', isNull),
+      ),
+    );
   });
 
   test('haptics fire only when entering cancel or text targets', () {

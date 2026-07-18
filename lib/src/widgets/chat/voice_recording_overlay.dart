@@ -4,6 +4,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:record/record.dart';
 
 enum VoiceReleaseAction { sendVoice, cancel, sendText }
 
@@ -14,6 +16,18 @@ const chatVoiceCancel = Color(0xFFFF5A5F);
 const chatVoiceCancelDeep = Color(0xFFC6383D);
 const chatVoiceCancelSoft = Color(0xFFFFE9EA);
 const voiceMinimumCapturedDuration = Duration(milliseconds: 650);
+const voiceAmplitudeSampleInterval = Duration(milliseconds: 80);
+const voiceSpeechThresholdDbfs = -45.0;
+const voiceMinimumActiveMilliseconds = 240;
+
+const chatVoiceRecordConfig = RecordConfig(
+  encoder: AudioEncoder.aacLc,
+  bitRate: 32000,
+  sampleRate: 16000,
+  numChannels: 1,
+  noiseSuppress: true,
+  iosConfig: IosRecordConfig(allowHapticsAndSystemSoundsDuringRecording: true),
+);
 
 const _voiceSelectionThresholdFromBottom = 146.0;
 const _voiceHorizontalDeadZone = 20.0;
@@ -22,6 +36,18 @@ bool isVoiceCaptureTooShort(Duration? capturedDuration) {
   return capturedDuration == null ||
       capturedDuration < voiceMinimumCapturedDuration;
 }
+
+bool shouldRejectSilentVoiceCapture({
+  required int amplitudeSampleCount,
+  required int activeMilliseconds,
+}) {
+  // If the platform cannot provide amplitude samples, defer to the server's
+  // decoded PCM check instead of rejecting valid speech on the client.
+  return amplitudeSampleCount >= 3 &&
+      activeMilliseconds < voiceMinimumActiveMilliseconds;
+}
+
+Future<void> triggerVoiceVibration() => HapticFeedback.vibrate();
 
 bool shouldHapticOnVoiceActionEntry({
   required VoiceReleaseAction previous,
@@ -294,9 +320,9 @@ class _RecordingCapsule extends StatelessWidget {
         height: 58,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FCFA).withValues(alpha: 0.64),
+          color: const Color(0xFFF8FCFA).withValues(alpha: 0.46),
           borderRadius: BorderRadius.circular(29),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.48)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.30)),
         ),
         child: Stack(
           children: [
@@ -666,13 +692,13 @@ class _VoiceActionTarget extends StatelessWidget {
           height: 62,
           decoration: BoxDecoration(
             color: selected
-                ? selectedSoft.withValues(alpha: 0.58)
-                : const Color(0xFFF7FBF9).withValues(alpha: 0.48),
+                ? selectedSoft.withValues(alpha: 0.34)
+                : const Color(0xFFF7FBF9).withValues(alpha: 0.24),
             borderRadius: BorderRadius.circular(31),
             border: Border.all(
               color: selected
-                  ? selectedAccent.withValues(alpha: 0.52)
-                  : Colors.white.withValues(alpha: 0.36),
+                  ? selectedAccent.withValues(alpha: 0.40)
+                  : Colors.white.withValues(alpha: 0.24),
             ),
           ),
           child: Row(
@@ -720,8 +746,8 @@ class _VoiceSendTarget extends StatelessWidget {
           height: 56,
           decoration: BoxDecoration(
             color: selected
-                ? chatVoiceAccent.withValues(alpha: 0.68)
-                : chatVoiceAccent.withValues(alpha: 0.46),
+                ? chatVoiceAccent.withValues(alpha: 0.50)
+                : chatVoiceAccent.withValues(alpha: 0.32),
             borderRadius: BorderRadius.circular(28),
           ),
           child: const Row(
