@@ -1,6 +1,8 @@
 part of 'package:companion_flutter/main.dart';
 
 class _NativeGameRuntime {
+  static const int _roundHistoryLimit = 16;
+
   _NativeGameRuntime({
     required this.api,
     required this.authSession,
@@ -12,6 +14,7 @@ class _NativeGameRuntime {
   final AuthSession authSession;
   final String gameKey;
   final VoidCallback onChanged;
+  final DateTime _openedAt = DateTime.now().toUtc();
 
   GameSession? session;
   List<GameSession> rounds = const [];
@@ -19,7 +22,6 @@ class _NativeGameRuntime {
   bool starting = false;
   bool aiThinking = false;
   bool roundsLoading = true;
-  bool initializing = true;
   bool completed = false;
   Map<String, dynamic>? terminalPayload;
   DateTime? terminalPresentedAt;
@@ -31,6 +33,8 @@ class _NativeGameRuntime {
   Timer? _turnTimer;
   String? _turnToken;
   Duration? _turnDuration;
+  Future<void> _networkTail = Future<void>.value();
+  bool _disposed = false;
   late final NativeGameEventOutbox _eventOutbox = NativeGameEventOutbox.forApi(
     api: api,
     authSession: authSession,
@@ -46,31 +50,52 @@ class _NativeGameRuntime {
   }
 
   Future<void> initialize() async {
-    await _eventOutbox.replay();
+    // History repair is useful, but it must not keep the local game board
+    // behind a network loading state. Start replaying before the history
+    // request and keep every later event on the same ordered network tail.
+    _queueNetworkTask(_replayPendingEventsAtLaunch);
     try {
-      final sessions = await api.listNativeGameSessions(gameKey: gameKey);
-      final closed = <GameSession>[];
+      final sessions = await api.listNativeGameSessions(
+        gameKey: gameKey,
+        limit: _roundHistoryLimit,
+      );
+      rounds = sessions.where(_GameRoundSummary.canShow).toList();
+      roundsLoading = false;
+      _notify();
+
       final activeAgentId = authSession.agentId;
-      for (final candidate in sessions.where(
+      final obsolete = sessions.where(
         (item) =>
             activeAgentId != null &&
             item.agentId == activeAgentId &&
-            {'created', 'playing'}.contains(item.status),
-      )) {
-        final terminated = await _terminateLegacySession(candidate);
-        if (terminated != null) closed.add(terminated);
+            {'created', 'playing'}.contains(item.status) &&
+            (item.createdAt?.toUtc().isBefore(_openedAt) ?? true),
+      );
+      if (obsolete.isNotEmpty) {
+        _queueNetworkTask(() => _terminateLegacySessions(obsolete.toList()));
       }
-      rounds = [
-        ...closed,
-        ...sessions,
-      ].where(_GameRoundSummary.canShow).toList();
     } catch (caught) {
       syncNotice = _formatError(caught);
     } finally {
-      initializing = false;
       roundsLoading = false;
       _notify();
     }
+  }
+
+  Future<void> _replayPendingEventsAtLaunch() async {
+    final pending = await _eventOutbox.read();
+    if (pending.isEmpty) return;
+    await _eventOutbox.replay();
+    await loadRounds();
+  }
+
+  Future<void> _terminateLegacySessions(List<GameSession> sessions) async {
+    var changed = false;
+    for (final candidate in sessions) {
+      if (candidate.id == session?.id) continue;
+      changed = await _terminateLegacySession(candidate) != null || changed;
+    }
+    if (changed) await loadRounds();
   }
 
   Future<GameSession?> _terminateLegacySession(GameSession candidate) async {
@@ -107,7 +132,10 @@ class _NativeGameRuntime {
 
   Future<void> loadRounds() async {
     try {
-      final sessions = await api.listNativeGameSessions(gameKey: gameKey);
+      final sessions = await api.listNativeGameSessions(
+        gameKey: gameKey,
+        limit: _roundHistoryLimit,
+      );
       rounds = sessions.where(_GameRoundSummary.canShow).toList();
       roundsLoading = false;
       _notify();
@@ -120,7 +148,7 @@ class _NativeGameRuntime {
 
   Future<bool> deleteRound(GameSession candidate) async {
     final isActive = session?.id == candidate.id;
-    if (deleting || starting || initializing || (isActive && aiThinking)) {
+    if (deleting || starting || (isActive && aiThinking)) {
       showNotice(
         isActive && aiThinking
             ? '$agentName 还在完成当前这一步，请稍等一下。'
@@ -167,11 +195,6 @@ class _NativeGameRuntime {
 
   Future<GameSession?> start(Map<String, dynamic> payload) async {
     final agentId = authSession.agentId;
-    if (initializing) {
-      syncNotice = '正在清理上一局，请稍等一下。';
-      _notify();
-      return null;
-    }
     if (agentId == null || agentId.isEmpty || starting) {
       if (agentId == null || agentId.isEmpty) {
         error = '还没有可用的 AI 伙伴，暂时不能开局。';
@@ -233,8 +256,8 @@ class _NativeGameRuntime {
     }
   }
 
-  Future<GameEventResponse?> finish(Map<String, dynamic> payload) async {
-    if (completed || session == null) return null;
+  Future<void> finish(Map<String, dynamic> payload) async {
+    if (completed || session == null) return;
     completed = true;
     aiThinking = false;
     clearTurnTimeout();
@@ -242,7 +265,7 @@ class _NativeGameRuntime {
     terminalPresentedAt = DateTime.now();
     _notify();
     _NativeGameHaptics.outcome(payload['user_outcome'] as String?);
-    final response = await reportEvent(
+    await reportEvent(
       'game_finished',
       state: 'settled',
       payload: {
@@ -251,19 +274,17 @@ class _NativeGameRuntime {
         ...payload,
       },
     );
-    unawaited(loadRounds());
-    return response;
   }
 
-  Future<GameEventResponse?> abort(
+  Future<void> abort(
     String reason,
     Map<String, dynamic> payload, {
     bool updateUi = true,
   }) async {
-    if (completed || session == null) return null;
+    if (completed || session == null) return;
     completed = true;
     clearTurnTimeout();
-    return reportEvent(
+    await reportEvent(
       'game_aborted',
       state: 'aborted',
       payload: {
@@ -276,14 +297,14 @@ class _NativeGameRuntime {
     );
   }
 
-  Future<GameEventResponse?> reportEvent(
+  Future<void> reportEvent(
     String eventType, {
     String? state,
     Map<String, dynamic> payload = const {},
     bool updateUi = true,
   }) async {
     final active = session;
-    if (active == null) return null;
+    if (active == null) return;
     _eventSequence += 1;
     final clientEventId =
         '${active.id}:$eventType:'
@@ -305,17 +326,8 @@ class _NativeGameRuntime {
           'turn_timed_out',
         }.contains(eventType);
     final eventPayload = {'schema_version': 1, ...payload};
-    var blockedByEarlierCriticalEvent = false;
     if (critical) {
       try {
-        final pending = await _eventOutbox.read();
-        if (pending.any((event) => event['session_id'] == active.id)) {
-          await _eventOutbox.replay();
-          final remaining = await _eventOutbox.read();
-          blockedByEarlierCriticalEvent = remaining.any(
-            (event) => event['session_id'] == active.id,
-          );
-        }
         await _eventOutbox.enqueue(
           sessionId: active.id,
           eventType: eventType,
@@ -323,6 +335,14 @@ class _NativeGameRuntime {
           payload: eventPayload,
           clientEventId: clientEventId,
         );
+        _queueNetworkTask(
+          () => _flushEventOutbox(
+            sessionId: active.id,
+            refreshRounds: terminal,
+            updateUi: updateUi,
+          ),
+        );
+        return;
       } catch (caught) {
         if (updateUi) {
           syncNotice = '本地过程日志暂时无法写入：${_formatError(caught)}';
@@ -330,29 +350,77 @@ class _NativeGameRuntime {
         }
       }
     }
-    if (blockedByEarlierCriticalEvent) {
-      if (updateUi) {
-        syncNotice = '前一步仍在等待同步，这一步已按顺序保存在手机里。';
-        _notify();
+
+    _queueNetworkTask(
+      () => _sendBestEffortEvent(
+        sessionId: active.id,
+        eventType: eventType,
+        state: state,
+        payload: eventPayload,
+        clientEventId: clientEventId,
+        attempts: critical ? 3 : 2,
+        critical: critical,
+        updateUi: updateUi,
+      ),
+    );
+  }
+
+  Future<void> _flushEventOutbox({
+    required String sessionId,
+    required bool refreshRounds,
+    required bool updateUi,
+  }) async {
+    for (var attempt = 0; attempt < 3; attempt += 1) {
+      await _eventOutbox.replay();
+      final remaining = await _eventOutbox.read();
+      final pending = remaining.any(
+        (event) => event['session_id'] == sessionId,
+      );
+      if (!pending) {
+        if (session?.id == sessionId &&
+            syncNotice == '这一步已保存在手机里，联网后会按顺序自动同步。') {
+          syncNotice = null;
+          _notify(updateUi);
+        }
+        if (refreshRounds) await loadRounds();
+        return;
       }
-      return null;
+      if (attempt < 2) {
+        await Future<void>.delayed(Duration(milliseconds: 280 * (attempt + 1)));
+      }
     }
-    final attempts = critical ? 3 : 2;
+    if (!updateUi || session?.id != sessionId) return;
+    syncNotice = '这一步已保存在手机里，联网后会按顺序自动同步。';
+    _notify();
+  }
+
+  Future<void> _sendBestEffortEvent({
+    required String sessionId,
+    required String eventType,
+    required String? state,
+    required Map<String, dynamic> payload,
+    required String clientEventId,
+    required int attempts,
+    required bool critical,
+    required bool updateUi,
+  }) async {
     Object? lastError;
     for (var attempt = 0; attempt < attempts; attempt += 1) {
       try {
-        final response = await api.sendNativeGameEvent(
-          sessionId: active.id,
+        await api.sendNativeGameEvent(
+          sessionId: sessionId,
           eventType: eventType,
           state: state,
-          payload: eventPayload,
+          payload: payload,
           clientEventId: clientEventId,
         );
-        if (critical) await _eventOutbox.remove(clientEventId);
-        session = response.session;
-        syncNotice = null;
-        _notify(updateUi);
-        return response;
+        if (session?.id == sessionId &&
+            critical &&
+            syncNotice?.startsWith('本地过程日志暂时无法写入') == true) {
+          syncNotice = null;
+          _notify(updateUi);
+        }
+        return;
       } catch (caught) {
         lastError = caught;
         if (attempt + 1 < attempts) {
@@ -362,13 +430,21 @@ class _NativeGameRuntime {
         }
       }
     }
-    if (updateUi) {
+    if (updateUi && session?.id == sessionId) {
       syncNotice = critical
-          ? '这一步已保存在手机里，联网后会按顺序自动同步。'
+          ? '这一步暂时无法写入本地或同步：${_formatError(lastError!)}'
           : '对局仍可继续，结算时会补齐过程：${_formatError(lastError!)}';
       _notify();
     }
-    return null;
+  }
+
+  void _queueNetworkTask(Future<void> Function() task) {
+    _networkTail = _networkTail
+        .catchError((_) {})
+        .then((_) => task())
+        .catchError((Object caught, StackTrace stackTrace) {
+          debugPrint('Native game background sync failed: $caught');
+        });
   }
 
   void showNotice(String message) {
@@ -453,6 +529,7 @@ class _NativeGameRuntime {
   }
 
   void dispose() {
+    _disposed = true;
     _turnTimer?.cancel();
     _turnTimer = null;
   }
@@ -463,6 +540,6 @@ class _NativeGameRuntime {
   }
 
   void _notify([bool enabled = true]) {
-    if (enabled) onChanged();
+    if (enabled && !_disposed) onChanged();
   }
 }

@@ -46,6 +46,7 @@ class NativeGameEventOutbox {
   final Future<Directory> Function() _supportDirectory;
   final FlutterSecureStorage _legacyStorage;
   static final Map<String, Future<void>> _tails = {};
+  static final Map<String, Future<void>> _replayTails = {};
 
   String get _lockKey => '$apiBaseUrl:$userId';
 
@@ -171,34 +172,65 @@ class NativeGameEventOutbox {
     await _writeUnlocked(events);
   });
 
-  Future<void> replay() => _locked(() async {
-    final events = await _readUnlocked();
+  Future<void> replay() {
+    final result = Completer<void>();
+    final previous = _replayTails[_lockKey] ?? Future<void>.value();
+    late final Future<void> next;
+    next = previous
+        .catchError((_) {})
+        .then((_) async {
+          try {
+            await _replaySnapshot();
+            result.complete();
+          } catch (error, stackTrace) {
+            result.completeError(error, stackTrace);
+          }
+        })
+        .whenComplete(() {
+          if (identical(_replayTails[_lockKey], next)) {
+            _replayTails.remove(_lockKey);
+          }
+        });
+    _replayTails[_lockKey] = next;
+    return result.future;
+  }
+
+  Future<void> _replaySnapshot() async {
+    // Never hold the file lock while waiting on the network. Gameplay can keep
+    // appending durable actions while an older action is being retried.
+    final events = await read();
     if (events.isEmpty) return;
-    final remaining = <Map<String, dynamic>>[];
+    final deliveredIds = <String>{};
     final blockedSessions = <String>{};
     final endedSessions = <String>{};
     for (final event in events.reversed) {
       final sessionId = event['session_id']! as String;
       if (endedSessions.contains(sessionId)) continue;
       if (blockedSessions.contains(sessionId)) {
-        remaining.insert(0, event);
         continue;
       }
       try {
         await _sendEvent(event);
+        deliveredIds.add(event['client_event_id']! as String);
       } on ApiException catch (error) {
         if (error.message.contains('session_finished') ||
             error.message.contains('session_not_found')) {
           endedSessions.add(sessionId);
         } else {
           blockedSessions.add(sessionId);
-          remaining.insert(0, event);
         }
       } catch (_) {
         blockedSessions.add(sessionId);
-        remaining.insert(0, event);
       }
     }
-    await _writeUnlocked(remaining);
-  });
+    await _locked(() async {
+      final current = await _readUnlocked();
+      current.removeWhere(
+        (event) =>
+            deliveredIds.contains(event['client_event_id']) ||
+            endedSessions.contains(event['session_id']),
+      );
+      await _writeUnlocked(current);
+    });
+  }
 }

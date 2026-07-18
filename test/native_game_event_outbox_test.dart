@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:companion_flutter/companion_api.dart';
@@ -153,6 +154,66 @@ void main() {
       ids,
       containsAll([for (var index = 0; index < 20; index++) 'event-$index']),
     );
+  });
+
+  test('network replay does not block a new local action', () async {
+    final sendStarted = Completer<void>();
+    final releaseSend = Completer<void>();
+    final outbox = NativeGameEventOutbox(
+      apiBaseUrl: 'https://example.test',
+      userId: 'user-1',
+      supportDirectory: () async => directory,
+      sendEvent: (event) async {
+        if (!sendStarted.isCompleted) sendStarted.complete();
+        await releaseSend.future;
+      },
+    );
+    final first = _event('session-1', 'event-1');
+    await outbox.write([first]);
+
+    final replay = outbox.replay();
+    await sendStarted.future;
+    await outbox
+        .enqueue(
+          sessionId: 'session-1',
+          eventType: 'piece_moved',
+          state: 'playing',
+          payload: const {'action_number': 2},
+          clientEventId: 'event-2',
+        )
+        .timeout(const Duration(milliseconds: 250));
+    releaseSend.complete();
+    await replay;
+
+    expect((await outbox.read()).map((event) => event['client_event_id']), [
+      'event-2',
+    ]);
+  });
+
+  test('concurrent replay requests do not send an event twice', () async {
+    final sendStarted = Completer<void>();
+    final releaseSend = Completer<void>();
+    final sent = <String>[];
+    final outbox = NativeGameEventOutbox(
+      apiBaseUrl: 'https://example.test',
+      userId: 'user-1',
+      supportDirectory: () async => directory,
+      sendEvent: (event) async {
+        sent.add(event['client_event_id']! as String);
+        if (!sendStarted.isCompleted) sendStarted.complete();
+        await releaseSend.future;
+      },
+    );
+    await outbox.write([_event('session-1', 'event-1')]);
+
+    final firstReplay = outbox.replay();
+    await sendStarted.future;
+    final secondReplay = outbox.replay();
+    releaseSend.complete();
+    await Future.wait([firstReplay, secondReplay]);
+
+    expect(sent, ['event-1']);
+    expect(await outbox.read(), isEmpty);
   });
 
   test('separate page instances share one serialized queue', () async {

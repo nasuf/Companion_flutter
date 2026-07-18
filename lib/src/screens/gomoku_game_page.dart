@@ -327,8 +327,8 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
             const SizedBox(height: 12),
             _PrimaryGameButton(
               label: '开始游戏',
-              loading: _runtime.starting || _runtime.initializing,
-              disabled: _runtime.starting || _runtime.initializing,
+              loading: _runtime.starting,
+              disabled: _runtime.starting,
               onPressed: _startGame,
             ),
           ],

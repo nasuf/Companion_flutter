@@ -722,12 +722,8 @@ class _NativeGameExperienceScaffoldState
                               const SizedBox(height: 12),
                               _PrimaryGameButton(
                                 label: '开始游戏',
-                                loading:
-                                    widget.runtime.starting ||
-                                    widget.runtime.initializing,
-                                disabled:
-                                    widget.runtime.starting ||
-                                    widget.runtime.initializing,
+                                loading: widget.runtime.starting,
+                                disabled: widget.runtime.starting,
                                 onPressed: _start,
                               ),
                             ],
