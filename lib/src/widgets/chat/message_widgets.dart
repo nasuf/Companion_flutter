@@ -670,24 +670,17 @@ class _VoiceTranscriptionPendingBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 44,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: _pendingVoiceBubbleDecoration(),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CupertinoActivityIndicator(radius: 8, color: Colors.white),
-          SizedBox(width: 9),
-          Text(
-            '正在转成文字…',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
+    return Semantics(
+      liveRegion: true,
+      label: '正在转写语音',
+      excludeSemantics: true,
+      child: Container(
+        key: const ValueKey('voice-transcription-pending-bubble'),
+        width: 52,
+        height: 44,
+        alignment: Alignment.center,
+        decoration: _pendingVoiceBubbleDecoration(),
+        child: const VoiceTranscriptionSpinner(size: 24, color: Colors.white),
       ),
     );
   }

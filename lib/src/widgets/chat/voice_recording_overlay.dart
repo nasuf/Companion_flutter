@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/material.dart';
 
 enum VoiceReleaseAction { sendVoice, cancel, sendText }
@@ -20,6 +20,15 @@ const _voiceHorizontalDeadZone = 20.0;
 bool isVoiceCaptureTooShort(Duration? capturedDuration) {
   return capturedDuration == null ||
       capturedDuration < voiceMinimumCapturedDuration;
+}
+
+bool shouldHapticOnVoiceActionEntry({
+  required VoiceReleaseAction previous,
+  required VoiceReleaseAction next,
+}) {
+  return previous != next &&
+      (next == VoiceReleaseAction.cancel ||
+          next == VoiceReleaseAction.sendText);
 }
 
 VoiceReleaseAction voiceReleaseActionForPosition({
@@ -287,43 +296,119 @@ class _RecordingCapsule extends StatelessWidget {
   }
 }
 
-class _VoiceWaveform extends StatelessWidget {
+class _VoiceWaveform extends StatefulWidget {
   const _VoiceWaveform({required this.amplitude});
 
   final ValueListenable<double>? amplitude;
 
   @override
-  Widget build(BuildContext context) {
-    final listenable = amplitude;
-    if (listenable == null) {
-      return const CustomPaint(
-        painter: _VoiceWaveformPainter(amplitude: 0.36),
-        size: Size.infinite,
-      );
+  State<_VoiceWaveform> createState() => _VoiceWaveformState();
+}
+
+class _VoiceWaveformState extends State<_VoiceWaveform>
+    with SingleTickerProviderStateMixin {
+  static const _animationDuration = Duration(milliseconds: 140);
+
+  late final AnimationController _controller;
+  late final ValueNotifier<double> _displayedAmplitude;
+  double _animationStart = 0.36;
+  double _targetAmplitude = 0.36;
+  bool _reduceMotion = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = _normalizeAmplitude(widget.amplitude?.value ?? 0.36);
+    _animationStart = initial;
+    _targetAmplitude = initial;
+    _displayedAmplitude = ValueNotifier<double>(initial);
+    _controller = AnimationController(
+      vsync: this,
+      duration: _animationDuration,
+      value: 1,
+    )..addListener(_updateDisplayedAmplitude);
+    widget.amplitude?.addListener(_handleAmplitudeChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (_reduceMotion == reduceMotion) return;
+    _reduceMotion = reduceMotion;
+    if (reduceMotion) {
+      _controller.stop();
+      _displayedAmplitude.value = _targetAmplitude;
     }
-    return ValueListenableBuilder<double>(
-      valueListenable: listenable,
-      builder: (context, value, _) {
-        return CustomPaint(
-          painter: _VoiceWaveformPainter(amplitude: value),
-          size: Size.infinite,
-        );
-      },
+  }
+
+  @override
+  void didUpdateWidget(covariant _VoiceWaveform oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.amplitude, widget.amplitude)) return;
+    oldWidget.amplitude?.removeListener(_handleAmplitudeChanged);
+    widget.amplitude?.addListener(_handleAmplitudeChanged);
+    final next = _normalizeAmplitude(widget.amplitude?.value ?? 0.36);
+    _animationStart = next;
+    _targetAmplitude = next;
+    _controller.stop();
+    _displayedAmplitude.value = next;
+  }
+
+  void _handleAmplitudeChanged() {
+    final next = _normalizeAmplitude(widget.amplitude?.value ?? 0.36);
+    if ((next - _targetAmplitude).abs() < 0.012) return;
+    _animationStart = _displayedAmplitude.value;
+    _targetAmplitude = next;
+    if (_reduceMotion) {
+      _displayedAmplitude.value = next;
+      return;
+    }
+    _controller.forward(from: 0);
+  }
+
+  void _updateDisplayedAmplitude() {
+    final progress = Curves.easeOutCubic.transform(_controller.value);
+    _displayedAmplitude.value =
+        _animationStart + (_targetAmplitude - _animationStart) * progress;
+  }
+
+  double _normalizeAmplitude(double value) {
+    if (!value.isFinite) return 0.08;
+    return value.clamp(0.08, 1.0).toDouble();
+  }
+
+  @override
+  void dispose() {
+    widget.amplitude?.removeListener(_handleAmplitudeChanged);
+    _controller
+      ..removeListener(_updateDisplayedAmplitude)
+      ..dispose();
+    _displayedAmplitude.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _VoiceWaveformPainter(amplitude: _displayedAmplitude),
+      size: Size.infinite,
     );
   }
 }
 
 class _VoiceWaveformPainter extends CustomPainter {
-  const _VoiceWaveformPainter({required this.amplitude});
+  _VoiceWaveformPainter({required this.amplitude}) : super(repaint: amplitude);
 
-  final double amplitude;
+  final ValueListenable<double> amplitude;
 
   @override
   void paint(Canvas canvas, Size size) {
     const barCount = 27;
     const barWidth = 2.2;
     final gap = (size.width - barCount * barWidth) / (barCount - 1);
-    final normalized = amplitude.clamp(0.08, 1.0);
+    final normalized = amplitude.value.clamp(0.08, 1.0);
     final paint = Paint()
       ..color = chatVoiceAccent
       ..strokeWidth = barWidth
@@ -343,7 +428,130 @@ class _VoiceWaveformPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _VoiceWaveformPainter oldDelegate) {
-    return (oldDelegate.amplitude - amplitude).abs() > 0.015;
+    return !identical(oldDelegate.amplitude, amplitude);
+  }
+}
+
+class VoiceTranscriptionSpinner extends StatefulWidget {
+  const VoiceTranscriptionSpinner({
+    super.key,
+    this.size = 24,
+    this.color = Colors.white,
+  });
+
+  final double size;
+  final Color color;
+
+  @override
+  State<VoiceTranscriptionSpinner> createState() =>
+      _VoiceTranscriptionSpinnerState();
+}
+
+class _VoiceTranscriptionSpinnerState extends State<VoiceTranscriptionSpinner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 920),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+      _controller
+        ..stop()
+        ..value = 0.18;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dotSize = math.max(3.0, widget.size * 0.16);
+    return Semantics(
+      label: '正在转写语音',
+      excludeSemantics: true,
+      child: SizedBox.square(
+        dimension: widget.size,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            RotationTransition(
+              turns: _controller,
+              child: CustomPaint(
+                size: Size.square(widget.size),
+                painter: _VoiceTranscriptionSpinnerPainter(color: widget.color),
+              ),
+            ),
+            SizedBox.square(
+              dimension: dotSize,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: widget.color.withValues(alpha: 0.92),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VoiceTranscriptionSpinnerPainter extends CustomPainter {
+  const _VoiceTranscriptionSpinnerPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final strokeWidth = math.max(1.8, size.shortestSide * 0.10);
+    final rect = (Offset.zero & size).deflate(strokeWidth / 2);
+    canvas.drawArc(
+      rect,
+      0,
+      math.pi * 2,
+      false,
+      Paint()
+        ..color = color.withValues(alpha: 0.20)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth,
+    );
+    canvas.drawArc(
+      rect,
+      -math.pi / 2,
+      math.pi * 1.18,
+      false,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawArc(
+      rect,
+      math.pi * 0.94,
+      math.pi * 0.28,
+      false,
+      Paint()
+        ..color = color.withValues(alpha: 0.52)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _VoiceTranscriptionSpinnerPainter oldDelegate) {
+    return oldDelegate.color != color;
   }
 }
 

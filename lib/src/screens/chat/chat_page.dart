@@ -1965,6 +1965,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _sending) {
       return;
     }
+    unawaited(HapticFeedback.lightImpact());
     setState(() {
       _voiceGestureActive = true;
       _voiceReleaseAction = _voiceActionForPosition(position);
@@ -1977,7 +1978,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (!_voiceGestureActive) return;
     final action = _voiceActionForPosition(position);
     if (action == _voiceReleaseAction) return;
-    HapticFeedback.selectionClick();
+    if (shouldHapticOnVoiceActionEntry(
+      previous: _voiceReleaseAction,
+      next: action,
+    )) {
+      if (action == VoiceReleaseAction.cancel) {
+        unawaited(HapticFeedback.mediumImpact());
+      } else {
+        unawaited(HapticFeedback.selectionClick());
+      }
+    }
     setState(() {
       _voiceReleaseAction = action;
     });
@@ -1996,7 +2006,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         action != VoiceReleaseAction.cancel &&
         isVoiceCaptureTooShort(capturedDuration);
     if (tooShort) action = VoiceReleaseAction.cancel;
-    HapticFeedback.lightImpact();
+    if (action == VoiceReleaseAction.sendVoice) {
+      unawaited(HapticFeedback.lightImpact());
+    } else {
+      unawaited(HapticFeedback.mediumImpact());
+    }
     setState(() {
       _voiceGestureActive = false;
       _voiceReleaseAction = action;
@@ -2143,9 +2157,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (pendingAction != null) {
         await _completeVoiceGesture(pendingAction);
         return;
-      }
-      if (_voiceGestureActive) {
-        HapticFeedback.mediumImpact();
       }
     } catch (error) {
       if (mounted) {

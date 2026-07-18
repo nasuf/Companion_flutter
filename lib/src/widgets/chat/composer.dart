@@ -335,9 +335,7 @@ class _VoiceHoldToTalkButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = transcribing
-        ? '正在转成文字…'
-        : preparing
+    final label = preparing
         ? '正在准备…'
         : recording
         ? '松开发送'
@@ -345,7 +343,7 @@ class _VoiceHoldToTalkButton extends StatelessWidget {
     return Semantics(
       button: true,
       enabled: enabled,
-      label: label,
+      label: transcribing ? '正在转写语音' : label,
       child: Listener(
         behavior: HitTestBehavior.opaque,
         onPointerDown: enabled ? (event) => onStart(event.position) : null,
@@ -369,7 +367,7 @@ class _VoiceHoldToTalkButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (preparing || transcribing) ...[
+              if (preparing) ...[
                 const CupertinoActivityIndicator(
                   radius: 7,
                   color: chatVoiceAccentDeep,
@@ -379,7 +377,7 @@ class _VoiceHoldToTalkButton extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
-                  color: enabled || recording
+                  color: enabled || recording || transcribing
                       ? AppColors.text
                       : AppColors.muted,
                   fontSize: 16,

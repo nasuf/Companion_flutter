@@ -125,6 +125,78 @@ void main() {
     expect(isVoiceCaptureTooShort(const Duration(milliseconds: 649)), isTrue);
     expect(isVoiceCaptureTooShort(const Duration(milliseconds: 650)), isFalse);
   });
+
+  test('haptics fire only when entering cancel or text targets', () {
+    expect(
+      shouldHapticOnVoiceActionEntry(
+        previous: VoiceReleaseAction.sendVoice,
+        next: VoiceReleaseAction.cancel,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldHapticOnVoiceActionEntry(
+        previous: VoiceReleaseAction.sendVoice,
+        next: VoiceReleaseAction.sendText,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldHapticOnVoiceActionEntry(
+        previous: VoiceReleaseAction.cancel,
+        next: VoiceReleaseAction.sendVoice,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldHapticOnVoiceActionEntry(
+        previous: VoiceReleaseAction.cancel,
+        next: VoiceReleaseAction.cancel,
+      ),
+      isFalse,
+    );
+  });
+
+  testWidgets('waveform smoothly accepts rapid amplitude updates', (
+    tester,
+  ) async {
+    final amplitude = ValueNotifier<double>(0.10);
+    addTearDown(amplitude.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VoiceRecordingOverlay(
+          action: VoiceReleaseAction.sendVoice,
+          seconds: 2,
+          preparing: false,
+          amplitude: amplitude,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 220));
+
+    amplitude.value = 0.92;
+    await tester.pump(const Duration(milliseconds: 32));
+    amplitude.value = 0.24;
+    await tester.pump(const Duration(milliseconds: 32));
+    amplitude.value = 0.70;
+    await tester.pump(const Duration(milliseconds: 160));
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('transcription spinner has no visible status copy', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: Center(child: VoiceTranscriptionSpinner())),
+    );
+    await tester.pump(const Duration(milliseconds: 120));
+
+    expect(find.bySemanticsLabel('正在转写语音'), findsOneWidget);
+    expect(find.textContaining('正在转成文字'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _ChatBackdrop extends StatelessWidget {
