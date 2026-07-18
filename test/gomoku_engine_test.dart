@@ -65,7 +65,7 @@ void main() {
     }
     engine.place(const GomokuPoint(13, 13), GomokuActor.user);
 
-    final decision = engine.chooseAiMove();
+    final decision = engine.chooseAiMoveSync();
 
     expect(decision.reason, 'block_win');
     expect(
@@ -82,7 +82,7 @@ void main() {
     }
     engine.place(const GomokuPoint(13, 13), GomokuActor.user);
 
-    final decision = engine.chooseAiMove();
+    final decision = engine.chooseAiMoveSync();
 
     expect(decision.reason, 'finish_win');
     expect(
@@ -95,7 +95,7 @@ void main() {
     final engine = GomokuEngine(random: math.Random(8));
     engine.place(const GomokuPoint(7, 7), GomokuActor.user);
 
-    final decision = engine.chooseAiMove();
+    final decision = engine.chooseAiMoveSync();
     final json = decision.toJson();
 
     expect(decision.searchDepth, greaterThanOrEqualTo(1));

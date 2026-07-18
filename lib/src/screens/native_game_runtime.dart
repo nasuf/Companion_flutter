@@ -193,7 +193,10 @@ class _NativeGameRuntime {
     }
   }
 
-  Future<GameSession?> start(Map<String, dynamic> payload) async {
+  Future<GameSession?> start(
+    Map<String, dynamic> payload, {
+    Map<String, dynamic> Function(GameSession session)? payloadBuilder,
+  }) async {
     final agentId = authSession.agentId;
     if (agentId == null || agentId.isEmpty || starting) {
       if (agentId == null || agentId.isEmpty) {
@@ -228,13 +231,17 @@ class _NativeGameRuntime {
       );
       startedAt = DateTime.now();
       _notify();
+      final gamePayload = payloadBuilder?.call(session!) ?? payload;
       await reportEvent(
         'game_started',
         state: 'playing',
         payload: {
           'schema_version': 1,
           'play_style': 'natural_companion',
-          ...payload,
+          'config_version': session!.configVersion,
+          'effective_strength': session!.effectiveStrength,
+          'engine_config': session!.engineConfig,
+          ...gamePayload,
         },
       );
       return session;

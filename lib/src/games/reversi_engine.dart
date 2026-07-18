@@ -130,13 +130,46 @@ class ReversiMoveResult {
   final ReversiStatus status;
 }
 
-class ReversiEngine {
-  ReversiEngine() : _board = _initialBoard();
+class ReversiAiConfig {
+  const ReversiAiConfig({
+    this.searchTimeMs = 760,
+    this.openingDepth = 7,
+    this.midgameDepth = 9,
+    this.exactSolveEmpty = 14,
+    this.nearBestProbability = 0,
+    this.nearBestTolerance = 0,
+  });
 
-  ReversiEngine.debug(List<int> board, {this.turn = ReversiActor.user})
-    : assert(board.length == size * size),
-      assert(board.every((value) => value >= -1 && value <= 1)),
-      _board = List<int>.from(board) {
+  factory ReversiAiConfig.fromJson(Map<String, dynamic> json) =>
+      ReversiAiConfig(
+        searchTimeMs: (json['search_time_ms'] as num?)?.round() ?? 760,
+        openingDepth: (json['opening_depth'] as num?)?.round() ?? 7,
+        midgameDepth: (json['midgame_depth'] as num?)?.round() ?? 9,
+        exactSolveEmpty: (json['exact_solve_empty'] as num?)?.round() ?? 14,
+        nearBestProbability:
+            (json['near_best_probability'] as num?)?.toDouble() ?? 0,
+        nearBestTolerance: (json['near_best_tolerance'] as num?)?.round() ?? 0,
+      );
+
+  final int searchTimeMs;
+  final int openingDepth;
+  final int midgameDepth;
+  final int exactSolveEmpty;
+  final double nearBestProbability;
+  final int nearBestTolerance;
+}
+
+class ReversiEngine {
+  ReversiEngine({this.aiConfig = const ReversiAiConfig()})
+    : _board = _initialBoard();
+
+  ReversiEngine.debug(
+    List<int> board, {
+    this.turn = ReversiActor.user,
+    this.aiConfig = const ReversiAiConfig(),
+  }) : assert(board.length == size * size),
+       assert(board.every((value) => value >= -1 && value <= 1)),
+       _board = List<int>.from(board) {
     _updateStatus();
   }
 
@@ -145,6 +178,7 @@ class ReversiEngine {
   static const int agentDisc = -1;
 
   List<int> _board;
+  final ReversiAiConfig aiConfig;
   final List<ReversiMove> _moves = [];
   ReversiActor turn = ReversiActor.user;
   ReversiStatus _status = ReversiStatus.playing;
@@ -171,15 +205,18 @@ class ReversiEngine {
     if (isFinished) throw StateError('game_finished');
     final legal = legalMoves;
     if (legal.isEmpty) throw StateError('no_legal_move');
-    final maxDepth = emptyCount <= 14
+    final maxDepth = emptyCount <= aiConfig.exactSolveEmpty
         ? emptyCount
         : emptyCount <= 24
-        ? 9
-        : 7;
+        ? aiConfig.midgameDepth
+        : aiConfig.openingDepth;
     final result = await compute(_searchReversiMove, {
       'board': _board,
-      'time_ms': emptyCount <= 16 ? 1050 : 760,
+      'time_ms': aiConfig.searchTimeMs,
       'max_depth': maxDepth,
+      'near_best_probability': aiConfig.nearBestProbability,
+      'near_best_tolerance': aiConfig.nearBestTolerance,
+      'seed': _moves.length * 7919 ^ _reversiHash(_board, agentDisc),
     });
     return ReversiAiDecision(
       point: ReversiPoint(result['move'] as int),
@@ -545,7 +582,13 @@ class _ReversiTtEntry {
 }
 
 class _ReversiSearcher {
-  _ReversiSearcher({required this.timeMs, required this.maxDepth});
+  _ReversiSearcher({
+    required this.timeMs,
+    required this.maxDepth,
+    required this.nearBestProbability,
+    required this.nearBestTolerance,
+    required this.randomSeed,
+  });
 
   static const _infinity = 100000000;
   static const _exact = 0;
@@ -554,6 +597,9 @@ class _ReversiSearcher {
 
   final int timeMs;
   final int maxDepth;
+  final double nearBestProbability;
+  final int nearBestTolerance;
+  final int randomSeed;
   final Stopwatch stopwatch = Stopwatch();
   final Map<int, _ReversiTtEntry> table = {};
   final Map<int, int> history = {};
@@ -647,6 +693,12 @@ class _ReversiSearcher {
     stopwatch.stop();
     final ranked = completedScores.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
+    if (ranked.length > 1 &&
+        ranked.first.value - ranked[1].value <= nearBestTolerance &&
+        math.Random(randomSeed).nextDouble() < nearBestProbability) {
+      bestMove = ranked[1].key;
+      bestScore = ranked[1].value;
+    }
     return {
       'move': bestMove,
       'score': bestScore,
@@ -886,5 +938,8 @@ Map<String, dynamic> _searchReversiMove(Map<String, dynamic> input) {
   return _ReversiSearcher(
     timeMs: input['time_ms'] as int,
     maxDepth: input['max_depth'] as int,
+    nearBestProbability: (input['near_best_probability']! as num).toDouble(),
+    nearBestTolerance: input['near_best_tolerance'] as int,
+    randomSeed: input['seed'] as int? ?? 0,
   ).search(board);
 }

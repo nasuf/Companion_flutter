@@ -1,3 +1,4 @@
+import 'dart:isolate';
 import 'dart:math' as math;
 
 enum GomokuStone { empty, black, white }
@@ -153,13 +154,44 @@ class GomokuMoveResult {
   final List<GomokuPoint> winningLine;
 }
 
+class GomokuAiConfig {
+  const GomokuAiConfig({
+    this.searchTimeMs = 220,
+    this.maxDepth = 4,
+    this.rootCandidateLimit = 14,
+    this.nearBestProbability = 0.18,
+    this.nearBestTolerance = -1,
+  });
+
+  factory GomokuAiConfig.fromJson(Map<String, dynamic> json) => GomokuAiConfig(
+    searchTimeMs: (json['search_time_ms'] as num?)?.round() ?? 220,
+    maxDepth: (json['max_depth'] as num?)?.round() ?? 4,
+    rootCandidateLimit: (json['root_candidate_limit'] as num?)?.round() ?? 14,
+    nearBestProbability:
+        (json['near_best_probability'] as num?)?.toDouble() ?? 0.18,
+    nearBestTolerance: (json['near_best_tolerance'] as num?)?.round() ?? -1,
+  );
+
+  final int searchTimeMs;
+  final int maxDepth;
+  final int rootCandidateLimit;
+  final double nearBestProbability;
+
+  /// Score gap treated as "near best". A negative value (the default when the
+  /// server omits the field) falls back to the dynamic heuristic; an explicit
+  /// 0 means only exact ties may deviate.
+  final int nearBestTolerance;
+}
+
 class GomokuEngine {
-  GomokuEngine({math.Random? random}) : _random = random ?? math.Random();
+  GomokuEngine({math.Random? random, this.aiConfig = const GomokuAiConfig()})
+    : _random = random ?? math.Random();
 
   static const int boardSize = 15;
   static const List<(int, int)> _directions = [(0, 1), (1, 0), (1, 1), (1, -1)];
 
   final math.Random _random;
+  final GomokuAiConfig aiConfig;
   final Map<String, _SearchEntry> _transposition = {};
   final List<List<GomokuStone>> _board = List.generate(
     boardSize,
@@ -225,7 +257,29 @@ class GomokuEngine {
     );
   }
 
-  GomokuAiDecision chooseAiMove() {
+  /// Runs [chooseAiMoveSync] on a background isolate so configurable search
+  /// budgets (up to seconds) never freeze the UI thread. The position is
+  /// replayed into a fresh engine because the live one is not sendable.
+  Future<GomokuAiDecision> chooseAiMove() {
+    if (isFinished) throw StateError('game_finished');
+    if (currentActor != GomokuActor.agent) throw StateError('not_agent_turn');
+    final history = [
+      for (final move in _moves) (row: move.point.row, col: move.point.col),
+    ];
+    final config = aiConfig;
+    return Isolate.run(() {
+      final replay = GomokuEngine(aiConfig: config);
+      for (var index = 0; index < history.length; index += 1) {
+        replay.place(
+          GomokuPoint(history[index].row, history[index].col),
+          index.isEven ? GomokuActor.user : GomokuActor.agent,
+        );
+      }
+      return replay.chooseAiMoveSync();
+    });
+  }
+
+  GomokuAiDecision chooseAiMoveSync() {
     if (isFinished) throw StateError('game_finished');
     if (currentActor != GomokuActor.agent) throw StateError('not_agent_turn');
 
@@ -262,7 +316,10 @@ class GomokuEngine {
       );
     }
 
-    final ordered = _orderedCandidates(GomokuStone.white, limit: 14);
+    final ordered = _orderedCandidates(
+      GomokuStone.white,
+      limit: aiConfig.rootCandidateLimit,
+    );
     if (ordered.isEmpty) {
       return const GomokuAiDecision(
         point: GomokuPoint(7, 7),
@@ -276,12 +333,14 @@ class GomokuEngine {
     var completedDepth = 0;
     var nodes = 0;
     var rootResults = <_RootSearchResult>[];
-    final maxDepth = _moves.length < 12 ? 3 : 4;
+    final maxDepth = _moves.length < 12
+        ? math.max(2, aiConfig.maxDepth - 1)
+        : aiConfig.maxDepth;
     for (var depth = 1; depth <= maxDepth; depth += 1) {
       final iteration = <_RootSearchResult>[];
       var timedOut = false;
       for (final candidate in ordered) {
-        if (stopwatch.elapsedMilliseconds >= _searchBudgetMilliseconds) {
+        if (stopwatch.elapsedMilliseconds >= aiConfig.searchTimeMs) {
           timedOut = true;
           break;
         }
@@ -396,8 +455,6 @@ class GomokuEngine {
   }
 
   static const int _mateScore = 100000000;
-  static const int _searchBudgetMilliseconds = 220;
-
   _ScoredPoint _scoreCandidate(GomokuPoint point, GomokuStone player) {
     final opponent = _opponent(player);
     final attack = _scorePoint(point, player);
@@ -446,7 +503,7 @@ class GomokuEngine {
     required Stopwatch stopwatch,
     required int ply,
   }) {
-    if (stopwatch.elapsedMilliseconds >= _searchBudgetMilliseconds) {
+    if (stopwatch.elapsedMilliseconds >= aiConfig.searchTimeMs) {
       return const _SearchResult.timedOut();
     }
     if (_winningLineFrom(lastMove, lastStone).isNotEmpty) {
@@ -558,9 +615,14 @@ class GomokuEngine {
     if (results.length < 2) return results.first;
     final best = results.first;
     final second = results[1];
-    final tolerance = math.max(260, best.score.abs() ~/ 40);
+    final tolerance = aiConfig.nearBestTolerance >= 0
+        ? aiConfig.nearBestTolerance
+        : math.max(260, best.score.abs() ~/ 40);
     final nearlyEquivalent = best.score - second.score <= tolerance;
-    if (nearlyEquivalent && _random.nextDouble() < 0.18) return second;
+    if (nearlyEquivalent &&
+        _random.nextDouble() < aiConfig.nearBestProbability) {
+      return second;
+    }
     return best;
   }
 

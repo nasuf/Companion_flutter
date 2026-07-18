@@ -98,7 +98,13 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
     });
     if (session == null || !mounted) return;
     setState(() {
-      _engine = ChessFamilyEngine(kind: widget.kind);
+      _engine = ChessFamilyEngine(
+        kind: widget.kind,
+        aiConfig: ChessFamilyAiConfig.fromJson(
+          session.engineConfig,
+          kind: widget.kind,
+        ),
+      );
       _selectedSquare = null;
       _legalTargets = const {};
       _isFullscreen = true;

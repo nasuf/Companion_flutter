@@ -72,7 +72,9 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
     });
     if (session != null && mounted) {
       setState(() {
-        _engine = ReversiEngine();
+        _engine = ReversiEngine(
+          aiConfig: ReversiAiConfig.fromJson(session.engineConfig),
+        );
         _lastMove = null;
         _resolving = false;
       });

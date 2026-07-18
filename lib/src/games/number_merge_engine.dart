@@ -158,10 +158,39 @@ class NumberMergeAiDecision {
   };
 }
 
+class NumberMergeGameConfig {
+  const NumberMergeGameConfig({
+    this.target = 2048,
+    this.searchDepthOffset = 0,
+    this.nearBestProbability = 0,
+    this.nearBestToleranceRatio = 0,
+  });
+
+  factory NumberMergeGameConfig.fromJson(Map<String, dynamic> json) =>
+      NumberMergeGameConfig(
+        target: (json['target'] as num?)?.round() ?? 2048,
+        searchDepthOffset: (json['search_depth_offset'] as num?)?.round() ?? 0,
+        nearBestProbability:
+            (json['near_best_probability'] as num?)?.toDouble() ?? 0,
+        nearBestToleranceRatio:
+            (json['near_best_tolerance_ratio'] as num?)?.toDouble() ?? 0,
+      );
+
+  final int target;
+  final int searchDepthOffset;
+  final double nearBestProbability;
+  final double nearBestToleranceRatio;
+}
+
 class NumberMergeEngine {
-  NumberMergeEngine({int seed = 20260715, this.target = 2048})
-    : _random = math.Random(seed),
-      _board = List<int>.filled(size * size, 0) {
+  NumberMergeEngine({
+    int seed = 20260715,
+    this.target = 2048,
+    this.searchDepthOffset = 0,
+    this.nearBestProbability = 0,
+    this.nearBestToleranceRatio = 0,
+  }) : _random = math.Random(seed),
+       _board = List<int>.filled(size * size, 0) {
     _spawnInitialTile();
     _spawnInitialTile();
   }
@@ -170,6 +199,9 @@ class NumberMergeEngine {
     List<int> board, {
     int seed = 20260715,
     this.target = 2048,
+    this.searchDepthOffset = 0,
+    this.nearBestProbability = 0,
+    this.nearBestToleranceRatio = 0,
     NumberMergeActor firstActor = NumberMergeActor.user,
   }) : assert(board.length == size * size),
        assert(board.every((value) => value == 0 || _isPowerOfTwo(value))),
@@ -182,6 +214,9 @@ class NumberMergeEngine {
   static const int size = 4;
 
   final int target;
+  final int searchDepthOffset;
+  final double nearBestProbability;
+  final double nearBestToleranceRatio;
   final math.Random _random;
   final List<int> _board;
   final List<NumberMergeMove> moves = [];
@@ -280,7 +315,16 @@ class NumberMergeEngine {
       throw StateError('The agent cannot move now.');
     }
     final snapshot = List<int>.of(_board);
-    final result = await Isolate.run(() => _chooseNumberMergeMove(snapshot));
+    final seed = stateHash ^ (moveCount * 7919);
+    final result = await Isolate.run(
+      () => _chooseNumberMergeMove(
+        snapshot,
+        depthOffset: searchDepthOffset,
+        nearBestProbability: nearBestProbability,
+        nearBestToleranceRatio: nearBestToleranceRatio,
+        seed: seed,
+      ),
+    );
     return NumberMergeAiDecision(
       direction: result.direction,
       expectedValue: result.expectedValue,
@@ -591,17 +635,25 @@ class _NumberMergeSearchResult {
   final Map<String, double> alternatives;
 }
 
-_NumberMergeSearchResult _chooseNumberMergeMove(List<int> board) {
+_NumberMergeSearchResult _chooseNumberMergeMove(
+  List<int> board, {
+  int depthOffset = 0,
+  double nearBestProbability = 0,
+  double nearBestToleranceRatio = 0,
+  int seed = 0,
+}) {
   final emptyCount = board.where((value) => value == 0).length;
-  final depth = emptyCount >= 8
+  final baseDepth = emptyCount >= 8
       ? 4
       : emptyCount >= 4
       ? 5
       : 6;
+  final depth = math.max(2, math.min(8, baseDepth + depthOffset));
   final search = _NumberMergeExpectimax();
   final alternatives = <String, double>{};
   NumberMergeDirection? bestDirection;
   var bestValue = double.negativeInfinity;
+  final ranked = <(NumberMergeDirection, double)>[];
   for (final direction in const [
     NumberMergeDirection.up,
     NumberMergeDirection.left,
@@ -613,12 +665,25 @@ _NumberMergeSearchResult _chooseNumberMergeMove(List<int> board) {
     final value =
         move.scoreGained * 1.8 + search.chanceValue(move.board, depth - 1);
     alternatives[direction.name] = value;
+    ranked.add((direction, value));
     if (value > bestValue) {
       bestValue = value;
       bestDirection = direction;
     }
   }
-  final chosen = bestDirection ?? NumberMergeDirection.up;
+  ranked.sort((a, b) => b.$2.compareTo(a.$2));
+  var chosen = bestDirection ?? NumberMergeDirection.up;
+  if (ranked.length > 1 && nearBestProbability > 0) {
+    final tolerance = ranked.first.$2.abs() * nearBestToleranceRatio;
+    final near = ranked
+        .where((item) => ranked.first.$2 - item.$2 <= tolerance)
+        .toList();
+    final random = math.Random(seed);
+    if (near.length > 1 && random.nextDouble() < nearBestProbability) {
+      chosen = near[1 + random.nextInt(near.length - 1)].$1;
+      bestValue = alternatives[chosen.name]!;
+    }
+  }
   final details = _numberMergeEvaluationDetails(
     _simulateNumberMergeMove(board, chosen).board,
   );

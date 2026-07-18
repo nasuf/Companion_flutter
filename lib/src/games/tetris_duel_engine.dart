@@ -110,6 +110,30 @@ class TetrisAiPlacement {
   };
 }
 
+class TetrisDuelConfig {
+  const TetrisDuelConfig({
+    this.durationSeconds = 90,
+    this.agentMoveMs = 760,
+    this.nearBestProbability = 0,
+    this.nearBestTolerance = 0,
+  });
+
+  factory TetrisDuelConfig.fromJson(Map<String, dynamic> json) =>
+      TetrisDuelConfig(
+        durationSeconds: (json['duration_seconds'] as num?)?.round() ?? 90,
+        agentMoveMs: (json['agent_move_ms'] as num?)?.round() ?? 760,
+        nearBestProbability:
+            (json['near_best_probability'] as num?)?.toDouble() ?? 0,
+        nearBestTolerance:
+            (json['near_best_tolerance'] as num?)?.toDouble() ?? 0,
+      );
+
+  final int durationSeconds;
+  final int agentMoveMs;
+  final double nearBestProbability;
+  final double nearBestTolerance;
+}
+
 class TetrisBoardEngine {
   TetrisBoardEngine({
     required this.actor,
@@ -251,9 +275,11 @@ class TetrisBoardEngine {
     return ghost.cells;
   }
 
-  TetrisAiPlacement chooseAiPlacement() {
+  TetrisAiPlacement chooseAiPlacement({
+    TetrisDuelConfig config = const TetrisDuelConfig(),
+  }) {
     final piece = current!;
-    TetrisAiPlacement? best;
+    final placements = <TetrisAiPlacement>[];
     final rotations = piece.type == TetrisTetromino.o ? 1 : 4;
     for (var rotation = 0; rotation < rotations; rotation++) {
       for (var x = -2; x < width + 2; x++) {
@@ -290,21 +316,34 @@ class TetrisBoardEngine {
           holes: metrics.holes,
           bumpiness: metrics.bumpiness,
         );
-        if (best == null || placement.evaluation > best.evaluation) {
-          best = placement;
-        }
+        placements.add(placement);
       }
     }
-    return best ??
-        TetrisAiPlacement(
-          rotation: piece.rotation,
-          x: piece.x,
-          evaluation: -999,
-          completedLines: 0,
-          aggregateHeight: height * width,
-          holes: width * height,
-          bumpiness: height * width,
-        );
+    placements.sort((a, b) => b.evaluation.compareTo(a.evaluation));
+    if (placements.isNotEmpty) {
+      final best = placements.first;
+      final near = placements
+          .where(
+            (item) =>
+                best.evaluation - item.evaluation <= config.nearBestTolerance,
+          )
+          .take(6)
+          .toList();
+      if (near.length > 1 &&
+          _random.nextDouble() < config.nearBestProbability) {
+        return near[1 + _random.nextInt(near.length - 1)];
+      }
+      return best;
+    }
+    return TetrisAiPlacement(
+      rotation: piece.rotation,
+      x: piece.x,
+      evaluation: -999,
+      completedLines: 0,
+      aggregateHeight: height * width,
+      holes: width * height,
+      bumpiness: height * width,
+    );
   }
 
   TetrisLockResult playAiPlacement(TetrisAiPlacement placement) {
@@ -487,13 +526,19 @@ class TetrisBoardEngine {
 }
 
 class TetrisDuelEngine {
-  TetrisDuelEngine({required int seed, this.durationSeconds = 90})
-    : user = TetrisBoardEngine(actor: TetrisDuelActor.user, seed: seed),
-      agent = TetrisBoardEngine(actor: TetrisDuelActor.agent, seed: seed);
+  TetrisDuelEngine({
+    required int seed,
+    TetrisDuelConfig? config,
+    int? durationSeconds,
+  }) : config =
+           config ?? TetrisDuelConfig(durationSeconds: durationSeconds ?? 90),
+       user = TetrisBoardEngine(actor: TetrisDuelActor.user, seed: seed),
+       agent = TetrisBoardEngine(actor: TetrisDuelActor.agent, seed: seed);
 
   final TetrisBoardEngine user;
   final TetrisBoardEngine agent;
-  final int durationSeconds;
+  final TetrisDuelConfig config;
+  int get durationSeconds => config.durationSeconds;
   int elapsedMilliseconds = 0;
   TetrisDuelStatus status = TetrisDuelStatus.playing;
 

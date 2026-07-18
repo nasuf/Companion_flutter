@@ -72,7 +72,7 @@ class _GoGamePageState extends State<_GoGamePage> {
     });
     if (session != null && mounted) {
       setState(() {
-        _engine = GoEngine();
+        _engine = GoEngine(aiConfig: GoAiConfig.fromJson(session.engineConfig));
         _lastMove = null;
         _resolving = false;
       });

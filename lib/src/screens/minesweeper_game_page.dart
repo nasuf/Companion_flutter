@@ -62,17 +62,39 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
     if (_runtime.session != null && !_runtime.completed) {
       await _runtime.abort('restarted', _sessionSummary());
     }
-    final session = await _runtime.start({
-      'board_size': {'rows': 9, 'columns': 9},
-      'mine_count': 12,
-      'first_actor': 'user',
-      'mode': 'cooperative',
-      'rules': 'first_move_safe_bounded_no_guess_board_generation',
-      'solver': 'constraint_propagation_subset_bounded_component_probability',
-    });
+    final session = await _runtime.start(
+      {
+        'first_actor': 'user',
+        'mode': 'cooperative',
+        'rules': 'first_move_safe_bounded_no_guess_board_generation',
+        'solver': 'constraint_propagation_subset_bounded_component_probability',
+      },
+      payloadBuilder: (created) {
+        final config = MinesweeperGameConfig.fromJson(created.engineConfig);
+        return {
+          'board_size': {'rows': config.rows, 'columns': config.columns},
+          'mine_count': config.mineCount,
+          'first_actor': 'user',
+          'mode': 'cooperative',
+          'rules': config.requireNoGuess
+              ? 'first_move_safe_bounded_no_guess_board_generation'
+              : 'first_move_safe_seeded_board_generation',
+          'solver':
+              'constraint_propagation_subset_bounded_component_probability',
+        };
+      },
+    );
     if (session != null && mounted) {
+      final config = MinesweeperGameConfig.fromJson(session.engineConfig);
       setState(() {
-        _engine = MinesweeperEngine(seed: session.id.hashCode);
+        _engine = MinesweeperEngine(
+          seed: session.id.hashCode,
+          rows: config.rows,
+          columns: config.columns,
+          mineCount: config.mineCount,
+          requireNoGuess: config.requireNoGuess,
+          generationAttempts: config.generationAttempts,
+        );
         _lastAction = null;
         _actionHistory.clear();
         _tool = _MinesweeperTool.reveal;

@@ -73,7 +73,9 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
     });
     if (session != null && mounted) {
       setState(() {
-        _engine = ChineseCheckersEngine();
+        _engine = ChineseCheckersEngine(
+          aiConfig: ChineseCheckersAiConfig.fromJson(session.engineConfig),
+        );
         _lastMove = null;
         _selected = null;
         _targets = const {};
@@ -328,16 +330,28 @@ class _Match3GamePageState extends State<_Match3GamePage> {
     if (_runtime.session != null && !_runtime.completed) {
       await _runtime.abort('restarted', old?.summaryJson() ?? const {});
     }
-    final session = await _runtime.start({
-      'board_size': 8,
-      'mode': 'cooperate',
-      'turn_limit': 30,
-      'target_score': 12000,
-      'first_actor': 'user',
-    });
+    final session = await _runtime.start(
+      {'board_size': 8, 'mode': 'cooperate', 'first_actor': 'user'},
+      payloadBuilder: (created) {
+        final config = Match3GameConfig.fromJson(created.engineConfig);
+        return {
+          'board_size': 8,
+          'mode': 'cooperate',
+          'turn_limit': config.turnLimit,
+          'target_score': config.targetScore,
+          'first_actor': 'user',
+        };
+      },
+    );
     if (session != null && mounted) {
+      final config = Match3GameConfig.fromJson(session.engineConfig);
       setState(() {
-        _engine = Match3Engine(seed: session.id.hashCode);
+        _engine = Match3Engine(
+          seed: session.id.hashCode,
+          turnLimit: config.turnLimit,
+          targetScore: config.targetScore,
+          agentChoicePercentile: config.agentChoicePercentile,
+        );
         _lastTurn = null;
         _resolving = false;
       });

@@ -70,7 +70,9 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     });
     if (session == null || !mounted) return;
     setState(() {
-      _engine = GomokuEngine();
+      _engine = GomokuEngine(
+        aiConfig: GomokuAiConfig.fromJson(session.engineConfig),
+      );
       _isFullscreen = true;
     });
   }
@@ -138,7 +140,10 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     );
     await Future<void>.delayed(const Duration(milliseconds: 520));
     if (!mounted || engine.isFinished) return;
-    final decision = engine.chooseAiMove();
+    final decision = await engine.chooseAiMove();
+    // The search suspends this method; the round may have been restarted
+    // (fresh engine) or the page disposed while the isolate was thinking.
+    if (!mounted || !identical(engine, _engine) || engine.isFinished) return;
     await _runtime.reportEvent(
       'ai_move_decided',
       payload: {...decision.toJson(), 'play_style': 'natural_companion'},

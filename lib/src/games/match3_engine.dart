@@ -154,11 +154,32 @@ class Match3TurnResult {
   final Match3Status status;
 }
 
+class Match3GameConfig {
+  const Match3GameConfig({
+    this.turnLimit = 30,
+    this.targetScore = 12000,
+    this.agentChoicePercentile = 1,
+  });
+
+  factory Match3GameConfig.fromJson(Map<String, dynamic> json) =>
+      Match3GameConfig(
+        turnLimit: (json['turn_limit'] as num?)?.round() ?? 30,
+        targetScore: (json['target_score'] as num?)?.round() ?? 12000,
+        agentChoicePercentile:
+            (json['agent_choice_percentile'] as num?)?.toDouble() ?? 1,
+      );
+
+  final int turnLimit;
+  final int targetScore;
+  final double agentChoicePercentile;
+}
+
 class Match3Engine {
   Match3Engine({
     int seed = 20260714,
     this.turnLimit = 30,
     this.targetScore = 12000,
+    this.agentChoicePercentile = 1,
   }) : _seed = seed,
        _random = math.Random(seed) {
     _board = _generatePlayableBoard(_random);
@@ -169,6 +190,7 @@ class Match3Engine {
     int seed = 7,
     this.turnLimit = 30,
     this.targetScore = 12000,
+    this.agentChoicePercentile = 1,
   }) : assert(board.length == size * size),
        _seed = seed,
        _random = math.Random(seed),
@@ -181,6 +203,7 @@ class Match3Engine {
   final math.Random _random;
   final int turnLimit;
   final int targetScore;
+  final double agentChoicePercentile;
   late List<Match3Tile> _board;
   final List<Match3Turn> _turns = [];
   Match3Actor turn = Match3Actor.user;
@@ -227,7 +250,11 @@ class Match3Engine {
       scored.add((swap, score, simulation));
     }
     scored.sort((a, b) => b.$2.compareTo(a.$2));
-    final selected = scored.first;
+    final poolSize = math.max(
+      1,
+      (scored.length * (1 - agentChoicePercentile.clamp(0.0, 1.0))).ceil(),
+    );
+    final selected = scored[_random.nextInt(math.min(poolSize, scored.length))];
     return Match3AiDecision(
       swap: selected.$1,
       score: selected.$2,

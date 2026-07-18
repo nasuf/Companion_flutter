@@ -131,11 +131,47 @@ class MinesweeperAiDecision {
   };
 }
 
+class MinesweeperGameConfig {
+  const MinesweeperGameConfig({
+    this.rows = 9,
+    this.columns = 9,
+    this.mineCount = 12,
+    this.requireNoGuess = true,
+    this.generationAttempts = 360,
+  });
+
+  factory MinesweeperGameConfig.fromJson(Map<String, dynamic> json) {
+    final rows = ((json['rows'] as num?)?.round() ?? 9).clamp(6, 20);
+    final columns = ((json['columns'] as num?)?.round() ?? 9).clamp(6, 20);
+    // The first click clears up to a 3x3 safe zone, so a playable board
+    // needs at least that many mine-free cells regardless of the config.
+    final maxMines = rows * columns - 10;
+    return MinesweeperGameConfig(
+      rows: rows,
+      columns: columns,
+      mineCount: ((json['mine_count'] as num?)?.round() ?? 12).clamp(
+        1,
+        maxMines,
+      ),
+      requireNoGuess: json['require_no_guess'] as bool? ?? true,
+      generationAttempts: (json['generation_attempts'] as num?)?.round() ?? 360,
+    );
+  }
+
+  final int rows;
+  final int columns;
+  final int mineCount;
+  final bool requireNoGuess;
+  final int generationAttempts;
+}
+
 class MinesweeperEngine {
   MinesweeperEngine({
     this.rows = 9,
     this.columns = 9,
     this.mineCount = 12,
+    this.requireNoGuess = true,
+    this.generationAttempts = 360,
     int seed = 20260715,
   }) : assert(rows >= 6),
        assert(columns >= 6),
@@ -150,6 +186,8 @@ class MinesweeperEngine {
     Set<int> revealedIndices = const {},
     Set<int> flaggedIndices = const {},
     MinesweeperActor firstActor = MinesweeperActor.user,
+    this.requireNoGuess = true,
+    this.generationAttempts = 360,
   }) : assert(rows >= 3),
        assert(columns >= 3),
        assert(mineIndices.isNotEmpty),
@@ -177,6 +215,8 @@ class MinesweeperEngine {
   final int rows;
   final int columns;
   final int mineCount;
+  final bool requireNoGuess;
+  final int generationAttempts;
   final int _seed;
   final Set<int> _mines = {};
   final Set<int> _revealed = {};
@@ -568,14 +608,18 @@ class MinesweeperEngine {
         if (!safeZone.contains(index)) index,
     ];
     Set<int>? fallback;
-    const maximumAttempts = 360;
-    for (var attempt = 0; attempt < maximumAttempts; attempt += 1) {
+    for (var attempt = 0; attempt < generationAttempts; attempt += 1) {
       final random = math.Random(_seed + attempt * 7919 + firstIndex * 97);
       final shuffled = List<int>.of(candidates)..shuffle(random);
       final mines = shuffled.take(mineCount).toSet();
       fallback ??= mines;
       final numbers = _buildNumbers(mines);
       generatedAttempts = attempt + 1;
+      if (!requireNoGuess) {
+        noGuessVerified = false;
+        _installBoard(mines, numbers);
+        return;
+      }
       if (_isNoGuessSolvable(firstIndex, mines, numbers)) {
         noGuessVerified = true;
         _installBoard(mines, numbers);

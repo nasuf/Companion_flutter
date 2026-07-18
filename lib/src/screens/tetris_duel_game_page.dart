@@ -18,7 +18,6 @@ class _TetrisDuelGamePage extends StatefulWidget {
 class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
   static const _tickInterval = Duration(milliseconds: 100);
   static const _userGravityMilliseconds = 680;
-  static const _agentMoveMilliseconds = 760;
 
   late final _NativeGameRuntime _runtime;
   TetrisDuelEngine? _engine;
@@ -78,18 +77,35 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
       await _runtime.abort('restarted', old?.summaryJson() ?? const {});
     }
     final seed = DateTime.now().microsecondsSinceEpoch & 0x7fffffff;
-    final session = await _runtime.start({
-      'mode': 'timed_split_board_duel',
-      'duration_seconds': 90,
-      'board_size': {'columns': 10, 'rows': 20},
-      'randomizer': 'seven_bag',
-      'rotation_system': 'srs_wall_kick',
-      'agent_strategy': 'weighted_surface_search',
-      'seed': seed,
-    });
+    TetrisDuelConfig? gameConfig;
+    final session = await _runtime.start(
+      {
+        'mode': 'timed_split_board_duel',
+        'board_size': {'columns': 10, 'rows': 20},
+        'randomizer': 'seven_bag',
+        'rotation_system': 'srs_wall_kick',
+        'agent_strategy': 'weighted_surface_search',
+        'seed': seed,
+      },
+      payloadBuilder: (created) {
+        gameConfig = TetrisDuelConfig.fromJson(created.engineConfig);
+        return {
+          'mode': 'timed_split_board_duel',
+          'duration_seconds': gameConfig!.durationSeconds,
+          'board_size': {'columns': 10, 'rows': 20},
+          'randomizer': 'seven_bag',
+          'rotation_system': 'srs_wall_kick',
+          'agent_strategy': 'weighted_surface_search',
+          'seed': seed,
+        };
+      },
+    );
     if (session == null || !mounted) return;
     setState(() {
-      _engine = TetrisDuelEngine(seed: seed);
+      _engine = TetrisDuelEngine(
+        seed: seed,
+        config: gameConfig ?? TetrisDuelConfig.fromJson(session.engineConfig),
+      );
       _finishing = false;
       _userGravityElapsed = 0;
       _agentMoveElapsed = 0;
@@ -125,7 +141,7 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
     if (!engine.isFinished &&
         _agentMoveElapsed >= _agentMoveInterval(engine.agent.level)) {
       _agentMoveElapsed = 0;
-      final decision = engine.agent.chooseAiPlacement();
+      final decision = engine.agent.chooseAiPlacement(config: engine.config);
       final result = engine.agent.playAiPlacement(decision);
       _handleLock(result, decision: decision);
     }
@@ -140,7 +156,7 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
       math.max(170, _userGravityMilliseconds - (level - 1) * 48);
 
   int _agentMoveInterval(int level) =>
-      math.max(300, _agentMoveMilliseconds - (level - 1) * 32);
+      math.max(260, (_engine?.config.agentMoveMs ?? 760) - (level - 1) * 32);
 
   void _handleLock(TetrisLockResult result, {TetrisAiPlacement? decision}) {
     final engine = _engine;

@@ -109,8 +109,39 @@ class ChineseCheckersMoveResult {
   final ChineseCheckersStatus status;
 }
 
+class ChineseCheckersAiConfig {
+  const ChineseCheckersAiConfig({
+    this.searchTimeMs = 300,
+    this.maxDepth = 4,
+    this.rootCandidateLimit = 34,
+    this.branchLimit = 24,
+    this.nearBestProbability = 0.16,
+    this.nearBestTolerance = 3,
+  });
+
+  factory ChineseCheckersAiConfig.fromJson(Map<String, dynamic> json) =>
+      ChineseCheckersAiConfig(
+        searchTimeMs: (json['search_time_ms'] as num?)?.round() ?? 300,
+        maxDepth: (json['max_depth'] as num?)?.round() ?? 4,
+        rootCandidateLimit:
+            (json['root_candidate_limit'] as num?)?.round() ?? 34,
+        branchLimit: (json['branch_limit'] as num?)?.round() ?? 24,
+        nearBestProbability:
+            (json['near_best_probability'] as num?)?.toDouble() ?? 0.16,
+        nearBestTolerance: (json['near_best_tolerance'] as num?)?.round() ?? 3,
+      );
+
+  final int searchTimeMs;
+  final int maxDepth;
+  final int rootCandidateLimit;
+  final int branchLimit;
+  final double nearBestProbability;
+  final int nearBestTolerance;
+}
+
 class ChineseCheckersEngine {
-  ChineseCheckersEngine() : _board = List<int>.filled(_boardCells.length, -1) {
+  ChineseCheckersEngine({this.aiConfig = const ChineseCheckersAiConfig()})
+    : _board = List<int>.filled(_boardCells.length, -1) {
     for (final index in _bottomCamp) {
       _board[index] = ChineseCheckersActor.user.index;
     }
@@ -122,10 +153,12 @@ class ChineseCheckersEngine {
   ChineseCheckersEngine.debug(
     List<int> board, {
     this.turn = ChineseCheckersActor.user,
+    this.aiConfig = const ChineseCheckersAiConfig(),
   }) : assert(board.length == 121),
        _board = List<int>.from(board);
 
   final List<int> _board;
+  final ChineseCheckersAiConfig aiConfig;
   final List<ChineseCheckersMove> _moves = [];
   ChineseCheckersActor turn = ChineseCheckersActor.user;
 
@@ -207,7 +240,12 @@ class ChineseCheckersEngine {
     if (isFinished) throw StateError('game_finished');
     final json = await compute(_searchChineseCheckers, {
       'board': _board,
-      'budget_ms': 300,
+      'budget_ms': aiConfig.searchTimeMs,
+      'max_depth': aiConfig.maxDepth,
+      'root_candidate_limit': aiConfig.rootCandidateLimit,
+      'branch_limit': aiConfig.branchLimit,
+      'near_best_probability': aiConfig.nearBestProbability,
+      'near_best_tolerance': aiConfig.nearBestTolerance,
       'seed': _moves.length * 97 + stateHash,
     });
     return ChineseCheckersAiDecision.fromJson(json);
@@ -399,13 +437,22 @@ int _hashBoard(List<int> board, int turn) {
 Map<String, dynamic> _searchChineseCheckers(Map<String, dynamic> input) {
   final board = List<int>.from(input['board']! as List);
   final budgetMs = input['budget_ms']! as int;
+  final maxDepth = input['max_depth']! as int;
+  final rootCandidateLimit = input['root_candidate_limit']! as int;
+  final branchLimit = input['branch_limit']! as int;
+  final nearBestProbability = (input['near_best_probability']! as num)
+      .toDouble();
+  final nearBestTolerance = input['near_best_tolerance']! as int;
   final random = math.Random(input['seed']! as int);
-  final search = _ChineseCheckersSearch(budgetMs: budgetMs);
-  final rootMoves = search.orderedMoves(board, 1, limit: 34);
+  final search = _ChineseCheckersSearch(
+    budgetMs: budgetMs,
+    branchLimit: branchLimit,
+  );
+  final rootMoves = search.orderedMoves(board, 1, limit: rootCandidateLimit);
   if (rootMoves.isEmpty) throw StateError('no_legal_move');
   var completed = <_CheckersScoredMove>[];
   var depthReached = 0;
-  for (var depth = 1; depth <= 4; depth++) {
+  for (var depth = 1; depth <= maxDepth; depth++) {
     final current = <_CheckersScoredMove>[];
     for (final move in rootMoves) {
       if (search.expired) break;
@@ -437,10 +484,10 @@ Map<String, dynamic> _searchChineseCheckers(Map<String, dynamic> input) {
   }
   final best = completed.first.score;
   final near = completed
-      .where((item) => best - item.score <= 3)
+      .where((item) => best - item.score <= nearBestTolerance)
       .take(3)
       .toList();
-  final selected = near.length > 1 && random.nextDouble() < .16
+  final selected = near.length > 1 && random.nextDouble() < nearBestProbability
       ? near[random.nextInt(near.length)]
       : completed.first;
   return {
@@ -455,9 +502,10 @@ Map<String, dynamic> _searchChineseCheckers(Map<String, dynamic> input) {
 }
 
 class _ChineseCheckersSearch {
-  _ChineseCheckersSearch({required this.budgetMs})
+  _ChineseCheckersSearch({required this.budgetMs, required this.branchLimit})
     : stopwatch = Stopwatch()..start();
   final int budgetMs;
+  final int branchLimit;
   final Stopwatch stopwatch;
   final Map<int, (int, int)> table = {};
   int nodes = 0;
@@ -482,7 +530,11 @@ class _ChineseCheckersSearch {
       return _CheckersSearchResult(cached.$2, const []);
     }
     final actor = maximizing ? 1 : 0;
-    final moves = orderedMoves(board, actor, limit: ply < 2 ? 24 : 16);
+    final moves = orderedMoves(
+      board,
+      actor,
+      limit: ply < 2 ? branchLimit : math.max(8, branchLimit * 2 ~/ 3),
+    );
     if (moves.isEmpty) {
       return _CheckersSearchResult(_evaluateCheckers(board), const []);
     }

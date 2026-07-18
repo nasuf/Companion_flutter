@@ -186,8 +186,36 @@ class GoMoveResult {
   final GoStatus status;
 }
 
+class GoAiConfig {
+  const GoAiConfig({
+    this.searchTimeMs = 600,
+    this.minimumSimulations = 40,
+    this.explorationConstant = 1.32,
+    this.branchLimit = 16,
+    this.rolloutDepth = 30,
+    this.moveTemperature = 0,
+  });
+
+  factory GoAiConfig.fromJson(Map<String, dynamic> json) => GoAiConfig(
+    searchTimeMs: (json['search_time_ms'] as num?)?.round() ?? 600,
+    minimumSimulations: (json['minimum_simulations'] as num?)?.round() ?? 40,
+    explorationConstant:
+        (json['exploration_constant'] as num?)?.toDouble() ?? 1.32,
+    branchLimit: (json['branch_limit'] as num?)?.round() ?? 16,
+    rolloutDepth: (json['rollout_depth'] as num?)?.round() ?? 30,
+    moveTemperature: (json['move_temperature'] as num?)?.toDouble() ?? 0,
+  );
+
+  final int searchTimeMs;
+  final int minimumSimulations;
+  final double explorationConstant;
+  final int branchLimit;
+  final int rolloutDepth;
+  final double moveTemperature;
+}
+
 class GoEngine {
-  GoEngine({this.komi = 6.5})
+  GoEngine({this.komi = 6.5, this.aiConfig = const GoAiConfig()})
     : _board = List<int>.filled(boardArea, _empty),
       _positionHistory = <int>{
         _goBoardHash(List<int>.filled(boardArea, _empty)),
@@ -200,6 +228,7 @@ class GoEngine {
     this.consecutivePasses = 0,
     this.userCaptures = 0,
     this.agentCaptures = 0,
+    this.aiConfig = const GoAiConfig(),
     Set<int>? positionHistory,
   }) : assert(board.length == boardArea),
        _board = List<int>.from(board),
@@ -212,6 +241,7 @@ class GoEngine {
   static const int _agentStone = 2;
 
   final double komi;
+  final GoAiConfig aiConfig;
   final List<int> _board;
   final Set<int> _positionHistory;
   final List<GoMove> _moves = [];
@@ -310,7 +340,12 @@ class GoEngine {
       'consecutive_passes': consecutivePasses,
       'komi': komi,
       'position_history': _positionHistory.toList(growable: false),
-      'budget_ms': 600,
+      'budget_ms': aiConfig.searchTimeMs,
+      'minimum_simulations': aiConfig.minimumSimulations,
+      'exploration_constant': aiConfig.explorationConstant,
+      'branch_limit': aiConfig.branchLimit,
+      'rollout_depth': aiConfig.rolloutDepth,
+      'move_temperature': aiConfig.moveTemperature,
       'seed': stateHash ^ (_moves.length * 7919),
     });
     return GoAiDecision.fromJson(json);
@@ -455,12 +490,14 @@ class _GoMctsNode {
     required this.parent,
     required this.action,
     required this.prior,
-  }) : untried = state.terminal ? [] : _rankGoActions(state);
+    required this.branchLimit,
+  }) : untried = state.terminal ? [] : _rankGoActions(state, branchLimit);
 
   final _GoSearchState state;
   final _GoMctsNode? parent;
   final int? action;
   final double prior;
+  final int branchLimit;
   final List<int> untried;
   final List<_GoMctsNode> children = [];
   int visits = 0;
@@ -472,6 +509,12 @@ class _GoMctsNode {
 Map<String, dynamic> _searchGoMove(Map<String, dynamic> input) {
   final stopwatch = Stopwatch()..start();
   final budgetMs = input['budget_ms']! as int;
+  final minimumSimulations = input['minimum_simulations']! as int;
+  final explorationConstant = (input['exploration_constant']! as num)
+      .toDouble();
+  final branchLimit = input['branch_limit']! as int;
+  final rolloutDepth = input['rollout_depth']! as int;
+  final moveTemperature = (input['move_temperature']! as num).toDouble();
   final random = math.Random(input['seed']! as int);
   final rootState = _GoSearchState(
     board: List<int>.from(input['board']! as List),
@@ -485,15 +528,17 @@ Map<String, dynamic> _searchGoMove(Map<String, dynamic> input) {
     parent: null,
     action: null,
     prior: 1,
+    branchLimit: branchLimit,
   );
   var simulations = 0;
   var nodes = 1;
-  while (stopwatch.elapsedMilliseconds < budgetMs || simulations < 40) {
+  while (stopwatch.elapsedMilliseconds < budgetMs ||
+      simulations < minimumSimulations) {
     var node = root;
     while (!node.state.terminal &&
         node.untried.isEmpty &&
         node.children.isNotEmpty) {
-      node = _selectGoChild(node, random);
+      node = _selectGoChild(node, random, explorationConstant);
     }
     if (!node.state.terminal && node.untried.isNotEmpty) {
       final action = _chooseGoExpansion(node, random);
@@ -504,12 +549,13 @@ Map<String, dynamic> _searchGoMove(Map<String, dynamic> input) {
         parent: node,
         action: action,
         prior: _goMovePrior(node.state, action),
+        branchLimit: branchLimit,
       );
       node.children.add(child);
       node = child;
       nodes += 1;
     }
-    final reward = _rolloutGo(node.state, random);
+    final reward = _rolloutGo(node.state, random, rolloutDepth);
     while (true) {
       node.visits += 1;
       node.reward += reward;
@@ -532,7 +578,7 @@ Map<String, dynamic> _searchGoMove(Map<String, dynamic> input) {
     };
   }
   root.children.sort((a, b) => b.visits.compareTo(a.visits));
-  var best = root.children.first;
+  var best = _chooseGoRootMove(root.children, random, moveTemperature);
   final occupied = rootState.board.where((stone) => stone != 0).length;
   if (best.action == -1 && occupied < 61) {
     best = root.children.firstWhere(
@@ -574,7 +620,11 @@ Map<String, dynamic> _searchGoMove(Map<String, dynamic> input) {
   };
 }
 
-_GoMctsNode _selectGoChild(_GoMctsNode node, math.Random random) {
+_GoMctsNode _selectGoChild(
+  _GoMctsNode node,
+  math.Random random,
+  double explorationConstant,
+) {
   final logParent = math.log(math.max(2, node.visits));
   final maximizing = node.state.turnStone == GoEngine._agentStone;
   var bestScore = -double.infinity;
@@ -582,7 +632,7 @@ _GoMctsNode _selectGoChild(_GoMctsNode node, math.Random random) {
   for (final child in node.children) {
     final exploitation = maximizing ? child.mean : 1 - child.mean;
     final exploration =
-        1.32 *
+        explorationConstant *
         math.sqrt(logParent / math.max(1, child.visits)) *
         (0.84 + child.prior * 0.16);
     final jitter = random.nextDouble() * 0.00001;
@@ -604,23 +654,23 @@ int _chooseGoExpansion(_GoMctsNode node, math.Random random) {
   return pool[random.nextInt(pool.length)];
 }
 
-List<int> _rankGoActions(_GoSearchState state) {
+List<int> _rankGoActions(_GoSearchState state, int branchLimit) {
   final actions = state.legalActions();
   final priors = <int, double>{
     for (final action in actions) action: _goMovePrior(state, action),
   };
   actions.sort((a, b) => priors[b]!.compareTo(priors[a]!));
   final passIncluded = actions.remove(-1);
-  final limit = state.ply < 8 ? 16 : 14;
+  final limit = state.ply < 8 ? branchLimit : math.min(branchLimit, 14);
   final ranked = actions.take(limit).toList(growable: true);
   if (passIncluded) ranked.add(-1);
   return ranked;
 }
 
-double _rolloutGo(_GoSearchState start, math.Random random) {
+double _rolloutGo(_GoSearchState start, math.Random random, int rolloutDepth) {
   var state = start;
   var guard = 0;
-  while (!state.terminal && guard++ < 30) {
+  while (!state.terminal && guard++ < rolloutDepth) {
     final occupied = state.board.where((stone) => stone != 0).length;
     final int action;
     if (occupied > 66 && random.nextDouble() < 0.22) {
@@ -636,6 +686,27 @@ double _rolloutGo(_GoSearchState start, math.Random random) {
     GoStatus.draw => 0.5,
     _ => 0,
   };
+}
+
+_GoMctsNode _chooseGoRootMove(
+  List<_GoMctsNode> ranked,
+  math.Random random,
+  double temperature,
+) {
+  if (ranked.length < 2 || temperature <= 0.01) return ranked.first;
+  final candidates = ranked.take(math.min(6, ranked.length)).toList();
+  final exponent = 1 / temperature.clamp(0.05, 3.0);
+  final weights = [
+    for (final child in candidates)
+      math.pow(math.max(1, child.visits), exponent).toDouble(),
+  ];
+  final total = weights.fold<double>(0, (sum, value) => sum + value);
+  var cursor = random.nextDouble() * total;
+  for (var index = 0; index < candidates.length; index += 1) {
+    cursor -= weights[index];
+    if (cursor <= 0) return candidates[index];
+  }
+  return candidates.first;
 }
 
 int? _chooseGoRolloutAction(_GoSearchState state, math.Random random) {

@@ -58,22 +58,49 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
     if (_runtime.session != null && !_runtime.completed) {
       await _runtime.abort('restarted', _sessionSummary());
     }
-    final candidate = NumberMergeEngine(
-      seed: DateTime.now().microsecondsSinceEpoch & 0x7fffffff,
+    NumberMergeEngine? candidate;
+    final session = await _runtime.start(
+      {
+        'board_size': 4,
+        'first_actor': 'user',
+        'mode': 'cooperative',
+        'rules': 'single_merge_per_move_spawn_2_or_4',
+        'spawn_probability': {'2': 0.9, '4': 0.1},
+        'solver': 'expectimax_chance_nodes_monotonicity_smoothness_mobility',
+      },
+      payloadBuilder: (created) {
+        final config = NumberMergeGameConfig.fromJson(created.engineConfig);
+        candidate = NumberMergeEngine(
+          seed: created.id.hashCode,
+          target: config.target,
+          searchDepthOffset: config.searchDepthOffset,
+          nearBestProbability: config.nearBestProbability,
+          nearBestToleranceRatio: config.nearBestToleranceRatio,
+        );
+        return {
+          'board_size': 4,
+          'target': config.target,
+          'first_actor': 'user',
+          'mode': 'cooperative',
+          'rules': 'single_merge_per_move_spawn_2_or_4',
+          'spawn_probability': {'2': 0.9, '4': 0.1},
+          'solver': 'expectimax_chance_nodes_monotonicity_smoothness_mobility',
+          'initial_state': candidate!.stateJson(),
+        };
+      },
     );
-    final session = await _runtime.start({
-      'board_size': 4,
-      'target': 2048,
-      'first_actor': 'user',
-      'mode': 'cooperative',
-      'rules': 'single_merge_per_move_spawn_2_or_4',
-      'spawn_probability': {'2': 0.9, '4': 0.1},
-      'solver': 'expectimax_chance_nodes_monotonicity_smoothness_mobility',
-      'initial_state': candidate.stateJson(),
-    });
     if (session != null && mounted) {
+      final config = NumberMergeGameConfig.fromJson(session.engineConfig);
       setState(() {
-        _engine = candidate;
+        _engine =
+            candidate ??
+            NumberMergeEngine(
+              seed: session.id.hashCode,
+              target: config.target,
+              searchDepthOffset: config.searchDepthOffset,
+              nearBestProbability: config.nearBestProbability,
+              nearBestToleranceRatio: config.nearBestToleranceRatio,
+            );
         _lastMove = null;
         _actionHistory.clear();
         _resolving = false;

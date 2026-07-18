@@ -151,11 +151,70 @@ class ChessFamilyMoveResult {
   final ChessFamilyStatus status;
 }
 
+class ChessFamilyAiConfig {
+  const ChessFamilyAiConfig({
+    this.searchTimeMs = 390,
+    this.maxDepth = 5,
+    this.quiescenceDepth = 5,
+    this.nearBestProbability = 0.14,
+    this.nearBestTolerance = 18,
+  });
+
+  factory ChessFamilyAiConfig.defaultsFor(ChessFamilyKind kind) =>
+      kind == ChessFamilyKind.chess
+      ? const ChessFamilyAiConfig(
+          searchTimeMs: 360,
+          maxDepth: 5,
+          quiescenceDepth: 5,
+          nearBestProbability: 0.14,
+          nearBestTolerance: 18,
+        )
+      : const ChessFamilyAiConfig(
+          searchTimeMs: 420,
+          maxDepth: 4,
+          quiescenceDepth: 4,
+          nearBestProbability: 0.14,
+          nearBestTolerance: 18,
+        );
+
+  factory ChessFamilyAiConfig.fromJson(
+    Map<String, dynamic> json, {
+    required ChessFamilyKind kind,
+  }) {
+    final defaults = ChessFamilyAiConfig.defaultsFor(kind);
+    return ChessFamilyAiConfig(
+      searchTimeMs:
+          (json['search_time_ms'] as num?)?.round() ?? defaults.searchTimeMs,
+      maxDepth: (json['max_depth'] as num?)?.round() ?? defaults.maxDepth,
+      quiescenceDepth:
+          (json['quiescence_depth'] as num?)?.round() ??
+          defaults.quiescenceDepth,
+      nearBestProbability:
+          (json['near_best_probability'] as num?)?.toDouble() ??
+          defaults.nearBestProbability,
+      nearBestTolerance:
+          (json['near_best_tolerance'] as num?)?.round() ??
+          defaults.nearBestTolerance,
+    );
+  }
+
+  final int searchTimeMs;
+  final int maxDepth;
+  final int quiescenceDepth;
+  final double nearBestProbability;
+  final int nearBestTolerance;
+}
+
 class ChessFamilyEngine {
-  ChessFamilyEngine({required this.kind, String? fen})
-    : _game = bishop.Game(variant: _variant(kind), fen: fen);
+  ChessFamilyEngine({
+    required this.kind,
+    String? fen,
+    ChessFamilyAiConfig? aiConfig,
+  }) : aiConfig = aiConfig ?? ChessFamilyAiConfig.defaultsFor(kind),
+       _game = bishop.Game(variant: _variant(kind), fen: fen);
 
   final ChessFamilyKind kind;
+  final ChessFamilyAiConfig aiConfig;
   final bishop.Game _game;
   final List<ChessFamilyMove> _moves = [];
 
@@ -268,7 +327,11 @@ class ChessFamilyEngine {
     final json = await compute(_searchChessFamilyMove, {
       'kind': kind.name,
       'fen': _game.fen,
-      'budget_ms': kind == ChessFamilyKind.chess ? 360 : 420,
+      'budget_ms': aiConfig.searchTimeMs,
+      'max_depth': aiConfig.maxDepth,
+      'quiescence_depth': aiConfig.quiescenceDepth,
+      'near_best_probability': aiConfig.nearBestProbability,
+      'near_best_tolerance': aiConfig.nearBestTolerance,
     });
     return ChessFamilyAiDecision.fromJson(json);
   }
@@ -370,6 +433,10 @@ Map<String, dynamic> _searchChessFamilyMove(Map<String, dynamic> input) {
     game: game,
     kind: kind,
     budgetMilliseconds: input['budget_ms']! as int,
+    maxDepth: input['max_depth']! as int,
+    quiescenceDepth: input['quiescence_depth']! as int,
+    nearBestProbability: (input['near_best_probability']! as num).toDouble(),
+    nearBestTolerance: input['near_best_tolerance']! as int,
   ).search();
 }
 
@@ -415,6 +482,10 @@ class _ChessFamilySearch {
     required this.game,
     required this.kind,
     required this.budgetMilliseconds,
+    required this.maxDepth,
+    required this.quiescenceDepth,
+    required this.nearBestProbability,
+    required this.nearBestTolerance,
   });
 
   static const int _mate = 10000000;
@@ -423,6 +494,10 @@ class _ChessFamilySearch {
   final bishop.Game game;
   final ChessFamilyKind kind;
   final int budgetMilliseconds;
+  final int maxDepth;
+  final int quiescenceDepth;
+  final double nearBestProbability;
+  final int nearBestTolerance;
   final math.Random _random = math.Random();
   final Map<int, _TranspositionEntry> _table = {};
   final Map<int, List<String>> _killers = {};
@@ -436,7 +511,6 @@ class _ChessFamilySearch {
     if (rootMoves.isEmpty) throw StateError('no_legal_move');
     var completedDepth = 0;
     var completed = <_RootLine>[];
-    final maxDepth = kind == ChessFamilyKind.chess ? 5 : 4;
     for (var depth = 1; depth <= maxDepth; depth += 1) {
       final iteration = <_RootLine>[];
       final ordered = _orderedMoves(rootMoves, 0, game.state.hash);
@@ -633,7 +707,7 @@ class _ChessFamilySearch {
     final standPat = _evaluateFor(game.turn);
     if (standPat >= beta) return _SearchLine(score: beta, nodes: 1);
     var a = math.max(alpha, standPat);
-    if (depth >= 5) return _SearchLine(score: a, nodes: 1);
+    if (depth >= quiescenceDepth) return _SearchLine(score: a, nodes: 1);
     final captures = game.generateLegalMoves().where((move) => move.capture);
     final ordered = _orderedMoves(captures.toList(), ply, game.state.hash);
     var nodes = 1;
@@ -725,9 +799,9 @@ class _ChessFamilySearch {
     if (lines.length < 2) return lines.first;
     final best = lines.first;
     final second = lines[1];
-    if (best.line.score - second.line.score <= 18 &&
+    if (best.line.score - second.line.score <= nearBestTolerance &&
         best.line.score.abs() < _mate ~/ 2 &&
-        _random.nextDouble() < 0.14) {
+        _random.nextDouble() < nearBestProbability) {
       return second;
     }
     return best;

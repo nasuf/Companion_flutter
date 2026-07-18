@@ -1119,6 +1119,9 @@ class GameSession {
     required this.roomId,
     required this.difficulty,
     required this.aiLevel,
+    this.configVersion = 1,
+    this.effectiveStrength = 50,
+    this.engineConfig = const {},
     required this.userPlayer,
     required this.aiPlayer,
     this.workspaceId,
@@ -1142,6 +1145,9 @@ class GameSession {
   final String roomId;
   final String difficulty;
   final int aiLevel;
+  final int configVersion;
+  final int effectiveStrength;
+  final Map<String, dynamic> engineConfig;
   final GamePlayerInfo userPlayer;
   final GamePlayerInfo aiPlayer;
   final String? companionReply;
@@ -1164,6 +1170,10 @@ class GameSession {
       roomId: json['room_id'] as String? ?? '',
       difficulty: json['difficulty'] as String? ?? 'normal',
       aiLevel: (json['ai_level'] as num?)?.round() ?? 0,
+      configVersion: (json['config_version'] as num?)?.round() ?? 1,
+      effectiveStrength: (json['effective_strength'] as num?)?.round() ?? 50,
+      engineConfig:
+          (json['engine_config'] as Map?)?.cast<String, dynamic>() ?? const {},
       userPlayer: GamePlayerInfo.fromJson(
         (json['user_player'] as Map?)?.cast<String, dynamic>() ?? const {},
       ),
