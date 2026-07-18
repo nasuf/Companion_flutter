@@ -160,9 +160,7 @@ void main() {
     );
   });
 
-  testWidgets('voice vibration uses the explicit system vibration call', (
-    tester,
-  ) async {
+  testWidgets('voice vibration uses a short impact haptic', (tester) async {
     final calls = <MethodCall>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
@@ -185,7 +183,11 @@ void main() {
       contains(
         isA<MethodCall>()
             .having((call) => call.method, 'method', 'HapticFeedback.vibrate')
-            .having((call) => call.arguments, 'arguments', isNull),
+            .having(
+              (call) => call.arguments,
+              'arguments',
+              'HapticFeedbackType.lightImpact',
+            ),
       ),
     );
   });

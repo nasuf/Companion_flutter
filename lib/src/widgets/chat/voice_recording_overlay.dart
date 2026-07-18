@@ -47,7 +47,7 @@ bool shouldRejectSilentVoiceCapture({
       activeMilliseconds < voiceMinimumActiveMilliseconds;
 }
 
-Future<void> triggerVoiceVibration() => HapticFeedback.vibrate();
+Future<void> triggerVoiceVibration() => HapticFeedback.lightImpact();
 
 bool shouldHapticOnVoiceActionEntry({
   required VoiceReleaseAction previous,
