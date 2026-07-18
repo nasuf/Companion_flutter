@@ -395,8 +395,13 @@ class _NativeGameOverlayState extends State<_NativeGameOverlay> {
   Widget build(BuildContext context) {
     final visual = _NativeFullscreenVisual.forGame(widget.gameKey);
     final outcome = widget.payload?['user_outcome'] as String? ?? 'draw';
+    final isCooperative = _nativeCooperativeGameKeys.contains(widget.gameKey);
     final title = widget.isTimeout
         ? '先别让这一回合停住'
+        : isCooperative
+        // 合作过关类游戏没有对手，胜负只看共同目标，绝不能出现
+        // 「你赢了 / 对方拿下」这类对抗措辞。
+        ? (outcome == 'win' ? '这一关，你们一起过了' : '这一关，差一点就过了')
         : switch (outcome) {
             'win' => '这一局，你赢了',
             'lose' => '${widget.agentName} 拿下了这一局',
@@ -541,13 +546,17 @@ class _NativeGameOverlayState extends State<_NativeGameOverlay> {
         : '谁也没把谁甩开，正好再约一局。';
     return switch (gameKey) {
       _nativeMatch3GameKey =>
-        outcome == 'win' ? '最后一串连消很漂亮，你和 $agentName 把这一关一起解开了。' : ending,
+        outcome == 'win'
+            ? '最后一串连消很漂亮，你和 $agentName 把这一关一起解开了。'
+            : '就差最后一点能量。这局的连消和配合都已经保存，下次接着这个节奏再试一次。',
       _nativeMinesweeperGameKey =>
         outcome == 'win'
             ? '雷区已经清空，你和 $agentName 的每一步推理都对上了。'
-            : '那颗雷藏得够深。线索和选择已经保存，下局再把它找出来。',
+            : '那颗雷藏得够深。你们的线索和选择已经保存，下局再一起把它找出来。',
       _nativeNumberMergeGameKey =>
-        outcome == 'win' ? '数字终于合到目标，你和 $agentName 的接力没有断。' : ending,
+        outcome == 'win'
+            ? '数字终于合到目标，你和 $agentName 的接力没有断。'
+            : '盘面满之前你们已经一起救回来好几次了。这局的合并过程已经保存，下次再合远一点。',
       _nativeChineseCheckersGameKey => '$ending 连跳路线和进营过程都已经保存。',
       _nativeGoGameKey => '$ending 棋形、提子和终局数目都已经保存。',
       _nativeReversiGameKey => '$ending 翻子和角落争夺都已经保存。',

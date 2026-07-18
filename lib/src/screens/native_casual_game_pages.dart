@@ -514,8 +514,9 @@ class _Match3GamePageState extends State<_Match3GamePage> {
           : Column(
               children: [
                 _NativeScoreHeader(
+                  // 合作模式：左右是双方贡献分，中间是共同目标进度。
                   left: '你 ${engine.userScore}',
-                  center: '${engine.totalScore}/${engine.targetScore}',
+                  center: '共同 ${engine.totalScore}/${engine.targetScore}',
                   right: '${_runtime.agentName} ${engine.agentScore}',
                 ),
                 const SizedBox(height: 10),

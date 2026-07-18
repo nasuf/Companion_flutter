@@ -439,11 +439,7 @@ class _GameRoundSummary {
   bool get isLose => outcome == 'lose';
   bool get isAborted => outcome == 'aborted' || session.status == 'aborted';
   bool get isGomoku => gomoku.isNotEmpty;
-  bool get isCooperative => {
-    _nativeMatch3GameKey,
-    _nativeMinesweeperGameKey,
-    _nativeNumberMergeGameKey,
-  }.contains(gameKey);
+  bool get isCooperative => _nativeCooperativeGameKeys.contains(gameKey);
 
   int? get actionCount =>
       _intValue(gameData['move_count']) ??
@@ -486,6 +482,7 @@ class _GameRoundSummary {
 
   String? get scoreLine {
     if (userScore == null || aiScore == null) return null;
+    if (isCooperative) return '你 $userScore + $aiName $aiScore';
     return '你 $userScore : $aiScore $aiName';
   }
 
@@ -1300,6 +1297,12 @@ String _roundMemorySentence(_GameRoundSummary summary) {
       return '这盘你最后收得很干净，不是突然赢的，是前面几手慢慢铺出来的。';
     }
     return '这盘有几手其实已经卡到关键点了，下次我可以陪你提前一手把那条线堵住。';
+  }
+  if (summary.isCooperative) {
+    if (summary.isWin) {
+      return '这一关是你们俩把各自的那段接起来才过的，少了谁都差一口气。';
+    }
+    return '这一关虽然没过，但路已经一起试出大半了。下次再来，可以顺着这次的节奏继续。';
   }
   if (summary.isWin) {
     return '这局更像是你把手感慢慢攒起来的一局。不是冷冰冰的胜负，它会留在你们的游戏记忆里。';
@@ -2196,6 +2199,14 @@ const _nativeMatch3GameKey = 'match3';
 const _nativeMinesweeperGameKey = 'minesweeper';
 const _nativeNumberMergeGameKey = 'number_merge';
 const _nativeTetrisDuelGameKey = 'tetris_duel';
+
+/// 合作过关类游戏：胜负看共同目标是否达成，双方分数只是贡献值，
+/// 所有面向用户的文案必须用「你们一起」的合作措辞，避免对抗式误读。
+const _nativeCooperativeGameKeys = {
+  _nativeMatch3GameKey,
+  _nativeMinesweeperGameKey,
+  _nativeNumberMergeGameKey,
+};
 
 const _gameGroupCatalog = [
   _GameGroup(

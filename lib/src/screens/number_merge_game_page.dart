@@ -304,8 +304,9 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
           : Column(
               children: [
                 _NativeScoreHeader(
+                  // 合作模式：左右是双方贡献分，中间是共同总分。
                   left: '你 ${engine.userScore}',
-                  center: '总分 ${engine.score}',
+                  center: '共同 ${engine.score}',
                   right: '${_runtime.agentName} ${engine.agentScore}',
                 ),
                 const SizedBox(height: 10),
