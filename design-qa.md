@@ -148,6 +148,37 @@ final result: passed
 
 ---
 
+# Time capsule navigation and asset visibility QA
+
+## Source and implementation evidence
+
+- Figma reference: `/var/folders/4d/sgc342hn4bg789gjfdsrl5t80000gn/T/codex-clipboard-667e4e2e-9e05-4982-8256-f963d93fb7f4.png`
+- Capsule home runtime: `/tmp/capsule-home-fixed.png`
+- Pending capsule runtime: `/tmp/capsule-pending-fixed.png`
+- Opened capsule runtime: `/tmp/capsule-opened-fixed.png`
+- Combined comparison: `/tmp/capsule-three-screen-comparison.png`
+- Runtime: iPhone 17 Pro Max simulator, 440 x 956 logical pixels.
+
+## Findings
+
+- P0: none.
+- P1: none. The home, pending, and opened routes all expose a visible top-left back action and preserve native route pop behavior.
+- P2: none. The home greeting underline and the pending capsule's two-layer oval shadow render through Flutter's production SVG renderer using literal source colors.
+- P2: none. The opened summary artwork is no longer clipped by its padded `Stack`; the complete hourglass, clouds, and surrounding highlights blend into the card.
+- Asset verification: a temporary Flutter golden harness rendered the underline and shadow SVGs directly before runtime page capture. No temporary harness files remain in the repository.
+- Interaction verification: the home shortcuts opened both child routes, and each back action returned to the capsule home page on the simulator.
+
+## Iteration history
+
+1. Runtime screenshots showed that Figma-exported CSS variable colors were not painted by `flutter_svg` for the underline and shadow assets.
+2. Literal source colors restored both SVG elements without replacing or redrawing their geometry.
+3. The SVG back asset also depended on unsupported filter output, so the standard Cupertino chevron was placed in the measured Figma circle, color, and shadow treatment.
+4. The opened-card image was positioned correctly but clipped by the default `Stack` behavior inside card padding. Allowing overflow restored the complete source image while retaining its measured slot.
+
+final result: passed
+
+---
+
 # Chat voice recording visual QA - restrained green redesign
 
 ## Source and implementation evidence

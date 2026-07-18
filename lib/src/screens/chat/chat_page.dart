@@ -180,6 +180,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Timer? _conversationMetaTimer;
   TimeCapsule? _readyCapsule;
   String? _autoShownReadyCapsuleId;
+  String? _dismissedReadyCapsuleId;
   bool _readyCapsuleNoticeShowing = false;
   Conversation? _conversationMeta;
   bool _loadingInitial = true;
@@ -985,6 +986,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       final nextReady = ready.isEmpty ? null : ready.first;
       setState(() => _readyCapsule = nextReady);
       if (nextReady != null &&
+          nextReady.id != _dismissedReadyCapsuleId &&
           nextReady.id != _autoShownReadyCapsuleId &&
           !_readyCapsuleNoticeShowing &&
           (ModalRoute.of(context)?.isCurrent ?? true)) {
@@ -1006,6 +1008,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void refreshReadyCapsules() {
     unawaited(_scanReadyCapsules());
     _scheduleNextCapsuleScan();
+  }
+
+  void _dismissReadyCapsuleBanner() {
+    final capsule = _readyCapsule;
+    if (capsule == null) return;
+    setState(() {
+      _dismissedReadyCapsuleId = capsule.id;
+    });
   }
 
   void _scheduleNextCapsuleScan() {
@@ -2896,17 +2906,39 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             ),
           ),
           Positioned(
-            top: 74,
-            left: 18,
-            right: 18,
+            top: safeTop + 84,
+            left: 86,
+            right: 30,
             child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: _readyCapsule == null
+              duration: const Duration(milliseconds: 260),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) {
+                final curved = CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutCubic,
+                  reverseCurve: Curves.easeInCubic,
+                );
+                return FadeTransition(
+                  opacity: curved,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0, -0.18),
+                      end: Offset.zero,
+                    ).animate(curved),
+                    child: child,
+                  ),
+                );
+              },
+              child:
+                  _readyCapsule == null ||
+                      _readyCapsule!.id == _dismissedReadyCapsuleId
                   ? const SizedBox.shrink()
                   : _ReadyCapsuleBanner(
                       key: ValueKey(_readyCapsule!.id),
                       capsule: _readyCapsule!,
                       onTap: _openReadyCapsuleNotice,
+                      onDismiss: _dismissReadyCapsuleBanner,
                     ),
             ),
           ),
@@ -3320,10 +3352,12 @@ class _ReadyCapsuleBanner extends StatelessWidget {
     super.key,
     required this.capsule,
     required this.onTap,
+    required this.onDismiss,
   });
 
   final TimeCapsule capsule;
   final VoidCallback onTap;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -3332,108 +3366,132 @@ class _ReadyCapsuleBanner extends StatelessWidget {
     final colors = AppColors.of(context);
     final isDark = AppColors.isDark(context);
     final accent = const Color(0xFF7C3CFF);
-    return Align(
-      alignment: Alignment.topCenter,
-      child: CupertinoButton(
-        minimumSize: Size.zero,
-        padding: EdgeInsets.zero,
-        onPressed: onTap,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-            child: Container(
-              height: 54,
-              padding: const EdgeInsets.fromLTRB(12, 8, 14, 8),
-              decoration: BoxDecoration(
+    return SizedBox(
+      height: 62,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: isDark
+                  ? colors.surfaceMuted.withValues(alpha: 0.92)
+                  : Colors.white.withValues(alpha: 0.92),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
                 color: isDark
-                    ? colors.surfaceMuted.withValues(alpha: 0.92)
-                    : Colors.white.withValues(alpha: 0.88),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
+                    ? Colors.white.withValues(alpha: 0.10)
+                    : Colors.white.withValues(alpha: 0.80),
+              ),
+              boxShadow: [
+                BoxShadow(
                   color: isDark
-                      ? Colors.white.withValues(alpha: 0.12)
-                      : Colors.white.withValues(alpha: 0.78),
+                      ? Colors.black.withValues(alpha: 0.34)
+                      : accent.withValues(alpha: 0.15),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: isDark
-                        ? Colors.black.withValues(alpha: 0.38)
-                        : accent.withValues(alpha: 0.16),
-                    blurRadius: isDark ? 26 : 22,
-                    offset: const Offset(0, 10),
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: isDark ? 0.04 : 0.70),
+                  blurRadius: 1,
+                  offset: const Offset(0, -1),
+                ),
+              ],
+            ),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: CupertinoButton(
+                    minimumSize: Size.zero,
+                    padding: EdgeInsets.zero,
+                    onPressed: onTap,
+                    child: const SizedBox.expand(),
                   ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [accent, colors.accentDeep],
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 7, 42, 7),
+                  child: Row(
+                    children: [
+                      Image.asset(
+                        'assets/chat_sidebar/sidebar-capsule.png',
+                        width: 48,
+                        height: 48,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
                       ),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: accent.withValues(alpha: isDark ? 0.34 : 0.18),
-                          blurRadius: 14,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: const Center(
-                      child: CustomPaint(
-                        size: Size(22, 22),
-                        painter: _CapsuleSidebarIconPainter(
-                          accent: Color(0xFF7C3CFF),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '有一个新胶囊待开启',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: colors.text,
+                                fontSize: 15,
+                                height: 1.12,
+                                fontWeight: FontWeight.w900,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '$dateText 开启，点一下看看',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: colors.muted,
+                                fontSize: 12,
+                                height: 1.1,
+                                fontWeight: FontWeight.w700,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Flexible(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '有一个新胶囊待开启',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: colors.text,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
-                            decoration: TextDecoration.none,
+                ),
+                Positioned(
+                  right: 8,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: CupertinoButton(
+                      minimumSize: Size.zero,
+                      padding: EdgeInsets.zero,
+                      onPressed: onDismiss,
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.08)
+                              : const Color(0xFFF3F6FA),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.08)
+                                : const Color(0xFFE4EAF1),
                           ),
                         ),
-                        Text(
-                          '$dateText 开启，点一下看看',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: colors.muted,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            decoration: TextDecoration.none,
-                          ),
+                        child: Icon(
+                          CupertinoIcons.xmark,
+                          color: isDark
+                              ? colors.muted
+                              : const Color(0xFF7F8893),
+                          size: 14,
                         ),
-                      ],
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    CupertinoIcons.chevron_down,
-                    color: isDark ? colors.accentDeep : accent,
-                    size: 18,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
