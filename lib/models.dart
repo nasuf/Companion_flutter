@@ -37,6 +37,22 @@ class AuthSession {
   final String? workspaceId;
   final String? conversationId;
 
+  /// A user-facing name that never exposes generated login identifiers.
+  String get userFacingName {
+    final displayName = userDisplayName?.trim();
+    if (displayName != null &&
+        displayName.isNotEmpty &&
+        !_isGeneratedLoginIdentifier(displayName)) {
+      return displayName;
+    }
+
+    final loginName = username.trim();
+    if (loginName.isNotEmpty && !_isGeneratedLoginIdentifier(loginName)) {
+      return loginName;
+    }
+    return '我';
+  }
+
   factory AuthSession.fromJson(Map<String, dynamic> json) {
     return AuthSession(
       token: json['token'] as String? ?? '',
@@ -83,6 +99,10 @@ class AuthSession {
       conversationId: conversationId ?? this.conversationId,
     );
   }
+}
+
+bool _isGeneratedLoginIdentifier(String value) {
+  return RegExp(r'^(?:wx|ph)_[a-zA-Z0-9]+$').hasMatch(value);
 }
 
 class AgentProfile {

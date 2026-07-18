@@ -1132,7 +1132,7 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
                 child: _CapsuleLetterPaper(
                   skin: skin,
                   controller: _controller,
-                  senderName: widget.session.username,
+                  senderName: widget.session.userFacingName,
                   readOnly: widget.readOnly,
                 ),
               ),
