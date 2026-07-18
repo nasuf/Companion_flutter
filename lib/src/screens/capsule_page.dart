@@ -248,8 +248,8 @@ class _CapsulePageState extends State<CapsulePage> {
     await _openEditor(draft: selected);
   }
 
-  Future<void> _openDetail(TimeCapsule capsule) async {
-    final result = await Navigator.of(context).push<Object?>(
+  Future<Object?> _showDetail(TimeCapsule capsule) {
+    return Navigator.of(context).push<Object?>(
       CupertinoPageRoute<Object?>(
         fullscreenDialog: true,
         builder: (_) => CapsuleEditorPage(
@@ -260,14 +260,6 @@ class _CapsulePageState extends State<CapsulePage> {
         ),
       ),
     );
-    if (!mounted || result == null) return;
-    if (result is CapsuleChatDraft) {
-      Navigator.of(context).pop(result);
-      return;
-    }
-    if (result is _CapsuleEditorResult && result.deleted) {
-      await _reloadLatestCapsules();
-    }
   }
 
   Future<bool> _deleteOpenedCapsule(TimeCapsule capsule) async {
@@ -311,20 +303,22 @@ class _CapsulePageState extends State<CapsulePage> {
 
   Future<void> _openOpened(List<TimeCapsule> capsules) async {
     if (capsules.isEmpty) return;
-    final selected = await Navigator.of(context).push<TimeCapsule>(
-      CupertinoPageRoute<TimeCapsule>(
+    final result = await Navigator.of(context).push<Object?>(
+      CupertinoPageRoute<Object?>(
         builder: (_) => _OpenedCapsulesPage(
           capsules: capsules,
           onOpen: (capsule) => widget.api.openTimeCapsule(capsule.id),
+          onView: _showDetail,
           onDelete: _deleteOpenedCapsule,
         ),
       ),
     );
     if (!mounted) return;
-    await _reloadLatestCapsules();
-    if (selected != null) {
-      await _openDetail(selected);
+    if (result is CapsuleChatDraft) {
+      Navigator.of(context).pop(result);
+      return;
     }
+    await _reloadLatestCapsules();
   }
 }
 
@@ -3299,11 +3293,13 @@ class _OpenedCapsulesPage extends StatefulWidget {
   const _OpenedCapsulesPage({
     required this.capsules,
     required this.onOpen,
+    required this.onView,
     required this.onDelete,
   });
 
   final List<TimeCapsule> capsules;
   final Future<TimeCapsule> Function(TimeCapsule capsule) onOpen;
+  final Future<Object?> Function(TimeCapsule capsule) onView;
   final Future<bool> Function(TimeCapsule capsule) onDelete;
 
   @override
@@ -3313,6 +3309,26 @@ class _OpenedCapsulesPage extends StatefulWidget {
 class _OpenedCapsulesPageState extends State<_OpenedCapsulesPage> {
   late final List<TimeCapsule> _capsules = List.of(widget.capsules);
   String? _openingCapsuleId;
+  bool _showingCapsuleDetail = false;
+
+  Future<void> _showCapsuleDetail(TimeCapsule capsule) async {
+    if (_showingCapsuleDetail) return;
+    setState(() => _showingCapsuleDetail = true);
+    Object? result;
+    try {
+      result = await widget.onView(capsule);
+    } finally {
+      if (mounted) setState(() => _showingCapsuleDetail = false);
+    }
+    if (!mounted || result == null) return;
+    if (result is CapsuleChatDraft) {
+      Navigator.of(context).pop(result);
+      return;
+    }
+    if (result is _CapsuleEditorResult && result.deleted) {
+      setState(() => _capsules.removeWhere((item) => item.id == capsule.id));
+    }
+  }
 
   Future<void> _openReadyCapsule(TimeCapsule capsule) async {
     if (!capsule.isReady || _openingCapsuleId != null) return;
@@ -3320,7 +3336,12 @@ class _OpenedCapsulesPageState extends State<_OpenedCapsulesPage> {
     try {
       final opened = await widget.onOpen(capsule);
       if (!mounted) return;
-      Navigator.of(context).pop(opened);
+      setState(() {
+        final index = _capsules.indexWhere((item) => item.id == capsule.id);
+        if (index >= 0) _capsules[index] = opened;
+        _openingCapsuleId = null;
+      });
+      await _showCapsuleDetail(opened);
     } catch (error) {
       if (!mounted) return;
       setState(() => _openingCapsuleId = null);
@@ -3437,7 +3458,8 @@ class _OpenedCapsulesPageState extends State<_OpenedCapsulesPage> {
                       itemBuilder: (context, index) {
                         final capsule = _capsules[index];
                         final isOpening = _openingCapsuleId == capsule.id;
-                        final interactionLocked = _openingCapsuleId != null;
+                        final interactionLocked =
+                            _openingCapsuleId != null || _showingCapsuleDetail;
                         return _OpenedCapsuleSheetTile(
                           capsule: capsule,
                           isOpening: isOpening,
@@ -3446,7 +3468,7 @@ class _OpenedCapsulesPageState extends State<_OpenedCapsulesPage> {
                             if (capsule.isReady) {
                               unawaited(_openReadyCapsule(capsule));
                             } else {
-                              Navigator.of(context).pop(capsule);
+                              unawaited(_showCapsuleDetail(capsule));
                             }
                           },
                           onDelete: () async {
