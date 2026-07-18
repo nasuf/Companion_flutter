@@ -142,10 +142,12 @@ class _CapsulePageState extends State<CapsulePage> {
               snapshot.data ?? _cachedCapsules ?? const <TimeCapsule>[];
           final hasCachedItems = _cachedCapsules != null;
           final drafts = items.where((item) => item.isDraft).toList();
-          final pending = items
-              .where((item) => item.isPending || item.isReady)
-              .toList();
+          final pending = items.where((item) => item.isPending).toList();
           final opened = items.where((item) => item.isOpened).toList();
+          final arrived = <TimeCapsule>[
+            ...opened,
+            ...items.where((item) => item.isReady),
+          ];
           final newestOpened = opened.isEmpty
               ? null
               : opened.reduce((a, b) {
@@ -189,16 +191,16 @@ class _CapsulePageState extends State<CapsulePage> {
                         child: _CapsuleHomeShortcutGrid(
                           draftCount: drafts.length,
                           pendingCount: pending.length,
-                          openedCount: opened.length,
+                          openedCount: arrived.length,
                           onDrafts: drafts.isEmpty
                               ? null
                               : () => _openDrafts(drafts),
                           onPending: pending.isEmpty
                               ? null
                               : () => _openPending(pending),
-                          onOpened: opened.isEmpty
+                          onOpened: arrived.isEmpty
                               ? null
-                              : () => _openOpened(opened),
+                              : () => _openOpened(arrived),
                         ),
                       ),
                     ),
@@ -307,12 +309,13 @@ class _CapsulePageState extends State<CapsulePage> {
     await _reloadLatestCapsules();
   }
 
-  Future<void> _openOpened(List<TimeCapsule> opened) async {
-    if (opened.isEmpty) return;
+  Future<void> _openOpened(List<TimeCapsule> capsules) async {
+    if (capsules.isEmpty) return;
     final selected = await Navigator.of(context).push<TimeCapsule>(
       CupertinoPageRoute<TimeCapsule>(
         builder: (_) => _OpenedCapsulesPage(
-          capsules: opened,
+          capsules: capsules,
+          onOpen: (capsule) => widget.api.openTimeCapsule(capsule.id),
           onDelete: _deleteOpenedCapsule,
         ),
       ),
@@ -3293,9 +3296,14 @@ class _PendingCapsuleSceneState extends State<_PendingCapsuleScene>
 }
 
 class _OpenedCapsulesPage extends StatefulWidget {
-  const _OpenedCapsulesPage({required this.capsules, required this.onDelete});
+  const _OpenedCapsulesPage({
+    required this.capsules,
+    required this.onOpen,
+    required this.onDelete,
+  });
 
   final List<TimeCapsule> capsules;
+  final Future<TimeCapsule> Function(TimeCapsule capsule) onOpen;
   final Future<bool> Function(TimeCapsule capsule) onDelete;
 
   @override
@@ -3304,6 +3312,33 @@ class _OpenedCapsulesPage extends StatefulWidget {
 
 class _OpenedCapsulesPageState extends State<_OpenedCapsulesPage> {
   late final List<TimeCapsule> _capsules = List.of(widget.capsules);
+  String? _openingCapsuleId;
+
+  Future<void> _openReadyCapsule(TimeCapsule capsule) async {
+    if (!capsule.isReady || _openingCapsuleId != null) return;
+    setState(() => _openingCapsuleId = capsule.id);
+    try {
+      final opened = await widget.onOpen(capsule);
+      if (!mounted) return;
+      Navigator.of(context).pop(opened);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _openingCapsuleId = null);
+      await showCupertinoDialog<void>(
+        context: context,
+        builder: (context) => CupertinoAlertDialog(
+          title: const Text('开启失败'),
+          content: Text(_asMessage(error)),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3401,10 +3436,21 @@ class _OpenedCapsulesPageState extends State<_OpenedCapsulesPage> {
                       separatorBuilder: (_, __) => SizedBox(height: y(16)),
                       itemBuilder: (context, index) {
                         final capsule = _capsules[index];
+                        final isOpening = _openingCapsuleId == capsule.id;
+                        final interactionLocked = _openingCapsuleId != null;
                         return _OpenedCapsuleSheetTile(
                           capsule: capsule,
-                          onTap: () => Navigator.of(context).pop(capsule),
+                          isOpening: isOpening,
+                          interactionLocked: interactionLocked,
+                          onTap: () {
+                            if (capsule.isReady) {
+                              unawaited(_openReadyCapsule(capsule));
+                            } else {
+                              Navigator.of(context).pop(capsule);
+                            }
+                          },
                           onDelete: () async {
+                            if (_openingCapsuleId != null) return false;
                             final deleted = await widget.onDelete(capsule);
                             if (deleted && mounted) {
                               setState(() => _capsules.removeAt(index));
@@ -3519,16 +3565,21 @@ class _OpenedSummaryCard extends StatelessWidget {
 class _OpenedCapsuleSheetTile extends StatelessWidget {
   const _OpenedCapsuleSheetTile({
     required this.capsule,
+    required this.isOpening,
+    required this.interactionLocked,
     required this.onTap,
     required this.onDelete,
   });
 
   final TimeCapsule capsule;
+  final bool isOpening;
+  final bool interactionLocked;
   final VoidCallback onTap;
   final Future<bool> Function() onDelete;
 
   @override
   Widget build(BuildContext context) {
+    final isReady = capsule.isReady;
     final open = capsule.openDate == null
         ? '未知日期'
         : _formatCapsuleDate(capsule.openDate!);
@@ -3536,7 +3587,7 @@ class _OpenedCapsuleSheetTile extends StatelessWidget {
     final tile = CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
-      onPressed: onTap,
+      onPressed: interactionLocked ? () {} : onTap,
       child: Container(
         height: 96,
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
@@ -3560,7 +3611,30 @@ class _OpenedCapsuleSheetTile extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               clipBehavior: Clip.antiAlias,
-              child: Image.asset(_capsuleAssetOpenedThumb, fit: BoxFit.cover),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Opacity(
+                    opacity: isReady ? 0.42 : 1,
+                    child: Image.asset(
+                      _capsuleAssetOpenedThumb,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  if (isReady)
+                    ColoredBox(
+                      color: const Color(0xFFFFF4E8).withValues(alpha: 0.28),
+                    ),
+                  if (isReady)
+                    const Center(
+                      child: Icon(
+                        CupertinoIcons.lock_fill,
+                        color: Color(0xFFFE9631),
+                        size: 36,
+                      ),
+                    ),
+                ],
+              ),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -3569,7 +3643,7 @@ class _OpenedCapsuleSheetTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    capsule.preview,
+                    isReady ? '一封来自过去的信' : capsule.preview,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -3618,22 +3692,28 @@ class _OpenedCapsuleSheetTile extends StatelessWidget {
             const SizedBox(width: 8),
             Container(
               height: 26,
+              constraints: const BoxConstraints(minWidth: 58),
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
                 color: const Color(0xFFFFE9D3),
                 borderRadius: BorderRadius.circular(999),
               ),
               alignment: Alignment.center,
-              child: const Text(
-                '查看详情',
-                style: TextStyle(
-                  color: Color(0xFFFE9631),
-                  fontSize: 13,
-                  height: 1,
-                  fontWeight: FontWeight.w800,
-                  decoration: TextDecoration.none,
-                ),
-              ),
+              child: isOpening
+                  ? const CupertinoActivityIndicator(
+                      radius: 8,
+                      color: Color(0xFFFE9631),
+                    )
+                  : Text(
+                      isReady ? '开启' : '查看详情',
+                      style: const TextStyle(
+                        color: Color(0xFFFE9631),
+                        fontSize: 13,
+                        height: 1,
+                        fontWeight: FontWeight.w800,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
             ),
           ],
         ),
@@ -3642,8 +3722,10 @@ class _OpenedCapsuleSheetTile extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: Dismissible(
-        key: ValueKey('opened-sheet-${capsule.id}'),
-        direction: DismissDirection.endToStart,
+        key: ValueKey('arrived-sheet-${capsule.id}'),
+        direction: interactionLocked
+            ? DismissDirection.none
+            : DismissDirection.endToStart,
         confirmDismiss: (_) async {
           await onDelete();
           return false;
