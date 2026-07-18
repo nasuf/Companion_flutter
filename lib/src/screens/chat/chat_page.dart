@@ -2907,8 +2907,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           ),
           Positioned(
             top: safeTop + 84,
-            left: 86,
-            right: 30,
+            left: 58,
+            right: 58,
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 260),
               switchInCurve: Curves.easeOutCubic,
