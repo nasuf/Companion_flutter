@@ -15,6 +15,31 @@ class _CapsuleEditorResult {
   final bool deleted;
 }
 
+const _capsuleAssetBackWarm = 'assets/capsule/back-warm.svg';
+const _capsuleAssetBackOrange = 'assets/capsule/back-orange.svg';
+const _capsuleAssetDraftIcon = 'assets/capsule/draft-icon.png';
+const _capsuleAssetHomeHero = 'assets/capsule/home-hero.png';
+const _capsuleAssetHomeUnderline = 'assets/capsule/home-underline.svg';
+const _capsuleAssetLastOpened = 'assets/capsule/last-opened.png';
+const _capsuleAssetOpenedCalendar = 'assets/capsule/opened-calendar.svg';
+const _capsuleAssetOpenedIcon = 'assets/capsule/opened-icon.png';
+const _capsuleAssetOpenedStar = 'assets/capsule/opened-star.svg';
+const _capsuleAssetOpenedSummary = 'assets/capsule/opened-summary.png';
+const _capsuleAssetOpenedThumb = 'assets/capsule/opened-thumb.png';
+const _capsuleAssetOrangeArrow = 'assets/capsule/orange-arrow.svg';
+const _capsuleAssetPendingBig = 'assets/capsule/pending-big.png';
+const _capsuleAssetPendingIcon = 'assets/capsule/pending-icon.png';
+const _capsuleAssetReadyDeliveredPopup =
+    'assets/capsule/ready-delivered-popup.png';
+const _capsuleAssetWriteIcon = 'assets/capsule/write-icon.png';
+const _capsuleAssetPendingSticker54 = 'assets/capsule/pending-sticker-54.png';
+const _capsuleAssetPendingSticker55 = 'assets/capsule/pending-sticker-55.png';
+const _capsuleAssetPendingSticker56 = 'assets/capsule/pending-sticker-56.png';
+const _capsuleAssetPendingSticker58 = 'assets/capsule/pending-sticker-58.png';
+const _capsuleAssetPendingSticker59 = 'assets/capsule/pending-sticker-59.png';
+const _capsuleAssetPendingSticker64 = 'assets/capsule/pending-sticker-64.png';
+const _capsuleAssetPendingSticker65 = 'assets/capsule/pending-sticker-65.png';
+
 class CapsulePage extends StatefulWidget {
   const CapsulePage({super.key, required this.api, required this.session});
 
@@ -141,7 +166,7 @@ class _CapsulePageState extends State<CapsulePage> {
                   slivers: [
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                         child: _CapsuleTopBar(
                           onBack: () => Navigator.of(context).maybePop(),
                         ),
@@ -149,7 +174,7 @@ class _CapsulePageState extends State<CapsulePage> {
                     ),
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
                         child: const _CapsuleHomeHeader(),
                       ),
                     ),
@@ -276,13 +301,10 @@ class _CapsulePageState extends State<CapsulePage> {
 
   Future<void> _openPending(List<TimeCapsule> pending) async {
     if (pending.isEmpty) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      enableDrag: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.52),
-      builder: (_) => _PendingCapsuleScene(capsules: pending),
+    await Navigator.of(context).push<void>(
+      CupertinoPageRoute<void>(
+        builder: (_) => _PendingCapsuleScene(capsules: pending),
+      ),
     );
     if (!mounted) return;
     await _reloadLatestCapsules();
@@ -290,16 +312,23 @@ class _CapsulePageState extends State<CapsulePage> {
 
   Future<void> _openOpened(List<TimeCapsule> opened) async {
     if (opened.isEmpty) return;
-    final selected = await showModalBottomSheet<TimeCapsule>(
+    final selected = await showGeneralDialog<TimeCapsule>(
       context: context,
-      isScrollControlled: true,
-      enableDrag: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.42),
-      builder: (_) => _OpenedCapsulesSheet(
+      barrierDismissible: true,
+      barrierLabel: '关闭',
+      barrierColor: Colors.black.withValues(alpha: 0.10),
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (_, __, ___) => _OpenedCapsulesSheet(
         capsules: opened,
         onDelete: _deleteOpenedCapsule,
       ),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        return FadeTransition(opacity: curved, child: child);
+      },
     );
     if (!mounted) return;
     await _reloadLatestCapsules();
@@ -2277,14 +2306,7 @@ class _CapsuleTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _AppNavCircleButton(
-          icon: CupertinoIcons.chevron_left,
-          onPressed: onBack,
-        ),
-      ],
-    );
+    return Row(children: [_CapsuleWarmBackButton(onTap: onBack, light: true)]);
   }
 }
 
@@ -2441,19 +2463,14 @@ class _CapsuleHomeBackground extends StatelessWidget {
       child: Stack(
         children: [
           Positioned(
-            right: -70,
-            top: -28,
-            child: _WarmBlurSpot(
-              color: const Color(0xFFFFC271).withValues(alpha: 0.34),
-              size: 230,
-            ),
-          ),
-          Positioned(
-            left: -92,
-            bottom: 120,
-            child: _WarmBlurSpot(
-              color: const Color(0xFFFFE2B0).withValues(alpha: 0.28),
-              size: 260,
+            left: 0,
+            right: 0,
+            top: 0,
+            height: 253,
+            child: Image.asset(
+              _capsuleAssetHomeHero,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
             ),
           ),
         ],
@@ -2481,87 +2498,48 @@ class _WarmBlurSpot extends StatelessWidget {
   }
 }
 
-class _CapsuleHomeHeader extends StatefulWidget {
+class _CapsuleHomeHeader extends StatelessWidget {
   const _CapsuleHomeHeader();
-
-  @override
-  State<_CapsuleHomeHeader> createState() => _CapsuleHomeHeaderState();
-}
-
-class _CapsuleHomeHeaderState extends State<_CapsuleHomeHeader>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 4200),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 126,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          final breath = Curves.easeInOut.transform(_controller.value);
-          return Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned(
-                left: 4,
-                top: 34,
-                child: Text(
-                  'Hi，未来的自己',
-                  style: TextStyle(
-                    color: const Color(0xFFFE9631),
-                    fontSize: 24,
-                    height: 1,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                    shadows: [
-                      Shadow(
-                        color: const Color(0xFFFFB764).withValues(alpha: 0.16),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
+      height: 92,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: 4,
+            top: 25,
+            child: Text(
+              'Hi，未来的自己',
+              style: TextStyle(
+                color: const Color(0xFFFE9631),
+                fontSize: 24,
+                height: 1.12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+                shadows: [
+                  Shadow(
+                    color: const Color(0xFFFFB764).withValues(alpha: 0.16),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
                   ),
-                ),
+                ],
               ),
-              Positioned(
-                left: 98,
-                top: 68,
-                child: CustomPaint(
-                  size: const Size(82, 18),
-                  painter: _CapsuleHomeUnderlinePainter(),
-                ),
-              ),
-              Positioned(
-                right: -2,
-                top: -10 + breath * 8,
-                child: Transform.rotate(
-                  angle: -0.14 + breath * 0.035,
-                  child: const SizedBox(
-                    width: 178,
-                    height: 132,
-                    child: CustomPaint(painter: _OrangeCapsuleScenePainter()),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
+            ),
+          ),
+          Positioned(
+            left: 97,
+            top: 63,
+            child: SvgPicture.asset(
+              _capsuleAssetHomeUnderline,
+              width: 76,
+              height: 14,
+              fit: BoxFit.fill,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2598,10 +2576,10 @@ class _CapsuleWriteEntryCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const SizedBox(
+            SizedBox(
               width: 64,
               height: 64,
-              child: CustomPaint(painter: _CapsuleWriteIconPainter()),
+              child: Image.asset(_capsuleAssetWriteIcon, fit: BoxFit.contain),
             ),
             const SizedBox(width: 16),
             const Expanded(
@@ -2633,25 +2611,10 @@ class _CapsuleWriteEntryCard extends StatelessWidget {
                 ],
               ),
             ),
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.84),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFFF9631).withValues(alpha: 0.20),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                CupertinoIcons.chevron_right,
-                color: Color(0xFFFE9631),
-                size: 25,
-              ),
+            SizedBox(
+              width: 36,
+              height: 36,
+              child: SvgPicture.asset(_capsuleAssetOrangeArrow),
             ),
           ],
         ),
@@ -2689,7 +2652,12 @@ class _CapsuleHomeShortcutGrid extends StatelessWidget {
             shadow: const Color(0xFFAB5F00),
             badgeColor: const Color(0xFFFFA02E),
             onTap: onDrafts,
-            icon: const _DraftShortcutIcon(),
+            icon: Image.asset(
+              _capsuleAssetDraftIcon,
+              width: 38,
+              height: 48,
+              fit: BoxFit.contain,
+            ),
           ),
         ),
         const SizedBox(width: 19),
@@ -2701,7 +2669,12 @@ class _CapsuleHomeShortcutGrid extends StatelessWidget {
             shadow: const Color(0xFF4300A8),
             badgeColor: const Color(0xFFFF6265),
             onTap: onPending,
-            icon: const _PendingShortcutIcon(),
+            icon: Image.asset(
+              _capsuleAssetPendingIcon,
+              width: 32,
+              height: 48,
+              fit: BoxFit.contain,
+            ),
             showBadge: pendingCount > 0,
           ),
         ),
@@ -2714,7 +2687,12 @@ class _CapsuleHomeShortcutGrid extends StatelessWidget {
             shadow: const Color(0xFF058700),
             badgeColor: const Color(0xFF3DC45D),
             onTap: onOpened,
-            icon: const _OpenedShortcutIcon(),
+            icon: Image.asset(
+              _capsuleAssetOpenedIcon,
+              width: 48,
+              height: 48,
+              fit: BoxFit.contain,
+            ),
           ),
         ),
       ],
@@ -2855,13 +2833,13 @@ class _CapsuleLastOpenedCard extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          const Positioned(
-            right: 8,
-            top: -18,
+          Positioned(
+            right: 0,
+            top: -20,
             child: SizedBox(
               width: 132,
-              height: 118,
-              child: CustomPaint(painter: _EnvelopeDomePainter()),
+              height: 109,
+              child: Image.asset(_capsuleAssetLastOpened, fit: BoxFit.contain),
             ),
           ),
           Column(
@@ -2912,384 +2890,6 @@ class _CapsuleLastOpenedCard extends StatelessWidget {
       ),
     );
   }
-}
-
-class _DraftShortcutIcon extends StatelessWidget {
-  const _DraftShortcutIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      width: 42,
-      height: 48,
-      child: CustomPaint(painter: _DraftShortcutPainter()),
-    );
-  }
-}
-
-class _PendingShortcutIcon extends StatelessWidget {
-  const _PendingShortcutIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      width: 42,
-      height: 48,
-      child: CustomPaint(painter: _PendingShortcutPainter()),
-    );
-  }
-}
-
-class _OpenedShortcutIcon extends StatelessWidget {
-  const _OpenedShortcutIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      width: 48,
-      height: 48,
-      child: CustomPaint(painter: _OpenedShortcutPainter()),
-    );
-  }
-}
-
-class _CapsuleHomeUnderlinePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFFFE9631)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2
-      ..strokeCap = StrokeCap.round;
-    final path = Path()
-      ..moveTo(0, size.height * 0.55)
-      ..cubicTo(
-        size.width * 0.20,
-        size.height * 0.20,
-        size.width * 0.34,
-        size.height * 0.96,
-        size.width * 0.50,
-        size.height * 0.55,
-      )
-      ..cubicTo(
-        size.width * 0.66,
-        size.height * 0.14,
-        size.width * 0.74,
-        size.height * 0.86,
-        size.width,
-        size.height * 0.42,
-      );
-    canvas.drawPath(path, paint);
-    final heart = Path()
-      ..moveTo(size.width + 3, size.height * 0.36)
-      ..cubicTo(size.width + 9, -2, size.width + 16, 2, size.width + 10, 9)
-      ..cubicTo(size.width + 6, 4, size.width + 1, 1, size.width + 3, 11);
-    canvas.drawPath(heart, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _OrangeCapsuleScenePainter extends CustomPainter {
-  const _OrangeCapsuleScenePainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final cloud = Paint()..color = Colors.white.withValues(alpha: 0.88);
-    for (final rect in [
-      Rect.fromLTWH(size.width * 0.22, size.height * 0.70, 44, 20),
-      Rect.fromLTWH(size.width * 0.46, size.height * 0.66, 62, 24),
-      Rect.fromLTWH(size.width * 0.68, size.height * 0.72, 44, 18),
-    ]) {
-      canvas.drawOval(rect, cloud);
-    }
-
-    final center = Offset(size.width * 0.58, size.height * 0.42);
-    final rect = Rect.fromCenter(
-      center: Offset.zero,
-      width: size.width * 0.42,
-      height: size.height * 0.82,
-    );
-    final capsule = RRect.fromRectAndRadius(rect, Radius.circular(rect.width));
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(0.43);
-    canvas.drawRRect(
-      capsule.shift(const Offset(0, 5)),
-      Paint()
-        ..color = const Color(0xFFE97400).withValues(alpha: 0.15)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
-    );
-    final fill = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFFFFC04D), Color(0xFFFF8C00), Color(0xFFFFD874)],
-      ).createShader(rect);
-    canvas.drawRRect(capsule, fill);
-    canvas.drawRRect(
-      capsule.deflate(2.2),
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.42)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.2,
-    );
-    canvas.drawLine(
-      Offset(rect.left + 9, 0),
-      Offset(rect.right - 9, 0),
-      Paint()
-        ..color = const Color(0xFFFF7700).withValues(alpha: 0.48)
-        ..strokeWidth = 3
-        ..strokeCap = StrokeCap.round,
-    );
-    canvas.drawLine(
-      Offset(rect.left + 10, -rect.height * 0.26),
-      Offset(rect.left + 12, rect.height * 0.29),
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.74)
-        ..strokeWidth = 5
-        ..strokeCap = StrokeCap.round,
-    );
-    canvas.drawCircle(
-      Offset(rect.right - 20, rect.top + 16),
-      7,
-      Paint()..color = Colors.white.withValues(alpha: 0.76),
-    );
-    canvas.restore();
-
-    final sparkle = Paint()..color = const Color(0xFFFFA51F);
-    for (final point in [
-      Offset(size.width * 0.08, size.height * 0.24),
-      Offset(size.width * 0.78, size.height * 0.12),
-      Offset(size.width * 0.88, size.height * 0.56),
-    ]) {
-      canvas.drawCircle(point, 1.6, sparkle);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _CapsuleWriteIconPainter extends CustomPainter {
-  const _CapsuleWriteIconPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final shadow = Paint()
-      ..color = const Color(0xFFAA6A00).withValues(alpha: 0.20)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
-    final paper = RRect.fromRectAndRadius(
-      Rect.fromLTWH(9, 9, size.width * 0.58, size.height * 0.68),
-      const Radius.circular(8),
-    );
-    canvas.drawRRect(paper.shift(const Offset(2, 5)), shadow);
-    canvas.drawRRect(paper, Paint()..color = const Color(0xFFFFFBF4));
-    canvas.drawRRect(
-      paper,
-      Paint()
-        ..color = const Color(0xFFFFD69A)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.4,
-    );
-    final linePaint = Paint()
-      ..color = const Color(0xFFEBC28B)
-      ..strokeWidth = 1.2
-      ..strokeCap = StrokeCap.round;
-    for (final y in [23.0, 32.0, 41.0]) {
-      canvas.drawLine(Offset(18, y), Offset(39, y), linePaint);
-    }
-    final pen = Paint()
-      ..color = const Color(0xFFFFA12A)
-      ..strokeWidth = 8
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(
-      Offset(size.width * 0.61, size.height * 0.27),
-      Offset(size.width * 0.36, size.height * 0.70),
-      pen,
-    );
-    canvas.drawLine(
-      Offset(size.width * 0.61, size.height * 0.27),
-      Offset(size.width * 0.36, size.height * 0.70),
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.38)
-        ..strokeWidth = 2
-        ..strokeCap = StrokeCap.round,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _DraftShortcutPainter extends CustomPainter {
-  const _DraftShortcutPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(6, 4, size.width - 12, size.height - 7),
-      const Radius.circular(7),
-    );
-    canvas.drawRRect(rect, Paint()..color = const Color(0xFFFFF7EC));
-    canvas.drawRRect(
-      rect,
-      Paint()
-        ..color = const Color(0xFFFFB04D)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
-    );
-    final fold = Path()
-      ..moveTo(size.width - 16, 4)
-      ..lineTo(size.width - 6, 14)
-      ..lineTo(size.width - 16, 14)
-      ..close();
-    canvas.drawPath(fold, Paint()..color = const Color(0xFFFFC57B));
-    final line = Paint()
-      ..color = const Color(0xFFFFB04D).withValues(alpha: 0.55)
-      ..strokeWidth = 1.5
-      ..strokeCap = StrokeCap.round;
-    for (final y in [20.0, 29.0, 38.0]) {
-      canvas.drawLine(Offset(14, y), Offset(size.width - 14, y), line);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _PendingShortcutPainter extends CustomPainter {
-  const _PendingShortcutPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final glass = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFFE2C7FF), Color(0xFF8E62FF), Color(0xFFE2C7FF)],
-      ).createShader(Offset.zero & size);
-    final outline = Paint()
-      ..color = const Color(0xFFA879FF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.4
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    final path = Path()
-      ..moveTo(size.width * 0.28, 4)
-      ..lineTo(size.width * 0.72, 4)
-      ..quadraticBezierTo(size.width * 0.64, 17, size.width * 0.50, 22)
-      ..quadraticBezierTo(size.width * 0.36, 17, size.width * 0.28, 4)
-      ..moveTo(size.width * 0.28, size.height - 4)
-      ..lineTo(size.width * 0.72, size.height - 4)
-      ..quadraticBezierTo(size.width * 0.64, 31, size.width * 0.50, 26)
-      ..quadraticBezierTo(
-        size.width * 0.36,
-        31,
-        size.width * 0.28,
-        size.height - 4,
-      );
-    canvas.drawPath(path, outline);
-    final sand = Path()
-      ..moveTo(size.width * 0.36, 10)
-      ..lineTo(size.width * 0.64, 10)
-      ..lineTo(size.width * 0.50, 21)
-      ..close()
-      ..moveTo(size.width * 0.50, 27)
-      ..lineTo(size.width * 0.68, size.height - 9)
-      ..lineTo(size.width * 0.32, size.height - 9)
-      ..close();
-    canvas.drawPath(sand, glass);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _OpenedShortcutPainter extends CustomPainter {
-  const _OpenedShortcutPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final box = RRect.fromRectAndRadius(
-      Rect.fromLTWH(5, 12, size.width - 10, size.height - 17),
-      const Radius.circular(8),
-    );
-    canvas.drawRRect(
-      box,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFB5F0A5), Color(0xFF52D16E)],
-        ).createShader(Offset.zero & size),
-    );
-    final lid = RRect.fromRectAndRadius(
-      Rect.fromLTWH(9, 6, size.width - 18, 15),
-      const Radius.circular(6),
-    );
-    canvas.drawRRect(lid, Paint()..color = const Color(0xFF7EE58D));
-    final star = Paint()..color = const Color(0xFFFFE157);
-    canvas.drawCircle(Offset(size.width * 0.68, size.height * 0.52), 3.5, star);
-    canvas.drawCircle(Offset(size.width * 0.45, size.height * 0.36), 2, star);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _EnvelopeDomePainter extends CustomPainter {
-  const _EnvelopeDomePainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final dome = Paint()
-      ..shader = RadialGradient(
-        center: const Alignment(-0.1, -0.45),
-        radius: 0.92,
-        colors: [
-          Colors.white.withValues(alpha: 0.92),
-          const Color(0xFFFFD79B).withValues(alpha: 0.52),
-          const Color(0xFFFFA12A).withValues(alpha: 0.12),
-        ],
-      ).createShader(Offset.zero & size);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(16, 8, size.width - 32, size.height - 22),
-        const Radius.circular(42),
-      ),
-      dome,
-    );
-    final envelope = RRect.fromRectAndRadius(
-      Rect.fromLTWH(36, 50, 58, 38),
-      const Radius.circular(6),
-    );
-    canvas.drawRRect(envelope, Paint()..color = const Color(0xFFFFF7E8));
-    final flap = Path()
-      ..moveTo(36, 52)
-      ..lineTo(65, 74)
-      ..lineTo(94, 52);
-    canvas.drawPath(
-      flap,
-      Paint()
-        ..color = const Color(0xFFFFBE73)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
-    );
-    canvas.drawCircle(
-      Offset(65, 70),
-      7,
-      Paint()..color = const Color(0xFFFF7A45),
-    );
-    canvas.drawOval(
-      Rect.fromLTWH(30, 94, 78, 12),
-      Paint()..color = const Color(0xFFFFBD62).withValues(alpha: 0.30),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _CapsuleListTile extends StatelessWidget {
@@ -3478,185 +3078,262 @@ class _PendingCapsuleSceneState extends State<_PendingCapsuleScene>
 
   @override
   Widget build(BuildContext context) {
-    final height = MediaQuery.sizeOf(context).height * 0.92;
+    final size = MediaQuery.sizeOf(context);
+    final sx = size.width / 390;
+    final sy = size.height / 844;
+    double x(double value) => value * sx;
+    double y(double value) => value * sy;
     final first = widget.capsules.first;
     final dateText = first.openDate == null
         ? '未知'
         : _formatCapsuleShortDate(first.openDate!);
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      child: SizedBox(
-        height: height,
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, _) {
-            final breath = Curves.easeInOut.transform(_controller.value);
-            return Stack(
-              children: [
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Color(0xFFEB772A),
-                          Color(0xFFFFA240),
-                          Color(0xFFFFE2A7),
-                        ],
+    return Material(
+      color: const Color(0xFFEB772A),
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final breath = Curves.easeInOut.transform(_controller.value);
+          Widget sticker(
+            String asset, {
+            required double left,
+            required double top,
+            required double width,
+            required double height,
+            double rotate = 0,
+            double dx = 0,
+            double dy = 0,
+          }) {
+            return Positioned(
+              left: x(left),
+              top: y(top),
+              width: x(width),
+              height: y(height),
+              child: Transform.translate(
+                offset: Offset(dx * breath, dy * breath),
+                child: Transform.rotate(
+                  angle: rotate,
+                  child: Image.asset(asset, fit: BoxFit.contain),
+                ),
+              ),
+            );
+          }
+
+          return Stack(
+            children: [
+              Positioned(
+                left: x(-284.31),
+                top: y(331),
+                width: x(881.32),
+                height: y(746.82),
+                child: Transform.rotate(
+                  angle: 0.351,
+                  child: _WarmBlurSpot(
+                    color: const Color(0xFFFFF2C5).withValues(alpha: 0.56),
+                    size: x(720),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: x(243),
+                top: y(-99),
+                width: x(300),
+                height: y(313),
+                child: _WarmBlurSpot(
+                  color: Colors.white.withValues(alpha: 0.34),
+                  size: x(313),
+                ),
+              ),
+              Positioned(
+                left: x(20),
+                top: y(55),
+                child: _CapsuleWarmBackButton(
+                  onTap: () => Navigator.of(context).maybePop(),
+                ),
+              ),
+              Positioned(
+                left: x(-82),
+                top: y(639),
+                width: x(503),
+                height: y(379),
+                child: Transform.rotate(
+                  angle: 0.349,
+                  child: Container(color: const Color(0xFFFFC271)),
+                ),
+              ),
+              Positioned(
+                left: x(42),
+                top: y(646),
+                width: x(205),
+                height: y(54),
+                child: Opacity(
+                  opacity: 0.55,
+                  child: ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 7, sigmaY: 7),
+                    child: Transform.rotate(
+                      angle: 0.20,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            colors: [
+                              const Color(0xFFFF8A00).withValues(alpha: 0.62),
+                              const Color(0xFFFF8A00).withValues(alpha: 0.08),
+                              Colors.transparent,
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
                       ),
                     ),
                   ),
                 ),
-                Positioned(
-                  right: -126 + breath * 14,
-                  top: -86,
-                  child: _WarmBlurSpot(
-                    color: Colors.white.withValues(alpha: 0.34),
-                    size: 318,
-                  ),
-                ),
-                Positioned(
-                  left: -270,
-                  bottom: -230 + breath * 18,
-                  child: Transform.rotate(
-                    angle: 0.35,
-                    child: _WarmBlurSpot(
-                      color: const Color(0xFFFFF2C5).withValues(alpha: 0.42),
-                      size: 720,
+              ),
+              Positioned(
+                left: x(30),
+                top: y(655),
+                width: x(178),
+                height: y(46),
+                child: Transform.rotate(
+                  angle: 0.22,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: const Color(0xFFFF8A00).withValues(alpha: 0.70),
+                        width: math.min(math.max(x(8), 3.5), 8),
+                      ),
+                      borderRadius: BorderRadius.circular(999),
                     ),
                   ),
                 ),
-                SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            _CapsuleWarmBackButton(
-                              onTap: () => Navigator.of(context).pop(),
-                            ),
-                            const Spacer(),
-                            Text(
-                              '${widget.capsules.length} 枚待解封',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.78),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                decoration: TextDecoration.none,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          '时间胶囊',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.96),
-                            fontSize: 36,
-                            height: 1,
-                            fontWeight: FontWeight.w900,
-                            decoration: TextDecoration.none,
-                            shadows: [
-                              Shadow(
-                                color: const Color(
-                                  0xFF9B4100,
-                                ).withValues(alpha: 0.20),
-                                blurRadius: 12,
-                                offset: const Offset(0, 6),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                        Container(
-                          height: 38,
-                          padding: const EdgeInsets.symmetric(horizontal: 18),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFF9215),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: const Color(0xFFFFFC9F)),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            '开启时间：$dateText',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              height: 1,
-                              fontWeight: FontWeight.w800,
-                              decoration: TextDecoration.none,
-                            ),
-                          ),
-                        ),
-                        const Spacer(),
-                        SizedBox(
-                          height: math.min(460, height * 0.58),
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              Positioned(
-                                left: 0,
-                                top: 74 + breath * 8,
-                                child: Transform.rotate(
-                                  angle: -0.12,
-                                  child: const _FloatingSticker(text: '2026'),
-                                ),
-                              ),
-                              Positioned(
-                                right: 12,
-                                bottom: 86 - breath * 8,
-                                child: Transform.rotate(
-                                  angle: 0.42,
-                                  child: const _FloatingSticker(text: 'Future'),
-                                ),
-                              ),
-                              Positioned(
-                                left: 24,
-                                bottom: 138 + breath * 5,
-                                child: const Icon(
-                                  CupertinoIcons.camera_fill,
-                                  color: Color(0xFFFFF4DE),
-                                  size: 42,
-                                ),
-                              ),
-                              Positioned(
-                                right: 10,
-                                top: 212 - breath * 7,
-                                child: const Icon(
-                                  CupertinoIcons.smiley_fill,
-                                  color: Color(0xFFFFDB47),
-                                  size: 58,
-                                ),
-                              ),
-                              Transform.translate(
-                                offset: Offset(0, -8 + breath * 16),
-                                child: Transform.rotate(
-                                  angle: -0.38 + breath * 0.06,
-                                  child: const SizedBox(
-                                    width: 260,
-                                    height: 360,
-                                    child: CustomPaint(
-                                      painter: _PendingBigCapsulePainter(),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        _PendingCapsuleMiniList(capsules: widget.capsules),
-                      ],
-                    ),
-                  ),
+              ),
+              Positioned(
+                left: x(44),
+                top: y(281) + breath * y(8),
+                width: x(294),
+                height: y(409),
+                child: Image.asset(
+                  _capsuleAssetPendingBig,
+                  fit: BoxFit.contain,
+                  opacity: const AlwaysStoppedAnimation<double>(0.80),
                 ),
-              ],
-            );
-          },
-        ),
+              ),
+              Positioned(
+                left: x(0),
+                right: 0,
+                top: y(99),
+                child: Column(
+                  children: [
+                    ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.white, Color(0xFFFFD697)],
+                      ).createShader(bounds),
+                      child: const Text(
+                        '时间胶囊',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 36,
+                          height: 1,
+                          fontWeight: FontWeight.w700,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: y(16)),
+                    Container(
+                      width: x(160),
+                      height: y(38),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF9215),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: const Color(0xFFFFFC9F)),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '开启时间：$dateText',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          height: 1,
+                          fontWeight: FontWeight.w700,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              sticker(
+                _capsuleAssetPendingSticker58,
+                left: 16,
+                top: 267,
+                width: 92,
+                height: 42,
+                dx: -3,
+                dy: 5,
+              ),
+              sticker(
+                _capsuleAssetPendingSticker65,
+                left: 16,
+                top: 367,
+                width: 74,
+                height: 64,
+                dx: 4,
+                dy: -5,
+              ),
+              sticker(
+                _capsuleAssetPendingSticker54,
+                left: 133,
+                top: 422,
+                width: 53,
+                height: 44,
+                dx: -2,
+                dy: -4,
+              ),
+              sticker(
+                _capsuleAssetPendingSticker55,
+                left: 96,
+                top: 488,
+                width: 64,
+                height: 61,
+                rotate: 0.551,
+                dx: 3,
+                dy: 4,
+              ),
+              sticker(
+                _capsuleAssetPendingSticker56,
+                left: 180,
+                top: 494,
+                width: 67,
+                height: 76,
+                dx: -3,
+                dy: 4,
+              ),
+              sticker(
+                _capsuleAssetPendingSticker64,
+                left: 299,
+                top: 521,
+                width: 64,
+                height: 65,
+                dx: 2,
+                dy: -4,
+              ),
+              sticker(
+                _capsuleAssetPendingSticker59,
+                left: 247,
+                top: 610,
+                width: 112,
+                height: 94,
+                rotate: 0.524,
+                dx: -4,
+                dy: -5,
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -3677,112 +3354,114 @@ class _OpenedCapsulesSheetState extends State<_OpenedCapsulesSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final height = MediaQuery.sizeOf(context).height * 0.92;
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      child: Container(
-        height: height,
-        color: const Color(0xFFFEFCFA),
-        child: SafeArea(
-          bottom: false,
-          child: DefaultTextStyle(
-            style: const TextStyle(
-              color: Color(0xFF111111),
-              decoration: TextDecoration.none,
+    final size = MediaQuery.sizeOf(context);
+    final sx = size.width / 390;
+    final sy = size.height / 844;
+    double x(double value) => value * sx;
+    double y(double value) => value * sy;
+    return Material(
+      color: const Color(0xFFFEFCFA),
+      child: DefaultTextStyle(
+        style: const TextStyle(
+          color: Color(0xFF111111),
+          decoration: TextDecoration.none,
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              left: x(20),
+              top: y(55),
+              child: _CapsuleWarmBackButton(
+                onTap: () => Navigator.of(context).pop(),
+                light: true,
+              ),
             ),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                  child: Row(
-                    children: [
-                      _CapsuleWarmBackButton(
-                        onTap: () => Navigator.of(context).pop(),
-                        light: true,
-                      ),
-                      const Expanded(
-                        child: Text(
-                          '已解封',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 36),
-                    ],
+            Positioned(
+              top: y(59),
+              left: 0,
+              right: 0,
+              child: const Text(
+                '已解封',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 20,
+                  height: 1,
+                  fontWeight: FontWeight.w700,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+            Positioned(
+              left: x(17),
+              top: y(117),
+              width: x(350),
+              height: y(148),
+              child: _OpenedSummaryCard(count: _capsules.length),
+            ),
+            Positioned(
+              left: x(17),
+              top: y(294),
+              child: Row(
+                children: [
+                  SvgPicture.asset(
+                    _capsuleAssetOpenedStar,
+                    width: x(20),
+                    height: y(20),
                   ),
-                ),
-                const SizedBox(height: 26),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 17),
-                  child: _OpenedSummaryCard(count: _capsules.length),
-                ),
-                const SizedBox(height: 28),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 17),
-                  child: Row(
-                    children: const [
-                      Icon(
-                        CupertinoIcons.sparkles,
-                        color: Color(0xFFFE9631),
-                        size: 20,
-                      ),
-                      SizedBox(width: 8),
-                      Text(
-                        '我的胶囊',
+                  SizedBox(width: x(8)),
+                  const Text(
+                    '我的胶囊',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontSize: 16,
+                      height: 1,
+                      fontWeight: FontWeight.w500,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              left: x(17),
+              right: x(17),
+              top: y(334),
+              bottom: y(34),
+              child: _capsules.isEmpty
+                  ? const Center(
+                      child: Text(
+                        '暂无已解封胶囊',
                         style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 16,
+                          color: Color(0xFF9A9A9A),
+                          fontSize: 15,
                           fontWeight: FontWeight.w700,
                           decoration: TextDecoration.none,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: _capsules.isEmpty
-                      ? const Center(
-                          child: Text(
-                            '暂无已解封胶囊',
-                            style: TextStyle(
-                              color: Color(0xFF9A9A9A),
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              decoration: TextDecoration.none,
-                            ),
-                          ),
-                        )
-                      : ListView.separated(
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(17, 0, 17, 28),
-                          itemCount: _capsules.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 16),
-                          itemBuilder: (context, index) {
-                            final capsule = _capsules[index];
-                            return _OpenedCapsuleSheetTile(
-                              capsule: capsule,
-                              onTap: () => Navigator.of(context).pop(capsule),
-                              onDelete: () async {
-                                final deleted = await widget.onDelete(capsule);
-                                if (deleted && mounted) {
-                                  setState(() => _capsules.removeAt(index));
-                                }
-                                return deleted;
-                              },
-                            );
+                    )
+                  : ListView.separated(
+                      physics: const BouncingScrollPhysics(),
+                      padding: EdgeInsets.zero,
+                      itemCount: _capsules.length,
+                      separatorBuilder: (_, __) => SizedBox(height: y(16)),
+                      itemBuilder: (context, index) {
+                        final capsule = _capsules[index];
+                        return _OpenedCapsuleSheetTile(
+                          capsule: capsule,
+                          onTap: () => Navigator.of(context).pop(capsule),
+                          onDelete: () async {
+                            final deleted = await widget.onDelete(capsule);
+                            if (deleted && mounted) {
+                              setState(() => _capsules.removeAt(index));
+                            }
+                            return deleted;
                           },
-                        ),
-                ),
-              ],
+                        );
+                      },
+                    ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -3812,13 +3491,16 @@ class _OpenedSummaryCard extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          const Positioned(
-            right: -6,
-            top: -26,
+          Positioned(
+            right: -8,
+            top: -24,
             child: SizedBox(
-              width: 174,
-              height: 156,
-              child: CustomPaint(painter: _OpenedHourglassScenePainter()),
+              width: 191,
+              height: 146,
+              child: Image.asset(
+                _capsuleAssetOpenedSummary,
+                fit: BoxFit.contain,
+              ),
             ),
           ),
           Column(
@@ -3879,71 +3561,6 @@ class _OpenedSummaryCard extends StatelessWidget {
   }
 }
 
-class _PendingCapsuleMiniList extends StatelessWidget {
-  const _PendingCapsuleMiniList({required this.capsules});
-
-  final List<TimeCapsule> capsules;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 54,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        itemCount: capsules.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemBuilder: (context, index) {
-          final capsule = capsules[index];
-          final date = capsule.openDate == null
-              ? '未知'
-              : _formatCapsuleShortDate(capsule.openDate!);
-          return Container(
-            width: 154,
-            padding: const EdgeInsets.symmetric(horizontal: 13),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.20),
-              borderRadius: BorderRadius.circular(17),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.36)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.22),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    CupertinoIcons.lock_fill,
-                    color: Colors.white,
-                    size: 16,
-                  ),
-                ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Text(
-                    '$date 解封',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
 class _OpenedCapsuleSheetTile extends StatelessWidget {
   const _OpenedCapsuleSheetTile({
     required this.capsule,
@@ -3986,21 +3603,9 @@ class _OpenedCapsuleSheetTile extends StatelessWidget {
               height: 72,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFFEAF7FF), Color(0xFFFFF1D8)],
-                ),
               ),
-              child: const Center(
-                child: CustomPaint(
-                  size: Size(38, 38),
-                  painter: _CapsuleSidebarIconPainter(
-                    accent: Color(0xFFFE9631),
-                    showDot: false,
-                  ),
-                ),
-              ),
+              clipBehavior: Clip.antiAlias,
+              child: Image.asset(_capsuleAssetOpenedThumb, fit: BoxFit.cover),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -4035,10 +3640,10 @@ class _OpenedCapsuleSheetTile extends StatelessWidget {
                   const SizedBox(height: 7),
                   Row(
                     children: [
-                      const Icon(
-                        CupertinoIcons.calendar,
-                        size: 10,
-                        color: Color(0xFF666666),
+                      SvgPicture.asset(
+                        _capsuleAssetOpenedCalendar,
+                        width: 10,
+                        height: 10,
                       ),
                       const SizedBox(width: 4),
                       Text(
@@ -4107,90 +3712,23 @@ class _CapsuleWarmBackButton extends StatelessWidget {
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
       onPressed: onTap,
-      child: Container(
+      child: SizedBox(
         width: 36,
         height: 36,
-        decoration: BoxDecoration(
-          color: light
-              ? Colors.white.withValues(alpha: 0.88)
-              : Colors.white.withValues(alpha: 0.28),
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFAA5F00).withValues(alpha: 0.12),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
+        child: OverflowBox(
+          maxWidth: 44,
+          maxHeight: 44,
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: SvgPicture.asset(
+              light ? _capsuleAssetBackOrange : _capsuleAssetBackWarm,
             ),
-          ],
-        ),
-        child: Icon(
-          CupertinoIcons.chevron_left,
-          color: light ? const Color(0xFFFE9631) : Colors.white,
-          size: 22,
-        ),
-      ),
-    );
-  }
-}
-
-class _FloatingSticker extends StatelessWidget {
-  const _FloatingSticker({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(
-        color: Colors.white,
-        fontSize: 24,
-        fontWeight: FontWeight.w900,
-        fontStyle: FontStyle.italic,
-        decoration: TextDecoration.none,
-        shadows: [
-          Shadow(color: Color(0xFFFF7C1E), blurRadius: 0, offset: Offset(1, 1)),
-          Shadow(
-            color: Color(0xFFFF7C1E),
-            blurRadius: 0,
-            offset: Offset(-1, 1),
           ),
-        ],
+        ),
       ),
     );
   }
-}
-
-class _PendingBigCapsulePainter extends CustomPainter {
-  const _PendingBigCapsulePainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const scene = _OrangeCapsuleScenePainter();
-    scene.paint(canvas, size);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _OpenedHourglassScenePainter extends CustomPainter {
-  const _OpenedHourglassScenePainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const dome = _EnvelopeDomePainter();
-    dome.paint(canvas, size);
-    canvas.save();
-    canvas.translate(size.width * 0.50, size.height * 0.16);
-    canvas.rotate(0.18);
-    const hourglass = _PendingShortcutPainter();
-    hourglass.paint(canvas, Size(size.width * 0.30, size.height * 0.52));
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _CapsulePickerSheet extends StatelessWidget {
@@ -4304,133 +3842,195 @@ class _CapsuleSealedOverlayState extends State<_CapsuleSealedOverlay>
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final sx = size.width / 390;
+    final sy = size.height / 844;
+    double x(double value) => value * sx;
+    double y(double value) => value * sy;
     final date = widget.capsule.openDate;
     return Material(
-      color: Colors.black.withValues(alpha: 0.70),
-      child: SafeArea(
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, _) {
-            final cardTop = lerpDouble(-220, 110, _drop.value)!;
-            final rotation = math.sin(_sway.value * math.pi * 2) * 0.018;
-            return Stack(
-              children: [
-                Positioned.fill(
+      color: Colors.black.withValues(alpha: 0.76),
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final cardTop = lerpDouble(y(-360), y(143), _drop.value)!;
+          final rotation = math.sin(_sway.value * math.pi * 2) * 0.012;
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: Opacity(
+                  opacity: _fade.value,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: const Alignment(0, -0.16),
+                        radius: 0.86,
+                        colors: [
+                          const Color(0xFFFFDA66).withValues(alpha: 0.22),
+                          const Color(0xFFFFB52A).withValues(alpha: 0.08),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: y(50),
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    width: math.max(1.2, x(1.5)),
+                    height: math.max(0, cardTop - y(50)),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.70),
+                      borderRadius: BorderRadius.circular(999),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(
+                            0xFFFFD767,
+                          ).withValues(alpha: 0.36),
+                          blurRadius: 10,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: cardTop - y(3),
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    width: x(7),
+                    height: x(7),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFC34A),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(
+                            0xFFFFD767,
+                          ).withValues(alpha: 0.64),
+                          blurRadius: 12,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: cardTop,
+                left: 0,
+                right: 0,
+                child: Transform.rotate(
+                  angle: rotation,
+                  child: Center(
+                    child: _SealedTicket(
+                      date: date,
+                      width: x(282),
+                      height: y(335),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: x(42),
+                right: x(42),
+                top: y(565),
+                child: Transform.scale(
+                  scale: _button.value.clamp(0.0, 1.0),
                   child: Opacity(
-                    opacity: _fade.value,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: RadialGradient(
-                          center: const Alignment(0, -0.2),
-                          radius: 0.9,
-                          colors: [
-                            const Color(0xFFFFD86E).withValues(alpha: 0.18),
-                            Colors.transparent,
+                    opacity: _button.value.clamp(0.0, 1.0),
+                    child: CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Container(
+                        height: y(56),
+                        constraints: const BoxConstraints(minHeight: 52),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.84),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.28),
+                              blurRadius: 28,
+                              offset: const Offset(0, 12),
+                            ),
+                            BoxShadow(
+                              color: Colors.white.withValues(alpha: 0.42),
+                              blurRadius: 12,
+                              spreadRadius: 1,
+                            ),
                           ],
                         ),
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 42,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Container(
-                      width: 2,
-                      height: math.max(0, cardTop - 24),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.82),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: cardTop,
-                  left: 0,
-                  right: 0,
-                  child: Transform.rotate(
-                    angle: rotation,
-                    child: Center(child: _SealedTicket(date: date)),
-                  ),
-                ),
-                Positioned(
-                  left: 40,
-                  right: 40,
-                  bottom: 54,
-                  child: Transform.scale(
-                    scale: _button.value.clamp(0.0, 1.0),
-                    child: Opacity(
-                      opacity: _button.value.clamp(0.0, 1.0),
-                      child: CupertinoButton(
-                        padding: EdgeInsets.zero,
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: Container(
-                          height: 58,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(29),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.22),
-                                blurRadius: 24,
-                                offset: const Offset(0, 12),
-                              ),
-                            ],
-                          ),
-                          alignment: Alignment.center,
-                          child: const Text(
-                            '完成',
-                            style: TextStyle(
-                              color: Color(0xFF151719),
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                            ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          '完成',
+                          style: TextStyle(
+                            color: const Color(0xFF151719),
+                            fontSize: math.max(20, x(22)),
+                            fontWeight: FontWeight.w900,
+                            decoration: TextDecoration.none,
                           ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ],
-            );
-          },
-        ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 }
 
 class _SealedTicket extends StatelessWidget {
-  const _SealedTicket({required this.date});
+  const _SealedTicket({
+    required this.date,
+    required this.width,
+    required this.height,
+  });
 
   final DateTime? date;
+  final double width;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
     final dateLabel = date == null ? '未来某天' : _formatCapsuleDate(date!);
     return Container(
-      width: 304,
-      height: 318,
-      padding: const EdgeInsets.fromLTRB(24, 26, 24, 22),
+      width: width,
+      height: height,
       decoration: BoxDecoration(
         gradient: const RadialGradient(
-          center: Alignment(0, -0.26),
-          radius: 0.90,
-          colors: [Color(0xFFFFF4B8), Color(0xFFFFD253), Color(0xFFFFC237)],
+          center: Alignment(-0.10, -0.34),
+          radius: 1.02,
+          colors: [
+            Color(0xFFFFF8BE),
+            Color(0xFFFFE682),
+            Color(0xFFFFCC3F),
+            Color(0xFFFFC735),
+          ],
+          stops: [0, 0.42, 0.76, 1],
         ),
-        borderRadius: BorderRadius.circular(34),
-        border: Border.all(color: const Color(0xFFFFE990), width: 1.4),
+        borderRadius: BorderRadius.circular(38),
+        border: Border.all(color: const Color(0xFFFFB72E), width: 1.4),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFFFCF49).withValues(alpha: 0.38),
-            blurRadius: 46,
-            spreadRadius: 8,
+            color: const Color(0xFFFFD65E).withValues(alpha: 0.52),
+            blurRadius: 54,
+            spreadRadius: 9,
           ),
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.26),
+            color: const Color(0xFF1B1100).withValues(alpha: 0.24),
             blurRadius: 34,
             offset: const Offset(0, 18),
           ),
@@ -4438,101 +4038,184 @@ class _SealedTicket extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          Positioned(
-            left: -28,
-            bottom: -24,
-            child: _CloudBubble(width: 124, height: 58),
-          ),
-          Positioned(
-            right: -34,
-            bottom: -16,
-            child: Transform.rotate(
-              angle: -0.34,
-              child: SizedBox(
-                width: 112,
-                height: 128,
-                child: CustomPaint(
-                  painter: _OrangeMiniCapsulePainter(
-                    alpha: 0.44,
-                    strokeAlpha: 0.72,
+          Positioned.fill(
+            child: Padding(
+              padding: const EdgeInsets.all(7),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(32),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.28),
+                    width: 1,
                   ),
                 ),
               ),
             ),
           ),
-          const Positioned(left: 24, top: 90, child: _TicketSparkle(size: 7)),
-          const Positioned(right: 28, top: 70, child: _TicketSparkle(size: 8)),
-          const Positioned(right: 16, top: 146, child: _TicketSparkle(size: 6)),
+          Positioned(
+            left: -18,
+            bottom: -16,
+            child: Opacity(
+              opacity: 0.55,
+              child: _CloudBubble(width: width * 0.43, height: height * 0.18),
+            ),
+          ),
+          Positioned(
+            left: width * 0.17,
+            bottom: -8,
+            child: Opacity(
+              opacity: 0.38,
+              child: _CloudBubble(width: width * 0.32, height: height * 0.12),
+            ),
+          ),
+          Positioned(
+            right: width * 0.16,
+            bottom: -10,
+            child: Opacity(
+              opacity: 0.36,
+              child: _CloudBubble(width: width * 0.28, height: height * 0.11),
+            ),
+          ),
+          Positioned(
+            right: -20,
+            bottom: -14,
+            child: Opacity(
+              opacity: 0.54,
+              child: Transform.rotate(
+                angle: -0.28,
+                child: SizedBox(
+                  width: width * 0.46,
+                  height: height * 0.45,
+                  child: CustomPaint(painter: _BottleLetterPainter()),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: width * 0.23,
+            top: height * 0.30,
+            child: const _TicketSparkle(size: 5),
+          ),
+          Positioned(
+            right: width * 0.19,
+            top: height * 0.17,
+            child: const _TicketSparkle(size: 7),
+          ),
+          Positioned(
+            right: width * 0.10,
+            top: height * 0.36,
+            child: const _TicketSparkle(size: 6),
+          ),
+          Positioned(
+            left: width * 0.18,
+            bottom: height * 0.18,
+            child: const _TicketSparkle(size: 6),
+          ),
           Column(
             children: [
+              SizedBox(height: height * 0.084),
               Container(
-                width: 92,
-                height: 92,
+                width: width * 0.30,
+                height: width * 0.30,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.74),
+                    color: Colors.white.withValues(alpha: 0.64),
                     width: 8,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFB87900).withValues(alpha: 0.18),
+                      color: const Color(0xFFB87900).withValues(alpha: 0.17),
                       blurRadius: 18,
                       offset: const Offset(0, 10),
+                    ),
+                    BoxShadow(
+                      color: Colors.white.withValues(alpha: 0.36),
+                      blurRadius: 16,
+                      spreadRadius: 4,
                     ),
                   ],
                 ),
                 alignment: Alignment.center,
-                child: const Icon(
+                child: Icon(
                   CupertinoIcons.lock_fill,
-                  color: Color(0xFFF7AF21),
-                  size: 32,
+                  color: const Color(0xFFF7AF21),
+                  size: width * 0.108,
                 ),
               ),
-              const SizedBox(height: 34),
-              const Text(
+              SizedBox(height: height * 0.095),
+              Text(
                 '封存完成',
                 style: TextStyle(
-                  color: Color(0xFF4B2E05),
-                  fontSize: 34,
+                  color: const Color(0xFF4B2E05),
+                  fontSize: width * 0.116,
                   height: 1,
                   fontWeight: FontWeight.w900,
                   decoration: TextDecoration.none,
+                  shadows: [
+                    Shadow(
+                      color: Colors.white.withValues(alpha: 0.25),
+                      blurRadius: 1,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 24),
+              SizedBox(height: height * 0.065),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Container(
-                    width: 62,
+                    width: width * 0.22,
                     height: 1,
-                    color: const Color(0xFFDCA121),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.transparent,
+                          const Color(0xFFDCA121).withValues(alpha: 0.78),
+                        ],
+                      ),
+                    ),
                   ),
                   const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 10),
+                    padding: EdgeInsets.symmetric(horizontal: 9),
                     child: _TicketSparkle(size: 10, color: Color(0xFFE3A11D)),
                   ),
                   Container(
-                    width: 62,
+                    width: width * 0.22,
                     height: 1,
-                    color: const Color(0xFFDCA121),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFFDCA121).withValues(alpha: 0.78),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+              SizedBox(height: height * 0.065),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Text(
-                  '时间胶囊已经封存，\n期待$dateLabel开启。',
+                padding: EdgeInsets.symmetric(horizontal: width * 0.13),
+                child: RichText(
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFF5A3908),
-                    fontSize: 18,
-                    height: 1.52,
-                    fontWeight: FontWeight.w800,
-                    decoration: TextDecoration.none,
+                  text: TextSpan(
+                    style: TextStyle(
+                      color: const Color(0xFF5A3908),
+                      fontSize: width * 0.058,
+                      height: 1.48,
+                      fontWeight: FontWeight.w800,
+                    ),
+                    children: [
+                      const TextSpan(text: '时间胶囊已经封存，\n期待'),
+                      TextSpan(
+                        text: dateLabel,
+                        style: const TextStyle(color: Color(0xFFC47E00)),
+                      ),
+                      const TextSpan(text: '开启。'),
+                    ],
                   ),
                 ),
               ),
@@ -4557,40 +4240,40 @@ class _CapsuleReadyOverlayState extends State<_CapsuleReadyOverlay>
     with TickerProviderStateMixin {
   late final AnimationController _controller;
   late final AnimationController _closeController;
-  late final Animation<double> _drop;
   late final Animation<double> _fade;
-  late final Animation<double> _lamp;
+  late final Animation<double> _enter;
+  late final Animation<double> _float;
   late final Animation<double> _close;
   bool _closing = false;
-  double? _closingCardTop;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1050),
-    )..forward();
+      duration: const Duration(milliseconds: 860),
+    );
     _closeController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 260),
-    );
-    _drop = CurvedAnimation(
-      parent: _controller,
-      curve: const Interval(0, 0.70, curve: Curves.easeOutBack),
+      duration: const Duration(milliseconds: 320),
     );
     _fade = CurvedAnimation(
       parent: _controller,
       curve: const Interval(0, 0.32, curve: Curves.easeOut),
     );
-    _lamp = CurvedAnimation(
+    _enter = CurvedAnimation(
       parent: _controller,
-      curve: const Interval(0.18, 0.86, curve: Curves.easeInOutCubic),
+      curve: const Interval(0.02, 0.74, curve: Curves.easeOutBack),
+    );
+    _float = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.42, 1, curve: Curves.easeInOutCubic),
     );
     _close = CurvedAnimation(
       parent: _closeController,
       curve: Curves.easeInCubic,
     );
+    _controller.forward();
   }
 
   @override
@@ -4602,10 +4285,7 @@ class _CapsuleReadyOverlayState extends State<_CapsuleReadyOverlay>
 
   Future<void> _closeWithoutOpening() async {
     if (_closing) return;
-    setState(() {
-      _closing = true;
-      _closingCardTop = lerpDouble(-230, 94, _drop.value)!;
-    });
+    setState(() => _closing = true);
     _controller.stop();
     await _closeController.forward();
     if (mounted) Navigator.of(context).pop(false);
@@ -4613,82 +4293,62 @@ class _CapsuleReadyOverlayState extends State<_CapsuleReadyOverlay>
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final dialogWidth = math.min(size.width - 16, 390.0);
+    final dialogHeight = dialogWidth * 434 / 511;
     return Material(
-      color: Colors.black.withValues(alpha: 0.74),
-      child: SafeArea(
-        child: AnimatedBuilder(
-          animation: Listenable.merge([_controller, _closeController]),
-          builder: (context, _) {
-            final openCardTop = lerpDouble(-230, 94, _drop.value)!;
-            final cardTop = _closing
-                ? lerpDouble(
-                    _closingCardTop ?? openCardTop,
-                    -360,
-                    _close.value,
-                  )!
-                : openCardTop;
-            final closeOpacity = _closing ? 1 - _close.value : 1.0;
-            final glowOpacity = (1 - _lamp.value) * 0.30 + 0.08;
-            final rotation = math.sin(_lamp.value * math.pi) * -0.012;
-            return Stack(
-              children: [
-                Positioned.fill(
-                  child: Opacity(
-                    opacity: _fade.value * closeOpacity,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: RadialGradient(
-                          center: const Alignment(0, -0.42),
-                          radius: 0.78,
-                          colors: [
-                            const Color(
-                              0xFFFFE59B,
-                            ).withValues(alpha: glowOpacity),
-                            const Color(0xFF7C3CFF).withValues(alpha: 0.06),
-                            Colors.transparent,
-                          ],
-                        ),
+      color: Colors.black.withValues(alpha: 0.56),
+      child: AnimatedBuilder(
+        animation: Listenable.merge([_controller, _closeController]),
+        builder: (context, _) {
+          final closeValue = _closing ? _close.value : 0.0;
+          final opacity = (_fade.value * (1 - closeValue)).clamp(0.0, 1.0);
+          final scale =
+              lerpDouble(0.88, 1.0, _enter.value)! * (1 - closeValue * 0.08);
+          final dy =
+              lerpDouble(32, 0, _enter.value)! -
+              closeValue * 42 +
+              math.sin(_float.value * math.pi * 2) * 3;
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: Opacity(
+                  opacity: opacity,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: const Alignment(0.05, -0.10),
+                        radius: 0.82,
+                        colors: [
+                          const Color(0xFFFFC36A).withValues(alpha: 0.30),
+                          const Color(0xFF7A461B).withValues(alpha: 0.10),
+                          Colors.transparent,
+                        ],
                       ),
                     ),
                   ),
                 ),
-                Positioned(
-                  top: 38,
-                  left: 0,
-                  right: 0,
-                  child: Opacity(
-                    opacity: closeOpacity,
-                    child: Center(
-                      child: Container(
-                        width: 2,
-                        height: math.max(0, cardTop - 18),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.86),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: cardTop,
-                  left: 0,
-                  right: 0,
-                  child: Transform.rotate(
-                    angle: rotation,
-                    child: Center(
+              ),
+              Center(
+                child: Opacity(
+                  opacity: opacity,
+                  child: Transform.translate(
+                    offset: Offset(0, dy),
+                    child: Transform.scale(
+                      scale: scale,
                       child: _ReadyTicket(
-                        capsule: widget.capsule,
+                        width: dialogWidth,
+                        height: dialogHeight,
                         onClose: _closeWithoutOpening,
                         onOpen: () => Navigator.of(context).pop(true),
                       ),
                     ),
                   ),
                 ),
-              ],
-            );
-          },
-        ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -4696,197 +4356,66 @@ class _CapsuleReadyOverlayState extends State<_CapsuleReadyOverlay>
 
 class _ReadyTicket extends StatelessWidget {
   const _ReadyTicket({
-    required this.capsule,
+    required this.width,
+    required this.height,
     required this.onClose,
     required this.onOpen,
   });
 
-  final TimeCapsule capsule;
+  final double width;
+  final double height;
   final VoidCallback onClose;
   final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
-    final created = _formatCapsuleDate(capsule.createdAt);
-    final elapsed = _elapsedSince(capsule.createdAt, DateTime.now());
-    return Container(
-      width: 342,
-      height: 286,
-      padding: const EdgeInsets.fromLTRB(26, 28, 24, 24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFFFBF5), Color(0xFFFFECD4), Color(0xFFFFFDF8)],
-        ),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFFF9B32).withValues(alpha: 0.26),
-            blurRadius: 38,
-            offset: const Offset(0, 18),
-          ),
-        ],
-      ),
+    return SizedBox(
+      width: width,
+      height: height,
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
+          Positioned.fill(
+            child: Image.asset(
+              _capsuleAssetReadyDeliveredPopup,
+              fit: BoxFit.fill,
+            ),
+          ),
           Positioned(
-            right: -10,
-            top: -10,
+            right: width * 0.045,
+            top: height * 0.018,
+            width: width * 0.115,
+            height: width * 0.115,
             child: CupertinoButton(
               minimumSize: Size.zero,
               padding: EdgeInsets.zero,
               onPressed: onClose,
-              child: Container(
-                width: 42,
-                height: 42,
-                alignment: Alignment.center,
-                child: const Icon(
-                  CupertinoIcons.xmark,
-                  color: Colors.white,
-                  size: 21,
-                  shadows: [
-                    Shadow(
-                      color: Color(0x33000000),
-                      blurRadius: 8,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
-                ),
-              ),
+              child: const SizedBox.expand(),
             ),
           ),
           Positioned(
-            right: 18,
-            top: 14,
-            child: Transform.rotate(
-              angle: -0.18,
-              child: SizedBox(
-                width: 126,
-                height: 136,
-                child: CustomPaint(painter: _BottleLetterPainter()),
-              ),
+            left: width * 0.128,
+            top: height * 0.720,
+            width: width * 0.310,
+            height: height * 0.145,
+            child: CupertinoButton(
+              minimumSize: Size.zero,
+              padding: EdgeInsets.zero,
+              onPressed: onClose,
+              child: const SizedBox.expand(),
             ),
           ),
-          const Positioned(right: 42, top: 10, child: _TicketSparkle(size: 8)),
-          const Positioned(right: 14, top: 70, child: _TicketSparkle(size: 6)),
-          const Positioned(left: 128, top: 128, child: _TicketSparkle(size: 7)),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '一封来自过去的信',
-                style: TextStyle(
-                  color: Color(0xFF333333),
-                  fontSize: 18,
-                  height: 1,
-                  fontWeight: FontWeight.w800,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                '已送达',
-                style: TextStyle(
-                  color: Color(0xFFFF7A1A),
-                  fontSize: 40,
-                  height: 1,
-                  fontWeight: FontWeight.w900,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-              const SizedBox(height: 28),
-              Text(
-                '来自 $elapsed 的你',
-                style: const TextStyle(
-                  color: Color(0xFF555555),
-                  fontSize: 14,
-                  height: 1,
-                  fontWeight: FontWeight.w800,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                '$created 写给未来的自己',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF8D8D8D),
-                  fontSize: 13,
-                  height: 1,
-                  fontWeight: FontWeight.w700,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-              const Spacer(),
-              Row(
-                children: [
-                  Expanded(
-                    child: CupertinoButton(
-                      minimumSize: Size.zero,
-                      padding: EdgeInsets.zero,
-                      onPressed: onClose,
-                      child: Container(
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFFCF8),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: const Color(0xFFEBD7C2)),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Text(
-                          '稍后再看',
-                          style: TextStyle(
-                            color: Color(0xFF333333),
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 18),
-                  Expanded(
-                    child: CupertinoButton(
-                      minimumSize: Size.zero,
-                      padding: EdgeInsets.zero,
-                      onPressed: onOpen,
-                      child: Container(
-                        height: 48,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFFFFA338), Color(0xFFFF721B)],
-                          ),
-                          borderRadius: BorderRadius.circular(18),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(
-                                0xFFFF7A1A,
-                              ).withValues(alpha: 0.28),
-                              blurRadius: 18,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        alignment: Alignment.center,
-                        child: const Text(
-                          '立即查看',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+          Positioned(
+            left: width * 0.518,
+            top: height * 0.720,
+            width: width * 0.345,
+            height: height * 0.145,
+            child: CupertinoButton(
+              minimumSize: Size.zero,
+              padding: EdgeInsets.zero,
+              onPressed: onOpen,
+              child: const SizedBox.expand(),
+            ),
           ),
         ],
       ),
@@ -5289,20 +4818,6 @@ String _effectiveCapsuleSkinId(
     return defaultSkin;
   }
   return raw;
-}
-
-String _elapsedSince(DateTime from, DateTime now) {
-  final days = now.difference(from).inDays;
-  if (days >= 365) {
-    final years = days ~/ 365;
-    return '$years 年前';
-  }
-  if (days >= 30) {
-    final months = days ~/ 30;
-    return '$months 个月前';
-  }
-  if (days >= 1) return '$days 天前';
-  return '今天';
 }
 
 Future<bool?> _confirmDeleteCapsule(BuildContext context) {

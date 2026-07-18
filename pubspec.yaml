@@ -100,6 +100,7 @@ flutter:
     - assets/navigation/
     - assets/chat_sidebar/
     - assets/weather/
+    - assets/capsule/
     - assets/store/icons/
     - assets/legal/
     - assets/data/china_regions.json
