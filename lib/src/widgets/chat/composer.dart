@@ -123,7 +123,11 @@ class _Composer extends StatelessWidget {
                                 ),
                                 decoration: BoxDecoration(
                                   color: Colors.white,
-                                  borderRadius: BorderRadius.circular(999),
+                                  // 20 reads as a full pill while single-line
+                                  // (~36 tall), but only a gentle rounded rect
+                                  // once the field grows to multiple lines —
+                                  // avoids the oversized curve on tall input.
+                                  borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
                                     color: focused
                                         ? chatVoiceAccent

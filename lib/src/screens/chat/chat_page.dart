@@ -147,6 +147,11 @@ Map<String, String>? _mediaHeadersForUrl(String? url, String? authToken) {
 class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const _animationDuration = Duration(milliseconds: 260);
   static const _animationCurve = Curves.easeOutCubic;
+  // Panel / composer position transitions (not keyboard-driven ones, which
+  // stay instant): a slightly longer, springy ride so opening or switching a
+  // panel feels damped and pops into place instead of snapping.
+  static const _panelDuration = Duration(milliseconds: 340);
+  static const _panelCurve = Curves.easeOutBack;
   static const _composerMinHeight = 68.0;
   static const _composerLineHeight = 22.0;
   static const _tabBarContentHeight = 64.0;
@@ -2836,9 +2841,19 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final listBottomPadding = inputSurfaceHeight + 18;
     const listTopPadding = 10.0;
     final keyboardTransition = isKeyboardOpen || wasKeyboardOpen;
+    // Keyboard-driven moves stay instant (they track the OS keyboard metrics
+    // frame by frame). Pure panel opens / switches get the springy, damped
+    // pop.
     final positionDuration = keyboardTransition
         ? Duration.zero
-        : _animationDuration;
+        : _panelDuration;
+    // easeOutBack overshoots past its target: safe for `bottom` offsets (may go
+    // negative) but NOT for animated `height` values, which would briefly
+    // interpolate negative while a panel closes and assert. So the springy
+    // curve rides the composer offset + backdrop, while animated heights use a
+    // plain ease.
+    final positionCurve = keyboardTransition ? Curves.linear : _panelCurve;
+    final heightCurve = keyboardTransition ? Curves.linear : _animationCurve;
     final forceKeyboardPin = _pinToBottomDuringKeyboard && keyboardTransition;
     _syncScrollWithBottomPadding(
       listBottomPadding,
@@ -2924,7 +2939,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             bottom: 0,
             height: inputSurfaceHeight,
             duration: positionDuration,
-            curve: _animationCurve,
+            curve: positionCurve,
             child: IgnorePointer(
               child: DecoratedBox(
                 decoration: const BoxDecoration(color: Color(0xFFF6FDFC)),
@@ -2936,7 +2951,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             right: 0,
             bottom: composerBottom,
             duration: positionDuration,
-            curve: _animationCurve,
+            curve: positionCurve,
             child: _Composer(
               controller: _inputController,
               focusNode: _inputFocus,
@@ -2981,7 +2996,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             bottom: 0,
             height: panelSurfaceHeight,
             duration: positionDuration,
-            curve: _animationCurve,
+            curve: heightCurve,
             child: ClipRect(
               child: _ChatPanel(
                 panel: visiblePanel,

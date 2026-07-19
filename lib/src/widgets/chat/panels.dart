@@ -28,7 +28,32 @@ class _ChatPanel extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.only(bottom: bottomInset),
         child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 180),
+          duration: const Duration(milliseconds: 260),
+          transitionBuilder: (child, animation) {
+            // Panel content pops up: fade + a small upward slide with a slight
+            // spring overshoot. Visible even when the keyboard is sliding away
+            // to reveal the panel, so keyboard -> panel switches also feel like
+            // a spring, not a snap. easeOutBack is only applied to the slide
+            // (its overshoot past 1.0 would break FadeTransition's opacity).
+            final fade = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            );
+            final slide = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutBack,
+            );
+            return FadeTransition(
+              opacity: fade,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.12),
+                  end: Offset.zero,
+                ).animate(slide),
+                child: child,
+              ),
+            );
+          },
           child: switch (panel) {
             ComposerPanel.emoji => _EmojiPanel(onEmojiTap: onEmojiTap),
             ComposerPanel.more => _MorePanel(
