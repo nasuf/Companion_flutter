@@ -1004,6 +1004,7 @@ class _HourlyWeatherPill extends StatelessWidget {
         ],
       ),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           SizedBox(
             width: double.infinity,
@@ -1022,16 +1023,14 @@ class _HourlyWeatherPill extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 8),
           SizedBox(
             width: 32,
             height: 32,
             child: Image.asset(
               _weatherAsset(hour.weatherCode, hour: hour.time.hour),
-              fit: BoxFit.contain,
+              fit: BoxFit.cover,
             ),
           ),
-          const Spacer(),
           SizedBox(
             width: double.infinity,
             child: FittedBox(
