@@ -401,10 +401,6 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
                 onPointTap: _handleBoardTap,
               ),
             ),
-            _GomokuAnalysisStrip(
-              analysis: engine.analyze(),
-              agentName: _agentName,
-            ),
             if (_runtime.syncNotice != null) ...[
               const SizedBox(height: 10),
               _GomokuNotice(text: _runtime.syncNotice!, isError: false),
@@ -1169,59 +1165,6 @@ class _GomokuRestartButton extends StatelessWidget {
                   ],
                 ),
         ),
-      ),
-    );
-  }
-}
-
-class _GomokuAnalysisStrip extends StatelessWidget {
-  const _GomokuAnalysisStrip({required this.analysis, required this.agentName});
-
-  final GomokuBoardAnalysis analysis;
-  final String agentName;
-
-  @override
-  Widget build(BuildContext context) {
-    final userThreats = analysis.userWinningMoves.length;
-    final agentThreats = analysis.agentWinningMoves.length;
-    // 只在出现直接胜点时提示；平时不再显示「最长 N 连」这类信息。
-    if (userThreats == 0 && agentThreats == 0) {
-      return const SizedBox.shrink();
-    }
-    final text = userThreats > 0
-        ? '你有 $userThreats 个直接胜点'
-        : '小心，$agentName 有 $agentThreats 个胜点';
-    return Container(
-      width: double.infinity,
-      height: 36,
-      margin: const EdgeInsets.only(top: 11),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: AppColors.subtleFill(context, light: 0.54),
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: AppColors.glassBorder(context)),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            CupertinoIcons.bolt_fill,
-            size: 14,
-            color: userThreats > 0 ? const Color(0xFF18A66F) : AppColors.accent,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: AppColors.text.withValues(alpha: 0.68),
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
