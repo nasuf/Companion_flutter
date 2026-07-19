@@ -781,14 +781,16 @@ class _TypingBubbleState extends State<_TypingBubble>
                             child: Container(
                               width: 8,
                               height: 8,
-                              decoration: BoxDecoration(
+                              decoration: const BoxDecoration(
                                 shape: BoxShape.circle,
+                                // Brand green gradient (same family as the
+                                // composer accents), not the global blue.
                                 gradient: LinearGradient(
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                   colors: [
-                                    AppColors.accentCyan,
-                                    AppColors.accentDeep,
+                                    Color(0xFF24D7D3),
+                                    chatVoiceAccent,
                                   ],
                                 ),
                               ),
