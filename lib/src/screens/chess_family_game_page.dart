@@ -69,22 +69,6 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
     super.dispose();
   }
 
-  Future<void> _deleteRound(GameSession session) async {
-    final wasActive = _runtime.session?.id == session.id;
-    if (wasActive && _runtime.aiThinking) {
-      _runtime.showNotice('${_runtime.agentName} 还在完成当前这一步，请稍等一下。');
-      return;
-    }
-    final deleted = await _runtime.deleteRound(session);
-    if (!mounted || !deleted || !wasActive) return;
-    setState(() {
-      _engine = null;
-      _selectedSquare = null;
-      _legalTargets = const {};
-      _isFullscreen = false;
-    });
-  }
-
   Future<void> _startGame() async {
     final current = _engine;
     if (_runtime.session != null && !_runtime.completed) {
@@ -452,53 +436,13 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
     ),
   );
 
-  Widget _history() => Padding(
-    padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              '游戏回忆',
-              style: TextStyle(
-                color: AppColors.text,
-                fontSize: 17,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const Spacer(),
-            if (_runtime.rounds.isNotEmpty)
-              _SoftCountPill(text: '${_runtime.rounds.length} 局'),
-          ],
-        ),
-        const SizedBox(height: 11),
-        if (_runtime.roundsLoading)
-          const Center(child: CupertinoActivityIndicator())
-        else if (_runtime.rounds.isEmpty)
-          const _GameRoundEmptyState(
-            icon: CupertinoIcons.square_grid_3x2,
-            title: '第一局还在等你',
-            subtitle: '走完以后，完整棋谱和关键局面都会留在这里。',
-          )
-        else
-          for (final round in _runtime.rounds.take(8))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 9),
-              child: _GameRoundCard(
-                summary: _GameRoundSummary.fromSession(round),
-                onTap: () {
-                  unawaited(
-                    _handleGameRoundTap(
-                      context: context,
-                      session: round,
-                      onDelete: () => _deleteRound(round),
-                    ),
-                  );
-                },
-              ),
-            ),
-      ],
+  Widget _history() => _GameRoundStats(
+    rounds: _runtime.rounds,
+    roundsLoading: _runtime.roundsLoading,
+    emptyState: const _GameRoundEmptyState(
+      icon: CupertinoIcons.square_grid_3x2,
+      title: '第一局还在等你',
+      subtitle: '走完以后，这里会统计你们的对局战绩。',
     ),
   );
 }

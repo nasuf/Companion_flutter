@@ -245,7 +245,6 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
       onStart: _start,
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
-      historySubtitle: '每次落子、翻面、抢角、迫停、搜索判断和最终比分都会保存。',
       userTurnActive:
           engine != null &&
           !engine.isFinished &&

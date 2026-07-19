@@ -295,14 +295,6 @@ class _NativeFullscreenGameStage extends StatelessWidget {
                     ),
                   ),
                 ),
-                Container(
-                  width: 34,
-                  height: 3,
-                  decoration: BoxDecoration(
-                    color: visual.accent.withValues(alpha: 0.7),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
               ],
             ),
           ),

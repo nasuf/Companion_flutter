@@ -392,7 +392,6 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
       onStart: _start,
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _finishing,
-      historySubtitle: '比分、消行、连击、垃圾行和封顶时刻都会完整保存。',
       showPlayers: false,
       userTurnActive:
           engine != null &&

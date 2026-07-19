@@ -231,7 +231,6 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
       onStart: _start,
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking,
-      historySubtitle: '每条连续跳路径和进营过程都会保存。',
       userTurnActive:
           engine != null &&
           !engine.isFinished &&
@@ -492,7 +491,6 @@ class _Match3GamePageState extends State<_Match3GamePage> {
       onStart: _start,
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
-      historySubtitle: '每次交换、连消、特殊块和贡献分都会保存。',
       userTurnActive:
           engine != null &&
           !engine.isFinished &&
@@ -557,7 +555,6 @@ class _NativeGameExperienceScaffold extends StatefulWidget {
     required this.onStart,
     required this.onActiveRoundDeleted,
     required this.restartDisabled,
-    required this.historySubtitle,
     this.activeChild,
     this.userTurnActive = false,
     this.turnToken = '',
@@ -573,7 +570,6 @@ class _NativeGameExperienceScaffold extends StatefulWidget {
   final Future<void> Function() onStart;
   final VoidCallback onActiveRoundDeleted;
   final bool restartDisabled;
-  final String historySubtitle;
   final Widget? activeChild;
   final bool userTurnActive;
   final String turnToken;
@@ -610,18 +606,6 @@ class _NativeGameExperienceScaffoldState
         setState(() => _isFullscreen = true);
       }
     });
-  }
-
-  Future<void> _deleteRound(GameSession session) async {
-    final wasActive = widget.runtime.session?.id == session.id;
-    if (wasActive && widget.restartDisabled) {
-      widget.runtime.showNotice('当前这一步还在完成，请稍等一下。');
-      return;
-    }
-    final deleted = await widget.runtime.deleteRound(session);
-    if (!mounted || !deleted || !wasActive) return;
-    widget.onActiveRoundDeleted();
-    setState(() => _isFullscreen = false);
   }
 
   Future<void> _closeGame() async {
@@ -779,10 +763,9 @@ class _NativeGameExperienceScaffoldState
                 ),
               ),
               SliverToBoxAdapter(
-                child: _NativeGameHistory(
-                  runtime: widget.runtime,
-                  subtitle: widget.historySubtitle,
-                  onDeleteRound: _deleteRound,
+                child: _GameRoundStats(
+                  rounds: widget.runtime.rounds,
+                  roundsLoading: widget.runtime.roundsLoading,
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 42)),
@@ -809,77 +792,6 @@ class _NativeGameExperienceScaffoldState
       expandedChild: expanded,
     );
   }
-}
-
-class _NativeGameHistory extends StatelessWidget {
-  const _NativeGameHistory({
-    required this.runtime,
-    required this.subtitle,
-    required this.onDeleteRound,
-  });
-  final _NativeGameRuntime runtime;
-  final String subtitle;
-  final Future<void> Function(GameSession session) onDeleteRound;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              '游戏回忆',
-              style: TextStyle(
-                color: AppColors.text,
-                fontSize: 17,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const Spacer(),
-            if (runtime.rounds.isNotEmpty)
-              _SoftCountPill(text: '${runtime.rounds.length} 局'),
-          ],
-        ),
-        const SizedBox(height: 5),
-        Text(
-          subtitle,
-          style: TextStyle(
-            color: AppColors.text.withValues(alpha: 0.46),
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 11),
-        if (runtime.roundsLoading)
-          const Center(child: CupertinoActivityIndicator())
-        else if (runtime.rounds.isEmpty)
-          const _GameRoundEmptyState(
-            icon: CupertinoIcons.square_grid_3x2,
-            title: '第一局还在等你',
-            subtitle: '玩完以后，这里会留下你们共同的一局。',
-          )
-        else
-          for (final round in runtime.rounds.take(8))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 9),
-              child: _GameRoundCard(
-                summary: _GameRoundSummary.fromSession(round),
-                onTap: () {
-                  unawaited(
-                    _handleGameRoundTap(
-                      context: context,
-                      session: round,
-                      onDelete: () => onDeleteRound(round),
-                    ),
-                  );
-                },
-              ),
-            ),
-      ],
-    ),
-  );
 }
 
 class _NativeScoreHeader extends StatelessWidget {

@@ -282,7 +282,6 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
       onStart: _start,
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
-      historySubtitle: '每次滑动、方块轨迹、合并得分、出生位置和搜索判断都会保存。',
       userTurnActive:
           engine != null &&
           !engine.isFinished &&

@@ -226,7 +226,6 @@ class _GoGamePageState extends State<_GoGamePage> {
       onStart: _start,
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
-      historySubtitle: '每一手、提子、叫吃、停着与最终数目都会保存。',
       userTurnActive:
           engine != null &&
           !engine.isFinished &&

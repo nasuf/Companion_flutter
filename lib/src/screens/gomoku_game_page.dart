@@ -49,16 +49,6 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     super.dispose();
   }
 
-  Future<void> _deleteRound(GameSession candidate) async {
-    final wasActive = _runtime.session?.id == candidate.id;
-    final deleted = await _runtime.deleteRound(candidate);
-    if (!mounted || !deleted || !wasActive) return;
-    setState(() {
-      _engine = null;
-      _isFullscreen = false;
-    });
-  }
-
   Future<void> _startGame() async {
     final current = _engine;
     if (_runtime.session != null && !_runtime.completed) {
@@ -411,7 +401,6 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
                 onPointTap: _handleBoardTap,
               ),
             ),
-            const SizedBox(height: 11),
             _GomokuAnalysisStrip(
               analysis: engine.analyze(),
               agentName: _agentName,
@@ -425,62 +414,13 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
       );
 
   Widget _roundHistory() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                '游戏回忆',
-                style: TextStyle(
-                  color: AppColors.text,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const Spacer(),
-              if (_runtime.rounds.isNotEmpty)
-                _SoftCountPill(text: '${_runtime.rounds.length} 局'),
-            ],
-          ),
-          const SizedBox(height: 5),
-          Text(
-            '完整棋谱、关键手和当时的局面都会留在这里。',
-            style: TextStyle(
-              color: AppColors.text.withValues(alpha: 0.46),
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 11),
-          if (_runtime.roundsLoading)
-            const Center(child: CupertinoActivityIndicator())
-          else if (_runtime.rounds.isEmpty)
-            const _GameRoundEmptyState(
-              icon: CupertinoIcons.square_grid_3x2,
-              title: '第一盘还在等你',
-              subtitle: '下完以后，这里会出现你们共同的一局棋。',
-            )
-          else
-            for (final round in _runtime.rounds.take(8))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 9),
-                child: _GameRoundCard(
-                  summary: _GameRoundSummary.fromSession(round),
-                  onTap: () {
-                    unawaited(
-                      _handleGameRoundTap(
-                        context: context,
-                        session: round,
-                        onDelete: () => _deleteRound(round),
-                      ),
-                    );
-                  },
-                ),
-              ),
-        ],
+    return _GameRoundStats(
+      rounds: _runtime.rounds,
+      roundsLoading: _runtime.roundsLoading,
+      emptyState: const _GameRoundEmptyState(
+        icon: CupertinoIcons.square_grid_3x2,
+        title: '第一盘还在等你',
+        subtitle: '下完以后，这里会统计你们的对局战绩。',
       ),
     );
   }
@@ -1244,14 +1184,17 @@ class _GomokuAnalysisStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final userThreats = analysis.userWinningMoves.length;
     final agentThreats = analysis.agentWinningMoves.length;
+    // 只在出现直接胜点时提示；平时不再显示「最长 N 连」这类信息。
+    if (userThreats == 0 && agentThreats == 0) {
+      return const SizedBox.shrink();
+    }
     final text = userThreats > 0
         ? '你有 $userThreats 个直接胜点'
-        : agentThreats > 0
-        ? '小心，$agentName 有 $agentThreats 个胜点'
-        : '你最长 ${analysis.userLongestChain} 连 · $agentName 最长 ${analysis.agentLongestChain} 连';
+        : '小心，$agentName 有 $agentThreats 个胜点';
     return Container(
       width: double.infinity,
       height: 36,
+      margin: const EdgeInsets.only(top: 11),
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: AppColors.subtleFill(context, light: 0.54),
@@ -1261,9 +1204,7 @@ class _GomokuAnalysisStrip extends StatelessWidget {
       child: Row(
         children: [
           Icon(
-            userThreats + agentThreats > 0
-                ? CupertinoIcons.bolt_fill
-                : CupertinoIcons.scope,
+            CupertinoIcons.bolt_fill,
             size: 14,
             color: userThreats > 0 ? const Color(0xFF18A66F) : AppColors.accent,
           ),

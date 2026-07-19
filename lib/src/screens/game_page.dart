@@ -438,531 +438,10 @@ class _GameRoundSummary {
   bool get isWin => outcome == 'win';
   bool get isLose => outcome == 'lose';
   bool get isAborted => outcome == 'aborted' || session.status == 'aborted';
-  bool get isGomoku => gomoku.isNotEmpty;
-  bool get isCooperative => _nativeCooperativeGameKeys.contains(gameKey);
-
-  int? get actionCount =>
-      _intValue(gameData['move_count']) ??
-      _intValue(gameData['turn_count']) ??
-      _intValue(gameData['action_count']);
-
-  String get resultLabel {
-    if (isAborted) return '未完成';
-    if (isCooperative && isWin) return '共同过关';
-    if (isCooperative && isLose) return '这次没过';
-    if (isWin) return '你赢了';
-    if (isLose) return '$aiName 小赢';
-    if (outcome == 'draw') return '平局';
-    return '已结束';
-  }
-
-  String get title {
-    if (isAborted) return '这局先停在半路';
-    if (isCooperative && isWin) return '这一关你们一起拿下了';
-    if (isCooperative && isLose) return '差一点就一起解开了';
-    if (isWin) return '这一局你拿下了';
-    if (isLose) return '差一点，节奏已经起来了';
-    if (outcome == 'draw') return '谁也没让谁舒服';
-    return '留下了一局记录';
-  }
-
-  String get subtitle {
-    final fragments = <String>[];
-    final scoreText = scoreLine;
-    if (scoreText != null) fragments.add(scoreText);
-    final combo = comboLine;
-    if (combo != null) fragments.add(combo);
-    final gomokuText = gomokuLine;
-    if (gomokuText != null) fragments.add(gomokuText);
-    final genericText = genericLine;
-    if (genericText != null) fragments.add(genericText);
-    if (fragments.isEmpty && durationText != null) fragments.add(durationText!);
-    return fragments.isEmpty ? '点开看看这一局发生了什么。' : fragments.join(' · ');
-  }
-
-  String? get scoreLine {
-    if (userScore == null || aiScore == null) return null;
-    if (isCooperative) return '你 $userScore + $aiName $aiScore';
-    return '你 $userScore : $aiScore $aiName';
-  }
-
-  String? get durationText {
-    final seconds = durationSeconds;
-    if (seconds == null || seconds <= 0) return null;
-    final minutes = seconds ~/ 60;
-    final rest = seconds % 60;
-    if (minutes <= 0) return '$rest 秒';
-    if (rest == 0) return '$minutes 分钟';
-    return '$minutes 分 $rest 秒';
-  }
-
-  String? get comboLine {
-    final perfect = _intValue(userExtras['numPerfect']) ?? 0;
-    final excellent = _intValue(userExtras['numExcellent']) ?? 0;
-    final crazy = _intValue(userExtras['numCrazy']) ?? 0;
-    final good = _intValue(userExtras['numGood']) ?? 0;
-    if (crazy > 0) return '$crazy 次 Crazy';
-    if (excellent > 0) return '$excellent 次 Excellent';
-    if (perfect > 0) return '$perfect 次 Perfect';
-    if (good > 0) return '$good 次 Good';
-    return null;
-  }
-
-  String? get gomokuLine {
-    final moveCount = _intValue(gomoku['move_count']);
-    final direction = _gomokuDirectionLabel(
-      gomoku['win_direction']?.toString(),
-    );
-    final fragments = <String>[];
-    if (moveCount != null && moveCount > 0) fragments.add('$moveCount 手');
-    if (direction != null) fragments.add(direction);
-    return fragments.isEmpty ? null : fragments.join(' · ');
-  }
-
-  String? get genericLine {
-    if (isGomoku) return null;
-    if (gameKey == _nativeGoGameKey) {
-      final score = _asMap(gameData['score']);
-      final user = score['user_total'];
-      final agent = score['agent_total'];
-      if (user != null && agent != null) return '数目 $user : $agent';
-    }
-    if (gameKey == _nativeReversiGameKey) {
-      final user = _intValue(gameData['user_count']);
-      final agent = _intValue(gameData['agent_count']);
-      if (user != null && agent != null) return '棋子 $user : $agent';
-    }
-    if (gameKey == _nativeMatch3GameKey) {
-      final total = _intValue(gameData['total_score']);
-      final target = _intValue(gameData['target_score']);
-      if (total != null && target != null) return '$total / $target 分';
-    }
-    if (gameKey == _nativeMinesweeperGameKey) {
-      final revealed = _intValue(gameData['revealed_count']);
-      final safeCells = _intValue(gameData['safe_cell_count']);
-      if (revealed != null && safeCells != null) {
-        return '共同清理 $revealed / $safeCells 格';
-      }
-    }
-    if (gameKey == _nativeNumberMergeGameKey) {
-      final score = _intValue(gameData['score']);
-      final maxTile = _intValue(gameData['max_tile']);
-      if (score != null && maxTile != null) return '$score 分 · 最大 $maxTile';
-    }
-    if (gameKey == _nativeTetrisDuelGameKey) {
-      final score = _asMap(gameData['score']);
-      final user = _intValue(score['user']);
-      final agent = _intValue(score['agent']);
-      if (user != null && agent != null) return '竞速 $user : $agent';
-    }
-    final count = actionCount;
-    if (count == null || count <= 0) return null;
-    return '$count 步';
-  }
-
-  List<_RoundDetailMetric> get metrics {
-    final items = <_RoundDetailMetric>[];
-    if (scoreLine != null) {
-      items.add(_RoundDetailMetric(isCooperative ? '贡献' : '比分', scoreLine!));
-    }
-    if (durationText != null) {
-      items.add(_RoundDetailMetric('时长', durationText!));
-    }
-    if (isGomoku) {
-      final moveCount = _intValue(gomoku['move_count']);
-      final direction = _gomokuDirectionLabel(
-        gomoku['win_direction']?.toString(),
-      );
-      final lastMove = _asMap(gomoku['last_move']);
-      if (moveCount != null && moveCount > 0) {
-        items.add(_RoundDetailMetric('手数', '$moveCount 手'));
-      }
-      if (direction != null) {
-        items.add(_RoundDetailMetric('收官', direction));
-      }
-      if (lastMove.isNotEmpty) {
-        final x = _intValue(lastMove['x']);
-        final y = _intValue(lastMove['y']);
-        if (x != null && y != null) {
-          items.add(_RoundDetailMetric('最后一手', '(${x + 1}, ${y + 1})'));
-        }
-      }
-      items.add(_RoundDetailMetric('房间', roomId));
-      return items;
-    }
-    _appendNativeGameMetrics(items);
-    final perfect = _intValue(userExtras['numPerfect']) ?? 0;
-    final good = _intValue(userExtras['numGood']) ?? 0;
-    final excellent = _intValue(userExtras['numExcellent']) ?? 0;
-    final crazy = _intValue(userExtras['numCrazy']) ?? 0;
-    if (perfect + good + excellent + crazy > 0) {
-      items.add(
-        _RoundDetailMetric(
-          '手感',
-          [
-            if (perfect > 0) '$perfect Perfect',
-            if (excellent > 0) '$excellent Excellent',
-            if (crazy > 0) '$crazy Crazy',
-            if (good > 0) '$good Good',
-          ].join(' · '),
-        ),
-      );
-    }
-    items.add(_RoundDetailMetric('房间', roomId));
-    return items;
-  }
-
-  void _appendNativeGameMetrics(List<_RoundDetailMetric> items) {
-    final analysis = _asMap(gameData['analysis']);
-    switch (gameKey) {
-      case _nativeReversiGameKey:
-        final count = actionCount;
-        if (count != null) items.add(_RoundDetailMetric('手数', '$count 手'));
-        final user = _intValue(gameData['user_count']);
-        final agent = _intValue(gameData['agent_count']);
-        if (user != null && agent != null) {
-          items.add(_RoundDetailMetric('最终棋子', '你 $user : $agent $aiName'));
-        }
-        final userCorners = _intValue(analysis['user_corner_count']);
-        final agentCorners = _intValue(analysis['agent_corner_count']);
-        if (userCorners != null && agentCorners != null) {
-          items.add(
-            _RoundDetailMetric('角点', '你 $userCorners : $agentCorners $aiName'),
-          );
-        }
-      case _nativeGoGameKey:
-        final count = actionCount;
-        if (count != null) items.add(_RoundDetailMetric('手数', '$count 手'));
-        final score = _asMap(gameData['score']);
-        final user = score['user_total'];
-        final agent = score['agent_total'];
-        if (user != null && agent != null) {
-          items.add(_RoundDetailMetric('最终数目', '你 $user : $agent $aiName'));
-        }
-        final userCaptures = _intValue(gameData['user_captures']);
-        final agentCaptures = _intValue(gameData['agent_captures']);
-        if (userCaptures != null && agentCaptures != null) {
-          items.add(
-            _RoundDetailMetric(
-              '提子',
-              '你 $userCaptures : $agentCaptures $aiName',
-            ),
-          );
-        }
-      case _nativeXiangqiGameKey:
-      case _nativeChessGameKey:
-        final count = actionCount;
-        if (count != null) items.add(_RoundDetailMetric('手数', '$count 手'));
-        final result = gameData['result']?.toString();
-        if (result != null && result.isNotEmpty) {
-          items.add(_RoundDetailMetric('棋局结果', result));
-        }
-        if (analysis['in_check'] == true) {
-          items.add(const _RoundDetailMetric('终局', '将军局面'));
-        }
-      case _nativeChineseCheckersGameKey:
-        final count = actionCount;
-        if (count != null) items.add(_RoundDetailMetric('步数', '$count 步'));
-        final userTarget = _intValue(analysis['user_target_pieces']);
-        final agentTarget = _intValue(analysis['agent_target_pieces']);
-        if (userTarget != null && agentTarget != null) {
-          items.add(
-            _RoundDetailMetric('进营', '你 $userTarget : $agentTarget $aiName'),
-          );
-        }
-      case _nativeMatch3GameKey:
-        final total = _intValue(gameData['total_score']);
-        final target = _intValue(gameData['target_score']);
-        final turns = actionCount;
-        if (total != null && target != null) {
-          items.add(_RoundDetailMetric('合作进度', '$total / $target'));
-        }
-        if (turns != null) items.add(_RoundDetailMetric('交换', '$turns 次'));
-        final specialCount = _intValue(analysis['special_count']);
-        if (specialCount != null) {
-          items.add(_RoundDetailMetric('终局特殊块', '$specialCount 个'));
-        }
-      case _nativeMinesweeperGameKey:
-        final actions = actionCount;
-        if (actions != null) {
-          items.add(_RoundDetailMetric('共同操作', '$actions 步'));
-        }
-        final revealed = _intValue(gameData['revealed_count']);
-        final safeCells = _intValue(gameData['safe_cell_count']);
-        if (revealed != null && safeCells != null) {
-          items.add(_RoundDetailMetric('清理进度', '$revealed / $safeCells'));
-        }
-        final deductions = _intValue(gameData['deductions']);
-        final guesses = _intValue(gameData['guesses']);
-        if (deductions != null || guesses != null) {
-          items.add(
-            _RoundDetailMetric(
-              '推理方式',
-              '${deductions ?? 0} 次确定 · ${guesses ?? 0} 次试探',
-            ),
-          );
-        }
-        final largestReveal = _intValue(gameData['largest_reveal']);
-        if (largestReveal != null && largestReveal > 0) {
-          items.add(_RoundDetailMetric('最大连开', '$largestReveal 格'));
-        }
-      case _nativeNumberMergeGameKey:
-        final moves = actionCount;
-        if (moves != null) {
-          items.add(_RoundDetailMetric('共同滑动', '$moves 次'));
-        }
-        final score = _intValue(gameData['score']);
-        final maxTile = _intValue(gameData['max_tile']);
-        if (score != null) items.add(_RoundDetailMetric('共同得分', '$score'));
-        if (maxTile != null) items.add(_RoundDetailMetric('最大数字', '$maxTile'));
-        final userScore = _intValue(gameData['user_score']);
-        final agentScore = _intValue(gameData['agent_score']);
-        if (userScore != null && agentScore != null) {
-          items.add(
-            _RoundDetailMetric('合并贡献', '你 $userScore : $agentScore $aiName'),
-          );
-        }
-        final totalMerges = _intValue(gameData['total_merges']);
-        final bestCombo = _intValue(gameData['best_combo']);
-        if (totalMerges != null) {
-          items.add(
-            _RoundDetailMetric(
-              '合并表现',
-              '$totalMerges 次合并 · 单步最多 ${bestCombo ?? 0} 次',
-            ),
-          );
-        }
-      case _nativeTetrisDuelGameKey:
-        final score = _asMap(gameData['score']);
-        final user = _asMap(gameData['user']);
-        final agent = _asMap(gameData['agent']);
-        final userScore = _intValue(score['user']);
-        final agentScore = _intValue(score['agent']);
-        if (userScore != null && agentScore != null) {
-          items.add(
-            _RoundDetailMetric('限时得分', '你 $userScore : $agentScore $aiName'),
-          );
-        }
-        final userLines = _intValue(user['lines']);
-        final agentLines = _intValue(agent['lines']);
-        if (userLines != null && agentLines != null) {
-          items.add(
-            _RoundDetailMetric('消除行数', '你 $userLines : $agentLines $aiName'),
-          );
-        }
-        final userCombo = _intValue(user['max_combo']);
-        final agentCombo = _intValue(agent['max_combo']);
-        if (userCombo != null && agentCombo != null) {
-          items.add(
-            _RoundDetailMetric('最高连击', '你 $userCombo : $agentCombo $aiName'),
-          );
-        }
-        final userTetrises = _intValue(user['tetrises']);
-        final agentTetrises = _intValue(agent['tetrises']);
-        if (userTetrises != null && agentTetrises != null) {
-          items.add(
-            _RoundDetailMetric(
-              '四行消除',
-              '你 $userTetrises : $agentTetrises $aiName',
-            ),
-          );
-        }
-    }
-    final moments = gameData['key_moments'];
-    if (moments is List && moments.isNotEmpty) {
-      items.add(_RoundDetailMetric('关键节点', '${moments.length} 个'));
-    }
-  }
-
-  Color get accent {
-    if (isWin) return const Color(0xFF19A56F);
-    if (isLose) return const Color(0xFF178BFF);
-    if (isAborted) return const Color(0xFF8996A6);
-    return const Color(0xFF8B5CF6);
-  }
 }
-
-class _RoundDetailMetric {
-  const _RoundDetailMetric(this.label, this.value);
-
-  final String label;
-  final String value;
-}
-
-enum _GameRoundAction { details, delete }
 
 bool _isMissingNativeGameSession(ApiException error) =>
     error.statusCode == 404 && error.message.contains('session_not_found');
-
-Future<void> _handleGameRoundTap({
-  required BuildContext context,
-  required GameSession session,
-  required Future<void> Function() onDelete,
-}) async {
-  final summary = _GameRoundSummary.fromSession(session);
-  final action = await showCupertinoModalPopup<_GameRoundAction>(
-    context: context,
-    builder: (sheetContext) => CupertinoActionSheet(
-      title: Text(summary.title),
-      message: Text(summary.subtitle),
-      actions: [
-        CupertinoActionSheetAction(
-          isDefaultAction: true,
-          onPressed: () =>
-              Navigator.pop(sheetContext, _GameRoundAction.details),
-          child: const Text('查看详情'),
-        ),
-        CupertinoActionSheetAction(
-          isDestructiveAction: true,
-          onPressed: () => Navigator.pop(sheetContext, _GameRoundAction.delete),
-          child: const Text('删除记录'),
-        ),
-      ],
-      cancelButton: CupertinoActionSheetAction(
-        onPressed: () => Navigator.pop(sheetContext),
-        child: const Text('取消'),
-      ),
-    ),
-  );
-  if (!context.mounted || action == null) return;
-  switch (action) {
-    case _GameRoundAction.details:
-      _showGameRoundDetails(context, summary);
-      break;
-    case _GameRoundAction.delete:
-      final confirmed = await showCupertinoDialog<bool>(
-        context: context,
-        builder: (dialogContext) => CupertinoAlertDialog(
-          title: const Text('删除这局游戏？'),
-          content: const Text('删除后，这一局的棋盘进度、事件记录和由此生成的共同记忆都会永久移除。'),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('取消'),
-            ),
-            CupertinoDialogAction(
-              isDestructiveAction: true,
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('删除'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed == true) await onDelete();
-      break;
-  }
-}
-
-void _showGameRoundDetails(BuildContext context, _GameRoundSummary summary) {
-  showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: false,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.34),
-    builder: (_) => _GameRoundDetailSheet(summary: summary),
-  );
-}
-
-class _GameRoundCard extends StatelessWidget {
-  const _GameRoundCard({required this.summary, required this.onTap});
-
-  final _GameRoundSummary summary;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = summary.accent;
-    final isDark = AppColors.isDark(context);
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      borderRadius: BorderRadius.circular(18),
-      onPressed: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(13),
-        decoration: BoxDecoration(
-          color: AppColors.subtleFill(context, light: 0.54),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.glassBorder(context)),
-          boxShadow: [
-            if (isDark)
-              BoxShadow(
-                color: AppColors.shadow.withValues(alpha: 0.46),
-                blurRadius: 18,
-                offset: const Offset(0, 10),
-              ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Icon(
-                summary.isAborted
-                    ? CupertinoIcons.pause_fill
-                    : summary.isWin
-                    ? CupertinoIcons.sparkles
-                    : CupertinoIcons.game_controller_solid,
-                color: accent,
-                size: 21,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          summary.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: AppColors.text,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      _SoftCountPill(text: summary.resultLabel, color: accent),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    summary.subtitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: AppColors.text.withValues(alpha: 0.56),
-                      fontSize: 12,
-                      height: 1.25,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Icon(
-              CupertinoIcons.chevron_forward,
-              color: AppColors.text.withValues(alpha: 0.30),
-              size: 16,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _GameRoundEmptyState extends StatelessWidget {
   const _GameRoundEmptyState({
@@ -1029,14 +508,13 @@ class _GameRoundEmptyState extends StatelessWidget {
 }
 
 class _SoftCountPill extends StatelessWidget {
-  const _SoftCountPill({required this.text, this.color});
+  const _SoftCountPill({required this.text});
 
   final String text;
-  final Color? color;
 
   @override
   Widget build(BuildContext context) {
-    final color = this.color ?? AppColors.accent;
+    final color = AppColors.accent;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
@@ -1057,307 +535,202 @@ class _SoftCountPill extends StatelessWidget {
   }
 }
 
-class _GameRoundDetailSheet extends StatelessWidget {
-  const _GameRoundDetailSheet({required this.summary});
+/// Aggregate win/loss statistics for a game, replacing the per-round history
+/// list. 逃跑局（中途退出）不计入胜率分母：胜率 = 胜 ÷ (总对局 - 逃跑局) × 100%。
+class _GameRoundStats extends StatelessWidget {
+  const _GameRoundStats({
+    required this.rounds,
+    required this.roundsLoading,
+    this.emptyState,
+  });
 
-  final _GameRoundSummary summary;
-
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.paddingOf(context).bottom;
-    final maxHeight = MediaQuery.sizeOf(context).height * 0.72;
-    final isDark = AppColors.isDark(context);
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: maxHeight),
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(
-              padding: EdgeInsets.fromLTRB(20, 14, 20, bottom + 20),
-              decoration: BoxDecoration(
-                color: AppColors.elevatedSurface(context, light: 0.94),
-                border: Border.all(color: AppColors.glassBorder(context)),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.shadow.withValues(
-                      alpha: isDark ? 0.78 : 0.10,
-                    ),
-                    blurRadius: 30,
-                    offset: const Offset(0, -8),
-                  ),
-                ],
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 42,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: AppColors.text.withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Container(
-                          width: 52,
-                          height: 52,
-                          decoration: BoxDecoration(
-                            color: summary.accent.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: Icon(
-                            CupertinoIcons.game_controller_solid,
-                            color: summary.accent,
-                            size: 25,
-                          ),
-                        ),
-                        const SizedBox(width: 13),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                summary.resultLabel,
-                                style: TextStyle(
-                                  color: summary.accent,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                summary.title,
-                                style: TextStyle(
-                                  color: AppColors.text,
-                                  fontSize: 21,
-                                  height: 1.08,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 0,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _roundMemorySentence(summary),
-                      style: TextStyle(
-                        color: AppColors.text.withValues(alpha: 0.66),
-                        fontSize: 13,
-                        height: 1.38,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        for (final metric in summary.metrics)
-                          _RoundMetricChip(metric: metric),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    _RoundDebugInfo(summary: summary),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RoundDebugInfo extends StatelessWidget {
-  const _RoundDebugInfo({required this.summary});
-
-  final _GameRoundSummary summary;
+  final List<GameSession> rounds;
+  final bool roundsLoading;
+  final Widget? emptyState;
 
   @override
   Widget build(BuildContext context) {
-    final debugData = _roundDebugData(summary);
-    final isDark = AppColors.isDark(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(13, 12, 13, 13),
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.surfaceMuted.withValues(alpha: 0.62)
-            : const Color(0xFF101827).withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.glassBorder(context)),
-      ),
+    final total = rounds.length;
+    var wins = 0;
+    var losses = 0;
+    var draws = 0;
+    var escapes = 0;
+    for (final round in rounds) {
+      final summary = _GameRoundSummary.fromSession(round);
+      if (summary.isAborted) {
+        escapes += 1;
+      } else if (summary.isWin) {
+        wins += 1;
+      } else if (summary.isLose) {
+        losses += 1;
+      } else if (summary.outcome == 'draw') {
+        draws += 1;
+      }
+    }
+    final decided = total - escapes;
+    final winRate = decided > 0 ? wins / decided * 100 : 0.0;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(
-                Icons.data_object_rounded,
-                size: 15,
-                color: AppColors.text.withValues(alpha: 0.46),
-              ),
-              const SizedBox(width: 7),
               Text(
-                'Debug Info',
+                '游戏统计',
                 style: TextStyle(
-                  color: AppColors.text.withValues(alpha: 0.62),
-                  fontSize: 12,
+                  color: AppColors.text,
+                  fontSize: 17,
                   fontWeight: FontWeight.w900,
-                  letterSpacing: 0,
+                ),
+              ),
+              const Spacer(),
+              if (total > 0) _SoftCountPill(text: '$total 局'),
+            ],
+          ),
+          const SizedBox(height: 11),
+          if (roundsLoading)
+            const Center(child: CupertinoActivityIndicator())
+          else if (total == 0)
+            emptyState ??
+                const _GameRoundEmptyState(
+                  icon: CupertinoIcons.chart_bar_alt_fill,
+                  title: '还没有对局记录',
+                  subtitle: '玩完一局以后，这里会统计你们的战绩。',
+                )
+          else
+            _GameRoundStatsPanel(
+              total: total,
+              wins: wins,
+              losses: losses,
+              draws: draws,
+              escapes: escapes,
+              winRate: winRate,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GameRoundStatsPanel extends StatelessWidget {
+  const _GameRoundStatsPanel({
+    required this.total,
+    required this.wins,
+    required this.losses,
+    required this.draws,
+    required this.escapes,
+    required this.winRate,
+  });
+
+  final int total;
+  final int wins;
+  final int losses;
+  final int draws;
+  final int escapes;
+  final double winRate;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
+    final rateText = winRate == winRate.roundToDouble()
+        ? '${winRate.toInt()}%'
+        : '${winRate.toStringAsFixed(1)}%';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.subtleFill(context, light: 0.42),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.glassBorder(context)),
+        boxShadow: [
+          if (isDark)
+            BoxShadow(
+              color: AppColors.shadow.withValues(alpha: 0.40),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(child: _hero('总对局', '$total')),
+              Container(
+                width: 1,
+                height: 34,
+                color: AppColors.text.withValues(alpha: 0.08),
+              ),
+              Expanded(child: _hero('胜率', rateText)),
+            ],
+          ),
+          const SizedBox(height: 15),
+          Row(
+            children: [
+              Expanded(child: _breakdown('胜场', wins, const Color(0xFF18A66F))),
+              Expanded(child: _breakdown('负场', losses, const Color(0xFFD84A4A))),
+              Expanded(child: _breakdown('平局', draws, AppColors.accent)),
+              Expanded(
+                child: _breakdown(
+                  '逃跑局',
+                  escapes,
+                  AppColors.text.withValues(alpha: 0.5),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 280),
-            child: SingleChildScrollView(
-              child: SelectableText(
-                const JsonEncoder.withIndent('  ').convert(debugData),
-                style: TextStyle(
-                  color: AppColors.text.withValues(alpha: 0.70),
-                  fontSize: 10.5,
-                  height: 1.35,
-                  fontFamily: 'Menlo',
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
-}
 
-class _RoundMetricChip extends StatelessWidget {
-  const _RoundMetricChip({required this.metric});
-
-  final _RoundDetailMetric metric;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 132),
-      padding: const EdgeInsets.fromLTRB(13, 11, 13, 12),
-      decoration: BoxDecoration(
-        color: AppColors.subtleFill(context, light: 0.68),
-        borderRadius: BorderRadius.circular(17),
-        border: Border.all(color: AppColors.glassBorder(context)),
+  Widget _hero(String label, String value) => Column(
+    children: [
+      Text(
+        value,
+        style: TextStyle(
+          color: AppColors.text,
+          fontSize: 24,
+          height: 1,
+          fontWeight: FontWeight.w900,
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            metric.label,
-            style: TextStyle(
-              color: AppColors.text.withValues(alpha: 0.44),
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            metric.value,
-            style: TextStyle(
-              color: AppColors.text,
-              fontSize: 13,
-              height: 1.18,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
+      const SizedBox(height: 5),
+      Text(
+        label,
+        style: TextStyle(
+          color: AppColors.text.withValues(alpha: 0.5),
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
       ),
-    );
-  }
-}
+    ],
+  );
 
-String _roundMemorySentence(_GameRoundSummary summary) {
-  if (summary.isAborted) {
-    return '这局没有完整打完，但它也算一次共同经历。下次回来，可以从同样的节奏重新开。';
-  }
-  if (summary.isGomoku) {
-    if (summary.isWin) {
-      return '这盘你最后收得很干净，不是突然赢的，是前面几手慢慢铺出来的。';
-    }
-    return '这盘有几手其实已经卡到关键点了，下次我可以陪你提前一手把那条线堵住。';
-  }
-  if (summary.isCooperative) {
-    if (summary.isWin) {
-      return '这一关是你们俩把各自的那段接起来才过的，少了谁都差一口气。';
-    }
-    return '这一关虽然没过，但路已经一起试出大半了。下次再来，可以顺着这次的节奏继续。';
-  }
-  if (summary.isWin) {
-    return '这局更像是你把手感慢慢攒起来的一局。不是冷冰冰的胜负，它会留在你们的游戏记忆里。';
-  }
-  if (summary.isLose) {
-    return '这局虽然输了，但里面有几段节奏值得留下。下次再玩，AI 可以接着这个手感陪你调整。';
-  }
-  return '这局没有明显输赢，倒像是两个人一起试了一次节奏。';
-}
-
-Map<String, dynamic> _roundDebugData(_GameRoundSummary summary) {
-  final session = summary.session;
-  final result = session.result ?? const <String, dynamic>{};
-  final process = _asMap(result['process']);
-  return {
-    'session': {
-      'id': session.id,
-      'room_id': session.roomId,
-      'status': session.status,
-      'difficulty': session.difficulty,
-      'ai_level': session.aiLevel,
-      'duration_seconds': summary.durationSeconds,
-      'started_at': session.startedAt?.toIso8601String(),
-      'ended_at': session.endedAt?.toIso8601String(),
-      'created_at': session.createdAt?.toIso8601String(),
-    },
-    'players': {
-      'user': {
-        'uid': session.userPlayer.uid,
-        'nick_name': session.userPlayer.nickName,
-      },
-      'ai': {
-        'uid': session.aiPlayer.uid,
-        'nick_name': session.aiPlayer.nickName,
-        'is_ai': session.aiPlayer.isAi,
-      },
-    },
-    'summary': {
-      'outcome': summary.outcome,
-      'result_label': summary.resultLabel,
-      'user_score': summary.userScore,
-      'ai_score': summary.aiScore,
-      'score_line': summary.scoreLine,
-      'duration_text': summary.durationText,
-    },
-    'parsed': {
-      'user': _asMap(result['user']),
-      'ai': _asMap(result['ai']),
-      'user_extras': _asMap(result['user_extras']),
-      'ai_extras': _asMap(result['ai_extras']),
-      'gomoku': summary.gomoku,
-      'process': process,
-    },
-    'raw_result': result,
-  };
+  Widget _breakdown(String label, int value, Color color) => Column(
+    children: [
+      Text(
+        '$value',
+        style: TextStyle(
+          color: color,
+          fontSize: 18,
+          height: 1,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      const SizedBox(height: 4),
+      Text(
+        label,
+        style: TextStyle(
+          color: AppColors.text.withValues(alpha: 0.5),
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    ],
+  );
 }
 
 Map<String, dynamic> _asMap(Object? value) {
@@ -1369,19 +742,6 @@ int? _intValue(Object? value) {
   if (value is num) return value.round();
   if (value is String) return int.tryParse(value);
   return null;
-}
-
-String? _gomokuDirectionLabel(String? direction) {
-  switch (direction) {
-    case 'horizontal':
-      return '横线收官';
-    case 'vertical':
-      return '竖线收官';
-    case 'diagonal':
-      return '斜线收官';
-    default:
-      return null;
-  }
 }
 
 class _GameBackground extends StatelessWidget {

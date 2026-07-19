@@ -306,7 +306,6 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
       onStart: _start,
       onActiveRoundDeleted: _clearActiveRound,
       restartDisabled: _runtime.aiThinking || _resolving,
-      historySubtitle: '每次揭格、标雷、约束推理、冒险判断和最终雷盘都会保存。',
       userTurnActive:
           engine != null &&
           !engine.isFinished &&
