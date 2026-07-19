@@ -208,6 +208,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _recordingVoice = false;
   bool _transcribingVoice = false;
   bool _voiceInputMode = false;
+  bool _agentTyping = false;
   bool _voiceGestureActive = false;
   int _voiceSeconds = 0;
   int _voiceAmplitudeSampleCount = 0;
@@ -360,6 +361,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _recordingVoice = false;
       _transcribingVoice = false;
       _voiceInputMode = false;
+      _agentTyping = false;
       _voiceGestureActive = false;
       _voiceSeconds = 0;
       _voiceAmplitudeSampleCount = 0;
@@ -432,6 +434,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             );
             _pendingSend = null;
           }
+          // A reconnect may have missed the reply that would clear the typing
+          // indicator; reconciling history below restores the true state.
+          if (_agentTyping) setState(() => _agentTyping = false);
           _loadLatestMessages(showLoading: false);
         case ChatSocketStatus.error:
           break;
@@ -1522,9 +1527,23 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         });
         break;
       case 'delay':
+        setState(() => _agentTyping = true);
+        if (widget.isActive && _isNearBottomNow()) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _scrollToBottom(animated: true);
+          });
+        }
         break;
       case 'pending':
-        setState(() => _sending = false);
+        setState(() {
+          _sending = false;
+          _agentTyping = true;
+        });
+        if (widget.isActive && _isNearBottomNow()) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _scrollToBottom(animated: true);
+          });
+        }
         break;
       case 'message':
         _handleRealtimeMessageEvent(payload);
@@ -1559,6 +1578,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             _adoptMusicStation(componentCard!, draft.id);
           }
           _sending = false;
+          _agentTyping = false;
           if (!shouldAutoScroll) {
             _newMessageCount += 1;
           }
@@ -1622,6 +1642,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             ),
           );
           _sending = false;
+          _agentTyping = false;
         });
         unawaited(_refreshConversationMeta());
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1660,6 +1681,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             ),
           );
           _sending = false;
+          _agentTyping = false;
         });
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (shouldAutoScroll) _scrollToBottom(animated: true);
@@ -1667,12 +1689,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         });
         break;
       case 'done':
-        setState(() => _sending = false);
+        setState(() {
+          _sending = false;
+          _agentTyping = false;
+        });
         unawaited(_loadLatestMessages(showLoading: false));
         break;
       case 'error':
         setState(() {
           _sending = false;
+          _agentTyping = false;
           _historyError = payload['message']?.toString() ?? '聊天失败';
         });
         break;
@@ -1780,6 +1806,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       if (_isMusicStationCard(componentCard)) {
         _adoptMusicStation(componentCard!, messageId);
+      }
+      if (role == 'assistant') {
+        _agentTyping = false;
       }
       if (!shouldAutoScroll && role == 'assistant') {
         _newMessageCount += 1;
@@ -2372,6 +2401,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
       _panel = ComposerPanel.none;
       _sending = true;
+      // Show the typing indicator immediately; the server's pending/delay
+      // events keep it alive and the reply clears it.
+      _agentTyping = true;
     });
     if (clearComposer && attachments.isEmpty) {
       _inputFocus.requestFocus();
@@ -2546,12 +2578,21 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void _setPanel(ComposerPanel panel) {
     _panelHoldTimer?.cancel();
     final nextPanel = _panel == panel ? ComposerPanel.none : panel;
+    final opening = nextPanel != ComposerPanel.none;
     setState(() {
       _heldPanel = ComposerPanel.none;
       _panel = nextPanel;
+      // Opening the emoji / more panel returns the composer to text mode so
+      // the "按住说话" button is replaced by the text field.
+      if (opening) {
+        _voiceInputMode = false;
+      }
     });
-    if (nextPanel != ComposerPanel.none) {
+    if (opening) {
       FocusScope.of(context).unfocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scrollToBottom(animated: true);
+      });
     }
   }
 
@@ -2695,7 +2736,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
     final keyboardLift = isKeyboardOpen ? bottomInset : 0.0;
     final panelHeight = visiblePanelHeight;
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    // Use viewPadding (not padding) for the bottom safe area: an open keyboard
+    // collapses padding.bottom to 0, which would shrink tabBarLift while the
+    // keyboard is up and re-grow it as the keyboard closes. Because that regrow
+    // lags the keyboard's descent, the composer would dip below its rest offset
+    // then rise back ("先下落再回升"). viewPadding stays constant regardless of
+    // the keyboard, keeping the panel/rest target stable for a direct transition.
+    final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
     final safeTop = MediaQuery.paddingOf(context).top;
     final tabBarLift = _tabBarContentHeight + safeBottom;
     final composerBottom = isKeyboardOpen
@@ -2759,6 +2806,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           controller: _scrollController,
                           messages: _messages,
                           isLoadingOlder: _loadingOlder,
+                          showTyping: _agentTyping,
                           bottomPadding: listBottomPadding,
                           topPadding: listTopPadding,
                           onComponentCardTap: _openComponentCard,

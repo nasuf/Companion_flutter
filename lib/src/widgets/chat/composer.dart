@@ -111,18 +111,33 @@ class _Composer extends StatelessWidget {
                             onEnd: onVoicePressEnd,
                             onCancel: onVoicePressCancel,
                           )
-                        : Container(
-                            constraints: BoxConstraints(
-                              minHeight: 36,
-                              maxHeight: resolvingLink ? 36 : 86,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
+                        : AnimatedBuilder(
+                            animation: focusNode,
+                            builder: (context, child) {
+                              final focused = focusNode.hasFocus;
+                              return AnimatedContainer(
+                                duration: const Duration(milliseconds: 150),
+                                constraints: BoxConstraints(
+                                  minHeight: 36,
+                                  maxHeight: resolvingLink ? 36 : 86,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: focused
+                                        ? chatVoiceAccent
+                                        : AppColors.hairline,
+                                    width: focused ? 1.5 : 1,
+                                  ),
+                                ),
+                                child: child,
+                              );
+                            },
                             child: TextField(
                               controller: controller,
                               focusNode: focusNode,
+                              cursorColor: chatVoiceAccent,
                               minLines: 1,
                               maxLines: resolvingLink ? 1 : 3,
                               keyboardType: TextInputType.multiline,
@@ -292,18 +307,26 @@ class _VoiceInputToggleButton extends StatelessWidget {
       child: Semantics(
         button: true,
         label: voiceMode ? '切换到键盘输入' : '切换到语音输入',
-        child: IconButton(
-          onPressed: enabled ? onTap : null,
-          visualDensity: VisualDensity.compact,
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 30, height: 40),
-          icon: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 160),
-            child: Icon(
-              voiceMode ? CupertinoIcons.keyboard : CupertinoIcons.mic,
-              key: ValueKey(voiceMode),
-              size: 21,
-              color: enabled ? AppColors.text : AppColors.muted,
+        child: InkResponse(
+          onTap: enabled ? onTap : null,
+          radius: 23,
+          child: Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.surface,
+              border: Border.all(color: AppColors.hairline),
+            ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 160),
+              child: Icon(
+                voiceMode ? CupertinoIcons.keyboard : CupertinoIcons.mic,
+                key: ValueKey(voiceMode),
+                size: 20,
+                color: enabled ? AppColors.text : AppColors.muted,
+              ),
             ),
           ),
         ),

@@ -21,6 +21,7 @@ class _MessageList extends StatelessWidget {
     required this.busyMusicFavoriteIds,
     required this.canGoMusicPrevious,
     required this.isMusicBusy,
+    this.showTyping = false,
     this.stationMessageId,
     this.stationMessageKey,
     this.agentAvatarUrl,
@@ -49,6 +50,7 @@ class _MessageList extends StatelessWidget {
   final Set<String> busyMusicFavoriteIds;
   final bool canGoMusicPrevious;
   final bool isMusicBusy;
+  final bool showTyping;
   final String? stationMessageId;
   final GlobalKey? stationMessageKey;
   final String? agentAvatarUrl;
@@ -58,7 +60,7 @@ class _MessageList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (messages.isEmpty) {
+    if (messages.isEmpty && !showTyping) {
       return Center(
         child: Text(
           '还没有聊天记录，发一句话开始吧。',
@@ -66,6 +68,8 @@ class _MessageList extends StatelessWidget {
         ),
       );
     }
+    // Header (index 0) + message rows + optional trailing typing indicator.
+    final typingSlot = showTyping ? 1 : 0;
     return ListView.builder(
       controller: controller,
       padding: EdgeInsets.fromLTRB(12, topPadding, 12, bottomPadding),
@@ -73,8 +77,11 @@ class _MessageList extends StatelessWidget {
         parent: AlwaysScrollableScrollPhysics(),
       ),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      itemCount: messages.length + 1,
+      itemCount: messages.length + 1 + typingSlot,
       itemBuilder: (context, index) {
+        if (showTyping && index == messages.length + 1) {
+          return _TypingIndicatorRow(agentAvatarUrl: agentAvatarUrl);
+        }
         if (index == 0) {
           return AnimatedSwitcher(
             duration: const Duration(milliseconds: 180),
@@ -523,93 +530,276 @@ class _Bubble extends StatelessWidget {
         message.content.trim().isNotEmpty;
     final showTextWithAttachments =
         imageAttachments.isNotEmpty && message.content.trim().isNotEmpty;
+
+    final Widget bubbleColumn = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: message.isMine
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
+      children: [
+        if (showTextWithCard) ...[
+          _MessageTextBubble(message: message),
+          const SizedBox(height: 8),
+        ],
+        if (message.isVoiceTranscriptionPending)
+          const _VoiceTranscriptionPendingBubble()
+        else if (message.isVoiceUploadPending)
+          _VoiceUploadPendingBubble(
+            durationSeconds: message.voicePendingDurationSeconds ?? 1,
+          )
+        else if (componentCard != null)
+          _ComponentCardBubble(
+            card: componentCard,
+            isMine: message.isMine,
+            onTap: () {
+              if (componentCard.type == 'music_track') {
+                onMusicCardActivated(componentCard, message.id);
+              }
+              onComponentCardTap(componentCard);
+            },
+            onResolveMusicTrack: onResolveMusicTrack,
+            onMusicCardActivated: () =>
+                onMusicCardActivated(componentCard, message.id),
+            onMusicPrevious: () {
+              onMusicCardActivated(componentCard, message.id);
+              onMusicPrevious();
+            },
+            onMusicNext: () {
+              onMusicCardActivated(componentCard, message.id);
+              onMusicNext();
+            },
+            onMusicFavorite: onMusicFavorite,
+            isActiveMusicCard: activeMusicMessageId == message.id,
+            initialMusicPosition:
+                musicCardPositions[message.id] ?? Duration.zero,
+            favoriteMusicTrackIds: favoriteMusicTrackIds,
+            busyMusicFavoriteIds: busyMusicFavoriteIds,
+            canGoMusicPrevious:
+                activeMusicMessageId == message.id && canGoMusicPrevious,
+            isMusicBusy: isMusicBusy,
+            authToken: authToken,
+            apiBaseUrl: apiBaseUrl,
+          )
+        else if (audioAttachment != null)
+          _AudioAttachmentBubble(
+            attachment: audioAttachment,
+            isMine: message.isMine,
+            authToken: authToken,
+            apiBaseUrl: apiBaseUrl,
+          )
+        else if (imageAttachments.isNotEmpty) ...[
+          _ImageAttachmentBubble(
+            attachments: imageAttachments,
+            isMine: message.isMine,
+            authToken: authToken,
+            onTap: onAttachmentTap,
+          ),
+          if (showTextWithAttachments) ...[
+            const SizedBox(height: 8),
+            _MessageTextBubble(message: message),
+          ],
+        ] else
+          _MessageTextBubble(message: message),
+      ],
+    );
+
     return Flexible(
       child: Column(
         crossAxisAlignment: message.isMine
             ? CrossAxisAlignment.end
             : CrossAxisAlignment.start,
         children: [
-          if (showTextWithCard) ...[
-            _MessageTextBubble(message: message),
-            const SizedBox(height: 8),
-          ],
-          if (message.isVoiceTranscriptionPending)
-            const _VoiceTranscriptionPendingBubble()
-          else if (message.isVoiceUploadPending)
-            _VoiceUploadPendingBubble(
-              durationSeconds: message.voicePendingDurationSeconds ?? 1,
-            )
-          else if (componentCard != null)
-            _ComponentCardBubble(
-              card: componentCard,
-              isMine: message.isMine,
-              onTap: () {
-                if (componentCard.type == 'music_track') {
-                  onMusicCardActivated(componentCard, message.id);
-                }
-                onComponentCardTap(componentCard);
-              },
-              onResolveMusicTrack: onResolveMusicTrack,
-              onMusicCardActivated: () =>
-                  onMusicCardActivated(componentCard, message.id),
-              onMusicPrevious: () {
-                onMusicCardActivated(componentCard, message.id);
-                onMusicPrevious();
-              },
-              onMusicNext: () {
-                onMusicCardActivated(componentCard, message.id);
-                onMusicNext();
-              },
-              onMusicFavorite: onMusicFavorite,
-              isActiveMusicCard: activeMusicMessageId == message.id,
-              initialMusicPosition:
-                  musicCardPositions[message.id] ?? Duration.zero,
-              favoriteMusicTrackIds: favoriteMusicTrackIds,
-              busyMusicFavoriteIds: busyMusicFavoriteIds,
-              canGoMusicPrevious:
-                  activeMusicMessageId == message.id && canGoMusicPrevious,
-              isMusicBusy: isMusicBusy,
-              authToken: authToken,
-              apiBaseUrl: apiBaseUrl,
-            )
-          else if (audioAttachment != null)
-            _AudioAttachmentBubble(
-              attachment: audioAttachment,
-              isMine: message.isMine,
-              authToken: authToken,
-              apiBaseUrl: apiBaseUrl,
-            )
-          else if (imageAttachments.isNotEmpty) ...[
-            _ImageAttachmentBubble(
-              attachments: imageAttachments,
-              isMine: message.isMine,
-              authToken: authToken,
-              onTap: onAttachmentTap,
-            ),
-            if (showTextWithAttachments) ...[
-              const SizedBox(height: 8),
-              _MessageTextBubble(message: message),
-            ],
-          ] else
-            _MessageTextBubble(message: message),
-          const SizedBox(height: 3),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _formatTime(message.createdAt),
-                style: TextStyle(color: AppColors.muted, fontSize: 10),
-              ),
-              if (message.isMine && message.read) ...[
-                const SizedBox(width: 5),
-                const Text(
-                  '✓✓',
-                  style: TextStyle(color: Color(0xFFFFA726), fontSize: 10),
-                ),
+          // Own messages carry a read/unread status circle to the left of the
+          // bubble (Figma 281:1509); AI messages render the bubble alone.
+          if (message.isMine)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _ReadStatusIndicator(read: message.read),
+                const SizedBox(width: 8),
+                bubbleColumn,
               ],
-            ],
+            )
+          else
+            bubbleColumn,
+          const SizedBox(height: 3),
+          Text(
+            _formatTime(message.createdAt),
+            style: TextStyle(color: AppColors.muted, fontSize: 10),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Read (checkmark-in-circle) / unread (empty circle) indicator shown to the
+/// left of the current user's own message bubbles. Matches Figma 281:1513.
+class _ReadStatusIndicator extends StatelessWidget {
+  const _ReadStatusIndicator({required this.read});
+
+  final bool read;
+
+  @override
+  Widget build(BuildContext context) {
+    const color = Color(0xFFA5A5A5);
+    return Semantics(
+      label: read ? '已读' : '未读',
+      child: Container(
+        width: 16,
+        height: 16,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: color, width: 1),
+        ),
+        child: read
+            ? const Icon(Icons.check_rounded, size: 11, color: color)
+            : null,
+      ),
+    );
+  }
+}
+
+/// "Agent is typing" row — an AI-styled bubble with three animated dots.
+/// Mirrors the H5 typing indicator (ChatView `.m-typing`), refined for native.
+class _TypingIndicatorRow extends StatelessWidget {
+  const _TypingIndicatorRow({this.agentAvatarUrl});
+
+  final String? agentAvatarUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Avatar(
+            size: 40,
+            label: '伴',
+            imageUrl: agentAvatarUrl,
+            gradient: const [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
+          ),
+          const SizedBox(width: 10),
+          const _TypingBubble(),
+        ],
+      ),
+    );
+  }
+}
+
+class _TypingBubble extends StatefulWidget {
+  const _TypingBubble();
+
+  @override
+  State<_TypingBubble> createState() => _TypingBubbleState();
+}
+
+class _TypingBubbleState extends State<_TypingBubble>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1300),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  // Wave envelope matching the H5 keyframes: rise to a peak at 35% of the
+  // cycle, settle back by 70%, then rest until the loop restarts.
+  double _wave(double phase) {
+    const peak = 0.35;
+    const settle = 0.7;
+    if (phase <= peak) {
+      return Curves.easeOut.transform((phase / peak).clamp(0.0, 1.0));
+    }
+    if (phase <= settle) {
+      return Curves.easeIn.transform(
+        (1 - (phase - peak) / (settle - peak)).clamp(0.0, 1.0),
+      );
+    }
+    return 0.0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '对方正在输入',
+      liveRegion: true,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(3),
+            topRight: Radius.circular(20),
+            bottomLeft: Radius.circular(20),
+            bottomRight: Radius.circular(20),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.10),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: SizedBox(
+            height: 8,
+            child: AnimatedBuilder(
+              animation: _controller,
+              builder: (context, _) {
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: List.generate(3, (i) {
+                    final phase = (_controller.value - i * 0.16) % 1.0;
+                    final wave = _wave(phase);
+                    return Padding(
+                      padding: EdgeInsets.only(right: i == 2 ? 0 : 6),
+                      child: Transform.translate(
+                        offset: Offset(0, -5 * wave),
+                        child: Transform.scale(
+                          scale: 0.7 + 0.3 * wave,
+                          child: Opacity(
+                            opacity: 0.35 + 0.65 * wave,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    AppColors.accentCyan,
+                                    AppColors.accentDeep,
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                );
+              },
+            ),
+          ),
+        ),
       ),
     );
   }

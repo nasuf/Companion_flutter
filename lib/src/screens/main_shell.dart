@@ -269,7 +269,11 @@ class _MainShellState extends State<MainShell> with RouteAware {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final safeBottom = media.padding.bottom;
+    // viewPadding (not padding): an open keyboard collapses padding.bottom to
+    // 0, which would slide the floating tab bar down ~one safe-area height and
+    // back as the keyboard opens/closes. viewPadding stays constant, so the tab
+    // bar holds still through keyboard/panel transitions.
+    final safeBottom = media.viewPadding.bottom;
     final tabBarWidth = math.min(336.0, media.size.width - 54.0);
     final voiceRecordingActive = _voiceRecordingOverlay != null;
     final hideTabBar = _activeAchievement != null || voiceRecordingActive;
