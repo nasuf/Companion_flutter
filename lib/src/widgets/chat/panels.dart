@@ -1,6 +1,6 @@
 part of 'package:companion_flutter/main.dart';
 
-class _ChatPanel extends StatelessWidget {
+class _ChatPanel extends StatefulWidget {
   const _ChatPanel({
     required this.panel,
     required this.onEmojiTap,
@@ -19,6 +19,26 @@ class _ChatPanel extends StatelessWidget {
   final double bottomInset;
 
   @override
+  State<_ChatPanel> createState() => _ChatPanelState();
+}
+
+class _ChatPanelState extends State<_ChatPanel> {
+  // True only for emoji <-> more swaps (both panels non-none). The whole panel
+  // surface already slides up/down when opening/closing, so the content should
+  // slide up only when switching between two panels while the surface is
+  // stationary — otherwise the two slides would stack.
+  bool _slideSwitch = false;
+
+  @override
+  void didUpdateWidget(covariant _ChatPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _slideSwitch =
+        oldWidget.panel != ComposerPanel.none &&
+        widget.panel != ComposerPanel.none &&
+        oldWidget.panel != widget.panel;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -26,14 +46,36 @@ class _ChatPanel extends StatelessWidget {
         border: Border(top: BorderSide(color: AppColors.hairline)),
       ),
       child: Padding(
-        padding: EdgeInsets.only(bottom: bottomInset),
+        padding: EdgeInsets.only(bottom: widget.bottomInset),
         child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 180),
-          child: switch (panel) {
-            ComposerPanel.emoji => _EmojiPanel(onEmojiTap: onEmojiTap),
+          duration: const Duration(milliseconds: 240),
+          transitionBuilder: (child, animation) {
+            // Opening/closing the whole surface handles its own slide, so those
+            // just crossfade the content. Switching emoji <-> more slides the
+            // content up from below (fast then slow, no bounce).
+            if (!_slideSwitch) {
+              return FadeTransition(opacity: animation, child: child);
+            }
+            final curved = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            );
+            return FadeTransition(
+              opacity: curved,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 1),
+                  end: Offset.zero,
+                ).animate(curved),
+                child: child,
+              ),
+            );
+          },
+          child: switch (widget.panel) {
+            ComposerPanel.emoji => _EmojiPanel(onEmojiTap: widget.onEmojiTap),
             ComposerPanel.more => _MorePanel(
-              onPickPhoto: onPickPhoto,
-              onTakePhoto: onTakePhoto,
+              onPickPhoto: widget.onPickPhoto,
+              onTakePhoto: widget.onTakePhoto,
             ),
             ComposerPanel.none => const SizedBox.shrink(),
           },
