@@ -209,30 +209,47 @@ class _Composer extends StatelessWidget {
                           controller.text.trim().isNotEmpty ||
                           pendingImages.isNotEmpty ||
                           pendingLink != null;
-                      if (canSend) {
-                        return FilledButton(
-                          onPressed: sending ? null : onSend,
-                          style: FilledButton.styleFrom(
-                            minimumSize: const Size(58, 38),
-                            padding: EdgeInsets.zero,
-                            backgroundColor: AppColors.accent,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(19),
-                            ),
-                          ),
-                          child: Text(sending ? '...' : '发送'),
-                        );
-                      }
-                      return _RoundIconButton(
-                        tooltip: '更多',
-                        icon: activePanel == ComposerPanel.more
-                            ? CupertinoIcons.xmark
-                            : CupertinoIcons.plus,
-                        selected: activePanel == ComposerPanel.more,
-                        prominent: activePanel != ComposerPanel.more,
-                        green: true,
-                        onTap: voiceActive ? null : onToggleMore,
+                      // AnimatedSize lets the trailing slot grow/shrink between
+                      // the 38px round button and the wider send pill, so the
+                      // input field's width transitions smoothly instead of
+                      // jumping when text appears.
+                      return AnimatedSize(
+                        duration: const Duration(milliseconds: 160),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.centerRight,
+                        child: canSend
+                            ? SizedBox(
+                                // Match the round buttons' height exactly so the
+                                // whole row (mic / field / emoji) never shifts
+                                // vertically when the send pill appears.
+                                height: 38,
+                                child: FilledButton(
+                                  onPressed: sending ? null : onSend,
+                                  style: FilledButton.styleFrom(
+                                    minimumSize: const Size(58, 38),
+                                    fixedSize: const Size.fromHeight(38),
+                                    padding: EdgeInsets.zero,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    backgroundColor: chatVoiceAccent,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(19),
+                                    ),
+                                  ),
+                                  child: Text(sending ? '...' : '发送'),
+                                ),
+                              )
+                            : _RoundIconButton(
+                                tooltip: '更多',
+                                icon: activePanel == ComposerPanel.more
+                                    ? CupertinoIcons.xmark
+                                    : CupertinoIcons.plus,
+                                selected: activePanel == ComposerPanel.more,
+                                prominent: activePanel != ComposerPanel.more,
+                                green: true,
+                                onTap: voiceActive ? null : onToggleMore,
+                              ),
                       );
                     },
                   ),
