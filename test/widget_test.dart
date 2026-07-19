@@ -107,7 +107,9 @@ void main() {
     expect(find.text('微信登录'), findsOneWidget);
   });
 
-  testWidgets('renders secondary login methods as unavailable', (tester) async {
+  testWidgets('gates apple login and opens the phone login sheet', (
+    tester,
+  ) async {
     await pumpLoginPage(tester);
 
     expect(find.text('Hello'), findsOneWidget);
@@ -116,18 +118,27 @@ void main() {
     await tester.tap(find.bySemanticsLabel('同意用户协议和隐私协议'));
     await tester.pump();
 
-    for (final method in ['苹果登录', '手机号登录']) {
-      await tester.tap(find.bySemanticsLabel(method));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+    // Apple login is still gated behind the "coming soon" dialog.
+    await tester.tap(find.bySemanticsLabel('苹果登录'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.text('暂未开放'), findsOneWidget);
-      expect(find.text('$method功能正在准备中，敬请期待。'), findsOneWidget);
+    expect(find.text('暂未开放'), findsOneWidget);
+    expect(find.text('苹果登录功能正在准备中，敬请期待。'), findsOneWidget);
 
-      await tester.tap(find.widgetWithText(CupertinoDialogAction, '知道了'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-    }
+    await tester.tap(find.widgetWithText(CupertinoDialogAction, '知道了'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Phone login went live: it opens the SMS code sheet instead of the
+    // unavailable dialog.
+    await tester.tap(find.bySemanticsLabel('手机号登录'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('暂未开放'), findsNothing);
+    expect(find.text('未注册的手机号验证后将自动创建账号'), findsOneWidget);
+    expect(find.text('获取验证码'), findsOneWidget);
   });
 
   for (final method in ['微信登录', '苹果登录', 'QQ登录', '手机号登录']) {
