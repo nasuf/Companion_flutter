@@ -197,11 +197,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   int _loadedServerMessages = 0;
   double? _lastListBottomPadding;
   double _lastKeyboardInset = 0;
-  // Tallest keyboard inset observed so far. The docked emoji/more panel copies
-  // this height so keyboard <-> panel switches keep the composer perfectly
-  // still (before any keyboard has shown, the panel falls back to its own
-  // content height).
-  double _maxKeyboardInsetSeen = 0;
   bool _pinToBottomDuringKeyboard = false;
   bool _wasNearBottomBeforePaddingChange = true;
   int _newMessageCount = 0;
@@ -2779,17 +2774,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final safeTop = MediaQuery.paddingOf(context).top;
     final tabBarLift = _tabBarContentHeight + safeBottom;
     final panelVisible = visiblePanel != ComposerPanel.none;
-    if (bottomInset > _maxKeyboardInsetSeen) {
-      _maxKeyboardInsetSeen = bottomInset;
-    }
     // The emoji / more panel docks to the very bottom of the screen and owns
     // the safe-area strip, mirroring the keyboard (the shell hides the floating
-    // tab bar while it is up — see onComposerPanelChanged). It adopts the
-    // keyboard's height once known so keyboard <-> panel switches keep the
-    // composer and chat list perfectly still.
-    final panelSurfaceHeight = panelVisible
-        ? math.max(_maxKeyboardInsetSeen, panelHeight + safeBottom)
-        : 0.0;
+    // tab bar while it is up — see onComposerPanelChanged). It keeps its own
+    // content height rather than copying the keyboard's: matching the keyboard
+    // left large dead space inside the panel, and the max() below still gives
+    // a direct no-bounce ride between the two heights when switching.
+    final panelSurfaceHeight = panelVisible ? panelHeight + safeBottom : 0.0;
     // Where the composer settles once the keyboard is fully closed: on top of
     // the docked panel, or above the floating tab bar when nothing is up.
     final restLift = panelVisible ? panelSurfaceHeight : tabBarLift;
