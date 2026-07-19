@@ -50,25 +50,29 @@ class _ChatPanelState extends State<_ChatPanel> {
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 240),
           transitionBuilder: (child, animation) {
-            // Opening/closing the whole surface handles its own slide, so those
-            // just crossfade the content. Switching emoji <-> more slides the
-            // content up from below (fast then slow, no bounce).
-            if (!_slideSwitch) {
-              return FadeTransition(opacity: animation, child: child);
-            }
-            final curved = CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
-            );
-            return FadeTransition(
-              opacity: curved,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 1),
-                  end: Offset.zero,
-                ).animate(curved),
-                child: child,
-              ),
+            return AnimatedBuilder(
+              animation: animation,
+              builder: (context, _) {
+                // Outgoing content (animation running in reverse) vanishes
+                // immediately — no fall-back / slide-down. The incoming panel
+                // then slides up from below to replace it.
+                final status = animation.status;
+                if (status == AnimationStatus.reverse ||
+                    status == AnimationStatus.dismissed) {
+                  return const SizedBox.shrink();
+                }
+                final t = Curves.easeOutCubic.transform(animation.value);
+                // Opening/closing the whole surface handles its own slide, so
+                // those just fade the content in; switching emoji <-> more
+                // slides the incoming content up from the bottom.
+                if (!_slideSwitch) {
+                  return Opacity(opacity: t, child: child);
+                }
+                return FractionalTranslation(
+                  translation: Offset(0, 1 - t),
+                  child: child,
+                );
+              },
             );
           },
           child: switch (widget.panel) {
