@@ -436,6 +436,13 @@ class ChatMessage {
       metadata: json['metadata'] is Map
           ? Map<String, dynamic>.from(json['metadata'] as Map)
           : null,
+      // The backend has no read receipt field: a message returned by the
+      // server is by definition persisted and delivered to the agent, which
+      // is exactly what the read indicator means (same semantics as web,
+      // where DB-loaded history is always treated as read). Without this,
+      // history rendered as unread and the post-reply history reconcile
+      // flipped freshly acked messages back to unread.
+      read: true,
     );
   }
 

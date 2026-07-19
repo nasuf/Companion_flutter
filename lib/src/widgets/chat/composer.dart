@@ -150,7 +150,16 @@ class _Composer extends StatelessWidget {
                                   color: Color(0xFFBFBFBF),
                                   fontSize: 12,
                                 ),
+                                // The surrounding AnimatedContainer draws the
+                                // only border (green when focused). Explicitly
+                                // clear the themed enabled/focused borders too:
+                                // `border` alone does not override them, which
+                                // leaked the global blue focusedBorder and
+                                // produced a second border layer.
                                 border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                filled: false,
                                 isDense: true,
                                 prefixIcon: resolvingLink
                                     ? Center(
