@@ -61,13 +61,15 @@ class _ChatPanelState extends State<_ChatPanel> {
                     status == AnimationStatus.dismissed) {
                   return const SizedBox.shrink();
                 }
-                final t = Curves.easeOutCubic.transform(animation.value);
-                // Opening/closing the whole surface handles its own slide, so
-                // those just fade the content in; switching emoji <-> more
-                // slides the incoming content up from the bottom.
+                // Opening/closing the whole surface slides at the surface's own
+                // (keyboard-matched) speed, so the content just rides along
+                // fully visible — no extra fade that would make a panel open
+                // look slower than the keyboard. Switching emoji <-> more slides
+                // the incoming content up from the bottom.
                 if (!_slideSwitch) {
-                  return Opacity(opacity: t, child: child);
+                  return child;
                 }
+                final t = Curves.easeOutCubic.transform(animation.value);
                 return FractionalTranslation(
                   translation: Offset(0, 1 - t),
                   child: child,
