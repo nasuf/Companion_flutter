@@ -48,7 +48,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       child: Padding(
         padding: EdgeInsets.only(bottom: widget.bottomInset),
         child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 340),
+          duration: const Duration(milliseconds: 420),
           transitionBuilder: (child, animation) {
             return AnimatedBuilder(
               animation: animation,
