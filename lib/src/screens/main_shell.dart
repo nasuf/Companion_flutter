@@ -22,6 +22,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
   int _index = 0;
   bool _chatSidebarOpen = false;
   bool _routeCovered = false;
+  bool _composerPanelOpen = false;
   AchievementItem? _activeAchievement;
   VoiceRecordingOverlaySnapshot? _voiceRecordingOverlay;
   AppNotificationEvent? _activeNotification;
@@ -115,6 +116,11 @@ class _MainShellState extends State<MainShell> with RouteAware {
   void _setVoiceRecordingOverlay(VoiceRecordingOverlaySnapshot? overlay) {
     if (!mounted || identical(_voiceRecordingOverlay, overlay)) return;
     setState(() => _voiceRecordingOverlay = overlay);
+  }
+
+  void _setComposerPanelOpen(bool value) {
+    if (!mounted || _composerPanelOpen == value) return;
+    setState(() => _composerPanelOpen = value);
   }
 
   void _openAchievementOverlay(AchievementItem item) {
@@ -276,7 +282,13 @@ class _MainShellState extends State<MainShell> with RouteAware {
     final safeBottom = media.viewPadding.bottom;
     final tabBarWidth = math.min(336.0, media.size.width - 54.0);
     final voiceRecordingActive = _voiceRecordingOverlay != null;
-    final hideTabBar = _activeAchievement != null || voiceRecordingActive;
+    // The chat composer panel docks to the screen bottom like a keyboard, so
+    // the floating tab bar slides away while it is up (same as the keyboard
+    // covering it) and returns when the panel closes.
+    final hideTabBar =
+        _activeAchievement != null ||
+        voiceRecordingActive ||
+        (_composerPanelOpen && _index == 0);
     final chatPage = widget.session.conversationId == null
         ? NoAgentPage(
             api: widget.api,
@@ -292,6 +304,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
             onAchievementDetailRequested: _openAchievementOverlay,
             onAchievementOverlayChanged: _setAchievementOverlayOpen,
             onVoiceRecordingOverlayChanged: _setVoiceRecordingOverlay,
+            onComposerPanelChanged: _setComposerPanelOpen,
           );
     final pages = [
       chatPage,

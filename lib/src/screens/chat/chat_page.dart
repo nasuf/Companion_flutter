@@ -26,6 +26,7 @@ class ChatPage extends StatefulWidget {
     this.onAchievementDetailRequested,
     this.onAchievementOverlayChanged,
     this.onVoiceRecordingOverlayChanged,
+    this.onComposerPanelChanged,
   });
 
   final CompanionApi api;
@@ -36,6 +37,10 @@ class ChatPage extends StatefulWidget {
   final ValueChanged<bool>? onAchievementOverlayChanged;
   final ValueChanged<VoiceRecordingOverlaySnapshot?>?
   onVoiceRecordingOverlayChanged;
+
+  /// Reports whether the emoji / more panel is up, so the shell can hide the
+  /// floating tab bar (the panel docks to the screen bottom like a keyboard).
+  final ValueChanged<bool>? onComposerPanelChanged;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -173,6 +178,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   StreamSubscription<List<SharedMediaFile>>? _shareIntentSub;
   ComposerPanel _panel = ComposerPanel.none;
   ComposerPanel _heldPanel = ComposerPanel.none;
+  bool _notifiedComposerPanelVisible = false;
   Timer? _panelHoldTimer;
   Timer? _voiceTimer;
   StreamSubscription<Amplitude>? _voiceAmplitudeSub;
@@ -191,6 +197,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   int _loadedServerMessages = 0;
   double? _lastListBottomPadding;
   double _lastKeyboardInset = 0;
+  // Tallest keyboard inset observed so far. The docked emoji/more panel copies
+  // this height so keyboard <-> panel switches keep the composer perfectly
+  // still (before any keyboard has shown, the panel falls back to its own
+  // content height).
+  double _maxKeyboardInsetSeen = 0;
   bool _pinToBottomDuringKeyboard = false;
   bool _wasNearBottomBeforePaddingChange = true;
   int _newMessageCount = 0;
@@ -271,6 +282,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // Release the shell's hidden tab bar if we die while a panel is docked
+    // (deferred: notifying an ancestor synchronously from dispose is unsafe).
+    final panelCallback = widget.onComposerPanelChanged;
+    if (_notifiedComposerPanelVisible && panelCallback != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        panelCallback(false);
+      });
+    }
     _scrollController.removeListener(_handleScroll);
     _inputController.removeListener(_handleInputChanged);
     _playback.removeListener(_handleStationPlaybackChanged);
@@ -2085,6 +2104,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
+  /// Mirrors the derived panel visibility to the shell (which hides the
+  /// floating tab bar while a panel is docked). Called from build, so the
+  /// actual notification is deferred to after the frame: flipping parent
+  /// state mid-build is not allowed.
+  void _syncComposerPanelVisibility(bool visible) {
+    if (_notifiedComposerPanelVisible == visible) return;
+    _notifiedComposerPanelVisible = visible;
+    final callback = widget.onComposerPanelChanged;
+    if (callback == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) callback(visible);
+    });
+  }
+
   VoiceReleaseAction _voiceActionForPosition(Offset position) {
     return voiceReleaseActionForPosition(
       position: position,
@@ -2745,10 +2778,28 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
     final safeTop = MediaQuery.paddingOf(context).top;
     final tabBarLift = _tabBarContentHeight + safeBottom;
+    final panelVisible = visiblePanel != ComposerPanel.none;
+    if (bottomInset > _maxKeyboardInsetSeen) {
+      _maxKeyboardInsetSeen = bottomInset;
+    }
+    // The emoji / more panel docks to the very bottom of the screen and owns
+    // the safe-area strip, mirroring the keyboard (the shell hides the floating
+    // tab bar while it is up — see onComposerPanelChanged). It adopts the
+    // keyboard's height once known so keyboard <-> panel switches keep the
+    // composer and chat list perfectly still.
+    final panelSurfaceHeight = panelVisible
+        ? math.max(_maxKeyboardInsetSeen, panelHeight + safeBottom)
+        : 0.0;
+    // Where the composer settles once the keyboard is fully closed: on top of
+    // the docked panel, or above the floating tab bar when nothing is up.
+    final restLift = panelVisible ? panelSurfaceHeight : tabBarLift;
+    // max() keeps the composer from ever dipping below its rest target while
+    // the keyboard animates away (direct transition, no bounce).
     final composerBottom = isKeyboardOpen
-        ? math.max(keyboardLift, tabBarLift + panelHeight)
-        : tabBarLift + panelHeight;
+        ? math.max(keyboardLift, restLift)
+        : restLift;
     final inputSurfaceHeight = composerHeight + composerBottom;
+    _syncComposerPanelVisibility(panelVisible);
     final stationTrack = _stationTrack;
     final showStationDock = stationTrack != null && _stationDockActive;
     final listBottomPadding = inputSurfaceHeight + 18;
@@ -2896,13 +2947,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           AnimatedPositioned(
             left: 0,
             right: 0,
-            bottom: tabBarLift,
-            height: panelHeight,
+            bottom: 0,
+            height: panelSurfaceHeight,
             duration: positionDuration,
             curve: _animationCurve,
             child: ClipRect(
               child: _ChatPanel(
                 panel: visiblePanel,
+                bottomInset: safeBottom,
                 onEmojiTap: _appendEmoji,
                 onPickPhoto: () =>
                     unawaited(_pickChatImage(ImageSource.gallery)),

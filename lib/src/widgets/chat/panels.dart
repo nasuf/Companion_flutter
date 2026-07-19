@@ -6,12 +6,17 @@ class _ChatPanel extends StatelessWidget {
     required this.onEmojiTap,
     required this.onPickPhoto,
     required this.onTakePhoto,
+    this.bottomInset = 0,
   });
 
   final ComposerPanel panel;
   final ValueChanged<String> onEmojiTap;
   final VoidCallback onPickPhoto;
   final VoidCallback onTakePhoto;
+
+  /// Bottom safe-area height. The panel docks to the screen bottom (like the
+  /// keyboard), so it owns the home-indicator strip and keeps content above it.
+  final double bottomInset;
 
   @override
   Widget build(BuildContext context) {
@@ -20,16 +25,19 @@ class _ChatPanel extends StatelessWidget {
         color: AppColors.surface,
         border: Border(top: BorderSide(color: AppColors.hairline)),
       ),
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 180),
-        child: switch (panel) {
-          ComposerPanel.emoji => _EmojiPanel(onEmojiTap: onEmojiTap),
-          ComposerPanel.more => _MorePanel(
-            onPickPhoto: onPickPhoto,
-            onTakePhoto: onTakePhoto,
-          ),
-          ComposerPanel.none => const SizedBox.shrink(),
-        },
+      child: Padding(
+        padding: EdgeInsets.only(bottom: bottomInset),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 180),
+          child: switch (panel) {
+            ComposerPanel.emoji => _EmojiPanel(onEmojiTap: onEmojiTap),
+            ComposerPanel.more => _MorePanel(
+              onPickPhoto: onPickPhoto,
+              onTakePhoto: onTakePhoto,
+            ),
+            ComposerPanel.none => const SizedBox.shrink(),
+          },
+        ),
       ),
     );
   }
