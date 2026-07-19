@@ -346,7 +346,6 @@ class _NativeGameRuntime {
           () => _flushEventOutbox(
             sessionId: active.id,
             refreshRounds: terminal,
-            updateUi: updateUi,
           ),
         );
         return;
@@ -375,7 +374,6 @@ class _NativeGameRuntime {
   Future<void> _flushEventOutbox({
     required String sessionId,
     required bool refreshRounds,
-    required bool updateUi,
   }) async {
     for (var attempt = 0; attempt < 3; attempt += 1) {
       await _eventOutbox.replay();
@@ -384,11 +382,6 @@ class _NativeGameRuntime {
         (event) => event['session_id'] == sessionId,
       );
       if (!pending) {
-        if (session?.id == sessionId &&
-            syncNotice == '这一步已保存在手机里，联网后会按顺序自动同步。') {
-          syncNotice = null;
-          _notify(updateUi);
-        }
         if (refreshRounds) await loadRounds();
         return;
       }
@@ -396,9 +389,6 @@ class _NativeGameRuntime {
         await Future<void>.delayed(Duration(milliseconds: 280 * (attempt + 1)));
       }
     }
-    if (!updateUi || session?.id != sessionId) return;
-    syncNotice = '这一步已保存在手机里，联网后会按顺序自动同步。';
-    _notify();
   }
 
   Future<void> _sendBestEffortEvent({
