@@ -201,6 +201,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   int _loadedServerMessages = 0;
   double? _lastListBottomPadding;
   double _lastKeyboardInset = 0;
+  // Tallest keyboard inset seen during the current focus session. Used to hold
+  // the composer steady when the iOS composing-letters strip toggles the
+  // keyboard height mid-typing (see build).
+  double _keyboardSessionMaxInset = 0;
   bool _pinToBottomDuringKeyboard = false;
   bool _wasNearBottomBeforePaddingChange = true;
   int _newMessageCount = 0;
@@ -2806,7 +2810,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final composerHeight = _composerHeightForWidth(
       MediaQuery.sizeOf(context).width,
     );
-    final keyboardLift = isKeyboardOpen ? bottomInset : 0.0;
+    // Lift the composer by the tallest keyboard inset seen this focus session
+    // instead of the live inset. iOS pinyin keyboards grow/shrink by a row as
+    // the composing-letters strip toggles mid-typing; following the live inset
+    // made the whole composer bob up and down on every word boundary. Holding
+    // the session max lifts it once (when the strip first appears) and then
+    // keeps it steady. When focus is lost (keyboard closing / dismissed) we
+    // follow the inset straight down so the close still tracks the keyboard.
+    final double keyboardLift;
+    if (!isKeyboardOpen) {
+      _keyboardSessionMaxInset = 0;
+      keyboardLift = 0;
+    } else if (_inputFocus.hasFocus) {
+      if (bottomInset > _keyboardSessionMaxInset) {
+        _keyboardSessionMaxInset = bottomInset;
+      }
+      keyboardLift = _keyboardSessionMaxInset;
+    } else {
+      _keyboardSessionMaxInset = bottomInset;
+      keyboardLift = bottomInset;
+    }
     final panelHeight = visiblePanelHeight;
     // Use viewPadding (not padding) for the bottom safe area: an open keyboard
     // collapses padding.bottom to 0, which would shrink tabBarLift while the
