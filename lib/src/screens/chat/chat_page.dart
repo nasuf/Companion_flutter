@@ -178,6 +178,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   StreamSubscription<List<SharedMediaFile>>? _shareIntentSub;
   ComposerPanel _panel = ComposerPanel.none;
   ComposerPanel _heldPanel = ComposerPanel.none;
+  // The panel type kept on screen during a slide-out (the panel translates off
+  // the bottom before its content is dropped), so the closing animation still
+  // renders real content instead of blanking instantly.
+  ComposerPanel _lastDisplayedPanel = ComposerPanel.none;
   bool _notifiedComposerPanelVisible = false;
   Timer? _panelHoldTimer;
   Timer? _voiceTimer;
@@ -2821,6 +2825,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     // left large dead space inside the panel, and the max() below still gives
     // a direct no-bounce ride between the two heights when switching.
     final panelSurfaceHeight = panelVisible ? panelHeight + safeBottom : 0.0;
+    // Fixed full height of the panel surface (content + safe area). Used to
+    // slide the panel in/out from below rather than growing its height.
+    final panelContentHeight = _composerPanelHeight + safeBottom;
+    if (panelVisible) {
+      _lastDisplayedPanel = visiblePanel;
+    }
+    // While closing, keep rendering the last panel so it can slide down with
+    // real content; it is cleared in the panel's onEnd once fully off screen.
+    final displayedPanel = panelVisible ? visiblePanel : _lastDisplayedPanel;
     // Where the composer settles once the keyboard is fully closed: on top of
     // the docked panel, or above the floating tab bar when nothing is up.
     final restLift = panelVisible ? panelSurfaceHeight : tabBarLift;
@@ -2981,13 +2994,25 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           AnimatedPositioned(
             left: 0,
             right: 0,
-            bottom: 0,
-            height: panelSurfaceHeight,
-            duration: positionDuration,
+            // Slide the whole panel up from below the screen (like the
+            // keyboard) instead of growing its height in place: fixed height +
+            // animated offset keeps content from squishing. Uses its own
+            // duration (not the keyboard-synced positionDuration) so the slide
+            // also plays during keyboard <-> panel switches.
+            bottom: panelVisible ? 0 : -panelContentHeight,
+            height: panelContentHeight,
+            duration: _animationDuration,
             curve: _animationCurve,
+            onEnd: () {
+              if (!panelVisible &&
+                  mounted &&
+                  _lastDisplayedPanel != ComposerPanel.none) {
+                setState(() => _lastDisplayedPanel = ComposerPanel.none);
+              }
+            },
             child: ClipRect(
               child: _ChatPanel(
-                panel: visiblePanel,
+                panel: displayedPanel,
                 bottomInset: safeBottom,
                 onEmojiTap: _appendEmoji,
                 onPickPhoto: () =>
