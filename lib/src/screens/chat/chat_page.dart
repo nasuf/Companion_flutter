@@ -201,11 +201,19 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   int _loadedServerMessages = 0;
   double? _lastListBottomPadding;
   double _lastKeyboardInset = 0;
-  // Tallest keyboard inset seen during the current keyboard session. The
-  // composer is lifted by this (grow-only) so it never bobs when the iOS
-  // composing-letters / candidate strip toggles the keyboard height while
-  // typing. Reset when the keyboard fully closes (see build).
-  double _keyboardSessionMaxInset = 0;
+  // Tallest keyboard inset ever observed on this device (persisted). The
+  // composer reserves this height whenever the keyboard is open, so the extra
+  // row iOS adds for the pinyin composing/candidate strip is already accounted
+  // for — the composer never gets pushed up when that strip appears. Static so
+  // it is shared across conversations; also cached to secure storage so the
+  // reserve is right from the very first keyboard open after a relaunch.
+  static double _maxKeyboardInsetEver = 0;
+  static bool _maxKeyboardInsetLoaded = false;
+  static const _maxKeyboardInsetKey = 'chat_composer_max_keyboard_inset';
+  final _keyboardInsetStorage = const FlutterSecureStorage();
+  // Debounces persisting the max inset: it grows frame-by-frame while a keyboard
+  // opens, so a single trailing write collapses that burst.
+  Timer? _persistKeyboardInsetTimer;
   // True only when WE initiate a keyboard dismiss (opening a panel, tapping
   // away, switching to voice). While set, the composer follows the keyboard
   // straight down so the close/hand-off to a panel stays smooth. It is NOT
@@ -277,7 +285,35 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
       unawaited(_playNextStationTrack(auto: true));
     });
+    unawaited(_restoreMaxKeyboardInset());
     _bootstrapChat();
+  }
+
+  Future<void> _restoreMaxKeyboardInset() async {
+    if (_maxKeyboardInsetLoaded) return;
+    _maxKeyboardInsetLoaded = true;
+    try {
+      final raw = await _keyboardInsetStorage.read(key: _maxKeyboardInsetKey);
+      final value = double.tryParse(raw ?? '');
+      if (value != null && value > _maxKeyboardInsetEver) {
+        _maxKeyboardInsetEver = value;
+        if (mounted) setState(() {});
+      }
+    } catch (_) {
+      // A missing/broken cache just means we relearn the height on first open.
+    }
+  }
+
+  void _schedulePersistMaxKeyboardInset() {
+    _persistKeyboardInsetTimer?.cancel();
+    _persistKeyboardInsetTimer = Timer(const Duration(milliseconds: 600), () {
+      unawaited(
+        _keyboardInsetStorage.write(
+          key: _maxKeyboardInsetKey,
+          value: _maxKeyboardInsetEver.toStringAsFixed(1),
+        ),
+      );
+    });
   }
 
   @override
@@ -316,6 +352,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _capsuleScanTimer?.cancel();
     _conversationMetaTimer?.cancel();
     _stationPauseTimer?.cancel();
+    _persistKeyboardInsetTimer?.cancel();
     _musicCompleteSub?.cancel();
     _shareIntentSub?.cancel();
     unawaited(_voiceRecorder.dispose());
@@ -2824,26 +2861,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final composerHeight = _composerHeightForWidth(
       MediaQuery.sizeOf(context).width,
     );
-    // Lift the composer by the tallest keyboard inset seen this session instead
-    // of the live inset. iOS pinyin keyboards grow/shrink by a row as the
-    // composing-letters / candidate strip toggles mid-typing; following the
-    // live inset made the whole composer bob up and down on every keystroke.
-    // Grow-only holding lifts it once (when the strip first appears) and then
-    // keeps it rock steady. Only when WE initiate a dismiss do we follow the
-    // keyboard straight down (kept off the focus signal, which flickers during
-    // composition and would otherwise re-introduce the bob).
+    // Reserve the tallest keyboard height ever seen while the keyboard is open,
+    // rather than following the live inset. iOS grows/shrinks the keyboard by a
+    // row as the pinyin composing/candidate strip toggles mid-typing; following
+    // the live inset pushed the whole composer up when the strip appeared and
+    // back down when it left. Reserving the max height means that extra row is
+    // already accounted for, so the composer holds perfectly still. Only when
+    // WE initiate a dismiss do we follow the keyboard straight down (kept off
+    // the focus signal, which flickers during composition).
     final double keyboardLift;
     if (!isKeyboardOpen) {
-      _keyboardSessionMaxInset = 0;
       _keyboardDismissing = false;
       keyboardLift = 0;
     } else if (_keyboardDismissing) {
       keyboardLift = bottomInset;
     } else {
-      if (bottomInset > _keyboardSessionMaxInset) {
-        _keyboardSessionMaxInset = bottomInset;
+      if (bottomInset > _maxKeyboardInsetEver) {
+        _maxKeyboardInsetEver = bottomInset;
+        _schedulePersistMaxKeyboardInset();
       }
-      keyboardLift = _keyboardSessionMaxInset;
+      keyboardLift = _maxKeyboardInsetEver;
     }
     final panelHeight = visiblePanelHeight;
     // Use viewPadding (not padding) for the bottom safe area: an open keyboard
@@ -2887,10 +2924,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final listBottomPadding = inputSurfaceHeight + 18;
     const listTopPadding = 10.0;
     final keyboardTransition = isKeyboardOpen || wasKeyboardOpen;
-    // Keyboard-driven moves stay instant (they track the OS keyboard metrics
-    // frame by frame, which already ease out). Pure panel opens / switches use
-    // an ease-out (fast then slow) transition.
-    final positionDuration = keyboardTransition
+    // While dismissing, follow the keyboard down frame-by-frame (instant) so the
+    // composer hugs it / hands off to a panel. Otherwise ease: the reserved
+    // keyboard lift is a stable target, so a smooth glide has nothing to bob
+    // against (no dip), and panel opens/switches keep their ease-out.
+    final positionDuration = _keyboardDismissing
         ? Duration.zero
         : _animationDuration;
     final forceKeyboardPin = _pinToBottomDuringKeyboard && keyboardTransition;
