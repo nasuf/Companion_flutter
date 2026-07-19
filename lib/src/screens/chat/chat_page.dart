@@ -201,10 +201,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   int _loadedServerMessages = 0;
   double? _lastListBottomPadding;
   double _lastKeyboardInset = 0;
-  // Tallest keyboard inset seen during the current focus session. Used to hold
-  // the composer steady when the iOS composing-letters strip toggles the
-  // keyboard height mid-typing (see build).
+  // Tallest keyboard inset seen during the current keyboard session. The
+  // composer is lifted by this (grow-only) so it never bobs when the iOS
+  // composing-letters / candidate strip toggles the keyboard height while
+  // typing. Reset when the keyboard fully closes (see build).
   double _keyboardSessionMaxInset = 0;
+  // True only when WE initiate a keyboard dismiss (opening a panel, tapping
+  // away, switching to voice). While set, the composer follows the keyboard
+  // straight down so the close/hand-off to a panel stays smooth. It is NOT
+  // driven by focus, which can briefly drop during pinyin composition and would
+  // otherwise make the composer chase the shrinking keyboard mid-typing.
+  bool _keyboardDismissing = false;
   bool _pinToBottomDuringKeyboard = false;
   bool _wasNearBottomBeforePaddingChange = true;
   int _newMessageCount = 0;
@@ -2157,6 +2164,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _historyError = null;
     });
     _syncVoiceRecordingOverlay();
+    _keyboardDismissing = true;
     _inputFocus.unfocus();
     try {
       if (!await _voiceRecorder.hasPermission()) {
@@ -2648,6 +2656,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
     });
     if (opening) {
+      _keyboardDismissing = true;
       FocusScope.of(context).unfocus();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _scrollToBottom(animated: true);
@@ -2656,6 +2665,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _focusInput() {
+    // Summoning the keyboard ends any dismiss-follow so the lift holds steady.
+    _keyboardDismissing = false;
     // Summoning the keyboard always pulls the conversation to the newest
     // message, mirroring the emoji/more panel behaviour. The pin then keeps
     // the list glued to the composer while the keyboard animates up.
@@ -2692,8 +2703,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _pinToBottomDuringKeyboard = false;
     });
     if (next) {
+      _keyboardDismissing = true;
       FocusScope.of(context).unfocus();
     } else {
+      _keyboardDismissing = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _inputFocus.requestFocus();
       });
@@ -2701,6 +2714,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _dismissInputSurfaces() {
+    _keyboardDismissing = true;
     FocusScope.of(context).unfocus();
     _panelHoldTimer?.cancel();
     if (_panel == ComposerPanel.none &&
@@ -2810,25 +2824,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final composerHeight = _composerHeightForWidth(
       MediaQuery.sizeOf(context).width,
     );
-    // Lift the composer by the tallest keyboard inset seen this focus session
-    // instead of the live inset. iOS pinyin keyboards grow/shrink by a row as
-    // the composing-letters strip toggles mid-typing; following the live inset
-    // made the whole composer bob up and down on every word boundary. Holding
-    // the session max lifts it once (when the strip first appears) and then
-    // keeps it steady. When focus is lost (keyboard closing / dismissed) we
-    // follow the inset straight down so the close still tracks the keyboard.
+    // Lift the composer by the tallest keyboard inset seen this session instead
+    // of the live inset. iOS pinyin keyboards grow/shrink by a row as the
+    // composing-letters / candidate strip toggles mid-typing; following the
+    // live inset made the whole composer bob up and down on every keystroke.
+    // Grow-only holding lifts it once (when the strip first appears) and then
+    // keeps it rock steady. Only when WE initiate a dismiss do we follow the
+    // keyboard straight down (kept off the focus signal, which flickers during
+    // composition and would otherwise re-introduce the bob).
     final double keyboardLift;
     if (!isKeyboardOpen) {
       _keyboardSessionMaxInset = 0;
+      _keyboardDismissing = false;
       keyboardLift = 0;
-    } else if (_inputFocus.hasFocus) {
+    } else if (_keyboardDismissing) {
+      keyboardLift = bottomInset;
+    } else {
       if (bottomInset > _keyboardSessionMaxInset) {
         _keyboardSessionMaxInset = bottomInset;
       }
       keyboardLift = _keyboardSessionMaxInset;
-    } else {
-      _keyboardSessionMaxInset = bottomInset;
-      keyboardLift = bottomInset;
     }
     final panelHeight = visiblePanelHeight;
     // Use viewPadding (not padding) for the bottom safe area: an open keyboard
