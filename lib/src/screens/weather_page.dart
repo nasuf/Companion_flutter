@@ -982,7 +982,7 @@ class _HourlyWeatherPill extends StatelessWidget {
       curve: Curves.easeOutCubic,
       width: 68,
       height: 120,
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
         color: selected ? null : Colors.white,
@@ -1005,14 +1005,21 @@ class _HourlyWeatherPill extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Text(
-            '${hour.time.hour.toString().padLeft(2, '0')}:00',
-            maxLines: 1,
-            style: TextStyle(
-              color: foreground,
-              fontSize: 14,
-              height: 1,
-              fontWeight: FontWeight.w700,
+          SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                '${hour.time.hour.toString().padLeft(2, '0')}:00',
+                maxLines: 1,
+                softWrap: false,
+                style: TextStyle(
+                  color: foreground,
+                  fontSize: 14,
+                  height: 1,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -1025,13 +1032,21 @@ class _HourlyWeatherPill extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          Text(
-            '${hour.temperature.round()}℃',
-            style: TextStyle(
-              color: foreground,
-              fontSize: 20,
-              height: 1,
-              fontWeight: FontWeight.w700,
+          SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                '${hour.temperature.round()}℃',
+                maxLines: 1,
+                softWrap: false,
+                style: TextStyle(
+                  color: foreground,
+                  fontSize: 20,
+                  height: 1,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ],
