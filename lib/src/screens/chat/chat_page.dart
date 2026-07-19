@@ -698,7 +698,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _adoptLatestMusicStationFromMessages();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!_scrollController.hasClients) return;
-        if (showLoading || !hadScrollPosition || wasNearBottom) {
+        if (showLoading) {
+          // First load / conversation switch: chase the settling extent so we
+          // land exactly on the newest message despite lazy list measurement.
+          _jumpToBottomSettled();
+        } else if (!hadScrollPosition || wasNearBottom) {
           _scrollToBottom();
         } else {
           final target = oldPixels.clamp(
@@ -2601,6 +2605,25 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     } else {
       _scrollController.jumpTo(target);
     }
+  }
+
+  /// Jumps to the newest message and keeps chasing the true bottom across the
+  /// next few frames. On first open the ListView.builder only measures the
+  /// visible items, so its initial maxScrollExtent is an estimate; a single
+  /// jump lands short. Re-jumping while the extent keeps growing settles the
+  /// list exactly at the latest message.
+  void _jumpToBottomSettled({int remaining = 6}) {
+    if (!mounted || !_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    _scrollController.jumpTo(position.maxScrollExtent);
+    if (remaining <= 0) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final next = _scrollController.position;
+      if (next.pixels < next.maxScrollExtent - 1) {
+        _jumpToBottomSettled(remaining: remaining - 1);
+      }
+    });
   }
 
   void _setPanel(ComposerPanel panel) {
