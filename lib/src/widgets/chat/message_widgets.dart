@@ -647,15 +647,18 @@ class _ReadStatusIndicator extends StatelessWidget {
     return Semantics(
       label: read ? '已读' : '未读',
       child: Container(
-        width: 16,
-        height: 16,
+        width: 12,
+        height: 12,
+        // Keep a small gap between the circle and the bubble's bottom edge so
+        // the shrunken indicator still reads as vertically anchored to it.
+        margin: const EdgeInsets.only(bottom: 2),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(color: color, width: 1),
         ),
         child: read
-            ? const Icon(Icons.check_rounded, size: 11, color: color)
+            ? const Icon(Icons.check_rounded, size: 8, color: color)
             : null,
       ),
     );
