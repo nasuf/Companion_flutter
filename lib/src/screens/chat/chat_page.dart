@@ -2625,7 +2625,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _focusInput() {
-    _pinToBottomDuringKeyboard = _isNearBottomNow();
+    // Summoning the keyboard always pulls the conversation to the newest
+    // message, mirroring the emoji/more panel behaviour. The pin then keeps
+    // the list glued to the composer while the keyboard animates up.
+    _pinToBottomDuringKeyboard = true;
     _panelHoldTimer?.cancel();
     final panelToHold = _panel != ComposerPanel.none ? _panel : _heldPanel;
     setState(() {
@@ -2633,6 +2636,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _heldPanel = panelToHold;
     });
     _inputFocus.requestFocus();
+    // Covers the cases the keyboard-pin cannot: keyboard already open (cursor
+    // re-tap, panel -> keyboard switch with unchanged composer offset), where
+    // no padding delta ever fires the pinned scroll sync.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scrollToBottom(animated: true);
+    });
     if (panelToHold != ComposerPanel.none) {
       _panelHoldTimer = Timer(const Duration(milliseconds: 360), () {
         if (!mounted || _heldPanel == ComposerPanel.none) return;
@@ -2755,7 +2764,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final isKeyboardOpen = bottomInset > 0;
     final wasKeyboardOpen = _lastKeyboardInset > 0;
     if (!wasKeyboardOpen && isKeyboardOpen) {
-      _pinToBottomDuringKeyboard = _isNearBottomNow();
+      // Keyboard opening always pins the list to the newest message (also for
+      // focus paths that bypass _focusInput, e.g. leaving voice input mode).
+      _pinToBottomDuringKeyboard = true;
+    } else if (wasKeyboardOpen && bottomInset < _lastKeyboardInset) {
+      // Keyboard began closing: drop the hard pin so a drag-to-dismiss is not
+      // fought by per-frame bottom jumps. The near-bottom tracking inside
+      // _syncScrollWithBottomPadding still rides the composer down when the
+      // user is at the live end.
+      _pinToBottomDuringKeyboard = false;
     }
     final visiblePanel = _panel != ComposerPanel.none ? _panel : _heldPanel;
     final visiblePanelHeight = _panelHeightFor(visiblePanel);
