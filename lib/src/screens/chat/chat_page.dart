@@ -2718,7 +2718,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   double _composerHeightForWidth(double screenWidth) {
-    final inputWidth = math.max(120.0, screenWidth - 190.0);
+    // Must mirror the real TextField's text area so this predicted line count
+    // matches what the field actually renders. The field's usable text width is
+    // the input's Expanded width minus its own horizontal contentPadding, so the
+    // chrome we subtract is: composer padding (10+10) + mic (38) + gaps
+    // (10+10+10) + emoji (38) + send (58) + TextField contentPadding (14+14).
+    // Under-subtracting made the measurement wrap later than the field, so the
+    // composer stayed one line short and the new line was clipped behind the
+    // keyboard until the next keystroke. (The composer container also uses this
+    // as a minHeight, not a fixed height, so any residual miscount grows the
+    // composer to fit rather than clipping it.)
+    final inputWidth = math.max(96.0, screenWidth - 220.0);
     final text = _inputController.text.isEmpty ? ' ' : _inputController.text;
     final painter = TextPainter(
       text: TextSpan(
@@ -2727,6 +2737,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ),
       textDirection: TextDirection.ltr,
       maxLines: 3,
+      textScaler: MediaQuery.textScalerOf(context),
     )..layout(maxWidth: inputWidth);
     // Use the laid-out line metrics, not height/lineHeight rounding: a CJK glyph
     // renders a hair taller than the Latin-based preferredLineHeight, so the old

@@ -65,14 +65,17 @@ class _Composer extends StatelessWidget {
   Widget build(BuildContext context) {
     final voiceActive = preparingVoice || recordingVoice || transcribingVoice;
     return Container(
-      height: height,
+      // minHeight (not a fixed height): `height` is the measured composer size,
+      // but if that measurement ever under-counts the wrapped line count the
+      // composer must still grow to fit its content — otherwise the extra line
+      // is clipped and hides behind the keyboard. Growing up can never occlude.
+      constraints: BoxConstraints(minHeight: height),
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
       decoration: const BoxDecoration(color: Color(0xFFF6FDFC)),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final canShowAttachmentStrip =
-              constraints.maxHeight >= 118 &&
-              (pendingImages.isNotEmpty || pendingLink != null);
+              pendingImages.isNotEmpty || pendingLink != null;
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
