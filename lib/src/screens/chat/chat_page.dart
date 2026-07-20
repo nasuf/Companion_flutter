@@ -2424,6 +2424,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       clientId: clientId,
       metadata: metadata.isEmpty ? null : metadata,
     );
+    // If an emoji/more panel is open, sending should keep it open — not close
+    // it and summon the keyboard. Only refocus (keep the keyboard up) when the
+    // send happened from the keyboard, so the user can keep picking emoji.
+    final panelOpen = _panel != ComposerPanel.none;
     setState(() {
       _messages.add(draft);
       if (_isMusicStationCard(componentCard)) {
@@ -2435,13 +2439,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _pendingImages.clear();
         _pendingLinkPreview = null;
       }
-      _panel = ComposerPanel.none;
+      if (!panelOpen) {
+        _panel = ComposerPanel.none;
+      }
       _sending = true;
       // Show the typing indicator immediately; the server's pending/delay
       // events keep it alive and the reply clears it.
       _agentTyping = true;
     });
-    if (clearComposer && attachments.isEmpty) {
+    if (clearComposer && attachments.isEmpty && !panelOpen) {
       _inputFocus.requestFocus();
     }
 
@@ -2463,7 +2469,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       unawaited(_socket?.connect());
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && clearComposer && attachments.isEmpty) {
+      if (mounted && clearComposer && attachments.isEmpty && !panelOpen) {
         _inputFocus.requestFocus();
       }
       _scrollToBottom(animated: true);
