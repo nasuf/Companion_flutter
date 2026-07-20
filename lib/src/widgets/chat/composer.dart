@@ -64,207 +64,211 @@ class _Composer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final voiceActive = preparingVoice || recordingVoice || transcribingVoice;
-    return Container(
+    return AnimatedContainer(
+      // Animate the height change so growing 1→2→3 lines glides instead of
+      // snapping. The height animation is independent of the composer's
+      // position animation (which tracks the keyboard instantly), so this stays
+      // smooth even while the keyboard is up.
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
       // minHeight (not a fixed height): `height` is the measured composer size,
       // but if that measurement ever under-counts the wrapped line count the
       // composer must still grow to fit its content — otherwise the extra line
       // is clipped and hides behind the keyboard. Growing up can never occlude.
       constraints: BoxConstraints(minHeight: height),
+      // Keep content pinned to the bottom so the voice / emoji / send controls
+      // sit at the bottom of the row (not vertically centred) as the field grows.
+      alignment: Alignment.bottomCenter,
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
       decoration: const BoxDecoration(color: Color(0xFFF6FDFC)),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final canShowAttachmentStrip =
-              pendingImages.isNotEmpty || pendingLink != null;
-          return Column(
-            mainAxisSize: MainAxisSize.min,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (pendingImages.isNotEmpty || pendingLink != null) ...[
+            _ComposerAttachmentStrip(
+              images: pendingImages,
+              link: pendingLink,
+              onRemoveImage: onRemoveImage,
+              onPreviewImage: onPreviewImage,
+              onRemoveLink: onRemoveLink,
+              onPreviewLink: onPreviewLink,
+              authToken: authToken,
+            ),
+            const SizedBox(height: 8),
+          ],
+          Row(
+            // Bottom-align so the mic / emoji / send buttons stay level with the
+            // bottom of a multi-line input instead of floating to its centre.
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              if (canShowAttachmentStrip) ...[
-                _ComposerAttachmentStrip(
-                  images: pendingImages,
-                  link: pendingLink,
-                  onRemoveImage: onRemoveImage,
-                  onPreviewImage: onPreviewImage,
-                  onRemoveLink: onRemoveLink,
-                  onPreviewLink: onPreviewLink,
-                  authToken: authToken,
-                ),
-                const SizedBox(height: 8),
-              ],
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  _VoiceInputToggleButton(
-                    enabled: !voiceActive,
-                    voiceMode: voiceInputMode,
-                    onTap: onToggleVoiceInput,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: voiceInputMode
-                        ? _VoiceHoldToTalkButton(
-                            enabled:
-                                !transcribingVoice &&
-                                (preparingVoice || recordingVoice || !sending),
-                            preparing: preparingVoice,
-                            recording: recordingVoice,
-                            transcribing: transcribingVoice,
-                            onStart: onVoicePressStart,
-                            onMove: onVoicePressMove,
-                            onEnd: onVoicePressEnd,
-                            onCancel: onVoicePressCancel,
-                          )
-                        : AnimatedBuilder(
-                            animation: focusNode,
-                            builder: (context, child) {
-                              final focused = focusNode.hasFocus;
-                              return AnimatedContainer(
-                                duration: const Duration(milliseconds: 150),
-                                constraints: BoxConstraints(
-                                  minHeight: 36,
-                                  maxHeight: resolvingLink ? 36 : 86,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  // 20 reads as a full pill while single-line
-                                  // (~36 tall), but only a gentle rounded rect
-                                  // once the field grows to multiple lines —
-                                  // avoids the oversized curve on tall input.
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: focused
-                                        ? chatVoiceAccent
-                                        : AppColors.hairline,
-                                    width: focused ? 1.5 : 1,
-                                  ),
-                                ),
-                                child: child,
-                              );
-                            },
-                            child: TextField(
-                              controller: controller,
-                              focusNode: focusNode,
-                              cursorColor: chatVoiceAccent,
-                              minLines: 1,
-                              maxLines: resolvingLink ? 1 : 3,
-                              keyboardType: TextInputType.multiline,
-                              textInputAction: TextInputAction.newline,
-                              onTap: onFocusInput,
-                              contextMenuBuilder: _buildContextMenu,
-                              decoration: InputDecoration(
-                                hintText: '发消息...',
-                                hintStyle: const TextStyle(
-                                  color: Color(0xFFBFBFBF),
-                                  fontSize: 12,
-                                ),
-                                // The surrounding AnimatedContainer draws the
-                                // only border (green when focused). Explicitly
-                                // clear the themed enabled/focused borders too:
-                                // `border` alone does not override them, which
-                                // leaked the global blue focusedBorder and
-                                // produced a second border layer.
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                filled: false,
-                                isDense: true,
-                                prefixIcon: resolvingLink
-                                    ? Center(
-                                        child: CupertinoActivityIndicator(
-                                          radius: 7,
-                                          color: AppColors.accent,
-                                        ),
-                                      )
-                                    : null,
-                                prefixIconConstraints: resolvingLink
-                                    ? const BoxConstraints(
-                                        minWidth: 34,
-                                        maxWidth: 34,
-                                        minHeight: 24,
-                                        maxHeight: 24,
-                                      )
-                                    : null,
-                                contentPadding: const EdgeInsets.fromLTRB(
-                                  14,
-                                  7,
-                                  14,
-                                  7,
-                                ),
+              _VoiceInputToggleButton(
+                enabled: !voiceActive,
+                voiceMode: voiceInputMode,
+                onTap: onToggleVoiceInput,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: voiceInputMode
+                    ? _VoiceHoldToTalkButton(
+                        enabled:
+                            !transcribingVoice &&
+                            (preparingVoice || recordingVoice || !sending),
+                        preparing: preparingVoice,
+                        recording: recordingVoice,
+                        transcribing: transcribingVoice,
+                        onStart: onVoicePressStart,
+                        onMove: onVoicePressMove,
+                        onEnd: onVoicePressEnd,
+                        onCancel: onVoicePressCancel,
+                      )
+                    : AnimatedBuilder(
+                        animation: focusNode,
+                        builder: (context, child) {
+                          final focused = focusNode.hasFocus;
+                          return AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            constraints: BoxConstraints(
+                              minHeight: 36,
+                              maxHeight: resolvingLink ? 36 : 86,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              // 20 reads as a full pill while single-line
+                              // (~36 tall), but only a gentle rounded rect
+                              // once the field grows to multiple lines —
+                              // avoids the oversized curve on tall input.
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: focused
+                                    ? chatVoiceAccent
+                                    : AppColors.hairline,
+                                width: focused ? 1.5 : 1,
                               ),
                             ),
-                          ),
-                  ),
-                  const SizedBox(width: 10),
-                  _RoundIconButton(
-                    tooltip: activePanel == ComposerPanel.emoji ? '键盘' : '表情',
-                    icon: activePanel == ComposerPanel.emoji
-                        ? CupertinoIcons.keyboard
-                        : CupertinoIcons.smiley,
-                    selected: activePanel == ComposerPanel.emoji,
-                    green: activePanel == ComposerPanel.emoji,
-                    onTap: voiceActive
-                        ? null
-                        : activePanel == ComposerPanel.emoji
-                        ? onShowKeyboard
-                        : onToggleEmoji,
-                  ),
-                  const SizedBox(width: 10),
-                  AnimatedBuilder(
-                    animation: controller,
-                    builder: (context, _) {
-                      final canSend =
-                          controller.text.trim().isNotEmpty ||
-                          pendingImages.isNotEmpty ||
-                          pendingLink != null;
-                      // AnimatedSize lets the trailing slot grow/shrink between
-                      // the 38px round button and the wider send pill, so the
-                      // input field's width transitions smoothly instead of
-                      // jumping when text appears.
-                      return AnimatedSize(
-                        duration: const Duration(milliseconds: 160),
-                        curve: Curves.easeOutCubic,
-                        alignment: Alignment.centerRight,
-                        child: canSend
-                            ? SizedBox(
-                                // Match the round buttons' height exactly so the
-                                // whole row (mic / field / emoji) never shifts
-                                // vertically when the send pill appears.
-                                height: 38,
-                                child: FilledButton(
-                                  onPressed: sending ? null : onSend,
-                                  style: FilledButton.styleFrom(
-                                    minimumSize: const Size(58, 38),
-                                    fixedSize: const Size.fromHeight(38),
-                                    padding: EdgeInsets.zero,
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                    backgroundColor: chatVoiceAccent,
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(19),
+                            child: child,
+                          );
+                        },
+                        child: TextField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          cursorColor: chatVoiceAccent,
+                          minLines: 1,
+                          maxLines: resolvingLink ? 1 : 3,
+                          keyboardType: TextInputType.multiline,
+                          textInputAction: TextInputAction.newline,
+                          onTap: onFocusInput,
+                          contextMenuBuilder: _buildContextMenu,
+                          decoration: InputDecoration(
+                            hintText: '发消息...',
+                            hintStyle: const TextStyle(
+                              color: Color(0xFFBFBFBF),
+                              fontSize: 12,
+                            ),
+                            // The surrounding AnimatedContainer draws the
+                            // only border (green when focused). Explicitly
+                            // clear the themed enabled/focused borders too:
+                            // `border` alone does not override them, which
+                            // leaked the global blue focusedBorder and
+                            // produced a second border layer.
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            filled: false,
+                            isDense: true,
+                            prefixIcon: resolvingLink
+                                ? Center(
+                                    child: CupertinoActivityIndicator(
+                                      radius: 7,
+                                      color: AppColors.accent,
                                     ),
-                                  ),
-                                  child: Text(sending ? '...' : '发送'),
+                                  )
+                                : null,
+                            prefixIconConstraints: resolvingLink
+                                ? const BoxConstraints(
+                                    minWidth: 34,
+                                    maxWidth: 34,
+                                    minHeight: 24,
+                                    maxHeight: 24,
+                                  )
+                                : null,
+                            contentPadding: const EdgeInsets.fromLTRB(
+                              14,
+                              7,
+                              14,
+                              7,
+                            ),
+                          ),
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 10),
+              _RoundIconButton(
+                tooltip: activePanel == ComposerPanel.emoji ? '键盘' : '表情',
+                icon: activePanel == ComposerPanel.emoji
+                    ? CupertinoIcons.keyboard
+                    : CupertinoIcons.smiley,
+                selected: activePanel == ComposerPanel.emoji,
+                green: activePanel == ComposerPanel.emoji,
+                onTap: voiceActive
+                    ? null
+                    : activePanel == ComposerPanel.emoji
+                    ? onShowKeyboard
+                    : onToggleEmoji,
+              ),
+              const SizedBox(width: 10),
+              AnimatedBuilder(
+                animation: controller,
+                builder: (context, _) {
+                  final canSend =
+                      controller.text.trim().isNotEmpty ||
+                      pendingImages.isNotEmpty ||
+                      pendingLink != null;
+                  // AnimatedSize lets the trailing slot grow/shrink between
+                  // the 38px round button and the wider send pill, so the
+                  // input field's width transitions smoothly instead of
+                  // jumping when text appears.
+                  return AnimatedSize(
+                    duration: const Duration(milliseconds: 160),
+                    curve: Curves.easeOutCubic,
+                    alignment: Alignment.centerRight,
+                    child: canSend
+                        ? SizedBox(
+                            // Match the round buttons' height exactly so the
+                            // whole row (mic / field / emoji) never shifts
+                            // vertically when the send pill appears.
+                            height: 38,
+                            child: FilledButton(
+                              onPressed: sending ? null : onSend,
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size(58, 38),
+                                fixedSize: const Size.fromHeight(38),
+                                padding: EdgeInsets.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                backgroundColor: chatVoiceAccent,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(19),
                                 ),
-                              )
-                            : _RoundIconButton(
-                                tooltip: '更多',
-                                icon: activePanel == ComposerPanel.more
-                                    ? CupertinoIcons.xmark
-                                    : CupertinoIcons.plus,
-                                selected: activePanel == ComposerPanel.more,
-                                prominent: activePanel != ComposerPanel.more,
-                                green: true,
-                                onTap: voiceActive ? null : onToggleMore,
                               ),
-                      );
-                    },
-                  ),
-                ],
+                              child: Text(sending ? '...' : '发送'),
+                            ),
+                          )
+                        : _RoundIconButton(
+                            tooltip: '更多',
+                            icon: activePanel == ComposerPanel.more
+                                ? CupertinoIcons.xmark
+                                : CupertinoIcons.plus,
+                            selected: activePanel == ComposerPanel.more,
+                            prominent: activePanel != ComposerPanel.more,
+                            green: true,
+                            onTap: voiceActive ? null : onToggleMore,
+                          ),
+                  );
+                },
               ),
             ],
-          );
-        },
+          ),
+        ],
       ),
     );
   }
