@@ -747,8 +747,11 @@ class _RoundIconButton extends StatelessWidget {
         onTap: onTap,
         radius: 23,
         child: Container(
-          width: prominent ? 30 : 38,
-          height: prominent ? 30 : 38,
+          // Keep every round button the same 38px footprint (mic / emoji /
+          // keyboard / plus); `prominent` only changes the fill style, not the
+          // size, so the plus no longer looks smaller than its neighbours.
+          width: 38,
+          height: 38,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: selected
