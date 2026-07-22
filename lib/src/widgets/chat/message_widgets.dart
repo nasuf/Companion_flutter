@@ -1196,12 +1196,10 @@ class _ImageAttachmentBubble extends StatelessWidget {
                     errorBuilder: (_, __, ___) => _imageFallback,
                     loadingBuilder: (context, child, progress) {
                       if (progress == null) return child;
-                      return SizedBox(
+                      // 骨架屏 shimmer (与 H5 一致): 灰底 + 左右扫过的亮带。
+                      return _ImageSkeleton(
                         width: _imageWidthFor(attachment),
                         height: _imageHeightFor(attachment),
-                        child: const Center(
-                          child: CupertinoActivityIndicator(radius: 10),
-                        ),
                       );
                     },
                   ),
@@ -1234,6 +1232,62 @@ class _ImageAttachmentBubble extends StatelessWidget {
       width: 180,
       height: 150,
       child: Center(child: Icon(CupertinoIcons.photo, color: AppColors.muted)),
+    );
+  }
+}
+
+/// 聊天图片加载骨架屏 (与 H5 一致): 不透明灰底 + 一条从左到右滑过的亮带,
+/// 循环 ~1.25s。加载完成后由 Image.network 替换。
+class _ImageSkeleton extends StatefulWidget {
+  const _ImageSkeleton({required this.width, required this.height});
+
+  final double width;
+  final double height;
+
+  @override
+  State<_ImageSkeleton> createState() => _ImageSkeletonState();
+}
+
+class _ImageSkeletonState extends State<_ImageSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1250),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: widget.width,
+      height: widget.height,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          // pos: -1 (亮带在最左) → 1 (最右)。begin/end 各偏移 1 个盒宽,
+          // 使亮带中心 (stop 0.5) 随 pos 从左缘扫到右缘。
+          final pos = _controller.value * 2 - 1;
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment(pos - 1, 0),
+                end: Alignment(pos + 1, 0),
+                colors: const [
+                  Color(0xFFE9EDF2),
+                  Color(0xFFF6F8FB),
+                  Color(0xFFE9EDF2),
+                ],
+                stops: const [0.2, 0.5, 0.8],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
