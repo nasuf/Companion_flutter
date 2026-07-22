@@ -574,6 +574,16 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     );
   }
 
+  void _openGameManagement() {
+    widget.api.authToken = widget.session.token;
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) =>
+            _AdminGamesPage(api: widget.api, session: widget.session),
+      ),
+    );
+  }
+
   Future<void> _triggerActivityGeneration() async {
     if (_generatingActivity) return;
     setState(() => _generatingActivity = true);
@@ -885,6 +895,22 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                               subtitle: '查看用户详情、对话记录与管理员权限',
                               accent: const Color(0xFF1FA97A),
                               onTap: _openUserManagement,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _ProfileSectionV6(
+                        title: '游戏管理',
+                        trailing: '难度 · 积分',
+                        child: Column(
+                          children: [
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.gamecontroller_fill,
+                              title: '游戏管理',
+                              subtitle: '难度平衡 / 积分等级 / 每局积分规则',
+                              accent: const Color(0xFF2D73FF),
+                              onTap: _openGameManagement,
                             ),
                           ],
                         ),
