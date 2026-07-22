@@ -100,51 +100,14 @@ extension _AdminUserApi on CompanionApi {
     return json['role']?.toString() ?? role;
   }
 
+  // Delegates to the shared _adminHttpRequest (admin_dashboard_page.dart) so the
+  // /admin-api/* transport lives in exactly one place.
   Future<dynamic> _adminRequest(
     String method,
     String path, {
     Map<String, dynamic>? body,
-  }) async {
-    final client = HttpClient();
-    client.connectionTimeout = const Duration(seconds: 8);
-    try {
-      final request = await client.openUrl(method, Uri.parse('$baseUrl$path'));
-      request.headers.contentType = ContentType.json;
-      if (authToken != null && authToken!.isNotEmpty) {
-        request.headers.set(
-          HttpHeaders.authorizationHeader,
-          'Bearer $authToken',
-        );
-      }
-      if (body != null) request.write(jsonEncode(body));
-
-      final response = await request.close();
-      final text = await response.transform(utf8.decoder).join();
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw ApiException(response.statusCode, _adminErrorFromText(text));
-      }
-      if (response.statusCode == 204 || text.isEmpty) return null;
-      return jsonDecode(text);
-    } on SocketException catch (error) {
-      throw ApiException(0, '无法连接到后端：${error.message}');
-    } on HandshakeException catch (error) {
-      throw ApiException(0, '后端连接失败：${error.message}');
-    } finally {
-      client.close(force: true);
-    }
-  }
-
-  String _adminErrorFromText(String text) {
-    if (text.isEmpty) return '请求失败';
-    try {
-      final json = jsonDecode(text);
-      final detail = json is Map ? json['detail'] : null;
-      if (detail is String && detail.isNotEmpty) return detail;
-      if (detail != null) return jsonEncode(detail);
-      return text;
-    } catch (_) {
-      return text;
-    }
+  }) {
+    return _adminHttpRequest(this, method, path, body: body);
   }
 }
 
@@ -199,32 +162,6 @@ class _AdminUserSummary {
     final nickname = wechat?.nickname?.trim();
     if (nickname != null && nickname.isNotEmpty) return nickname;
     return username.isEmpty ? id : username;
-  }
-
-  String get subtitle {
-    final parts = <String>[
-      if (username.isNotEmpty && username != displayName) username,
-      '$agentCount 个 AI',
-      status,
-    ];
-    return parts.join(' · ');
-  }
-
-  _AdminUserSummary copyWith({String? role}) {
-    return _AdminUserSummary(
-      id: id,
-      username: username,
-      email: email,
-      role: role ?? this.role,
-      createdAt: createdAt,
-      status: status,
-      archivedAt: archivedAt,
-      signupSource: signupSource,
-      agentCount: agentCount,
-      wechat: wechat,
-      phone: phone,
-      authMethods: authMethods,
-    );
   }
 
   factory _AdminUserSummary.fromJson(Map<String, dynamic> json) {
@@ -404,6 +341,7 @@ class _AdminAgentSummary {
     required this.conversationCount,
     required this.messageCount,
     required this.createdAt,
+    required this.conversations,
   });
 
   final String id;
@@ -413,6 +351,7 @@ class _AdminAgentSummary {
   final int conversationCount;
   final int messageCount;
   final String? createdAt;
+  final List<_AdminConversation> conversations;
 
   factory _AdminAgentSummary.fromJson(Map<String, dynamic> json) {
     return _AdminAgentSummary(
@@ -423,6 +362,38 @@ class _AdminAgentSummary {
       conversationCount: _jsonInt(json['conversation_count']),
       messageCount: _jsonInt(json['message_count']),
       createdAt: _jsonNullableString(json['created_at']),
+      conversations: _jsonList(
+        json['conversations'],
+      ).map(_AdminConversation.fromJson).toList(growable: false),
+    );
+  }
+}
+
+class _AdminConversation {
+  const _AdminConversation({
+    required this.id,
+    required this.messageCount,
+    required this.isDeleted,
+    required this.workspaceId,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final int messageCount;
+  final bool isDeleted;
+  final String? workspaceId;
+  final String? createdAt;
+  final String? updatedAt;
+
+  factory _AdminConversation.fromJson(Map<String, dynamic> json) {
+    return _AdminConversation(
+      id: _jsonString(json['id']),
+      messageCount: _jsonInt(json['message_count']),
+      isDeleted: json['is_deleted'] == true,
+      workspaceId: _jsonNullableString(json['workspace_id']),
+      createdAt: _jsonNullableString(json['created_at']),
+      updatedAt: _jsonNullableString(json['updated_at']),
     );
   }
 }
@@ -569,6 +540,36 @@ class _AdminToolsPageState extends State<AdminToolsPage>
       CupertinoPageRoute<void>(
         builder: (_) =>
             _AdminUsersPage(api: widget.api, session: widget.session),
+      ),
+    );
+  }
+
+  void _openMonitoring() {
+    widget.api.authToken = widget.session.token;
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) =>
+            _AdminMonitoringPage(api: widget.api, session: widget.session),
+      ),
+    );
+  }
+
+  void _openOperations() {
+    widget.api.authToken = widget.session.token;
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) =>
+            _AdminOperationsPage(api: widget.api, session: widget.session),
+      ),
+    );
+  }
+
+  void _openSystemSettings() {
+    widget.api.authToken = widget.session.token;
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) =>
+            _AdminSystemSettingsPage(api: widget.api, session: widget.session),
       ),
     );
   }
@@ -851,17 +852,65 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                       ),
                       const SizedBox(height: 24),
                       _ProfileSectionV6(
-                        title: '管理员工具',
-                        trailing: '仅用于本地测试',
+                        title: '数据与运营',
+                        trailing: '实时统计',
+                        child: Column(
+                          children: [
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.chart_bar_alt_fill,
+                              title: '数据监控',
+                              subtitle: '实时在线、活跃、注册与聊天量走势',
+                              accent: const Color(0xFF2D73FF),
+                              onTap: _openMonitoring,
+                            ),
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.gauge,
+                              title: '运营管理',
+                              subtitle: 'LLM 成本、模型分布与系统健康',
+                              accent: const Color(0xFF7A5BE3),
+                              onTap: _openOperations,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _ProfileSectionV6(
+                        title: '用户与权限',
+                        trailing: '账号管理',
                         child: Column(
                           children: [
                             _ProfileSettingRowV6(
                               icon: CupertinoIcons.person_2_fill,
                               title: '用户管理',
-                              subtitle: '查看用户详情，并调整普通用户 / 管理员权限',
+                              subtitle: '查看用户详情、对话记录与管理员权限',
                               accent: const Color(0xFF1FA97A),
                               onTap: _openUserManagement,
                             ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _ProfileSectionV6(
+                        title: '系统设置',
+                        trailing: '全局开关',
+                        child: Column(
+                          children: [
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.slider_horizontal_3,
+                              title: '全局模块开关',
+                              subtitle: '线下活动 / 礼物推荐 / 成就系统运行模式',
+                              accent: const Color(0xFFD4A843),
+                              onTap: _openSystemSettings,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _ProfileSectionV6(
+                        title: '测试工具',
+                        trailing: '仅用于本地测试',
+                        child: Column(
+                          children: [
                             _ProfileSettingRowV6(
                               icon: CupertinoIcons.bolt_fill,
                               title: _generatingActivity
@@ -884,15 +933,6 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                                   !_generatingActivity && !_clearingActivities,
                               onTap: _clearActivities,
                             ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _ProfileSectionV6(
-                        title: '礼物 / 快递测试',
-                        trailing: '走 mock 链路',
-                        child: Column(
-                          children: [
                             _ProfileSettingRowV6(
                               icon: CupertinoIcons.gift_fill,
                               title: _injectingGift ? '正在注入礼物' : '注入运输中礼物',
@@ -942,7 +982,6 @@ class _AdminUsersPageState extends State<_AdminUsersPage>
   bool _loading = true;
   bool _refreshing = false;
   String? _error;
-  String? _updatingUserId;
   int _total = 0;
   List<_AdminUserSummary> _users = const [];
 
@@ -1006,137 +1045,18 @@ class _AdminUsersPageState extends State<_AdminUsersPage>
     }
   }
 
-  Future<void> _showUserActions(_AdminUserSummary user) async {
-    final canChangeRole = user.id != widget.session.userId;
-    final nextRole = user.isAdmin ? 'user' : 'admin';
-    final action = await showCupertinoModalPopup<String>(
-      context: context,
-      builder: (context) {
-        return CupertinoActionSheet(
-          title: Text(user.displayName),
-          message: Text(
-            canChangeRole ? user.id : '${user.id}\n当前登录账号不能修改自己的权限',
-          ),
-          actions: [
-            CupertinoActionSheetAction(
-              onPressed: () => Navigator.of(context).pop('detail'),
-              child: const Text('查看详情'),
-            ),
-            if (canChangeRole)
-              CupertinoActionSheetAction(
-                isDestructiveAction: user.isAdmin,
-                onPressed: () => Navigator.of(context).pop('role'),
-                child: Text(user.isAdmin ? '改为普通用户' : '设为管理员'),
-              ),
-          ],
-          cancelButton: CupertinoActionSheetAction(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
-          ),
-        );
-      },
-    );
-    if (!mounted) return;
-    if (action == 'detail') {
-      await _showUserDetail(user);
-    } else if (action == 'role') {
-      await _confirmChangeRole(user, nextRole);
-    }
-  }
-
-  Future<void> _showUserDetail(_AdminUserSummary user) async {
-    await showCupertinoModalPopup<void>(
-      context: context,
-      builder: (_) => _AdminUserDetailSheet(
-        api: widget.api,
-        session: widget.session,
-        user: user,
+  Future<void> _openUserDetail(_AdminUserSummary user) async {
+    await Navigator.of(context).push<void>(
+      CupertinoPageRoute<void>(
+        builder: (_) => _AdminUserDetailPage(
+          api: widget.api,
+          session: widget.session,
+          user: user,
+        ),
       ),
     );
-  }
-
-  Future<void> _confirmChangeRole(
-    _AdminUserSummary user,
-    String nextRole,
-  ) async {
-    final confirmed = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (context) {
-        return CupertinoAlertDialog(
-          title: Text('修改权限为${_adminRoleLabel(nextRole)}？'),
-          content: Text(
-            nextRole == 'admin'
-                ? '确认后，${user.displayName} 将获得管理员入口和后台管理权限。'
-                : '确认后，${user.displayName} 将失去管理员权限。',
-          ),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
-            ),
-            CupertinoDialogAction(
-              isDestructiveAction: user.isAdmin,
-              isDefaultAction: !user.isAdmin,
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('确认修改'),
-            ),
-          ],
-        );
-      },
-    );
-    if (confirmed != true || !mounted) return;
-
-    setState(() => _updatingUserId = user.id);
-    try {
-      widget.api.authToken = widget.session.token;
-      final updatedRole = await widget.api.updateAdminUserRole(
-        userId: user.id,
-        role: nextRole,
-      );
-      if (!mounted) return;
-      setState(() {
-        _users = [
-          for (final item in _users)
-            item.id == user.id ? item.copyWith(role: updatedRole) : item,
-        ];
-        _updatingUserId = null;
-      });
-      await showCupertinoDialog<void>(
-        context: context,
-        builder: (context) {
-          return CupertinoAlertDialog(
-            title: const Text('权限已更新'),
-            content: Text(
-              '${user.displayName} 当前为${_adminRoleLabel(updatedRole)}。',
-            ),
-            actions: [
-              CupertinoDialogAction(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('知道了'),
-              ),
-            ],
-          );
-        },
-      );
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _updatingUserId = null);
-      await showCupertinoDialog<void>(
-        context: context,
-        builder: (context) {
-          return CupertinoAlertDialog(
-            title: const Text('修改失败'),
-            content: Text(_asMessage(error)),
-            actions: [
-              CupertinoDialogAction(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('知道了'),
-              ),
-            ],
-          );
-        },
-      );
-    }
+    // Reload so any role change made inside the detail page is reflected.
+    if (mounted) _loadUsers();
   }
 
   @override
@@ -1260,8 +1180,7 @@ class _AdminUsersPageState extends State<_AdminUsersPage>
                               for (final user in _users)
                                 _AdminUserRow(
                                   user: user,
-                                  updating: _updatingUserId == user.id,
-                                  onTap: () => _showUserActions(user),
+                                  onTap: () => _openUserDetail(user),
                                 ),
                             if (_error != null && _users.isNotEmpty)
                               Padding(
@@ -1293,21 +1212,16 @@ class _AdminUsersPageState extends State<_AdminUsersPage>
 }
 
 class _AdminUserRow extends StatelessWidget {
-  const _AdminUserRow({
-    required this.user,
-    required this.updating,
-    required this.onTap,
-  });
+  const _AdminUserRow({required this.user, required this.onTap});
 
   final _AdminUserSummary user;
-  final bool updating;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
-      onTap: updating ? null : onTap,
+      onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -1331,7 +1245,7 @@ class _AdminUserRow extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Expanded(
+                        Flexible(
                           child: Text(
                             user.displayName,
                             maxLines: 1,
@@ -1347,61 +1261,30 @@ class _AdminUserRow extends StatelessWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        _AdminRolePill(role: user.role),
+                        if (user.isAdmin) ...[
+                          const SizedBox(width: 8),
+                          _AdminRolePill(role: user.role),
+                        ],
                       ],
                     ),
-                    const SizedBox(height: 5),
-                    Text(
-                      user.subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: isDark
-                            ? const Color(0x9EEBF2EE)
-                            : AppColors.muted,
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 7),
                     _AdminAuthMethodChips(user: user, compact: true),
-                    const SizedBox(height: 4),
-                    Text(
-                      'ID ${user.id}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.36)
-                            : const Color(0x6612171B),
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
                   ],
                 ),
               ),
               const SizedBox(width: 10),
-              if (updating)
-                const CupertinoActivityIndicator(radius: 9)
-              else
-                Text(
-                  '›',
-                  style: TextStyle(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.32)
-                        : const Color(0x52182026),
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    height: 1,
-                    decoration: TextDecoration.none,
-                  ),
+              Text(
+                '›',
+                style: TextStyle(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.32)
+                      : const Color(0x52182026),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                  decoration: TextDecoration.none,
                 ),
+              ),
             ],
           ),
         ),
@@ -1599,8 +1482,8 @@ class _AdminStatePanel extends StatelessWidget {
   }
 }
 
-class _AdminUserDetailSheet extends StatefulWidget {
-  const _AdminUserDetailSheet({
+class _AdminUserDetailPage extends StatefulWidget {
+  const _AdminUserDetailPage({
     required this.api,
     required this.session,
     required this.user,
@@ -1611,17 +1494,20 @@ class _AdminUserDetailSheet extends StatefulWidget {
   final _AdminUserSummary user;
 
   @override
-  State<_AdminUserDetailSheet> createState() => _AdminUserDetailSheetState();
+  State<_AdminUserDetailPage> createState() => _AdminUserDetailPageState();
 }
 
-class _AdminUserDetailSheetState extends State<_AdminUserDetailSheet> {
+class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
   bool _loading = true;
   String? _error;
   _AdminUserDetail? _detail;
+  late String _role;
+  bool _updatingRole = false;
 
   @override
   void initState() {
     super.initState();
+    _role = widget.user.role;
     _loadDetail();
   }
 
@@ -1636,6 +1522,441 @@ class _AdminUserDetailSheetState extends State<_AdminUserDetailSheet> {
       if (!mounted) return;
       setState(() {
         _detail = detail;
+        _role = detail.user.role;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = _asMessage(error);
+        _loading = false;
+      });
+    }
+  }
+
+  bool get _isSelf => widget.user.id == widget.session.userId;
+
+  Future<void> _toggleRole() async {
+    if (_updatingRole || _isSelf) return;
+    final nextRole = _role == 'admin' ? 'user' : 'admin';
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) {
+        return CupertinoAlertDialog(
+          title: Text('修改权限为${_adminRoleLabel(nextRole)}？'),
+          content: Text(
+            nextRole == 'admin'
+                ? '确认后，${widget.user.displayName} 将获得管理员入口和后台管理权限。'
+                : '确认后，${widget.user.displayName} 将失去管理员权限。',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: _role == 'admin',
+              isDefaultAction: _role != 'admin',
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('确认修改'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _updatingRole = true);
+    try {
+      widget.api.authToken = widget.session.token;
+      final updatedRole = await widget.api.updateAdminUserRole(
+        userId: widget.user.id,
+        role: nextRole,
+      );
+      if (!mounted) return;
+      setState(() {
+        _role = updatedRole;
+        _updatingRole = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _updatingRole = false);
+      await showCupertinoDialog<void>(
+        context: context,
+        builder: (context) {
+          return CupertinoAlertDialog(
+            title: const Text('修改失败'),
+            content: Text(_asMessage(error)),
+            actions: [
+              CupertinoDialogAction(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('知道了'),
+              ),
+            ],
+          );
+        },
+      );
+    }
+  }
+
+  void _openAgentConversations(_AdminAgentSummary agent) {
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => _AdminAgentConversationsPage(
+          api: widget.api,
+          session: widget.session,
+          agent: agent,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _AdminScaffold(
+      title: '用户详情',
+      subtitle: widget.user.displayName,
+      trailing: _loading
+          ? const Padding(
+              padding: EdgeInsets.only(right: 4),
+              child: CupertinoActivityIndicator(radius: 10),
+            )
+          : _AppNavCircleButton(
+              icon: CupertinoIcons.refresh,
+              onPressed: _loadDetail,
+            ),
+      child: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    final detail = _detail;
+    if (_loading && detail == null) {
+      return const Center(child: CupertinoActivityIndicator(radius: 14));
+    }
+    if (_error != null && detail == null) {
+      return _AdminStatePanel(
+        title: '详情加载失败',
+        message: _error!,
+        actionText: '重试',
+        onTap: _loadDetail,
+      );
+    }
+    if (detail == null) {
+      return const _AdminStatePanel(title: '暂无详情', message: '后台没有返回该用户的详情数据。');
+    }
+    return ListView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 40),
+      children: [
+        _AdminDetailBlock(
+          title: '基础信息',
+          children: [
+            _AdminDetailLine(label: '用户 ID', value: detail.user.id),
+            _AdminDetailLine(label: '用户名', value: detail.user.username),
+            _AdminDetailLine(label: '角色', value: _adminRoleLabel(_role)),
+            _AdminDetailWidgetLine(
+              label: '登录方式',
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: _AdminAuthMethodChips(user: detail.user),
+              ),
+            ),
+            _AdminDetailLine(label: '邮箱', value: detail.user.email ?? '暂无'),
+            _AdminDetailLine(
+              label: '手机号',
+              value: detail.user.phone?.phone ?? '暂无',
+            ),
+            _AdminDetailLine(label: '状态', value: detail.user.status),
+            _AdminDetailLine(
+              label: '创建时间',
+              value: _adminDateLabel(detail.user.createdAt),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _AdminWechatBlock(wechat: detail.user.wechat),
+        const SizedBox(height: 12),
+        _buildRoleCard(),
+        const SizedBox(height: 12),
+        _buildAgentsSection(detail),
+        const SizedBox(height: 12),
+        _buildWorkspacesSection(detail),
+      ],
+    );
+  }
+
+  Widget _buildRoleCard() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return _AdminDetailBlock(
+      title: '权限管理',
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              _AdminRolePill(role: _role),
+              const Spacer(),
+              if (_isSelf)
+                Text(
+                  '不能修改自己的权限',
+                  style: TextStyle(
+                    color: isDark ? const Color(0x9EEBF2EE) : AppColors.muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                  ),
+                )
+              else
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  color: _role == 'admin'
+                      ? AppColors.of(context).danger
+                      : const Color(0xFF2D73FF),
+                  borderRadius: BorderRadius.circular(999),
+                  onPressed: _updatingRole ? null : _toggleRole,
+                  child: _updatingRole
+                      ? const CupertinoActivityIndicator(
+                          radius: 9,
+                          color: Colors.white,
+                        )
+                      : Text(_role == 'admin' ? '改为普通用户' : '设为管理员'),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAgentsSection(_AdminUserDetail detail) {
+    if (detail.agents.isEmpty) {
+      return const _AdminDetailBlock(
+        title: 'AI 伴侣',
+        children: [_AdminDetailLine(label: '记录', value: '暂无 AI')],
+      );
+    }
+    return _AdminDetailBlock(
+      title: 'AI 伴侣 · 点击查看对话记录',
+      children: [
+        for (final agent in detail.agents)
+          _AdminNavRow(
+            title: agent.name,
+            subtitle:
+                '${agent.status} · ${agent.conversationCount} 会话 · ${agent.messageCount} 消息',
+            onTap: () => _openAgentConversations(agent),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildWorkspacesSection(_AdminUserDetail detail) {
+    return _AdminDetailBlock(
+      title: '工作区',
+      children: detail.workspaces.isEmpty
+          ? const [_AdminDetailLine(label: '记录', value: '暂无工作区')]
+          : [
+              for (final workspace in detail.workspaces)
+                _AdminDetailLine(
+                  label: workspace.agentName ?? workspace.id,
+                  value:
+                      '${workspace.status} · ${workspace.conversationCount} 会话 · ${workspace.messageCount} 消息',
+                ),
+            ],
+    );
+  }
+}
+
+/// Tappable row (agent -> conversations, conversation -> messages).
+class _AdminNavRow extends StatelessWidget {
+  const _AdminNavRow({
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isDark ? AppColors.text : const Color(0xFF12171B),
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isDark ? const Color(0x9EEBF2EE) : AppColors.muted,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              '›',
+              style: TextStyle(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.32)
+                    : const Color(0x52182026),
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                height: 1,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminAgentConversationsPage extends StatelessWidget {
+  const _AdminAgentConversationsPage({
+    required this.api,
+    required this.session,
+    required this.agent,
+  });
+
+  final CompanionApi api;
+  final AuthSession session;
+  final _AdminAgentSummary agent;
+
+  void _openConversation(
+    BuildContext context,
+    _AdminConversation conversation,
+  ) {
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => _AdminConversationPage(
+          api: api,
+          session: session,
+          agentName: agent.name,
+          conversation: conversation,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final conversations = [...agent.conversations]
+      ..sort((a, b) => (b.updatedAt ?? '').compareTo(a.updatedAt ?? ''));
+    return _AdminScaffold(
+      title: '对话记录',
+      subtitle: '${agent.name} · ${conversations.length} 个会话',
+      child: ListView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(18, 8, 18, 40),
+        children: [
+          if (conversations.isEmpty)
+            const _AdminStatePanel(title: '暂无对话', message: '该 AI 还没有任何会话记录。')
+          else
+            _AdminCard(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Column(
+                children: [
+                  for (final conversation in conversations)
+                    _AdminNavRow(
+                      title:
+                          '#${_shortId(conversation.id)}'
+                          '${conversation.isDeleted ? ' · 已删除' : ''}',
+                      subtitle:
+                          '${conversation.messageCount} 条消息 · ${_adminDateLabel(conversation.updatedAt)}',
+                      onTap: () => _openConversation(context, conversation),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+String _shortId(String id) {
+  if (id.length <= 8) return id;
+  return id.substring(0, 8);
+}
+
+class _AdminConversationPage extends StatefulWidget {
+  const _AdminConversationPage({
+    required this.api,
+    required this.session,
+    required this.agentName,
+    required this.conversation,
+  });
+
+  final CompanionApi api;
+  final AuthSession session;
+  final String agentName;
+  final _AdminConversation conversation;
+
+  @override
+  State<_AdminConversationPage> createState() => _AdminConversationPageState();
+}
+
+class _AdminConversationPageState extends State<_AdminConversationPage> {
+  bool _loading = true;
+  String? _error;
+  List<ChatMessage> _messages = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      widget.api.authToken = widget.session.token;
+      // API returns newest-first; reverse for a natural chronological transcript.
+      final newestFirst = await widget.api.loadMessages(
+        widget.conversation.id,
+        limit: 200,
+      );
+      if (!mounted) return;
+      setState(() {
+        _messages = newestFirst.reversed
+            .where((m) => m.isChatMessage)
+            .toList(growable: false);
         _loading = false;
       });
     } catch (error) {
@@ -1649,190 +1970,112 @@ class _AdminUserDetailSheetState extends State<_AdminUserDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
+    return _AdminScaffold(
+      title: widget.agentName,
+      subtitle: '${widget.conversation.messageCount} 条消息',
+      trailing: _loading
+          ? const Padding(
+              padding: EdgeInsets.only(right: 4),
+              child: CupertinoActivityIndicator(radius: 10),
+            )
+          : _AppNavCircleButton(icon: CupertinoIcons.refresh, onPressed: _load),
+      child: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading && _messages.isEmpty) {
+      return const Center(child: CupertinoActivityIndicator(radius: 14));
+    }
+    if (_error != null && _messages.isEmpty) {
+      return _AdminStatePanel(
+        title: '加载失败',
+        message: _error!,
+        actionText: '重试',
+        onTap: _load,
+      );
+    }
+    if (_messages.isEmpty) {
+      return const _AdminStatePanel(title: '暂无消息', message: '该会话没有可显示的聊天消息。');
+    }
+    return ListView.builder(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
+      itemCount: _messages.length,
+      itemBuilder: (context, index) =>
+          _AdminMessageBubble(message: _messages[index]),
+    );
+  }
+}
+
+class _AdminMessageBubble extends StatelessWidget {
+  const _AdminMessageBubble({required this.message});
+
+  final ChatMessage message;
+
+  @override
+  Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final height = MediaQuery.sizeOf(context).height * 0.78;
-    final detail = _detail;
-    return Material(
-      type: MaterialType.transparency,
-      child: SafeArea(
-        top: false,
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            child: Container(
-              height: height,
-              color: isDark ? const Color(0xFF101614) : const Color(0xFFF7FAFC),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 14, 10, 10),
-                    child: Row(
-                      children: [
-                        _AdminUserAvatar(user: widget.user),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.user.displayName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: isDark
-                                      ? AppColors.text
-                                      : const Color(0xFF12171B),
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 0,
-                                  decoration: TextDecoration.none,
-                                ),
-                              ),
-                              const SizedBox(height: 5),
-                              _AdminRolePill(
-                                role: detail?.user.role ?? widget.user.role,
-                              ),
-                              const SizedBox(height: 6),
-                              _AdminAuthMethodChips(
-                                user: detail?.user ?? widget.user,
-                                compact: true,
-                              ),
-                            ],
-                          ),
-                        ),
-                        CupertinoButton(
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(44, 44),
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: Icon(
-                            CupertinoIcons.xmark_circle_fill,
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.48)
-                                : const Color(0x6612171B),
-                          ),
-                        ),
-                      ],
+    final isMine = message.isMine;
+    final bubbleColor = isMine
+        ? AppColors.of(context).accent
+        : (isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.white.withValues(alpha: 0.9));
+    final textColor = isMine
+        ? Colors.white
+        : (isDark ? AppColors.text : const Color(0xFF12171B));
+    final content = message.content.trim().isEmpty
+        ? '（无文本内容）'
+        : message.content;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Column(
+        crossAxisAlignment: isMine
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        children: [
+          Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.sizeOf(context).width * 0.76,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+            decoration: BoxDecoration(
+              color: bubbleColor,
+              borderRadius: BorderRadius.circular(16),
+              border: isMine
+                  ? null
+                  : Border.all(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : const Color(0x14181F2A),
                     ),
-                  ),
-                  Expanded(
-                    child: _loading
-                        ? const Center(
-                            child: CupertinoActivityIndicator(radius: 12),
-                          )
-                        : _error != null
-                        ? _AdminStatePanel(
-                            title: '详情加载失败',
-                            message: _error!,
-                            actionText: '重试',
-                            onTap: _loadDetail,
-                          )
-                        : detail == null
-                        ? const _AdminStatePanel(
-                            title: '暂无详情',
-                            message: '后台没有返回该用户的详情数据。',
-                          )
-                        : SingleChildScrollView(
-                            physics: const BouncingScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
-                            child: Column(
-                              children: [
-                                _AdminDetailBlock(
-                                  title: '基础信息',
-                                  children: [
-                                    _AdminDetailLine(
-                                      label: '用户 ID',
-                                      value: detail.user.id,
-                                    ),
-                                    _AdminDetailLine(
-                                      label: '用户名',
-                                      value: detail.user.username,
-                                    ),
-                                    _AdminDetailLine(
-                                      label: '角色',
-                                      value: _adminRoleLabel(detail.user.role),
-                                    ),
-                                    _AdminDetailWidgetLine(
-                                      label: '登录方式',
-                                      child: Align(
-                                        alignment: Alignment.centerRight,
-                                        child: _AdminAuthMethodChips(
-                                          user: detail.user,
-                                        ),
-                                      ),
-                                    ),
-                                    _AdminDetailLine(
-                                      label: '邮箱',
-                                      value: detail.user.email ?? '暂无',
-                                    ),
-                                    _AdminDetailLine(
-                                      label: '手机号',
-                                      value: detail.user.phone?.phone ?? '暂无',
-                                    ),
-                                    _AdminDetailLine(
-                                      label: '状态',
-                                      value: detail.user.status,
-                                    ),
-                                    _AdminDetailLine(
-                                      label: '创建时间',
-                                      value: _adminDateLabel(
-                                        detail.user.createdAt,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                _AdminWechatBlock(wechat: detail.user.wechat),
-                                const SizedBox(height: 12),
-                                _AdminDetailBlock(
-                                  title: 'AI 伴侣',
-                                  children: detail.agents.isEmpty
-                                      ? const [
-                                          _AdminDetailLine(
-                                            label: '记录',
-                                            value: '暂无 AI',
-                                          ),
-                                        ]
-                                      : [
-                                          for (final agent in detail.agents)
-                                            _AdminDetailLine(
-                                              label: agent.name,
-                                              value:
-                                                  '${agent.status} · ${agent.conversationCount} 会话 · ${agent.messageCount} 消息',
-                                            ),
-                                        ],
-                                ),
-                                const SizedBox(height: 12),
-                                _AdminDetailBlock(
-                                  title: '工作区',
-                                  children: detail.workspaces.isEmpty
-                                      ? const [
-                                          _AdminDetailLine(
-                                            label: '记录',
-                                            value: '暂无工作区',
-                                          ),
-                                        ]
-                                      : [
-                                          for (final workspace
-                                              in detail.workspaces)
-                                            _AdminDetailLine(
-                                              label:
-                                                  workspace.agentName ??
-                                                  workspace.id,
-                                              value:
-                                                  '${workspace.status} · ${workspace.conversationCount} 会话 · ${workspace.messageCount} 消息',
-                                            ),
-                                        ],
-                                ),
-                              ],
-                            ),
-                          ),
-                  ),
-                ],
+            ),
+            child: SelectableText(
+              content,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 14,
+                height: 1.45,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0,
               ),
             ),
           ),
-        ),
+          const SizedBox(height: 3),
+          Text(
+            _adminDateLabel(message.createdAt.toIso8601String()),
+            style: TextStyle(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.34)
+                  : const Color(0x6612171B),
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0,
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ],
       ),
     );
   }
