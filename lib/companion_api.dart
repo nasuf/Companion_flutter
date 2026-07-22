@@ -1110,6 +1110,27 @@ class CompanionApi {
     return WalletBalance.fromJson(json);
   }
 
+  Future<GameWallet> getGameWallet() async {
+    final json =
+        await _request('GET', '/game-wallet', debugLabel: 'game.wallet')
+            as Map<String, dynamic>;
+    return GameWallet.fromJson(json);
+  }
+
+  Future<GamePointConvertResult> convertGamePointsToShop({
+    required int amount,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/game-wallet/convert',
+              body: {'amount': amount},
+              debugLabel: 'game.wallet.convert',
+            )
+            as Map<String, dynamic>;
+    return GamePointConvertResult.fromJson(json);
+  }
+
   Future<StoreInventoryResponse> listStoreInventory() async {
     final json =
         await _request('GET', '/store/inventory', debugLabel: 'store.inventory')

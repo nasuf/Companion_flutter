@@ -14,6 +14,7 @@ class _GamePageState extends State<GamePage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   GameSession? _latestSession;
+  GameWallet? _gameWallet;
   _GameGroup? _activeGroup = _gameGroupCatalog.first;
   _GameTile _activeGame = _gameGroupCatalog.first.games[1];
   String? _error;
@@ -53,6 +54,14 @@ class _GamePageState extends State<GamePage>
     } catch (error) {
       if (mounted) setState(() => _error = _formatError(error));
     }
+    // Game points drive the header card and the play gate; a failure here must
+    // not block the hub, so it is loaded and tolerated separately.
+    try {
+      final wallet = await widget.api.getGameWallet();
+      if (mounted) setState(() => _gameWallet = wallet);
+    } catch (_) {
+      // Keep the hub usable even if the points balance fails to load.
+    }
   }
 
   Future<void> _openGame(_GameGroup group, _GameTile game) async {
@@ -61,6 +70,13 @@ class _GamePageState extends State<GamePage>
       _activeGame = game;
     });
     if (!game.isOnline) return;
+    // Play gate: a user with 0 game points cannot start a new game until the
+    // next day's grant. The server enforces this too (403), this is the UX hint.
+    final wallet = _gameWallet;
+    if (wallet != null && !wallet.canPlay) {
+      _showNoPointsDialog();
+      return;
+    }
     final page = switch (game.nativeGameKey) {
       _nativeReversiGameKey => _ReversiGamePage(
         api: widget.api,
@@ -263,8 +279,11 @@ class _GamePageState extends State<GamePage>
                 ),
               ),
               const SizedBox(width: 10),
-              const Expanded(
-                child: _MetricCard(value: '自研', label: '游戏源'),
+              Expanded(
+                child: _MetricCard(
+                  value: _gameWallet == null ? '--' : '${_gameWallet!.balance}',
+                  label: '积分',
+                ),
               ),
             ],
           ),
@@ -293,6 +312,25 @@ class _GamePageState extends State<GamePage>
             ),
         ],
       ),
+    );
+  }
+
+  void _showNoPointsDialog() {
+    showCupertinoDialog<void>(
+      context: context,
+      builder: (context) {
+        return CupertinoAlertDialog(
+          title: const Text('今日游戏积分已用完'),
+          content: const Text('明天会重新赠送游戏积分，到时候再来一起玩吧。'),
+          actions: [
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('知道了'),
+            ),
+          ],
+        );
+      },
     );
   }
 

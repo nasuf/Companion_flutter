@@ -125,6 +125,104 @@ class _StorePageState extends State<StorePage> {
     );
   }
 
+  Future<void> _openGamePointConvert() async {
+    GameWallet wallet;
+    try {
+      wallet = await widget.api.getGameWallet();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      _showToast('无法获取游戏积分：${error.message}');
+      return;
+    }
+    if (!mounted) return;
+    final convertible = wallet.convertible;
+    if (convertible <= 0) {
+      showCupertinoDialog<void>(
+        context: context,
+        builder: (context) {
+          return CupertinoAlertDialog(
+            title: const Text('暂无可兑换积分'),
+            content: Text(
+              '游戏积分超过 ${wallet.convertFloor} 的部分才能按 1:1 兑换为商城积分，'
+              '当前可兑换 0（需保留 ${wallet.convertFloor} 分继续玩游戏）。',
+            ),
+            actions: [
+              CupertinoDialogAction(
+                isDefaultAction: true,
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('知道了'),
+              ),
+            ],
+          );
+        },
+      );
+      return;
+    }
+
+    final controller = TextEditingController(text: '$convertible');
+    final amount = await showCupertinoDialog<int>(
+      context: context,
+      builder: (context) {
+        return CupertinoAlertDialog(
+          title: const Text('游戏积分兑换积分'),
+          content: Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '当前游戏积分 ${wallet.balance}，可兑换 $convertible。\n'
+                  '按 1:1 兑换为商城积分，兑换不可逆。',
+                  style: const TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+                CupertinoTextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  placeholder: '兑换数量',
+                  autofocus: true,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () {
+                final value = int.tryParse(controller.text.trim());
+                Navigator.of(context).pop(value);
+              },
+              child: const Text('兑换'),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted || amount == null) return;
+    if (amount <= 0 || amount > convertible) {
+      _showToast('请输入 1 - $convertible 之间的数量');
+      return;
+    }
+    try {
+      final result = await widget.api.convertGamePointsToShop(amount: amount);
+      if (!mounted) return;
+      // Refresh the shop wallet so the credited points show immediately.
+      setState(() => _walletFuture = _loadWallet());
+      _showToast('已兑换 ${result.shopPointDelta} 积分');
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      if (error.statusCode == 409) {
+        _showToast('可兑换积分不足');
+        return;
+      }
+      _showToast('兑换失败：${error.message}');
+    }
+  }
+
   void _showInsufficientTickets() {
     showCupertinoDialog<void>(
       context: context,
@@ -275,6 +373,7 @@ class _StorePageState extends State<StorePage> {
         },
         onSelectPack: (value) => setState(() => _selectedRecharge = value),
         onSubmit: _handleRecharge,
+        onConvertGamePoints: _openGamePointConvert,
         bottomSpace: bottomSpace,
       ),
     };

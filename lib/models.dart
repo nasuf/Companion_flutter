@@ -1024,6 +1024,91 @@ class WalletBalance {
   }
 }
 
+class GameLevel {
+  const GameLevel({
+    required this.stageName,
+    required this.tierName,
+    required this.cumulativePoints,
+  });
+
+  final String stageName;
+  final String tierName;
+  final int cumulativePoints;
+
+  factory GameLevel.fromJson(Map<String, dynamic> json) {
+    return GameLevel(
+      stageName: json['stage_name']?.toString() ?? '',
+      tierName: json['tier_name']?.toString() ?? '',
+      cumulativePoints: (json['cumulative_points'] as num?)?.round() ?? 0,
+    );
+  }
+}
+
+class GameWallet {
+  const GameWallet({
+    required this.balance,
+    required this.lifetimeEarned,
+    required this.canPlay,
+    required this.convertFloor,
+    required this.convertRate,
+    required this.convertible,
+    this.level,
+    this.nextTier,
+  });
+
+  final int balance;
+  final int lifetimeEarned;
+  final bool canPlay;
+  final int convertFloor;
+  final int convertRate;
+  final int convertible;
+  final GameLevel? level;
+  final GameLevel? nextTier;
+
+  factory GameWallet.fromJson(Map<String, dynamic> json) {
+    GameLevel? parseLevel(Object? value) {
+      if (value is Map) {
+        return GameLevel.fromJson(Map<String, dynamic>.from(value));
+      }
+      return null;
+    }
+
+    return GameWallet(
+      balance: (json['balance'] as num?)?.round() ?? 0,
+      lifetimeEarned: (json['lifetime_earned'] as num?)?.round() ?? 0,
+      canPlay: json['can_play'] == true,
+      convertFloor: (json['convert_floor'] as num?)?.round() ?? 20,
+      convertRate: (json['convert_rate'] as num?)?.round() ?? 1,
+      convertible: (json['convertible'] as num?)?.round() ?? 0,
+      level: parseLevel(json['level']),
+      nextTier: parseLevel(json['next_tier']),
+    );
+  }
+}
+
+class GamePointConvertResult {
+  const GamePointConvertResult({
+    required this.gameBalance,
+    required this.shopPointBalance,
+    required this.converted,
+    required this.shopPointDelta,
+  });
+
+  final int gameBalance;
+  final int shopPointBalance;
+  final int converted;
+  final int shopPointDelta;
+
+  factory GamePointConvertResult.fromJson(Map<String, dynamic> json) {
+    return GamePointConvertResult(
+      gameBalance: (json['game_balance'] as num?)?.round() ?? 0,
+      shopPointBalance: (json['shop_point_balance'] as num?)?.round() ?? 0,
+      converted: (json['converted'] as num?)?.round() ?? 0,
+      shopPointDelta: (json['shop_point_delta'] as num?)?.round() ?? 0,
+    );
+  }
+}
+
 class StoreInventoryItem {
   const StoreInventoryItem({
     required this.productKind,

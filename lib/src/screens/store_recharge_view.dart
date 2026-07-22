@@ -11,6 +11,7 @@ class _RechargeStoreView extends StatelessWidget {
     required this.onSelectPack,
     required this.onSubmit,
     required this.bottomSpace,
+    this.onConvertGamePoints,
   });
 
   final _StoreCurrency currency;
@@ -21,6 +22,7 @@ class _RechargeStoreView extends StatelessWidget {
   final ValueChanged<_StoreCurrency> onCurrencyChanged;
   final ValueChanged<int> onSelectPack;
   final VoidCallback onSubmit;
+  final VoidCallback? onConvertGamePoints;
   final double bottomSpace;
 
   @override
@@ -64,7 +66,61 @@ class _RechargeStoreView extends StatelessWidget {
           label: currency == _StoreCurrency.ticket ? '立即充值' : '立即兑换',
           onPressed: onSubmit,
         ),
+        if (currency == _StoreCurrency.point && onConvertGamePoints != null) ...[
+          const SizedBox(height: 12),
+          _GamePointConvertRow(onTap: onConvertGamePoints!),
+        ],
       ],
+    );
+  }
+}
+
+class _GamePointConvertRow extends StatelessWidget {
+  const _GamePointConvertRow({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
+    return CupertinoButton(
+      minimumSize: Size.zero,
+      padding: EdgeInsets.zero,
+      onPressed: onTap,
+      child: Container(
+        height: 54,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: AppColors.elevatedSurface(context, light: 0.72),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.glassBorder(context)),
+        ),
+        child: Row(
+          children: [
+            _CircleIcon(
+              icon: CupertinoIcons.gamecontroller_fill,
+              color: AppColors.accent,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '用游戏积分兑换积分',
+                style: TextStyle(
+                  color: AppColors.text,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+            Icon(
+              CupertinoIcons.chevron_right,
+              color: isDark ? AppColors.muted : const Color(0xFF7E8891),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
