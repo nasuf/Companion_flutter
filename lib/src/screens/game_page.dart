@@ -587,11 +587,13 @@ class _GameRoundStats extends StatelessWidget {
     required this.rounds,
     required this.roundsLoading,
     this.emptyState,
+    this.gamePoints,
   });
 
   final List<GameSession> rounds;
   final bool roundsLoading;
   final Widget? emptyState;
+  final int? gamePoints;
 
   @override
   Widget build(BuildContext context) {
@@ -631,6 +633,10 @@ class _GameRoundStats extends StatelessWidget {
                 ),
               ),
               const Spacer(),
+              if (gamePoints != null) ...[
+                _SoftCountPill(text: '积分 $gamePoints'),
+                const SizedBox(width: 8),
+              ],
               if (total > 0) _SoftCountPill(text: '$total 局'),
             ],
           ),

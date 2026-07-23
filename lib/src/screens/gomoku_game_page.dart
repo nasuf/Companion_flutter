@@ -413,6 +413,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     return _GameRoundStats(
       rounds: _runtime.rounds,
       roundsLoading: _runtime.roundsLoading,
+      gamePoints: _runtime.gamePoints,
       emptyState: const _GameRoundEmptyState(
         icon: CupertinoIcons.square_grid_3x2,
         title: '第一盘还在等你',

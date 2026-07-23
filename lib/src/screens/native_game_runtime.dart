@@ -23,6 +23,8 @@ class _NativeGameRuntime {
   bool aiThinking = false;
   bool roundsLoading = true;
   bool completed = false;
+  // Current game-point balance shown at the bottom of every game screen.
+  int? gamePoints;
   Map<String, dynamic>? terminalPayload;
   DateTime? terminalPresentedAt;
   bool turnTimeoutVisible = false;
@@ -54,6 +56,7 @@ class _NativeGameRuntime {
     // behind a network loading state. Start replaying before the history
     // request and keep every later event on the same ordered network tail.
     _queueNetworkTask(_replayPendingEventsAtLaunch);
+    _queueNetworkTask(loadGamePoints);
     try {
       final sessions = await api.listNativeGameSessions(
         gameKey: gameKey,
@@ -87,6 +90,18 @@ class _NativeGameRuntime {
     if (pending.isEmpty) return;
     await _eventOutbox.replay();
     await loadRounds();
+  }
+
+  /// Load the current game-point balance for the bottom-of-screen display.
+  /// Non-fatal: a failure must not disrupt gameplay or the round history.
+  Future<void> loadGamePoints() async {
+    try {
+      final wallet = await api.getGameWallet();
+      gamePoints = wallet.balance;
+      _notify();
+    } catch (_) {
+      // Keep whatever balance we last had; never block the game screen.
+    }
   }
 
   Future<void> _terminateLegacySessions(List<GameSession> sessions) async {
@@ -139,6 +154,9 @@ class _NativeGameRuntime {
       rounds = sessions.where(_GameRoundSummary.canShow).toList();
       roundsLoading = false;
       _notify();
+      // A round list reload follows game start / settle, so refresh the
+      // points balance too (a finished/aborted game just changed it).
+      await loadGamePoints();
     } catch (caught) {
       roundsLoading = false;
       syncNotice = _formatError(caught);

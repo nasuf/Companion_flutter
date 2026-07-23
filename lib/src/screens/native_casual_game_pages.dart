@@ -766,6 +766,7 @@ class _NativeGameExperienceScaffoldState
                 child: _GameRoundStats(
                   rounds: widget.runtime.rounds,
                   roundsLoading: widget.runtime.roundsLoading,
+                  gamePoints: widget.runtime.gamePoints,
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 42)),
