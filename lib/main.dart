@@ -51,6 +51,7 @@ part 'src/app/auth_session_store.dart';
 part 'src/auth/wechat_login_service.dart';
 part 'src/screens/admin_tools_page.dart';
 part 'src/screens/admin_dashboard_page.dart';
+part 'src/screens/admin_meal_page.dart';
 part 'src/screens/admin_games_page.dart';
 part 'src/screens/agent_create_page.dart';
 part 'src/screens/achievement_page.dart';

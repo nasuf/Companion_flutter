@@ -574,6 +574,16 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     );
   }
 
+  void _openMealAdmin() {
+    widget.api.authToken = widget.session.token;
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) =>
+            _AdminMealPage(api: widget.api, session: widget.session),
+      ),
+    );
+  }
+
   void _openGameManagement() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
@@ -911,6 +921,22 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                               subtitle: '难度平衡 / 积分等级 / 每局积分规则',
                               accent: const Color(0xFF2D73FF),
                               onTap: _openGameManagement,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _ProfileSectionV6(
+                        title: '霸王餐',
+                        trailing: '核销运营',
+                        child: Column(
+                          children: [
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.ticket_fill,
+                              title: '霸王餐管理',
+                              subtitle: '扫码校验、商家管理与核销数据统计',
+                              accent: const Color(0xFFE8804C),
+                              onTap: _openMealAdmin,
                             ),
                           ],
                         ),
