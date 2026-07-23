@@ -1205,6 +1205,31 @@ class CompanionApi {
     return WalletBalance.fromJson(json);
   }
 
+  /// Latest terminal game session's status for the game hub header, or null if
+  /// there is no finished round yet. Lightweight (no full session payload).
+  Future<String?> getLatestNativeGameSession({String? agentId}) async {
+    final query = (agentId != null && agentId.isNotEmpty)
+        ? '?${Uri(queryParameters: {'agent_id': agentId}).query}'
+        : '';
+    try {
+      final result = await _request(
+        'GET',
+        '/games/native/sessions/latest$query',
+        debugLabel: 'game.latest',
+      );
+      if (result is Map) {
+        final status = result['status']?.toString();
+        return (status != null && status.isNotEmpty) ? status : null;
+      }
+      return null;
+    } on ApiException catch (error) {
+      // Tolerate the endpoint being unavailable (e.g. server not yet deployed):
+      // treat as "no recent game" rather than surfacing an error on the hub.
+      if (error.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
   Future<GameWallet> getGameWallet({String? gameKey}) async {
     final query = (gameKey != null && gameKey.isNotEmpty)
         ? '?${Uri(queryParameters: {'game_key': gameKey}).query}'

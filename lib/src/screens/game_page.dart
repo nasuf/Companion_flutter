@@ -13,7 +13,7 @@ class GamePage extends StatefulWidget {
 class _GamePageState extends State<GamePage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  GameSession? _latestSession;
+  String? _latestStatus;
   GameWallet? _gameWallet;
   _GameGroup? _activeGroup = _gameGroupCatalog.first;
   _GameTile _activeGame = _gameGroupCatalog.first.games[1];
@@ -39,36 +39,25 @@ class _GamePageState extends State<GamePage>
   Future<void> _load() async {
     if (!mounted) return;
     setState(() => _error = null);
-    // Fetch the latest session and the points balance in parallel so the header
-    // cards do not wait on two sequential round-trips. Points failures are
-    // tolerated (they must not block the hub or the recent-session display).
-    final results = await Future.wait([
-      widget.api
-          .listNativeGameSessions(limit: 20)
-          .then<Object?>((value) => value)
-          .catchError((Object error) => error),
-      widget.api
-          .getGameWallet()
-          .then<Object?>((value) => value)
-          .catchError((Object _) => null),
-    ]);
-    if (!mounted) return;
-    final sessionsResult = results[0];
-    final walletResult = results[1];
-    setState(() {
-      if (sessionsResult is List<GameSession>) {
-        final agentId = widget.session.agentId;
-        _latestSession = sessionsResult
-            .where((session) => agentId == null || session.agentId == agentId)
-            .where(_GameRoundSummary.canShow)
-            .firstOrNull;
-      } else if (sessionsResult != null) {
-        _error = _formatError(sessionsResult);
-      }
-      if (walletResult is GameWallet) {
-        _gameWallet = walletResult;
-      }
-    });
+    // Start both requests together so the header cards load concurrently
+    // instead of on two sequential round-trips. The latest-session lookup is a
+    // lightweight status-only query (no full session payload).
+    final latestFuture = widget.api.getLatestNativeGameSession(
+      agentId: widget.session.agentId,
+    );
+    final walletFuture = widget.api.getGameWallet();
+    try {
+      final status = await latestFuture;
+      if (mounted) setState(() => _latestStatus = status);
+    } catch (error) {
+      if (mounted) setState(() => _error = _formatError(error));
+    }
+    try {
+      final wallet = await walletFuture;
+      if (mounted) setState(() => _gameWallet = wallet);
+    } catch (_) {
+      // Points are non-fatal for the hub.
+    }
   }
 
   Future<void> _openGame(_GameGroup group, _GameTile game) async {
@@ -228,7 +217,7 @@ class _GamePageState extends State<GamePage>
   }
 
   Widget _intro() {
-    final session = _latestSession;
+    final status = _latestStatus;
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
       child: Column(
@@ -256,9 +245,9 @@ class _GamePageState extends State<GamePage>
           ),
           const SizedBox(height: 8),
           Text(
-            session == null
+            status == null
                 ? '不用多说，一起玩一会儿就好'
-                : '最近一局 · ${_localizedGameStatus(session.status)}',
+                : '最近一局 · ${_localizedGameStatus(status)}',
             style: TextStyle(
               color: AppColors.text.withValues(alpha: 0.56),
               fontSize: 13,
@@ -281,14 +270,14 @@ class _GamePageState extends State<GamePage>
             children: [
               Expanded(
                 child: _MetricCard(
-                  value: _localizedGameStatus(session?.status),
+                  value: _localizedGameStatus(status),
                   label: '最近一局',
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _MetricCard(
-                  value: session == null ? '--' : '自然对局',
+                  value: status == null ? '--' : '自然对局',
                   label: '陪玩方式',
                 ),
               ),
