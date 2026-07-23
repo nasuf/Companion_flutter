@@ -128,6 +128,47 @@ extension _AdminGamesApi on CompanionApi {
             as Map<String, dynamic>;
     return _GamePointRule.fromJson(json);
   }
+
+  Future<List<_AdminGamePointLedgerItem>> fetchGamePointLedger({
+    String? userId,
+    int limit = 200,
+  }) async {
+    final params = <String, String>{'limit': limit.toString()};
+    if (userId != null && userId.isNotEmpty) params['user_id'] = userId;
+    final path = Uri(
+      path: '/admin-api/game-points/ledger',
+      queryParameters: params,
+    ).toString();
+    final json = await _adminHttpRequest(this, 'GET', path) as List<dynamic>;
+    return json
+        .whereType<Map>()
+        .map(
+          (item) => _AdminGamePointLedgerItem.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .toList();
+  }
+
+  Future<int> grantGamePoints({
+    required String userId,
+    required int amount,
+    String? note,
+  }) async {
+    final json =
+        await _adminHttpRequest(
+              this,
+              'POST',
+              '/admin-api/game-points/grant',
+              body: {
+                'user_id': userId,
+                'amount': amount,
+                if (note != null && note.isNotEmpty) 'note': note,
+              },
+            )
+            as Map<String, dynamic>;
+    return _adminInt(json['balance']);
+  }
 }
 
 // ===========================================================================
@@ -307,8 +348,77 @@ class _GamePointRule {
   }
 }
 
+class _AdminGamePointLedgerItem {
+  const _AdminGamePointLedgerItem({
+    required this.id,
+    required this.userId,
+    required this.username,
+    required this.delta,
+    required this.balanceAfter,
+    required this.source,
+    required this.metadata,
+    required this.createdAt,
+    required this.levelName,
+    required this.levelUp,
+  });
+
+  final String id;
+  final String userId;
+  final String? username;
+  final int delta;
+  final int balanceAfter;
+  final String source;
+  final Map<String, dynamic> metadata;
+  final String createdAt;
+  final String? levelName;
+  final bool levelUp;
+
+  factory _AdminGamePointLedgerItem.fromJson(Map<String, dynamic> json) {
+    return _AdminGamePointLedgerItem(
+      id: json['id']?.toString() ?? '',
+      userId: json['user_id']?.toString() ?? '',
+      username: json['username']?.toString(),
+      delta: _adminInt(json['delta']),
+      balanceAfter: _adminInt(json['balance_after']),
+      source: json['source']?.toString() ?? '',
+      metadata: json['metadata'] is Map
+          ? Map<String, dynamic>.from(json['metadata'] as Map)
+          : <String, dynamic>{},
+      createdAt: json['created_at']?.toString() ?? '',
+      levelName: json['level_name']?.toString(),
+      levelUp: json['level_up'] == true,
+    );
+  }
+
+  String get sourceLabel {
+    const labels = {
+      'daily_grant': '每日赠送',
+      'game_settle': '游戏结算',
+      'convert_to_shop': '兑换商城积分',
+      'admin_grant': '官方赠送',
+      'admin_adjust': '官方调整',
+    };
+    final base = labels[source] ?? source;
+    if (source == 'game_settle') {
+      const outcomes = {
+        'win': '赢',
+        'lose': '输',
+        'draw': '平',
+        'aborted': '中途退出',
+      };
+      final outcome = metadata['outcome']?.toString();
+      final gameKey = metadata['game_key']?.toString();
+      return [base, gameKey, outcomes[outcome] ?? outcome]
+          .whereType<String>()
+          .where((s) => s.isNotEmpty)
+          .join(' · ');
+    }
+    return base;
+  }
+}
+
 // ===========================================================================
-// Entry page: 难度平衡 / 积分等级 / 积分规则
+// Entry page: 难度平衡 / 积分等级 / 积分规则 / 积分管理
 // ===========================================================================
 
 class _AdminGamesPage extends StatefulWidget {
@@ -328,7 +438,7 @@ class _AdminGamesPageState extends State<_AdminGamesPage> {
   Widget build(BuildContext context) {
     return _AdminScaffold(
       title: '游戏管理',
-      subtitle: '难度平衡 · 积分等级 · 每局积分规则',
+      subtitle: '难度 · 积分等级 · 规则 · 积分管理',
       child: Column(
         children: [
           Padding(
@@ -343,15 +453,19 @@ class _AdminGamesPageState extends State<_AdminGamesPage> {
                 children: const {
                   0: Padding(
                     padding: EdgeInsets.symmetric(vertical: 6),
-                    child: Text('难度平衡', style: TextStyle(fontSize: 13)),
+                    child: Text('难度平衡', style: TextStyle(fontSize: 12)),
                   ),
                   1: Padding(
                     padding: EdgeInsets.symmetric(vertical: 6),
-                    child: Text('积分等级', style: TextStyle(fontSize: 13)),
+                    child: Text('积分等级', style: TextStyle(fontSize: 12)),
                   ),
                   2: Padding(
                     padding: EdgeInsets.symmetric(vertical: 6),
-                    child: Text('积分规则', style: TextStyle(fontSize: 13)),
+                    child: Text('积分规则', style: TextStyle(fontSize: 12)),
+                  ),
+                  3: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 6),
+                    child: Text('积分管理', style: TextStyle(fontSize: 12)),
                   ),
                 },
               ),
@@ -364,6 +478,7 @@ class _AdminGamesPageState extends State<_AdminGamesPage> {
                 _GameBalanceTab(api: widget.api, session: widget.session),
                 _GameLevelsTab(api: widget.api, session: widget.session),
                 _GameRulesTab(api: widget.api, session: widget.session),
+                _GamePointsLedgerTab(api: widget.api, session: widget.session),
               ],
             ),
           ),
@@ -1847,6 +1962,331 @@ class _MilestoneDraft {
   void dispose() {
     tileCtrl.dispose();
     pointsCtrl.dispose();
+  }
+}
+
+// ===========================================================================
+// Tab 4 · 积分管理 (流水 + 官方赠送)
+// ===========================================================================
+
+class _GamePointsLedgerTab extends StatefulWidget {
+  const _GamePointsLedgerTab({required this.api, required this.session});
+
+  final CompanionApi api;
+  final AuthSession session;
+
+  @override
+  State<_GamePointsLedgerTab> createState() => _GamePointsLedgerTabState();
+}
+
+class _GamePointsLedgerTabState extends State<_GamePointsLedgerTab> {
+  final _grantUserCtrl = TextEditingController();
+  final _grantAmountCtrl = TextEditingController();
+  final _grantNoteCtrl = TextEditingController();
+  final _filterCtrl = TextEditingController();
+
+  bool _loading = true;
+  bool _granting = false;
+  String? _error;
+  String? _notice;
+  List<_AdminGamePointLedgerItem> _items = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _grantUserCtrl.dispose();
+    _grantAmountCtrl.dispose();
+    _grantNoteCtrl.dispose();
+    _filterCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load({String? userId}) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    widget.api.authToken = widget.session.token;
+    try {
+      final items = await widget.api.fetchGamePointLedger(userId: userId);
+      if (!mounted) return;
+      setState(() {
+        _items = items;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = _asMessage(error);
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _grant() async {
+    if (_granting) return;
+    final userId = _grantUserCtrl.text.trim();
+    final amount = int.tryParse(_grantAmountCtrl.text.trim());
+    if (userId.isEmpty) {
+      setState(() => _error = '请输入用户 ID');
+      return;
+    }
+    if (amount == null || amount <= 0) {
+      setState(() => _error = '赠送积分必须是正整数');
+      return;
+    }
+    setState(() {
+      _granting = true;
+      _error = null;
+      _notice = null;
+    });
+    widget.api.authToken = widget.session.token;
+    try {
+      final balance = await widget.api.grantGamePoints(
+        userId: userId,
+        amount: amount,
+        note: _grantNoteCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _granting = false;
+        _notice = '已赠送 $amount 积分，当前余额 $balance（等级不变）。';
+        _grantAmountCtrl.clear();
+        _grantNoteCtrl.clear();
+      });
+      await _load(userId: _filterCtrl.text.trim().isEmpty ? null : _filterCtrl.text.trim());
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _granting = false;
+        _error = _asMessage(error);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () => _load(
+              userId: _filterCtrl.text.trim().isEmpty ? null : _filterCtrl.text.trim(),
+            ),
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 40),
+              children: [
+                _AdminCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const _AdminGamesSectionHeader('官方赠送积分'),
+                      const SizedBox(height: 4),
+                      Text(
+                        '仅增加该用户的游戏余额，不改变游戏等级。',
+                        style: TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11.5,
+                          height: 1.5,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _AdminGamesTextField(label: '用户 ID', controller: _grantUserCtrl),
+                      const SizedBox(height: 10),
+                      _AdminGamesNumberField(label: '赠送积分', controller: _grantAmountCtrl),
+                      const SizedBox(height: 10),
+                      _AdminGamesTextField(label: '备注（可选）', controller: _grantNoteCtrl),
+                      const SizedBox(height: 12),
+                      _AdminGamesPrimaryButton(
+                        label: _granting ? '赠送中…' : '官方赠送',
+                        onPressed: _granting ? null : _grant,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _AdminCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _AdminGamesTextField(
+                        label: '按用户 ID 过滤流水（留空看全部）',
+                        controller: _filterCtrl,
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _AdminGamesSecondaryButton(
+                              label: '查询',
+                              onPressed: () => _load(
+                                userId: _filterCtrl.text.trim().isEmpty
+                                    ? null
+                                    : _filterCtrl.text.trim(),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _AdminGamesSecondaryButton(
+                              label: '全部',
+                              onPressed: () {
+                                _filterCtrl.clear();
+                                _load();
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  _AdminGamesErrorText(_error!),
+                ],
+                if (_notice != null) ...[
+                  const SizedBox(height: 12),
+                  _AdminGamesNoticeText(_notice!),
+                ],
+                const SizedBox(height: 12),
+                if (_loading && _items.isEmpty)
+                  const Center(child: CupertinoActivityIndicator(radius: 14))
+                else if (_items.isEmpty)
+                  Text(
+                    '暂无积分变更记录',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                    ),
+                  )
+                else
+                  for (final item in _items) ...[
+                    _LedgerRowCard(item: item),
+                    const SizedBox(height: 8),
+                  ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LedgerRowCard extends StatelessWidget {
+  const _LedgerRowCard({required this.item});
+
+  final _AdminGamePointLedgerItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final positive = item.delta >= 0;
+    final deltaColor = positive
+        ? const Color(0xFF1FA97A)
+        : AppColors.of(context).danger;
+    return _AdminCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        item.username ?? '(未知)',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isDark ? AppColors.text : const Color(0xFF12171B),
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    if (item.levelUp) _AdminMiniBadge(text: '升级'),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${item.sourceLabel} · ${item.createdAt.replaceFirst("T", " ").split(".").first}',
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                if (item.levelName != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '等级 ${item.levelName}',
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                positive ? '+${item.delta}' : '${item.delta}',
+                style: TextStyle(
+                  color: deltaColor,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '余额 ${item.balanceAfter}',
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 
