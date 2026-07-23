@@ -124,6 +124,16 @@ extension _AdminStatsApi on CompanionApi {
     return _OperationsStats.fromJson(json);
   }
 
+  Future<_MediaUsageStats> fetchMediaUsage({int days = 7}) async {
+    final path = Uri(
+      path: '/admin-api/stats/media-usage',
+      queryParameters: {'days': days.toString()},
+    ).toString();
+    final json =
+        await _adminHttpRequest(this, 'GET', path) as Map<String, dynamic>;
+    return _MediaUsageStats.fromJson(json);
+  }
+
   Future<_OfflineSettings> fetchOfflineSettings() async {
     final json =
         await _adminHttpRequest(this, 'GET', '/admin-api/offline-settings')
@@ -527,6 +537,98 @@ class _TokenUsageStats {
           .toList(growable: false),
     );
   }
+}
+
+/// Voice/image usage rollup (运营管理 → 媒体用量).
+class _MediaUsageStats {
+  const _MediaUsageStats({
+    required this.voiceCount,
+    required this.voiceSeconds,
+    required this.voiceBytes,
+    required this.imageCount,
+    required this.imageBytes,
+    required this.userTotal,
+    required this.users,
+  });
+
+  final int voiceCount;
+  final int voiceSeconds;
+  final int voiceBytes;
+  final int imageCount;
+  final int imageBytes;
+
+  /// Distinct users with any media usage (users list may be truncated).
+  final int userTotal;
+  final List<_MediaUsageUserRow> users;
+
+  factory _MediaUsageStats.fromJson(Map<String, dynamic> json) {
+    final voice = _jsonMap(json['voice']);
+    final image = _jsonMap(json['image']);
+    return _MediaUsageStats(
+      voiceCount: _jsonInt(voice['count']),
+      voiceSeconds: _jsonInt(voice['total_seconds']),
+      voiceBytes: _jsonInt(voice['total_bytes']),
+      imageCount: _jsonInt(image['count']),
+      imageBytes: _jsonInt(image['total_bytes']),
+      userTotal: _jsonInt(json['user_total']),
+      users: _jsonList(json['users'])
+          .map(_MediaUsageUserRow.fromJson)
+          .toList(growable: false),
+    );
+  }
+}
+
+class _MediaUsageUserRow {
+  const _MediaUsageUserRow({
+    required this.userId,
+    required this.username,
+    required this.voiceCount,
+    required this.voiceSeconds,
+    required this.voiceBytes,
+    required this.imageCount,
+    required this.imageBytes,
+  });
+
+  final String userId;
+  final String username;
+  final int voiceCount;
+  final int voiceSeconds;
+  final int voiceBytes;
+  final int imageCount;
+  final int imageBytes;
+
+  factory _MediaUsageUserRow.fromJson(Map<String, dynamic> json) {
+    return _MediaUsageUserRow(
+      userId: _jsonString(json['user_id']),
+      username: _jsonString(json['username'], fallback: '(未知用户)'),
+      voiceCount: _jsonInt(json['voice_count']),
+      voiceSeconds: _jsonInt(json['voice_seconds']),
+      voiceBytes: _jsonInt(json['voice_bytes']),
+      imageCount: _jsonInt(json['image_count']),
+      imageBytes: _jsonInt(json['image_bytes']),
+    );
+  }
+}
+
+/// 145408 → "142.0 KB" — auto KB/MB/GB bucket for media sizes.
+String _fmtMediaBytes(int bytes) {
+  if (bytes <= 0) return '0 KB';
+  final kb = bytes / 1024;
+  if (kb < 1024) return '${kb.toStringAsFixed(1)} KB';
+  final mb = kb / 1024;
+  if (mb < 1024) return '${mb.toStringAsFixed(1)} MB';
+  return '${(mb / 1024).toStringAsFixed(2)} GB';
+}
+
+/// 62 → "1分2秒"; 3700 → "1小时1分40秒".
+String _fmtMediaDuration(int totalSeconds) {
+  final seconds = totalSeconds < 0 ? 0 : totalSeconds;
+  if (seconds < 60) return '$seconds秒';
+  final hours = seconds ~/ 3600;
+  final minutes = (seconds % 3600) ~/ 60;
+  final rest = seconds % 60;
+  final head = hours > 0 ? '$hours小时' : '';
+  return '$head$minutes分$rest秒';
 }
 
 class _OperationsStats {
@@ -2424,6 +2526,7 @@ class _AdminOperationsPageState extends State<_AdminOperationsPage> {
   String? _error;
   _TokenUsageStats? _token;
   _OperationsStats? _ops;
+  _MediaUsageStats? _media;
   int _loadSeq = 0;
 
   @override
@@ -2440,11 +2543,13 @@ class _AdminOperationsPageState extends State<_AdminOperationsPage> {
       final results = await Future.wait([
         widget.api.fetchTokenUsage(days: _days),
         widget.api.fetchOperationsStats(days: _days),
+        widget.api.fetchMediaUsage(days: _days),
       ]);
       if (!mounted || seq != _loadSeq) return;
       setState(() {
         _token = results[0] as _TokenUsageStats;
         _ops = results[1] as _OperationsStats;
+        _media = results[2] as _MediaUsageStats;
         _error = null;
         _loading = false;
       });
@@ -2549,6 +2654,19 @@ class _AdminOperationsPageState extends State<_AdminOperationsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                const _AdminSectionTitle(title: '媒体用量 (语音 / 图片)'),
+                if (_media == null)
+                  const _AdminInlineHint(text: '暂无媒体用量数据', height: 80)
+                else
+                  _buildMediaUsage(_media!),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _AdminCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
                 const _AdminSectionTitle(title: '系统健康'),
                 if (ops == null)
                   const _AdminInlineHint(text: '暂无运营指标', height: 80)
@@ -2559,6 +2677,108 @@ class _AdminOperationsPageState extends State<_AdminOperationsPage> {
           ),
         ],
       ],
+    );
+  }
+
+  Widget _buildMediaUsage(_MediaUsageStats media) {
+    final hasAny = media.voiceCount > 0 || media.imageCount > 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _AdminStatGrid(
+          tiles: [
+            _AdminStatTile(
+              label: '语音消息',
+              value: _fmtFull(media.voiceCount),
+              sub: '条',
+            ),
+            _AdminStatTile(
+              label: '语音总时长',
+              value: _fmtMediaDuration(media.voiceSeconds),
+              sub: '共 ${_fmtFull(media.voiceSeconds)} 秒',
+            ),
+            _AdminStatTile(
+              label: '语音总大小',
+              value: _fmtMediaBytes(media.voiceBytes),
+            ),
+            _AdminStatTile(
+              label: '图片消息',
+              value: _fmtFull(media.imageCount),
+              sub: '张',
+            ),
+            _AdminStatTile(
+              label: '图片总大小',
+              value: _fmtMediaBytes(media.imageBytes),
+            ),
+          ],
+        ),
+        if (!hasAny)
+          const _AdminInlineHint(text: '时间窗内没有语音或图片使用记录', height: 60)
+        else ...[
+          const SizedBox(height: 10),
+          for (final row in media.users) _buildMediaUserRow(row),
+          if (media.userTotal > media.users.length)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                '仅展示前 ${media.users.length} 名用户，共 ${media.userTotal} 名用户使用过语音或图片',
+                style: TextStyle(
+                  color: AppColors.of(context).muted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildMediaUserRow(_MediaUsageUserRow row) {
+    final isDark = AppColors.isDark(context);
+    final details = <String>[
+      if (row.voiceCount > 0)
+        '语音 ${row.voiceCount} 条 · ${_fmtMediaDuration(row.voiceSeconds)} · ${_fmtMediaBytes(row.voiceBytes)}',
+      if (row.imageCount > 0)
+        '图片 ${row.imageCount} 张 · ${_fmtMediaBytes(row.imageBytes)}',
+    ];
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : Colors.black.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            row.username,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: isDark ? AppColors.text : const Color(0xFF12171B),
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            details.join('  ·  '),
+            style: TextStyle(
+              color: isDark ? const Color(0x9EEBF2EE) : AppColors.muted,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              height: 1.4,
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
