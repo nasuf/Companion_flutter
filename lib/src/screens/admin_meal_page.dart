@@ -2187,8 +2187,19 @@ class _MealStatsPanelState extends State<_MealStatsPanel>
   Timer? _timer;
   int _loadSeq = 0;
 
+  // _rangeDays == 0 means 「全部」. The /stats endpoint caps spans at < 366
+  // days, so 全部 uses the widest allowed window (365 days back). The meal
+  // campaign is well under a year old, so this covers all data; leading
+  // all-zero days are trimmed from the daily table below.
+  static const int _allWindowDays = 365;
+
+  bool get _isAllMode => !_dayMode && _rangeDays == 0;
+
   ({String start, String end}) get _range {
     if (_dayMode) return (start: _day, end: _day);
+    if (_rangeDays == 0) {
+      return (start: _mealLocalDate(_allWindowDays), end: _mealLocalDate());
+    }
     return (start: _mealLocalDate(_rangeDays - 1), end: _mealLocalDate());
   }
 
@@ -2352,9 +2363,11 @@ class _MealStatsPanelState extends State<_MealStatsPanel>
   @override
   Widget build(BuildContext context) {
     final range = _range;
-    final rangeLabel = range.start == range.end
-        ? range.start
-        : '${range.start} ~ ${range.end}';
+    final rangeLabel = _isAllMode
+        ? '全部'
+        : (range.start == range.end
+              ? range.start
+              : '${range.start} ~ ${range.end}');
     return ListView(
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(18, 4, 18, 40),
@@ -2446,15 +2459,20 @@ class _MealStatsPanelState extends State<_MealStatsPanel>
           const SizedBox(height: 10),
           Row(
             children: [
-              for (final n in const [3, 7, 30]) ...[
+              for (final entry in const [
+                MapEntry(3, '近3天'),
+                MapEntry(7, '近7天'),
+                MapEntry(30, '近30天'),
+                MapEntry(0, '全部'),
+              ]) ...[
                 Expanded(
                   child: _MealRangeChip(
-                    label: '近$n天',
-                    selected: !_dayMode && _rangeDays == n,
-                    onTap: () => _selectRange(n),
+                    label: entry.value,
+                    selected: !_dayMode && _rangeDays == entry.key,
+                    onTap: () => _selectRange(entry.key),
                   ),
                 ),
-                const SizedBox(width: 8),
+                if (entry.key != 0) const SizedBox(width: 8),
               ],
             ],
           ),
@@ -2614,6 +2632,15 @@ class _MealStatsPanelState extends State<_MealStatsPanel>
 
   Widget _buildDailyTable() {
     final stats = _stats;
+    // In 全部 mode the window is a full year — drop the leading all-zero days
+    // so the table starts at the first day with activity.
+    List<_MealStatsDay> days = stats?.days ?? const [];
+    if (_isAllMode && days.isNotEmpty) {
+      final firstIdx = days.indexWhere(
+        (d) => d.activated > 0 || d.redeemed > 0,
+      );
+      days = firstIdx == -1 ? const [] : days.sublist(firstIdx);
+    }
     return _AdminCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2622,11 +2649,11 @@ class _MealStatsPanelState extends State<_MealStatsPanel>
           const SizedBox(height: 12),
           if (stats == null)
             const _AdminInlineHint(text: '加载中…', height: 60)
-          else if (stats.days.isEmpty)
+          else if (days.isEmpty)
             const _AdminInlineHint(text: '暂无数据', height: 60)
           else ...[
             _mealTableHeader(const ['日期', '激活数', '核销数']),
-            for (final day in stats.days.reversed)
+            for (final day in days.reversed)
               _mealTableRow([day.date, '${day.activated}', '${day.redeemed}']),
           ],
         ],
