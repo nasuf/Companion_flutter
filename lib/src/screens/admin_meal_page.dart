@@ -2632,15 +2632,10 @@ class _MealStatsPanelState extends State<_MealStatsPanel>
 
   Widget _buildDailyTable() {
     final stats = _stats;
-    // In 全部 mode the window is a full year — drop the leading all-zero days
-    // so the table starts at the first day with activity.
-    List<_MealStatsDay> days = stats?.days ?? const [];
-    if (_isAllMode && days.isNotEmpty) {
-      final firstIdx = days.indexWhere(
-        (d) => d.activated > 0 || d.redeemed > 0,
-      );
-      days = firstIdx == -1 ? const [] : days.sublist(firstIdx);
-    }
+    // Only list days that actually have activity — skip all-zero days.
+    final days = (stats?.days ?? const <_MealStatsDay>[])
+        .where((d) => d.activated > 0 || d.redeemed > 0)
+        .toList(growable: false);
     return _AdminCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
