@@ -1713,48 +1713,137 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
 
   Widget _buildRoleCard() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return _AdminDetailBlock(
-      title: '权限管理',
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Row(
+    final colors = AppColors.of(context);
+    final isAdminRole = _role == 'admin';
+    final toAdmin = !isAdminRole;
+    final roleColor = isAdminRole
+        ? const Color(0xFF2D73FF)
+        : const Color(0xFF1FA97A);
+    return _AdminCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header — deliberately w700 (not w900) so CJK glyphs like 「管」
+          // stay crisp instead of rendering heavy/blurry.
+          Row(
             children: [
-              _AdminRolePill(role: _role),
-              const Spacer(),
-              if (_isSelf)
+              Container(
+                width: 34,
+                height: 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: colors.accent.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(
+                  CupertinoIcons.shield_lefthalf_fill,
+                  color: colors.accent,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '权限管理',
+                style: TextStyle(
+                  color: isDark ? AppColors.text : const Color(0xFF12171B),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          // Current role row
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: roleColor.withValues(alpha: isDark ? 0.14 : 0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: roleColor.withValues(alpha: 0.22)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  isAdminRole
+                      ? CupertinoIcons.checkmark_seal_fill
+                      : CupertinoIcons.person_fill,
+                  color: roleColor,
+                  size: 17,
+                ),
+                const SizedBox(width: 8),
                 Text(
-                  '不能修改自己的权限',
+                  '当前角色',
                   style: TextStyle(
                     color: isDark ? const Color(0x9EEBF2EE) : AppColors.muted,
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0,
                     decoration: TextDecoration.none,
                   ),
-                )
-              else
-                CupertinoButton(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  color: _role == 'admin'
-                      ? AppColors.of(context).danger
-                      : const Color(0xFF2D73FF),
-                  borderRadius: BorderRadius.circular(999),
-                  onPressed: _updatingRole ? null : _toggleRole,
-                  child: _updatingRole
-                      ? const CupertinoActivityIndicator(
-                          radius: 9,
-                          color: Colors.white,
-                        )
-                      : Text(_role == 'admin' ? '改为普通用户' : '设为管理员'),
                 ),
-            ],
+                const Spacer(),
+                Text(
+                  _adminRoleLabel(_role),
+                  style: TextStyle(
+                    color: roleColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: 12),
+          if (_isSelf)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : const Color(0x0A181F2A),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    CupertinoIcons.lock_fill,
+                    size: 15,
+                    color: isDark ? const Color(0x9EEBF2EE) : AppColors.muted,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '这是当前登录账号，无法修改自身权限',
+                      style: TextStyle(
+                        color: isDark
+                            ? const Color(0x9EEBF2EE)
+                            : AppColors.muted,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            _AdminRoleActionButton(
+              color: toAdmin ? const Color(0xFF2D73FF) : colors.danger,
+              icon: toAdmin
+                  ? Icons.add_moderator_rounded
+                  : Icons.remove_moderator_rounded,
+              label: toAdmin ? '设为管理员' : '改为普通用户',
+              loading: _updatingRole,
+              onTap: _toggleRole,
+            ),
+        ],
+      ),
     );
   }
 
@@ -1797,6 +1886,73 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
 }
 
 /// Tappable row (agent -> conversations, conversation -> messages).
+/// Full-width filled action button with an explicit white label + icon, so the
+/// text is always high-contrast on the colored fill (unlike a bare
+/// CupertinoButton whose label color is inherited).
+class _AdminRoleActionButton extends StatelessWidget {
+  const _AdminRoleActionButton({
+    required this.color,
+    required this.icon,
+    required this.label,
+    required this.loading,
+    required this.onTap,
+  });
+
+  final Color color;
+  final IconData icon;
+  final String label;
+  final bool loading;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: loading ? null : onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          height: 50,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.32),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: loading
+              ? const CupertinoActivityIndicator(
+                  radius: 10,
+                  color: Colors.white,
+                )
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, color: Colors.white, size: 19),
+                    const SizedBox(width: 8),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
+
 class _AdminNavRow extends StatelessWidget {
   const _AdminNavRow({
     required this.title,
