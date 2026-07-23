@@ -39,29 +39,36 @@ class _GamePageState extends State<GamePage>
   Future<void> _load() async {
     if (!mounted) return;
     setState(() => _error = null);
-    try {
-      final sessions = await widget.api.listNativeGameSessions(limit: 20);
-      if (!mounted) return;
-      final agentId = widget.session.agentId;
-      final relevantSessions = sessions
-          .where((session) => agentId == null || session.agentId == agentId)
-          .toList(growable: false);
-      setState(() {
-        _latestSession = relevantSessions
+    // Fetch the latest session and the points balance in parallel so the header
+    // cards do not wait on two sequential round-trips. Points failures are
+    // tolerated (they must not block the hub or the recent-session display).
+    final results = await Future.wait([
+      widget.api
+          .listNativeGameSessions(limit: 20)
+          .then<Object?>((value) => value)
+          .catchError((Object error) => error),
+      widget.api
+          .getGameWallet()
+          .then<Object?>((value) => value)
+          .catchError((Object _) => null),
+    ]);
+    if (!mounted) return;
+    final sessionsResult = results[0];
+    final walletResult = results[1];
+    setState(() {
+      if (sessionsResult is List<GameSession>) {
+        final agentId = widget.session.agentId;
+        _latestSession = sessionsResult
+            .where((session) => agentId == null || session.agentId == agentId)
             .where(_GameRoundSummary.canShow)
             .firstOrNull;
-      });
-    } catch (error) {
-      if (mounted) setState(() => _error = _formatError(error));
-    }
-    // Game points drive the header card and the play gate; a failure here must
-    // not block the hub, so it is loaded and tolerated separately.
-    try {
-      final wallet = await widget.api.getGameWallet();
-      if (mounted) setState(() => _gameWallet = wallet);
-    } catch (_) {
-      // Keep the hub usable even if the points balance fails to load.
-    }
+      } else if (sessionsResult != null) {
+        _error = _formatError(sessionsResult);
+      }
+      if (walletResult is GameWallet) {
+        _gameWallet = walletResult;
+      }
+    });
   }
 
   Future<void> _openGame(_GameGroup group, _GameTile game) async {
@@ -251,7 +258,7 @@ class _GamePageState extends State<GamePage>
           Text(
             session == null
                 ? '不用多说，一起玩一会儿就好'
-                : '${session.roomId} · ${session.status}',
+                : '最近一局 · ${_localizedGameStatus(session.status)}',
             style: TextStyle(
               color: AppColors.text.withValues(alpha: 0.56),
               fontSize: 13,
@@ -274,7 +281,7 @@ class _GamePageState extends State<GamePage>
             children: [
               Expanded(
                 child: _MetricCard(
-                  value: session?.status ?? '未开局',
+                  value: _localizedGameStatus(session?.status),
                   label: '最近一局',
                 ),
               ),
@@ -320,6 +327,21 @@ class _GamePageState extends State<GamePage>
         ],
       ),
     );
+  }
+
+  String _localizedGameStatus(String? status) {
+    switch (status) {
+      case 'playing':
+        return '进行中';
+      case 'settled':
+        return '已结束';
+      case 'aborted':
+        return '已退出';
+      case 'created':
+        return '准备中';
+      default:
+        return '未开局';
+    }
   }
 
   void _showNoPointsDialog() {

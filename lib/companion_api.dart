@@ -1110,9 +1110,12 @@ class CompanionApi {
     return WalletBalance.fromJson(json);
   }
 
-  Future<GameWallet> getGameWallet() async {
+  Future<GameWallet> getGameWallet({String? gameKey}) async {
+    final query = (gameKey != null && gameKey.isNotEmpty)
+        ? '?${Uri(queryParameters: {'game_key': gameKey}).query}'
+        : '';
     final json =
-        await _request('GET', '/game-wallet', debugLabel: 'game.wallet')
+        await _request('GET', '/game-wallet$query', debugLabel: 'game.wallet')
             as Map<String, dynamic>;
     return GameWallet.fromJson(json);
   }

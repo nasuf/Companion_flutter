@@ -92,15 +92,16 @@ class _NativeGameRuntime {
     await loadRounds();
   }
 
-  /// Load the current game-point balance for the bottom-of-screen display.
-  /// Non-fatal: a failure must not disrupt gameplay or the round history.
+  /// Load this game's own points for the bottom-of-screen display (the global
+  /// total already lives on the game hub). Non-fatal: a failure must not disrupt
+  /// gameplay or the round history.
   Future<void> loadGamePoints() async {
     try {
-      final wallet = await api.getGameWallet();
-      gamePoints = wallet.balance;
+      final wallet = await api.getGameWallet(gameKey: gameKey);
+      gamePoints = wallet.gamePointsForGame ?? wallet.balance;
       _notify();
     } catch (_) {
-      // Keep whatever balance we last had; never block the game screen.
+      // Keep whatever value we last had; never block the game screen.
     }
   }
 

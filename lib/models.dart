@@ -1054,6 +1054,7 @@ class GameWallet {
     required this.convertible,
     this.level,
     this.nextTier,
+    this.gamePointsForGame,
   });
 
   final int balance;
@@ -1064,6 +1065,9 @@ class GameWallet {
   final int convertible;
   final GameLevel? level;
   final GameLevel? nextTier;
+  // Net points settled for a specific game (only when the request scoped to a
+  // game_key); null for the global wallet fetch.
+  final int? gamePointsForGame;
 
   factory GameWallet.fromJson(Map<String, dynamic> json) {
     GameLevel? parseLevel(Object? value) {
@@ -1082,6 +1086,7 @@ class GameWallet {
       convertible: (json['convertible'] as num?)?.round() ?? 0,
       level: parseLevel(json['level']),
       nextTier: parseLevel(json['next_tier']),
+      gamePointsForGame: (json['game_points_for_game'] as num?)?.round(),
     );
   }
 }
