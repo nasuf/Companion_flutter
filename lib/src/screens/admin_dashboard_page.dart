@@ -571,9 +571,9 @@ class _MediaUsageStats {
       imageCount: _jsonInt(image['count']),
       imageBytes: _jsonInt(image['total_bytes']),
       userTotal: _jsonInt(json['user_total']),
-      users: _jsonList(json['users'])
-          .map(_MediaUsageUserRow.fromJson)
-          .toList(growable: false),
+      users: _jsonList(
+        json['users'],
+      ).map(_MediaUsageUserRow.fromJson).toList(growable: false),
     );
   }
 }
@@ -1137,29 +1137,44 @@ class _AdminStatTile extends StatelessWidget {
 }
 
 /// Responsive KPI grid (2 columns on phones).
+/// Responsive KPI grid (2 columns on phones). Each row uses IntrinsicHeight +
+/// stretched Expanded so both tiles in a row share the tallest tile's height —
+/// tiles with and without a subtitle stay perfectly aligned.
 class _AdminStatGrid extends StatelessWidget {
   const _AdminStatGrid({required this.tiles});
 
   static const int _columns = 2;
+  static const double _spacing = 10;
 
   final List<Widget> tiles;
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const spacing = 10.0;
-        final width =
-            (constraints.maxWidth - spacing * (_columns - 1)) / _columns;
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: [
-            for (final tile in tiles) SizedBox(width: width, child: tile),
-          ],
+    final rows = <Widget>[];
+    for (var i = 0; i < tiles.length; i += _columns) {
+      final rowChildren = <Widget>[];
+      for (var c = 0; c < _columns; c++) {
+        if (c > 0) rowChildren.add(const SizedBox(width: _spacing));
+        final index = i + c;
+        rowChildren.add(
+          Expanded(
+            child: index < tiles.length
+                ? tiles[index]
+                : const SizedBox.shrink(),
+          ),
         );
-      },
-    );
+      }
+      if (rows.isNotEmpty) rows.add(const SizedBox(height: _spacing));
+      rows.add(
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: rowChildren,
+          ),
+        ),
+      );
+    }
+    return Column(mainAxisSize: MainAxisSize.min, children: rows);
   }
 }
 
