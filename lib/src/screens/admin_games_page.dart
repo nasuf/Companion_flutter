@@ -1939,24 +1939,82 @@ class _AdminGamesNumberField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final field = CupertinoTextField(
+      controller: controller,
+      keyboardType: TextInputType.numberWithOptions(
+        signed: signed,
+        decimal: decimal,
+      ),
+      decoration: const BoxDecoration(),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      style: _adminInputStyle(context),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _AdminGamesFieldLabel(label),
         const SizedBox(height: 6),
         _AdminGamesInputBox(
-          child: CupertinoTextField(
-            controller: controller,
-            keyboardType: TextInputType.numberWithOptions(
-              signed: signed,
-              decimal: decimal,
-            ),
-            decoration: const BoxDecoration(),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-            style: _adminInputStyle(context),
-          ),
+          // iOS's numeric keypad has no minus key, so signed fields (输/中途退出/
+          // 里程碑积分 等可为负) get a ± toggle that flips the leading sign.
+          child: signed
+              ? Row(
+                  children: [
+                    _SignToggleButton(controller: controller),
+                    Expanded(child: field),
+                  ],
+                )
+              : field,
         ),
       ],
+    );
+  }
+}
+
+class _SignToggleButton extends StatelessWidget {
+  const _SignToggleButton({required this.controller});
+
+  final TextEditingController controller;
+
+  void _toggle() {
+    final text = controller.text;
+    final next = text.startsWith('-') ? text.substring(1) : '-$text';
+    controller.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: _toggle,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 40,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        decoration: BoxDecoration(
+          border: Border(
+            right: BorderSide(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.12)
+                  : Colors.black.withValues(alpha: 0.10),
+            ),
+          ),
+        ),
+        child: Text(
+          '±',
+          style: TextStyle(
+            color: AppColors.of(context).accent,
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0,
+            decoration: TextDecoration.none,
+          ),
+        ),
+      ),
     );
   }
 }
