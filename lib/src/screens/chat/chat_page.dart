@@ -1692,7 +1692,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 'game_status': status,
                 'game_title': payload['game_title']?.toString() ?? '',
                 'game_session_id': payload['session_id']?.toString() ?? '',
-                'game_mg_id': payload['mg_id']?.toString() ?? '',
                 'game_status_actor': payload['actor']?.toString() ?? '',
                 'game_status_actor_name':
                     payload['actor_name']?.toString() ?? '',
