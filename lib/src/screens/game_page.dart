@@ -136,7 +136,14 @@ class _GamePageState extends State<GamePage>
     await Navigator.of(
       context,
     ).push(CupertinoPageRoute<void>(builder: (_) => page));
-    if (mounted) unawaited(_load());
+    if (!mounted) return;
+    // Refresh immediately, then once more shortly after: a mid-game quit settles
+    // the point deduction via an async abort event, which can land a moment after
+    // we return, so the second refresh reflects it without a manual reload.
+    unawaited(_load());
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) unawaited(_load());
+    });
   }
 
   @override
