@@ -1036,6 +1036,24 @@ class _AdminUsersPageState extends State<_AdminUsersPage>
   String? _error;
   int _total = 0;
   List<_AdminUserSummary> _users = const [];
+  // Quick client-side filters over the loaded page.
+  String? _roleFilter; // null = 全部 | 'admin' | 'user'
+  String? _methodFilter; // null = 全部 | 'wechat' | 'phone' | 'password'
+
+  List<_AdminUserSummary> get _filteredUsers {
+    return _users
+        .where((user) {
+          if (_roleFilter != null && user.role != _roleFilter) return false;
+          if (_methodFilter != null &&
+              !_adminAuthMethods(user).any((m) => m.type == _methodFilter)) {
+            return false;
+          }
+          return true;
+        })
+        .toList(growable: false);
+  }
+
+  bool get _hasFilter => _roleFilter != null || _methodFilter != null;
 
   @override
   void initState() {
@@ -1079,6 +1097,7 @@ class _AdminUsersPageState extends State<_AdminUsersPage>
       widget.api.authToken = widget.session.token;
       final response = await widget.api.fetchAdminUsers(
         search: _searchController.text,
+        limit: 200,
       );
       if (!mounted) return;
       setState(() {
@@ -1109,6 +1128,36 @@ class _AdminUsersPageState extends State<_AdminUsersPage>
     );
     // Reload so any role change made inside the detail page is reflected.
     if (mounted) _loadUsers();
+  }
+
+  Widget _buildUserFilters(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _AdminFilterRow(
+          label: '角色',
+          options: const [
+            MapEntry(null, '全部'),
+            MapEntry('admin', '管理员'),
+            MapEntry('user', '普通用户'),
+          ],
+          value: _roleFilter,
+          onChanged: (value) => setState(() => _roleFilter = value),
+        ),
+        const SizedBox(height: 10),
+        _AdminFilterRow(
+          label: '登录',
+          options: const [
+            MapEntry(null, '全部'),
+            MapEntry('wechat', '微信'),
+            MapEntry('phone', '手机号'),
+            MapEntry('password', '账号密码'),
+          ],
+          value: _methodFilter,
+          onChanged: (value) => setState(() => _methodFilter = value),
+        ),
+      ],
+    );
   }
 
   @override
@@ -1203,11 +1252,15 @@ class _AdminUsersPageState extends State<_AdminUsersPage>
                           vertical: 11,
                         ),
                       ),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 14),
+                      _buildUserFilters(isDark),
+                      const SizedBox(height: 16),
                       _ProfileSectionV6(
                         title: '用户列表',
                         trailing: _loading && _users.isEmpty
                             ? '加载中'
+                            : _hasFilter
+                            ? '筛选 ${_filteredUsers.length} / $_total 人'
                             : '共 $_total 人',
                         child: Column(
                           children: [
@@ -1228,8 +1281,13 @@ class _AdminUsersPageState extends State<_AdminUsersPage>
                                 title: '暂无用户',
                                 message: '当前搜索条件下没有匹配用户。',
                               )
+                            else if (_filteredUsers.isEmpty)
+                              const _AdminStatePanel(
+                                title: '无匹配用户',
+                                message: '当前筛选条件下没有用户，试试调整筛选。',
+                              )
                             else
-                              for (final user in _users)
+                              for (final user in _filteredUsers)
                                 _AdminUserRow(
                                   user: user,
                                   onTap: () => _openUserDetail(user),
@@ -1257,6 +1315,111 @@ class _AdminUsersPageState extends State<_AdminUsersPage>
               ],
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+/// A labeled row of single-select filter chips (角色 / 登录方式).
+class _AdminFilterRow extends StatelessWidget {
+  const _AdminFilterRow({
+    required this.label,
+    required this.options,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final List<MapEntry<String?, String>> options;
+  final String? value;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 34,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isDark ? const Color(0x9EEBF2EE) : AppColors.muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final option in options)
+                _AdminFilterChip(
+                  label: option.value,
+                  selected: option.key == value,
+                  onTap: () => onChanged(option.key),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AdminFilterChip extends StatelessWidget {
+  const _AdminFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colors = AppColors.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected
+              ? colors.accent
+              : (isDark
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : Colors.white.withValues(alpha: 0.82)),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected
+                ? colors.accent
+                : (isDark
+                      ? Colors.white.withValues(alpha: 0.12)
+                      : const Color(0x14181F2A)),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected
+                ? Colors.white
+                : (isDark ? const Color(0xD0EBF2EE) : const Color(0xFF12171B)),
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0,
+            decoration: TextDecoration.none,
+          ),
         ),
       ),
     );
