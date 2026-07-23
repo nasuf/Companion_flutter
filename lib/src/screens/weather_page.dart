@@ -31,8 +31,19 @@ class _WeatherPageState extends State<WeatherPage>
       vsync: this,
       duration: const Duration(milliseconds: 8600),
     )..repeat(reverse: true);
-    _forecast = _WeatherService.placeholderForCity(widget.initialCity);
+    // Reuse the last successfully fetched forecast (if still valid for today)
+    // so re-entering the page shows real data instantly instead of resetting
+    // to placeholder values; a background refresh still runs right away.
+    final cached = _WeatherService.cachedForecast(_forecastCacheKey);
+    _forecast = cached ?? _WeatherService.placeholderForCity(widget.initialCity);
     _refreshForecast(initial: true);
+  }
+
+  String get _forecastCacheKey {
+    final agentId = widget.agentId;
+    if (agentId != null && agentId.isNotEmpty) return 'agent:$agentId';
+    final city = _WeatherService._normalizeCityName(widget.initialCity);
+    return city.isEmpty ? 'city:${_WeatherService._fallbackCity}' : 'city:$city';
   }
 
   @override
@@ -61,6 +72,9 @@ class _WeatherPageState extends State<WeatherPage>
     }
     try {
       final forecast = await _loadForecast();
+      // Store into the session cache even if the page was already disposed,
+      // so the next visit can start from this data.
+      _WeatherService.storeForecast(_forecastCacheKey, forecast);
       if (!mounted) return;
       setState(() {
         _forecast = forecast;
@@ -924,29 +938,71 @@ class _TodayHourlyHeader extends StatelessWidget {
   }
 }
 
-class _HourlyWeatherStrip extends StatelessWidget {
+class _HourlyWeatherStrip extends StatefulWidget {
   const _HourlyWeatherStrip({required this.day});
 
   final _WeatherDay day;
 
   @override
+  State<_HourlyWeatherStrip> createState() => _HourlyWeatherStripState();
+}
+
+class _HourlyWeatherStripState extends State<_HourlyWeatherStrip> {
+  static const double _pillWidth = 68;
+  static const double _pillSpacing = 16;
+
+  ScrollController? _scrollController;
+
+  @override
+  void dispose() {
+    _scrollController?.dispose();
+    super.dispose();
+  }
+
+  // Start the strip with the current-hour pill in the second visible slot,
+  // keeping one pill of past context on the left (clamped at both ends).
+  double _initialOffsetFor({
+    required int selectedIndex,
+    required int itemCount,
+    required double viewportWidth,
+  }) {
+    final contentWidth =
+        itemCount * _pillWidth + (itemCount - 1) * _pillSpacing;
+    final maxOffset = math.max(0.0, contentWidth - viewportWidth);
+    final target = (selectedIndex - 1) * (_pillWidth + _pillSpacing);
+    return math.min(math.max(target, 0.0), maxOffset);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final hours = day.stripHours;
+    final hours = widget.day.stripHours;
     if (hours.isEmpty) return const SizedBox.shrink();
     final selectedIndex = _selectedHourIndex(hours);
     return SizedBox(
       height: 136,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        clipBehavior: Clip.none,
-        padding: EdgeInsets.zero,
-        itemCount: hours.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 16),
-        itemBuilder: (context, index) {
-          return _HourlyWeatherPill(
-            hour: hours[index],
-            selected: index == selectedIndex,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          _scrollController ??= ScrollController(
+            initialScrollOffset: _initialOffsetFor(
+              selectedIndex: selectedIndex,
+              itemCount: hours.length,
+              viewportWidth: constraints.maxWidth,
+            ),
+          );
+          return ListView.separated(
+            controller: _scrollController,
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            clipBehavior: Clip.none,
+            padding: EdgeInsets.zero,
+            itemCount: hours.length,
+            separatorBuilder: (_, _) => const SizedBox(width: _pillSpacing),
+            itemBuilder: (context, index) {
+              return _HourlyWeatherPill(
+                hour: hours[index],
+                selected: index == selectedIndex,
+              );
+            },
           );
         },
       ),
@@ -1221,6 +1277,33 @@ class _WeatherService {
   static const _fallbackCity = '杭州';
   static const _fallbackTimezone = 'Asia/Shanghai';
   static const _forecastDays = 10;
+
+  // Session-level cache of the last successfully fetched forecast, keyed by
+  // agent (or city as fallback). Keeps the page from resetting to placeholder
+  // data every time it is re-entered within the same app session.
+  static final Map<String, _WeatherForecast> _forecastCache = {};
+
+  static _WeatherForecast? cachedForecast(String key) {
+    final cached = _forecastCache[key];
+    if (cached == null) return null;
+    // Drop cache that no longer starts at today (e.g. fetched before
+    // midnight); otherwise the "today" sections would show yesterday.
+    final now = DateTime.now();
+    final firstDay = cached.days.first.date;
+    final coversToday =
+        firstDay.year == now.year &&
+        firstDay.month == now.month &&
+        firstDay.day == now.day;
+    if (!coversToday) {
+      _forecastCache.remove(key);
+      return null;
+    }
+    return cached;
+  }
+
+  static void storeForecast(String key, _WeatherForecast forecast) {
+    _forecastCache[key] = forecast;
+  }
 
   static _WeatherForecast placeholderForCity(String? city) {
     final displayName = _normalizeCityName(city);
