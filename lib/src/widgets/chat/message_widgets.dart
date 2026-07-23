@@ -1187,19 +1187,26 @@ class _ImageAttachmentBubble extends StatelessWidget {
                     color: AppColors.surfaceMuted,
                     border: Border.all(color: AppColors.hairline),
                   ),
-                  child: Image.network(
-                    attachment.url,
-                    headers: headers,
-                    width: _imageWidthFor(attachment),
-                    height: _imageHeightFor(attachment),
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _imageFallback,
-                    loadingBuilder: (context, child, progress) {
-                      if (progress == null) return child;
-                      // 骨架屏 shimmer (与 H5 一致): 灰底 + 左右扫过的亮带。
-                      return _ImageSkeleton(
-                        width: _imageWidthFor(attachment),
-                        height: _imageHeightFor(attachment),
+                  // Bubble loads the server-side thumbnail (~10x smaller than
+                  // the original) from the persistent disk cache; the original
+                  // is only fetched by the full-screen viewer. memCacheWidth
+                  // caps the decode at what the bubble actually renders.
+                  child: Builder(
+                    builder: (context) {
+                      final width = _imageWidthFor(attachment);
+                      final height = _imageHeightFor(attachment);
+                      final dpr = MediaQuery.devicePixelRatioOf(context);
+                      return ChatCachedImage(
+                        url: chatMediaThumbUrl(attachment.url),
+                        headers: headers,
+                        width: width,
+                        height: height,
+                        fit: BoxFit.cover,
+                        memCacheWidth: (width * dpr).round(),
+                        // 骨架屏 shimmer (与 H5 一致): 灰底 + 左右扫过的亮带。
+                        placeholder: (_) =>
+                            _ImageSkeleton(width: width, height: height),
+                        error: (_) => _imageFallback,
                       );
                     },
                   ),

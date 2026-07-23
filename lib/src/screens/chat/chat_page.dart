@@ -2492,17 +2492,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _panel = ComposerPanel.none;
       });
       final bytes = await picked.readAsBytes();
-      final dimensions = await _decodeImageDimensions(bytes);
       final mime = picked.mimeType ?? _mimeFromPath(picked.path);
       final attachment = await widget.api.uploadChatImage(
         conversationId: _conversationId,
         name: picked.name,
         mime: mime,
-        size: bytes.length,
-        width: dimensions.width.round(),
-        height: dimensions.height.round(),
-        base64Data: base64Encode(bytes),
+        bytes: bytes,
       );
+      // Seed the disk cache with the bytes we just uploaded: the sent bubble's
+      // original never needs to be downloaded back from the server. (The
+      // server may re-encode oversized uploads; visually identical, and the
+      // cache key is the URL so the seed is simply replaced if ever refetched.)
+      if (attachment.mime == mime && attachment.size == bytes.length) {
+        unawaited(
+          seedChatMediaCache(
+            attachment.url,
+            bytes,
+            fileExtension: _fileExtensionForMime(mime),
+          ),
+        );
+      }
       if (!mounted) return;
       setState(() {
         _pendingImages.add(
@@ -2519,18 +2528,22 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<Size> _decodeImageDimensions(Uint8List bytes) async {
-    final codec = await instantiateImageCodec(bytes);
-    final frame = await codec.getNextFrame();
-    final image = frame.image;
-    return Size(image.width.toDouble(), image.height.toDouble());
-  }
-
   String _mimeFromPath(String path) {
     final lower = path.toLowerCase();
     if (lower.endsWith('.png')) return 'image/png';
     if (lower.endsWith('.webp')) return 'image/webp';
     return 'image/jpeg';
+  }
+
+  String _fileExtensionForMime(String mime) {
+    switch (mime) {
+      case 'image/png':
+        return 'png';
+      case 'image/webp':
+        return 'webp';
+      default:
+        return 'jpg';
+    }
   }
 
   void _removePendingImage(String id) {
@@ -2565,9 +2578,21 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         final headers = widget.api.authToken?.isNotEmpty == true
             ? {'Authorization': 'Bearer ${widget.api.authToken}'}
             : null;
+        // Full-screen viewer loads the original; while it downloads, the
+        // bubble thumbnail (already in the disk cache) shows immediately so
+        // opening a picture never flashes a blank screen.
         final image = localPath != null
             ? Image.file(File(localPath), fit: BoxFit.contain)
-            : Image.network(url ?? '', fit: BoxFit.contain, headers: headers);
+            : ChatCachedImage(
+                url: url ?? '',
+                headers: headers,
+                fit: BoxFit.contain,
+                placeholder: (_) => ChatCachedImage(
+                  url: chatMediaThumbUrl(url ?? ''),
+                  headers: headers,
+                  fit: BoxFit.contain,
+                ),
+              );
         return Material(
           type: MaterialType.transparency,
           child: SafeArea(

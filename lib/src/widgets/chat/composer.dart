@@ -586,13 +586,13 @@ class _ComposerLinkTile extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(7),
                     child: imageUrl != null && imageUrl.isNotEmpty
-                        ? Image.network(
-                            imageUrl,
+                        ? ChatCachedImage(
+                            url: imageUrl,
                             headers: _mediaHeadersForUrl(imageUrl, authToken),
                             width: 54,
                             height: 54,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
+                            error: (_) =>
                                 _ComposerLinkFallbackIcon(accent: accent),
                           )
                         : _ComposerLinkFallbackIcon(accent: accent),

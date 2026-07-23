@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data' show BytesBuilder;
 
 import 'package:flutter/foundation.dart';
 
@@ -723,28 +724,122 @@ class CompanionApi {
     required String conversationId,
     required String name,
     required String mime,
-    required int size,
-    required int width,
-    required int height,
-    required String base64Data,
+    required Uint8List bytes,
   }) async {
-    final json =
-        await _request(
-              'POST',
-              '/chat/media',
-              body: {
-                'conversation_id': conversationId,
-                'name': name,
-                'mime': mime,
-                'size': size,
-                'width': width,
-                'height': height,
-                'base64': base64Data,
-              },
-              debugLabel: 'chat.media.image',
-            )
-            as Map<String, dynamic>;
-    return _normalizeChatAttachment(ChatAttachment.fromJson(json));
+    try {
+      final json =
+          await _requestMultipart(
+                'POST',
+                '/chat/media/upload',
+                fields: {'conversation_id': conversationId, 'name': name},
+                fileField: 'file',
+                fileName: name,
+                fileMime: mime,
+                fileBytes: bytes,
+                debugLabel: 'chat.media.image',
+              )
+              as Map<String, dynamic>;
+      return _normalizeChatAttachment(ChatAttachment.fromJson(json));
+    } on ApiException catch (error) {
+      // Older servers only expose the base64 JSON route; fall back once.
+      if (error.statusCode != 404 && error.statusCode != 405) rethrow;
+      final json =
+          await _request(
+                'POST',
+                '/chat/media',
+                body: {
+                  'conversation_id': conversationId,
+                  'name': name,
+                  'mime': mime,
+                  'size': bytes.length,
+                  'width': 0,
+                  'height': 0,
+                  'base64': base64Encode(bytes),
+                },
+                debugLabel: 'chat.media.image.base64',
+              )
+              as Map<String, dynamic>;
+      return _normalizeChatAttachment(ChatAttachment.fromJson(json));
+    }
+  }
+
+  /// Multipart/form-data request over the same authenticated HttpClient the
+  /// JSON `_request` uses. Avoids the +33% base64 inflation on media uploads.
+  Future<dynamic> _requestMultipart(
+    String method,
+    String path, {
+    required Map<String, String> fields,
+    required String fileField,
+    required String fileName,
+    required String fileMime,
+    required Uint8List fileBytes,
+    String? debugLabel,
+  }) async {
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 8);
+    final stopwatch = Stopwatch()..start();
+    try {
+      final boundary =
+          'companion-${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}';
+      final request = await client.openUrl(method, _uri(path));
+      request.headers.contentType = ContentType(
+        'multipart',
+        'form-data',
+        parameters: {'boundary': boundary},
+      );
+      if (authToken != null && authToken!.isNotEmpty) {
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer $authToken',
+        );
+      }
+      final body = BytesBuilder();
+      for (final entry in fields.entries) {
+        body.add(
+          utf8.encode(
+            '--$boundary\r\n'
+            'Content-Disposition: form-data; name="${entry.key}"\r\n\r\n'
+            '${entry.value}\r\n',
+          ),
+        );
+      }
+      body.add(
+        utf8.encode(
+          '--$boundary\r\n'
+          'Content-Disposition: form-data; name="$fileField"; '
+          'filename="${fileName.replaceAll('"', '_')}"\r\n'
+          'Content-Type: $fileMime\r\n\r\n',
+        ),
+      );
+      body.add(fileBytes);
+      body.add(utf8.encode('\r\n--$boundary--\r\n'));
+      final payload = body.takeBytes();
+      request.headers.contentLength = payload.length;
+      if (debugLabel != null) {
+        debugPrint(
+          '[$debugLabel] request $method $path body=${payload.length}B elapsed=${stopwatch.elapsedMilliseconds}ms',
+        );
+      }
+      request.add(payload);
+      final response = await request.close();
+      final text = await response.transform(utf8.decoder).join();
+      if (debugLabel != null) {
+        debugPrint(
+          '[$debugLabel] response status=${response.statusCode} body=${utf8.encode(text).length}B elapsed=${stopwatch.elapsedMilliseconds}ms',
+        );
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw ApiException(response.statusCode, _extractError(text));
+      }
+      if (response.statusCode == 204 || text.isEmpty) return null;
+      return jsonDecode(text);
+    } on SocketException catch (error) {
+      throw ApiException(0, '无法连接到后端：${error.message}');
+    } on HandshakeException catch (error) {
+      throw ApiException(0, '后端连接失败：${error.message}');
+    } finally {
+      client.close(force: true);
+    }
   }
 
   Future<ChatAudioTranscription> transcribeChatAudio({
