@@ -2578,48 +2578,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         final headers = widget.api.authToken?.isNotEmpty == true
             ? {'Authorization': 'Bearer ${widget.api.authToken}'}
             : null;
-        // Full-screen viewer loads the original; while it downloads, the
-        // bubble thumbnail (already in the disk cache) shows immediately so
-        // opening a picture never flashes a blank screen.
-        final image = localPath != null
-            ? Image.file(File(localPath), fit: BoxFit.contain)
-            : ChatCachedImage(
-                url: url ?? '',
-                headers: headers,
-                fit: BoxFit.contain,
-                placeholder: (_) => ChatCachedImage(
-                  url: chatMediaThumbUrl(url ?? ''),
-                  headers: headers,
-                  fit: BoxFit.contain,
-                ),
-              );
-        return Material(
-          type: MaterialType.transparency,
-          child: SafeArea(
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: GestureDetector(
-                    onTap: () => Navigator.of(context).pop(),
-                    child: InteractiveViewer(
-                      minScale: 0.7,
-                      maxScale: 4,
-                      child: Center(child: image),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 12,
-                  right: 12,
-                  child: _RoundIconButton(
-                    tooltip: '关闭',
-                    icon: CupertinoIcons.xmark,
-                    onTap: () => Navigator.of(context).pop(),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        return _ImagePreviewOverlay(
+          localPath: localPath,
+          url: url,
+          headers: headers,
         );
       },
     );
