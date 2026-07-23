@@ -594,6 +594,16 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     );
   }
 
+  void _openModelManagement() {
+    widget.api.authToken = widget.session.token;
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) =>
+            _AdminModelsPage(api: widget.api, session: widget.session),
+      ),
+    );
+  }
+
   Future<void> _triggerActivityGeneration() async {
     if (_generatingActivity) return;
     setState(() => _generatingActivity = true);
@@ -953,6 +963,13 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                               subtitle: '线下活动 / 礼物推荐 / 成就系统运行模式',
                               accent: const Color(0xFFD4A843),
                               onTap: _openSystemSettings,
+                            ),
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.cube_box_fill,
+                              title: '模型管理',
+                              subtitle: '模型路由 / 多模态模型 / 模型库与价格',
+                              accent: const Color(0xFF7A5BE3),
+                              onTap: _openModelManagement,
                             ),
                           ],
                         ),
