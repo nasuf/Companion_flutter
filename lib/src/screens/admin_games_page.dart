@@ -353,6 +353,7 @@ class _AdminGamePointLedgerItem {
     required this.id,
     required this.userId,
     required this.username,
+    this.nickname,
     required this.delta,
     required this.balanceAfter,
     required this.source,
@@ -365,6 +366,7 @@ class _AdminGamePointLedgerItem {
   final String id;
   final String userId;
   final String? username;
+  final String? nickname;
   final int delta;
   final int balanceAfter;
   final String source;
@@ -373,11 +375,20 @@ class _AdminGamePointLedgerItem {
   final String? levelName;
   final bool levelUp;
 
+  String get displayName {
+    final nick = nickname?.trim();
+    if (nick != null && nick.isNotEmpty) return nick;
+    final name = username?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    return '(未知)';
+  }
+
   factory _AdminGamePointLedgerItem.fromJson(Map<String, dynamic> json) {
     return _AdminGamePointLedgerItem(
       id: json['id']?.toString() ?? '',
       userId: json['user_id']?.toString() ?? '',
       username: json['username']?.toString(),
+      nickname: json['nickname']?.toString(),
       delta: _adminInt(json['delta']),
       balanceAfter: _adminInt(json['balance_after']),
       source: json['source']?.toString() ?? '',
@@ -2088,7 +2099,7 @@ class _GamePointsLedgerTabState extends State<_GamePointsLedgerTab> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const _AdminGamesSectionHeader('官方赠送积分'),
+                      const _AdminGamesSectionHeader('积分赠送'),
                       const SizedBox(height: 4),
                       Text(
                         '仅增加该用户的游戏余额，不改变游戏等级。',
@@ -2109,7 +2120,7 @@ class _GamePointsLedgerTabState extends State<_GamePointsLedgerTab> {
                       _AdminGamesTextField(label: '备注（可选）', controller: _grantNoteCtrl),
                       const SizedBox(height: 12),
                       _AdminGamesPrimaryButton(
-                        label: _granting ? '赠送中…' : '官方赠送',
+                        label: _granting ? '赠送中…' : '积分赠送',
                         onPressed: _granting ? null : _grant,
                       ),
                     ],
@@ -2214,7 +2225,7 @@ class _LedgerRowCard extends StatelessWidget {
                   children: [
                     Flexible(
                       child: Text(
-                        item.username ?? '(未知)',
+                        item.displayName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
