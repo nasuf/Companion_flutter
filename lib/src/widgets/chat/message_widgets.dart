@@ -1356,6 +1356,13 @@ class _ComponentCardBubble extends StatelessWidget {
         isBusy: isMusicBusy,
       );
     }
+    if (card.type == 'meal_voucher') {
+      return _MealVoucherComponentCard(
+        card: card,
+        isMine: isMine,
+        onTap: onTap,
+      );
+    }
     if (card.type == 'offline_activity') {
       return _OfflineActivityComponentCard(
         card: card,

@@ -842,6 +842,28 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _openComponentCard(ChatComponentCard card) async {
+    if (card.type == 'meal_voucher') {
+      _dismissInputSurfaces();
+      final payloadMessage = card.payload['native_message']?.toString().trim();
+      await showCupertinoDialog<void>(
+        context: context,
+        builder: (dialogContext) => CupertinoAlertDialog(
+          title: const Text('活动已结束'),
+          content: Text(
+            payloadMessage?.isNotEmpty == true
+                ? payloadMessage!
+                : '佛山“西甲”霸王餐活动已结束，这张卡片仅作为历史消息保留。',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
     if (card.type == 'offline_activity') {
       final activityId = card.payload['activity_id']?.toString();
       if (activityId == null || activityId.isEmpty) return;
