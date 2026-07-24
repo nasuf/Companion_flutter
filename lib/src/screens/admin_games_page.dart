@@ -131,10 +131,12 @@ extension _AdminGamesApi on CompanionApi {
 
   Future<List<_AdminGamePointLedgerItem>> fetchGamePointLedger({
     String? userId,
-    int limit = 200,
+    int limit = 20,
+    int offset = 0,
   }) async {
     final params = <String, String>{'limit': limit.toString()};
     if (userId != null && userId.isNotEmpty) params['user_id'] = userId;
+    if (offset > 0) params['offset'] = offset.toString();
     final path = Uri(
       path: '/admin-api/game-points/ledger',
       queryParameters: params,
@@ -146,6 +148,24 @@ extension _AdminGamesApi on CompanionApi {
           (item) => _AdminGamePointLedgerItem.fromJson(
             Map<String, dynamic>.from(item),
           ),
+        )
+        .toList();
+  }
+
+  Future<List<_AdminUserSearchItem>> searchGamePointUsers(
+    String query, {
+    int limit = 20,
+  }) async {
+    final path = Uri(
+      path: '/admin-api/game-points/users',
+      queryParameters: {'q': query, 'limit': limit.toString()},
+    ).toString();
+    final json = await _adminHttpRequest(this, 'GET', path) as List<dynamic>;
+    return json
+        .whereType<Map>()
+        .map(
+          (item) =>
+              _AdminUserSearchItem.fromJson(Map<String, dynamic>.from(item)),
         )
         .toList();
   }
@@ -344,6 +364,32 @@ class _GamePointRule {
       rules: json['rules'] is Map
           ? Map<String, dynamic>.from(json['rules'] as Map)
           : <String, dynamic>{},
+    );
+  }
+}
+
+class _AdminUserSearchItem {
+  const _AdminUserSearchItem({
+    required this.userId,
+    required this.username,
+    required this.nickname,
+  });
+
+  final String userId;
+  final String username;
+  final String? nickname;
+
+  String get displayName {
+    final nick = nickname?.trim();
+    if (nick != null && nick.isNotEmpty) return nick;
+    return username.trim().isNotEmpty ? username.trim() : '(未知)';
+  }
+
+  factory _AdminUserSearchItem.fromJson(Map<String, dynamic> json) {
+    return _AdminUserSearchItem(
+      userId: json['user_id']?.toString() ?? '',
+      username: json['username']?.toString() ?? '',
+      nickname: json['nickname']?.toString(),
     );
   }
 }
@@ -1991,13 +2037,12 @@ class _GamePointsLedgerTab extends StatefulWidget {
 }
 
 class _GamePointsLedgerTabState extends State<_GamePointsLedgerTab> {
-  final _grantUserCtrl = TextEditingController();
-  final _grantAmountCtrl = TextEditingController();
-  final _grantNoteCtrl = TextEditingController();
+  static const int _pageSize = 20;
   final _filterCtrl = TextEditingController();
 
+  int _page = 0;
+  String _appliedFilter = '';
   bool _loading = true;
-  bool _granting = false;
   String? _error;
   String? _notice;
   List<_AdminGamePointLedgerItem> _items = const [];
@@ -2010,21 +2055,22 @@ class _GamePointsLedgerTabState extends State<_GamePointsLedgerTab> {
 
   @override
   void dispose() {
-    _grantUserCtrl.dispose();
-    _grantAmountCtrl.dispose();
-    _grantNoteCtrl.dispose();
     _filterCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _load({String? userId}) async {
+  Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
     });
     widget.api.authToken = widget.session.token;
     try {
-      final items = await widget.api.fetchGamePointLedger(userId: userId);
+      final items = await widget.api.fetchGamePointLedger(
+        userId: _appliedFilter.isEmpty ? null : _appliedFilter,
+        limit: _pageSize,
+        offset: _page * _pageSize,
+      );
       if (!mounted) return;
       setState(() {
         _items = items;
@@ -2039,45 +2085,35 @@ class _GamePointsLedgerTabState extends State<_GamePointsLedgerTab> {
     }
   }
 
-  Future<void> _grant() async {
-    if (_granting) return;
-    final userId = _grantUserCtrl.text.trim();
-    final amount = int.tryParse(_grantAmountCtrl.text.trim());
-    if (userId.isEmpty) {
-      setState(() => _error = '请输入用户 ID');
-      return;
-    }
-    if (amount == null || amount <= 0) {
-      setState(() => _error = '赠送积分必须是正整数');
-      return;
-    }
+  void _applyFilter() {
     setState(() {
-      _granting = true;
-      _error = null;
-      _notice = null;
+      _appliedFilter = _filterCtrl.text.trim();
+      _page = 0;
     });
-    widget.api.authToken = widget.session.token;
-    try {
-      final balance = await widget.api.grantGamePoints(
-        userId: userId,
-        amount: amount,
-        note: _grantNoteCtrl.text.trim(),
-      );
-      if (!mounted) return;
-      setState(() {
-        _granting = false;
-        _notice = '已赠送 $amount 积分，当前余额 $balance（等级不变）。';
-        _grantAmountCtrl.clear();
-        _grantNoteCtrl.clear();
-      });
-      await _load(userId: _filterCtrl.text.trim().isEmpty ? null : _filterCtrl.text.trim());
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _granting = false;
-        _error = _asMessage(error);
-      });
-    }
+    _load();
+  }
+
+  void _resetFilter() {
+    _filterCtrl.clear();
+    setState(() {
+      _appliedFilter = '';
+      _page = 0;
+    });
+    _load();
+  }
+
+  Future<void> _openGrant() async {
+    final message = await showDialog<String>(
+      context: context,
+      builder: (_) =>
+          _GrantPointsDialog(api: widget.api, session: widget.session),
+    );
+    if (!mounted || message == null) return;
+    setState(() {
+      _notice = message;
+      _page = 0;
+    });
+    _load();
   }
 
   @override
@@ -2086,46 +2122,14 @@ class _GamePointsLedgerTabState extends State<_GamePointsLedgerTab> {
       children: [
         Expanded(
           child: RefreshIndicator(
-            onRefresh: () => _load(
-              userId: _filterCtrl.text.trim().isEmpty ? null : _filterCtrl.text.trim(),
-            ),
+            onRefresh: _load,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(
                 parent: BouncingScrollPhysics(),
               ),
               padding: const EdgeInsets.fromLTRB(18, 8, 18, 40),
               children: [
-                _AdminCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const _AdminGamesSectionHeader('积分赠送'),
-                      const SizedBox(height: 4),
-                      Text(
-                        '仅增加该用户的游戏余额，不改变游戏等级。',
-                        style: TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 11.5,
-                          height: 1.5,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0,
-                          decoration: TextDecoration.none,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      _AdminGamesTextField(label: '用户 ID', controller: _grantUserCtrl),
-                      const SizedBox(height: 10),
-                      _AdminGamesNumberField(label: '赠送积分', controller: _grantAmountCtrl),
-                      const SizedBox(height: 10),
-                      _AdminGamesTextField(label: '备注（可选）', controller: _grantNoteCtrl),
-                      const SizedBox(height: 12),
-                      _AdminGamesPrimaryButton(
-                        label: _granting ? '赠送中…' : '积分赠送',
-                        onPressed: _granting ? null : _grant,
-                      ),
-                    ],
-                  ),
-                ),
+                _AdminGamesPrimaryButton(label: '积分赠送', onPressed: _openGrant),
                 const SizedBox(height: 12),
                 _AdminCard(
                   child: Column(
@@ -2141,21 +2145,14 @@ class _GamePointsLedgerTabState extends State<_GamePointsLedgerTab> {
                           Expanded(
                             child: _AdminGamesSecondaryButton(
                               label: '查询',
-                              onPressed: () => _load(
-                                userId: _filterCtrl.text.trim().isEmpty
-                                    ? null
-                                    : _filterCtrl.text.trim(),
-                              ),
+                              onPressed: _applyFilter,
                             ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: _AdminGamesSecondaryButton(
                               label: '全部',
-                              onPressed: () {
-                                _filterCtrl.clear();
-                                _load();
-                              },
+                              onPressed: _resetFilter,
                             ),
                           ),
                         ],
@@ -2191,6 +2188,51 @@ class _GamePointsLedgerTabState extends State<_GamePointsLedgerTab> {
                     _LedgerRowCard(item: item),
                     const SizedBox(height: 8),
                   ],
+              ],
+            ),
+          ),
+        ),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 6, 18, 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _AdminGamesSecondaryButton(
+                    label: '上一页',
+                    onPressed: (_page == 0 || _loading)
+                        ? null
+                        : () {
+                            setState(() => _page -= 1);
+                            _load();
+                          },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Text(
+                    '第 ${_page + 1} 页',
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: _AdminGamesSecondaryButton(
+                    label: '下一页',
+                    onPressed: (_items.length < _pageSize || _loading)
+                        ? null
+                        : () {
+                            setState(() => _page += 1);
+                            _load();
+                          },
+                  ),
+                ),
               ],
             ),
           ),
@@ -2296,6 +2338,429 @@ class _LedgerRowCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ===========================================================================
+// 积分赠送 modal — fuzzy user search + amount + note (mirrors web modal)
+// ===========================================================================
+
+class _GrantPointsDialog extends StatefulWidget {
+  const _GrantPointsDialog({required this.api, required this.session});
+
+  final CompanionApi api;
+  final AuthSession session;
+
+  @override
+  State<_GrantPointsDialog> createState() => _GrantPointsDialogState();
+}
+
+class _GrantPointsDialogState extends State<_GrantPointsDialog> {
+  final _queryCtrl = TextEditingController();
+  final _amountCtrl = TextEditingController();
+  final _noteCtrl = TextEditingController();
+
+  Timer? _debounce;
+  int _searchSeq = 0;
+  List<_AdminUserSearchItem> _results = const [];
+  bool _searching = false;
+  bool _granting = false;
+  _AdminUserSearchItem? _selected;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _queryCtrl.addListener(_onQueryChanged);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _queryCtrl.dispose();
+    _amountCtrl.dispose();
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onQueryChanged() {
+    _debounce?.cancel();
+    final query = _queryCtrl.text.trim();
+    // Any keystroke clears the current selection so search + pick stay in sync.
+    if (_selected != null) {
+      setState(() => _selected = null);
+    }
+    if (query.isEmpty) {
+      setState(() {
+        _results = const [];
+        _searching = false;
+      });
+      return;
+    }
+    setState(() => _searching = true);
+    _debounce = Timer(const Duration(milliseconds: 300), () => _runSearch(query));
+  }
+
+  Future<void> _runSearch(String query) async {
+    final seq = ++_searchSeq;
+    widget.api.authToken = widget.session.token;
+    try {
+      final rows = await widget.api.searchGamePointUsers(query);
+      if (!mounted || seq != _searchSeq) return;
+      setState(() {
+        _results = rows;
+        _searching = false;
+      });
+    } catch (error) {
+      if (!mounted || seq != _searchSeq) return;
+      setState(() {
+        _error = _asMessage(error);
+        _searching = false;
+      });
+    }
+  }
+
+  void _select(_AdminUserSearchItem item) {
+    setState(() {
+      _selected = item;
+      _results = const [];
+      _error = null;
+    });
+  }
+
+  Future<void> _grant() async {
+    if (_granting) return;
+    final selected = _selected;
+    final amount = int.tryParse(_amountCtrl.text.trim());
+    if (selected == null) {
+      setState(() => _error = '请先搜索并选择用户');
+      return;
+    }
+    if (amount == null || amount <= 0) {
+      setState(() => _error = '赠送积分必须是正整数');
+      return;
+    }
+    setState(() {
+      _granting = true;
+      _error = null;
+    });
+    widget.api.authToken = widget.session.token;
+    try {
+      final balance = await widget.api.grantGamePoints(
+        userId: selected.userId,
+        amount: amount,
+        note: _noteCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(
+        '已为 ${selected.displayName} 赠送 $amount 积分，当前余额 $balance（等级不变）。',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _granting = false;
+        _error = _asMessage(error);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final media = MediaQuery.of(context);
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 36),
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: 460,
+          maxHeight: media.size.height * 0.82,
+        ),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1B2024) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _AdminGamesSectionHeader('积分赠送'),
+            const SizedBox(height: 4),
+            Text(
+              '搜索并选择用户后赠送积分；仅增加余额，不改变游戏等级。',
+              style: TextStyle(
+                color: AppColors.muted,
+                fontSize: 11.5,
+                height: 1.5,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+                decoration: TextDecoration.none,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _AdminGamesTextField(
+              label: '搜索用户（用户名 / ID / 微信昵称）',
+              controller: _queryCtrl,
+            ),
+            const SizedBox(height: 10),
+            Flexible(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_selected != null)
+                      _SelectedUserChip(
+                        item: _selected!,
+                        onClear: () => setState(() => _selected = null),
+                      )
+                    else
+                      _UserSearchResults(
+                        searching: _searching,
+                        results: _results,
+                        query: _queryCtrl.text.trim(),
+                        onSelect: _select,
+                      ),
+                    const SizedBox(height: 12),
+                    _AdminGamesNumberField(
+                      label: '赠送积分',
+                      controller: _amountCtrl,
+                    ),
+                    const SizedBox(height: 10),
+                    _AdminGamesTextField(
+                      label: '备注（可选）',
+                      controller: _noteCtrl,
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      _AdminGamesErrorText(_error!),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _AdminGamesSecondaryButton(
+                    label: '取消',
+                    onPressed: _granting
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _AdminGamesPrimaryButton(
+                    label: _granting ? '赠送中…' : '确认赠送',
+                    onPressed: _granting ? null : _grant,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectedUserChip extends StatelessWidget {
+  const _SelectedUserChip({required this.item, required this.onClear});
+
+  final _AdminUserSearchItem item;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AppColors.of(context).accent;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accent.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  item.userId,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: onClear,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Text(
+                '重新选择',
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UserSearchResults extends StatelessWidget {
+  const _UserSearchResults({
+    required this.searching,
+    required this.results,
+    required this.query,
+    required this.onSelect,
+  });
+
+  final bool searching;
+  final List<_AdminUserSearchItem> results;
+  final String query;
+  final ValueChanged<_AdminUserSearchItem> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    if (searching) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 14),
+        child: Center(child: CupertinoActivityIndicator(radius: 10)),
+      );
+    }
+    if (query.isEmpty) {
+      return _hint('输入关键字搜索用户');
+    }
+    if (results.isEmpty) {
+      return _hint('未找到匹配的用户');
+    }
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.black.withValues(alpha: 0.10),
+        ),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < results.length; i++) ...[
+            if (i > 0)
+              Divider(
+                height: 1,
+                thickness: 1,
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : Colors.black.withValues(alpha: 0.06),
+              ),
+            _UserResultRow(item: results[i], onTap: () => onSelect(results[i])),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _hint(String text) {
+    return Builder(
+      builder: (context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: AppColors.muted,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0,
+            decoration: TextDecoration.none,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UserResultRow extends StatelessWidget {
+  const _UserResultRow({required this.item, required this.onTap});
+
+  final _AdminUserSearchItem item;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              item.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: isDark ? AppColors.text : const Color(0xFF12171B),
+                fontSize: 13.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+                decoration: TextDecoration.none,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              item.userId,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: AppColors.muted,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
