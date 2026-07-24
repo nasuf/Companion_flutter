@@ -549,6 +549,8 @@ class _MediaUsageStats {
     required this.voiceCount,
     required this.voiceSeconds,
     required this.voiceBytes,
+    required this.voiceTextCount,
+    required this.voiceTextSeconds,
     required this.imageCount,
     required this.imageBytes,
   });
@@ -556,16 +558,22 @@ class _MediaUsageStats {
   final int voiceCount;
   final int voiceSeconds;
   final int voiceBytes;
+  // Voice-to-text (语音转文字): transcribed then sent as text, no attachment.
+  final int voiceTextCount;
+  final int voiceTextSeconds;
   final int imageCount;
   final int imageBytes;
 
   factory _MediaUsageStats.fromJson(Map<String, dynamic> json) {
     final voice = _jsonMap(json['voice']);
+    final voiceText = _jsonMap(json['voice_text']);
     final image = _jsonMap(json['image']);
     return _MediaUsageStats(
       voiceCount: _jsonInt(voice['count']),
       voiceSeconds: _jsonInt(voice['total_seconds']),
       voiceBytes: _jsonInt(voice['total_bytes']),
+      voiceTextCount: _jsonInt(voiceText['count']),
+      voiceTextSeconds: _jsonInt(voiceText['total_seconds']),
       imageCount: _jsonInt(image['count']),
       imageBytes: _jsonInt(image['total_bytes']),
     );
@@ -2668,9 +2676,14 @@ class _AdminOperationsPageState extends State<_AdminOperationsPage> {
           sub: '条',
         ),
         _AdminStatTile(
-          label: '语音总时长',
+          label: '纯语音时长',
           value: _fmtMediaDuration(media.voiceSeconds),
-          sub: '共 ${_fmtFull(media.voiceSeconds)} 秒',
+          sub: '发出语音 · 共 ${_fmtFull(media.voiceSeconds)} 秒',
+        ),
+        _AdminStatTile(
+          label: '语音转文字时长',
+          value: _fmtMediaDuration(media.voiceTextSeconds),
+          sub: '${_fmtFull(media.voiceTextCount)} 次 · 共 ${_fmtFull(media.voiceTextSeconds)} 秒',
         ),
         _AdminStatTile(
           label: '语音总大小',
