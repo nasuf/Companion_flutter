@@ -564,6 +564,16 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     );
   }
 
+  void _openResourceMonitoring() {
+    widget.api.authToken = widget.session.token;
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) =>
+            _AdminResourcePage(api: widget.api, session: widget.session),
+      ),
+    );
+  }
+
   void _openSystemSettings() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
@@ -899,6 +909,13 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                               subtitle: 'LLM 成本、模型分布与系统健康',
                               accent: const Color(0xFF7A5BE3),
                               onTap: _openOperations,
+                            ),
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.desktopcomputer,
+                              title: '资源监控',
+                              subtitle: '服务器 CPU/内存/磁盘/网络与数据库健康',
+                              accent: const Color(0xFF2FA9A0),
+                              onTap: _openResourceMonitoring,
                             ),
                           ],
                         ),
