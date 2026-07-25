@@ -93,6 +93,9 @@ const List<String> _kRuntimeConfigKeys = [
   'remote_small_model',
   'vision_model',
   'asr_model',
+  // Managed by the 全局模块开关 page; listed here so the models page
+  // round-trips it on PUT instead of clearing it (full-document semantics).
+  'web_search_enabled',
 ];
 
 class _RuntimeConfigBundle {

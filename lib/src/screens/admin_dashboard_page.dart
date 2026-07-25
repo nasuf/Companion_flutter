@@ -2919,7 +2919,10 @@ class _AdminSystemSettingsPageState extends State<_AdminSystemSettingsPage> {
   String? _error;
   _OfflineSettings? _offline;
   _AchievementSettings? _achievement;
-  String? _savingKey; // 'activity' | 'gift' | 'achievement'
+  // Runtime config bundle (from /admin-api/runtime-config) — carries the
+  // web_search_enabled flag managed on this page.
+  _RuntimeConfigBundle? _runtime;
+  String? _savingKey; // 'activity' | 'gift' | 'achievement' | 'websearch'
 
   @override
   void initState() {
@@ -2933,7 +2936,7 @@ class _AdminSystemSettingsPageState extends State<_AdminSystemSettingsPage> {
       _error = null;
     });
     widget.api.authToken = widget.session.token;
-    // Two independent groups: one failing must not blank the other.
+    // Independent groups: one failing must not blank the others.
     final results = await Future.wait([
       widget.api
           .fetchOfflineSettings()
@@ -2943,10 +2946,15 @@ class _AdminSystemSettingsPageState extends State<_AdminSystemSettingsPage> {
           .fetchAchievementSettings()
           .then<Object?>((v) => v)
           .catchError((e) => e),
+      widget.api
+          .fetchAdminRuntimeConfig()
+          .then<Object?>((v) => v)
+          .catchError((e) => e),
     ]);
     if (!mounted) return;
     final offlineResult = results[0];
     final achievementResult = results[1];
+    final runtimeResult = results[2];
     String? error;
     setState(() {
       if (offlineResult is _OfflineSettings) {
@@ -2959,9 +2967,52 @@ class _AdminSystemSettingsPageState extends State<_AdminSystemSettingsPage> {
       } else {
         error ??= _asMessage(achievementResult as Object);
       }
+      if (runtimeResult is _RuntimeConfigBundle) {
+        _runtime = runtimeResult;
+      } else {
+        error ??= _asMessage(runtimeResult as Object);
+      }
       _error = error;
       _loading = false;
     });
+  }
+
+  bool get _webSearchEnabled {
+    final runtime = _runtime;
+    if (runtime == null) return false;
+    final configured = runtime.config['web_search_enabled'];
+    if (configured is bool) return configured;
+    return runtime.resolved['web_search_enabled'] == true;
+  }
+
+  Future<void> _toggleWebSearch(bool next) async {
+    final runtime = _runtime;
+    if (runtime == null || _savingKey != null) return;
+    setState(() {
+      _savingKey = 'websearch';
+      _error = null;
+    });
+    try {
+      widget.api.authToken = widget.session.token;
+      // Full-document PUT semantics: round-trip every config field and only
+      // flip the web search flag, so model routing edits are preserved.
+      final payload = <String, dynamic>{
+        for (final key in _kRuntimeConfigKeys) key: runtime.config[key],
+      };
+      payload['web_search_enabled'] = next;
+      final updated = await widget.api.updateAdminRuntimeConfig(payload);
+      if (!mounted) return;
+      setState(() {
+        _runtime = updated;
+        _savingKey = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = _asMessage(error);
+        _savingKey = null;
+      });
+    }
   }
 
   Future<void> _toggleOffline({
@@ -3054,7 +3105,7 @@ class _AdminSystemSettingsPageState extends State<_AdminSystemSettingsPage> {
       children: [
         _AdminCard(
           child: Text(
-            '控制线下模块主动推送与成就系统运行模式，切换后即时保存。已产生的条目及其查看 / 操作不受影响。',
+            '控制线下模块主动推送、联网搜索与成就系统运行模式，切换后即时保存。已产生的条目及其查看 / 操作不受影响。',
             style: TextStyle(
               color: AppColors.isDark(context)
                   ? const Color(0x9EEBF2EE)
@@ -3093,6 +3144,21 @@ class _AdminSystemSettingsPageState extends State<_AdminSystemSettingsPage> {
           disabled:
               _offline == null || (_savingKey != null && _savingKey != 'gift'),
           onChanged: (next) => _toggleOffline(isActivity: false, next: next),
+        ),
+        const SizedBox(height: 12),
+        _AdminFlagCard(
+          marker: '网',
+          title: '联网搜索',
+          badge: '豆包主回复',
+          description:
+              '开启后豆包主回复自动联网获取时效信息（天气、新闻等），模型按需触发、按次计费；闲聊不触发搜索。搜索失败自动回退普通回复。仅当大模型路由为火山方舟/豆包时生效。',
+          scope: '主回复生成 · 方舟 Responses API · 实时信息',
+          enabled: _webSearchEnabled,
+          saving: _savingKey == 'websearch',
+          disabled:
+              _runtime == null ||
+              (_savingKey != null && _savingKey != 'websearch'),
+          onChanged: _toggleWebSearch,
         ),
         const SizedBox(height: 12),
         _AdminAchievementCard(
