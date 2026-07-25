@@ -511,12 +511,46 @@ class _ModelCost {
   final double costCny;
 }
 
+/// Ark 联网内容插件按次计费, 走不了 token 价目表.
+///
+/// 免费额度按自然月重置, 所以「花了多少」只能按本月累计算 — 同一次搜索在额度
+/// 内是 0 元, 用完之后才计价. [windowCalls] 才是所选时间窗内的次数.
+class _WebSearchBilling {
+  const _WebSearchBilling({
+    required this.windowCalls,
+    required this.monthCalls,
+    required this.freeRemaining,
+    required this.billableCalls,
+    required this.costCny,
+    required this.pricePerK,
+  });
+
+  final int windowCalls;
+  final int monthCalls;
+  final int freeRemaining;
+  final int billableCalls;
+  final double costCny;
+  final double pricePerK;
+
+  factory _WebSearchBilling.fromJson(Map<String, dynamic> json) {
+    return _WebSearchBilling(
+      windowCalls: _jsonInt(json['window_calls']),
+      monthCalls: _jsonInt(json['month_calls']),
+      freeRemaining: _jsonInt(json['free_remaining']),
+      billableCalls: _jsonInt(json['billable_calls']),
+      costCny: _jsonDouble(json['cost_cny']),
+      pricePerK: _jsonDouble(json['price_cny_per_k']),
+    );
+  }
+}
+
 class _TokenUsageStats {
   const _TokenUsageStats({
     required this.window,
     required this.totals,
     required this.byModel,
     required this.daily,
+    required this.webSearch,
   });
 
   final _StatWindow window;
@@ -524,10 +558,18 @@ class _TokenUsageStats {
   final List<_ModelCost> byModel;
   final List<_DailyPoint> daily;
 
+  /// null when the backend omitted it (older server, or the billing rollup
+  /// query failed — it degrades rather than failing the whole dashboard).
+  final _WebSearchBilling? webSearch;
+
   factory _TokenUsageStats.fromJson(Map<String, dynamic> json) {
+    final webSearch = json['web_search'];
     return _TokenUsageStats(
       window: _StatWindow.fromJson(_jsonMap(json['window'])),
       totals: _TokenTotals.fromJson(_jsonMap(json['totals'])),
+      webSearch: webSearch is Map && webSearch.isNotEmpty
+          ? _WebSearchBilling.fromJson(_jsonMap(webSearch))
+          : null,
       byModel: _jsonList(json['by_model'])
           .map(
             (item) => _ModelCost(
@@ -560,6 +602,10 @@ class _MediaUsageStats {
     required this.voiceTextSeconds,
     required this.imageCount,
     required this.imageBytes,
+    required this.asrSeconds,
+    required this.asrCount,
+    required this.asrCostCny,
+    required this.asrPricePerSecond,
   });
 
   final int voiceCount;
@@ -571,10 +617,19 @@ class _MediaUsageStats {
   final int imageCount;
   final int imageBytes;
 
+  // 语音识别计费口径: 所有转写 (不分最终发语音还是发文字), 按秒计价.
+  final int asrSeconds;
+  final int asrCount;
+
+  /// null = 未配置单价. Rendering ¥0.00 instead would read as "语音是免费的".
+  final double? asrCostCny;
+  final double asrPricePerSecond;
+
   factory _MediaUsageStats.fromJson(Map<String, dynamic> json) {
     final voice = _jsonMap(json['voice']);
     final voiceText = _jsonMap(json['voice_text']);
     final image = _jsonMap(json['image']);
+    final asr = _jsonMap(json['asr']);
     return _MediaUsageStats(
       voiceCount: _jsonInt(voice['count']),
       voiceSeconds: _jsonInt(voice['total_seconds']),
@@ -583,6 +638,11 @@ class _MediaUsageStats {
       voiceTextSeconds: _jsonInt(voiceText['total_seconds']),
       imageCount: _jsonInt(image['count']),
       imageBytes: _jsonInt(image['total_bytes']),
+      asrSeconds: _jsonInt(asr['total_seconds']),
+      asrCount: _jsonInt(asr['count']),
+      asrCostCny:
+          asr['cost_cny'] == null ? null : _jsonDouble(asr['cost_cny']),
+      asrPricePerSecond: _jsonDouble(asr['price_cny_per_second']),
     );
   }
 }
@@ -2606,7 +2666,26 @@ class _AdminOperationsPageState extends State<_AdminOperationsPage> {
             child: Center(child: CupertinoActivityIndicator(radius: 14)),
           )
         else ...[
-          _buildCostKpis(token),
+          _buildCostKpis(token, _media),
+          ...() {
+            final nonToken = _buildNonTokenCost(token, _media);
+            return nonToken == null
+                ? const <Widget>[]
+                : <Widget>[
+                    const SizedBox(height: 12),
+                    _AdminCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const _AdminSectionTitle(
+                            title: '非 Token 计费项 (按次 / 按时长)',
+                          ),
+                          nonToken,
+                        ],
+                      ),
+                    ),
+                  ];
+          }(),
           const SizedBox(height: 16),
           _AdminCard(
             child: Column(
@@ -2704,16 +2783,74 @@ class _AdminOperationsPageState extends State<_AdminOperationsPage> {
         _AdminStatTile(
           label: '图片总大小',
           value: _fmtMediaBytes(media.imageBytes),
+          sub: '图片理解按 token 计费',
         ),
       ],
     );
   }
 
-  Widget _buildCostKpis(_TokenUsageStats token) {
+  /// 联网插件 (按次) + 语音识别 (按秒) — 两项都不在 token 价目表里.
+  ///
+  /// 插件的免费额度按自然月重置, 所以它的次数和费用是本月累计, 不跟随时间窗,
+  /// 也因此没有并进上面的合计; 语音识别跟时间窗一致, 已并入合计.
+  /// 图片理解虽然同属曾经漏记的支出, 但它本身按 token 计价, 已并入模型分布,
+  /// 这里不重复展示.
+  Widget? _buildNonTokenCost(
+    _TokenUsageStats token,
+    _MediaUsageStats? media,
+  ) {
+    final search = token.webSearch;
+    final hasSearch = search != null && search.monthCalls > 0;
+    final hasAsr = media != null && media.asrSeconds > 0;
+    if (!hasSearch && !hasAsr) return null;
+
+    return _AdminStatGrid(
+      tiles: [
+        if (hasSearch) ...[
+          _AdminStatTile(
+            label: '联网搜索 (本月累计)',
+            value: _fmtFull(search.monthCalls),
+            sub: '本窗口 ${_fmtFull(search.windowCalls)} 次 · 免费额度剩 ${_fmtFull(search.freeRemaining)} 次',
+          ),
+          _AdminStatTile(
+            label: '联网搜索费用 (本月)',
+            value: '¥${search.costCny.toStringAsFixed(4)}',
+            sub: search.billableCalls > 0
+                ? '超额 ${_fmtFull(search.billableCalls)} 次 · ¥${search.pricePerK}/千次 · 按月结算不计入合计'
+                : '未超免费额度 · ¥${search.pricePerK}/千次',
+            accent: search.billableCalls > 0,
+          ),
+        ],
+        if (hasAsr) ...[
+          _AdminStatTile(
+            label: '语音识别时长',
+            value: _fmtMediaDuration(media.asrSeconds),
+            sub: '${_fmtFull(media.asrCount)} 次转写',
+          ),
+          _AdminStatTile(
+            label: '语音识别费用',
+            value: media.asrCostCny == null
+                ? '未配置单价'
+                : '¥${media.asrCostCny!.toStringAsFixed(4)}',
+            sub: media.asrCostCny == null
+                ? '配置 ASR_PRICE_CNY_PER_SECOND 后显示'
+                : '¥${media.asrPricePerSecond}/秒 · 估算',
+            accent: (media.asrCostCny ?? 0) > 0,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCostKpis(_TokenUsageStats token, _MediaUsageStats? media) {
     final totals = token.totals;
     final avgPerRequest = totals.requestCount > 0
         ? totals.costCny / totals.requestCount
         : 0.0;
+    // 语音识别按秒计价, 跟 token 用的是同一个时间窗, 可以直接加进合计.
+    // 联网插件**不能**加 —— 它的免费额度按自然月重置, 费用只能按本月累计算,
+    // 混进窗口口径的合计里会得到一个两种时间尺度相加的数字.
+    final extraCost = media?.asrCostCny ?? 0;
     return _AdminStatGrid(
       tiles: [
         _AdminStatTile(label: '请求次数', value: _fmtFull(totals.requestCount)),
@@ -2736,11 +2873,13 @@ class _AdminOperationsPageState extends State<_AdminOperationsPage> {
               : 'provider prefix cache',
         ),
         _AdminStatTile(
-          label: '总费用 (元)',
-          value: '¥${totals.costCny.toStringAsFixed(4)}',
-          sub: totals.requestCount > 0
-              ? '均 ¥${avgPerRequest.toStringAsFixed(6)}/请求'
-              : null,
+          label: '合计费用 (元)',
+          value: '¥${(totals.costCny + extraCost).toStringAsFixed(4)}',
+          sub: extraCost > 0
+              ? 'Token ¥${totals.costCny.toStringAsFixed(4)} + 语音识别 ¥${extraCost.toStringAsFixed(4)}'
+              : totals.requestCount > 0
+                  ? '均 ¥${avgPerRequest.toStringAsFixed(6)}/请求'
+                  : null,
           accent: true,
         ),
       ],
