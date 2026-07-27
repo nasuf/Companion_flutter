@@ -1,5 +1,27 @@
 part of 'package:companion_flutter/main.dart';
 
+/// 天气模块「2b 分层玻璃」设计令牌（对齐 design 稿 天气模块重构.dc.html）。
+abstract final class _W2b {
+  /// 页面底色，柔光渐层铺在其上。
+  static const base = Color(0xFFE9F0FB);
+
+  static const ink = Color(0xFF12283F);
+  static const inkSoft = Color(0x8C12283F); // rgba(18,40,63,.55)
+  static const inkFaint = Color(0x8012283F); // rgba(18,40,63,.50)
+
+  /// 玻璃面板 / 药丸背景。
+  static const glass = Color(0x8CFFFFFF); // rgba(255,255,255,.55)
+  static const glassLight = Color(0x80FFFFFF); // rgba(255,255,255,.50)
+  static const glassBorder = Color(0xD9FFFFFF); // rgba(255,255,255,.85)
+  static const glassBorderSoft = Color(0xCCFFFFFF); // rgba(255,255,255,.80)
+
+  static const pillShadow = BoxShadow(
+    color: Color(0x1A234878), // rgba(35,72,120,.10)
+    blurRadius: 12,
+    offset: Offset(0, 4),
+  );
+}
+
 class WeatherPage extends StatefulWidget {
   const WeatherPage({
     super.key,
@@ -35,7 +57,8 @@ class _WeatherPageState extends State<WeatherPage>
     // so re-entering the page shows real data instantly instead of resetting
     // to placeholder values; a background refresh still runs right away.
     final cached = _WeatherService.cachedForecast(_forecastCacheKey);
-    _forecast = cached ?? _WeatherService.placeholderForCity(widget.initialCity);
+    _forecast =
+        cached ?? _WeatherService.placeholderForCity(widget.initialCity);
     _refreshForecast(initial: true);
   }
 
@@ -43,7 +66,9 @@ class _WeatherPageState extends State<WeatherPage>
     final agentId = widget.agentId;
     if (agentId != null && agentId.isNotEmpty) return 'agent:$agentId';
     final city = _WeatherService._normalizeCityName(widget.initialCity);
-    return city.isEmpty ? 'city:${_WeatherService._fallbackCity}' : 'city:$city';
+    return city.isEmpty
+        ? 'city:${_WeatherService._fallbackCity}'
+        : 'city:$city';
   }
 
   @override
@@ -108,7 +133,7 @@ class _WeatherPageState extends State<WeatherPage>
       builder: (context, _) {
         final progress = Curves.easeInOut.transform(_breathController.value);
         return Scaffold(
-          backgroundColor: const Color(0xFFEFF3FC),
+          backgroundColor: _W2b.base,
           body: Stack(
             children: [
               Positioned.fill(child: _WeatherBackground(progress: progress)),
@@ -168,10 +193,12 @@ class _FutureWeatherPageState extends State<_FutureWeatherPage>
       builder: (context, _) {
         final progress = Curves.easeInOut.transform(_breathController.value);
         return Scaffold(
-          backgroundColor: const Color(0xFFEFF3FC),
+          backgroundColor: _W2b.base,
           body: Stack(
             children: [
-              Positioned.fill(child: _WeatherBackground(progress: progress)),
+              Positioned.fill(
+                child: _WeatherBackground(progress: progress, forecast: true),
+              ),
               SafeArea(
                 bottom: false,
                 child: _FutureWeatherList(
@@ -263,10 +290,14 @@ class _FutureWeatherList extends StatelessWidget {
           agentName: agentName,
           isRefreshing: false,
           onBack: onBack,
+          title: '未来 7 天',
         ),
         const SizedBox(height: 24),
         for (var index = 0; index < days.length; index += 1) ...[
-          _FutureWeatherRow(day: days[index]),
+          _FutureWeatherRow(
+            day: days[index],
+            highlight: days[index].index == 0,
+          ),
           if (index != days.length - 1) const SizedBox(height: 16),
         ],
       ],
@@ -280,6 +311,7 @@ class _WeatherTopBar extends StatelessWidget {
     required this.agentName,
     required this.isRefreshing,
     required this.onBack,
+    this.title,
   });
 
   final _WeatherLocation location;
@@ -287,14 +319,29 @@ class _WeatherTopBar extends StatelessWidget {
   final bool isRefreshing;
   final VoidCallback onBack;
 
+  /// 非空时走 design 2b 的未来 7 天头部：左标题 + 右侧纯文字地点。
+  final String? title;
+
   @override
   Widget build(BuildContext context) {
+    final title = this.title;
     return SizedBox(
       height: 40,
       child: Row(
         children: [
           _WeatherBackButton(onTap: onBack),
-          const Spacer(),
+          if (title != null) ...[
+            const SizedBox(width: 14),
+            Text(
+              title,
+              style: const TextStyle(
+                color: _W2b.ink,
+                fontSize: 18,
+                height: 1,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 180),
             child: isRefreshing
@@ -311,33 +358,97 @@ class _WeatherTopBar extends StatelessWidget {
                   ),
           ),
           if (isRefreshing) const SizedBox(width: 8),
-          Icon(
-            CupertinoIcons.location_solid,
-            color: const Color(0xFF333333).withValues(alpha: 0.92),
-            size: 21,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            location.displayName,
-            style: const TextStyle(
-              color: Color(0xFF333333),
-              fontSize: 20,
-              height: 1,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0,
-            ),
-          ),
-          Text(
-            ' · $agentName所在地',
-            style: const TextStyle(
-              color: Color(0xFF333333),
-              fontSize: 12,
-              height: 1,
-              fontWeight: FontWeight.w400,
-              letterSpacing: 0,
+          // Expanded + 右对齐：右侧内容自然收缩，不会被 Spacer 均分掉一半宽度。
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: title != null
+                  ? Text(
+                      location.displayName,
+                      style: const TextStyle(
+                        color: _W2b.inkSoft,
+                        fontSize: 12,
+                        height: 1,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    )
+                  : _WeatherLocationPill(
+                      location: location.displayName,
+                      agentName: agentName,
+                    ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Spec 2b：右上角地点做成毛玻璃圆角药丸。
+class _WeatherLocationPill extends StatelessWidget {
+  const _WeatherLocationPill({required this.location, required this.agentName});
+
+  final String location;
+  final String agentName;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 13),
+          decoration: BoxDecoration(
+            color: _W2b.glass,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _W2b.glassBorder),
+            boxShadow: const [_W2b.pillShadow],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                CupertinoIcons.location_solid,
+                color: _W2b.ink,
+                size: 13,
+              ),
+              const SizedBox(width: 6),
+              // 用 ConstrainedBox 而非 Flexible：Flexible 会在 min-size Row 里
+              // 吃掉全部可用宽度，把药丸撑满整行。
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 120),
+                child: Text(
+                  location,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _W2b.ink,
+                    fontSize: 13,
+                    height: 1,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 130),
+                child: Text(
+                  '$agentName所在地',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _W2b.inkFaint,
+                    fontSize: 11,
+                    height: 1,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -354,91 +465,128 @@ class _WeatherBackButton extends StatelessWidget {
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
       onPressed: onTap,
-      child: Container(
-        width: 36,
-        height: 36,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF4B9AFF).withValues(alpha: 0.24),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _W2b.glass,
+              shape: BoxShape.circle,
+              border: Border.all(color: _W2b.glassBorder),
+              boxShadow: const [_W2b.pillShadow],
             ),
-          ],
-        ),
-        child: const Icon(
-          CupertinoIcons.chevron_left,
-          color: Color(0xFF4B9AFF),
-          size: 24,
+            child: const Icon(
+              CupertinoIcons.chevron_left,
+              color: _W2b.ink,
+              size: 20,
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
+/// Spec 2b：`#E9F0FB` 底色 + 三团柔光渐层（会随呼吸动效轻微游移）。
 class _WeatherBackground extends StatelessWidget {
-  const _WeatherBackground({required this.progress});
+  const _WeatherBackground({required this.progress, this.forecast = false});
 
   final double progress;
 
+  /// 未来 7 天页用另一套光斑落位（design 稿里两页光斑不同）。
+  final bool forecast;
+
   @override
   Widget build(BuildContext context) {
+    final drift = progress * 8;
     return DecoratedBox(
-      decoration: const BoxDecoration(color: Color(0xFFEFF3FC)),
+      decoration: const BoxDecoration(color: _W2b.base),
       child: Stack(
         children: [
-          Positioned(
-            right: -96 + 10 * progress,
-            top: 104 + 8 * progress,
-            child: _WeatherBlurBlob(
-              width: 220 + 18 * progress,
-              height: 170 + 12 * progress,
-              color: const Color(0xFF4B9AFF).withValues(alpha: 0.13),
-              radius: 62,
+          if (forecast) ...[
+            Positioned(
+              left: -120,
+              top: -120 + drift,
+              child: const _WeatherGlowBlob(
+                width: 420,
+                height: 380,
+                color: Color(0xFF7FB6FF),
+              ),
             ),
-          ),
-          Positioned(
-            left: -82 - 5 * progress,
-            bottom: 132 - 8 * progress,
-            child: _WeatherBlurBlob(
-              width: 210,
-              height: 162,
-              color: const Color(0xFFFFD86F).withValues(alpha: 0.11),
-              radius: 64,
+            Positioned(
+              right: -150,
+              bottom: -60 - drift,
+              child: const _WeatherGlowBlob(
+                width: 400,
+                height: 360,
+                color: Color(0xFF9FE8E4),
+                opacity: 0.7,
+              ),
             ),
-          ),
+          ] else ...[
+            Positioned(
+              left: -120,
+              top: -80 + drift,
+              child: const _WeatherGlowBlob(
+                width: 420,
+                height: 380,
+                color: Color(0xFF7FB6FF),
+              ),
+            ),
+            Positioned(
+              right: -140,
+              top: 60 + drift,
+              child: const _WeatherGlowBlob(
+                width: 400,
+                height: 360,
+                color: Color(0xFFFFD9A0),
+                opacity: 0.75,
+              ),
+            ),
+            Positioned(
+              left: -60,
+              bottom: -120 - drift,
+              child: const _WeatherGlowBlob(
+                width: 420,
+                height: 360,
+                color: Color(0xFF9FE8E4),
+                opacity: 0.7,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _WeatherBlurBlob extends StatelessWidget {
-  const _WeatherBlurBlob({
+/// `radial-gradient(circle, color, transparent)` 的 Flutter 等价实现。
+class _WeatherGlowBlob extends StatelessWidget {
+  const _WeatherGlowBlob({
     required this.width,
     required this.height,
     required this.color,
-    required this.radius,
+    this.opacity = 1,
   });
 
   final double width;
   final double height;
   final Color color;
-  final double radius;
+  final double opacity;
 
   @override
   Widget build(BuildContext context) {
-    return ImageFiltered(
-      imageFilter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+    return Opacity(
+      opacity: opacity,
       child: Container(
         width: width,
         height: height,
         decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(radius),
+          shape: BoxShape.circle,
+          gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
         ),
       ),
     );
@@ -463,88 +611,128 @@ class _WeatherHeroCard extends StatelessWidget {
     final text = _weatherText(snapshot.weatherCode);
     final mood = _weatherMoodLine(day);
     final wave = (math.sin(progress * math.pi * 2) + 1) / 2;
+    final feels = snapshot.apparentTemperature.round();
+    final range =
+        '${day.minTemperature.round()}–${day.maxTemperature.round()}°';
 
-    return Container(
-      height: 196,
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(21, 24, 18, 24),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-          colors: [Color(0xFFAACDFF), Color(0xFF4B9AFF)],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF3892F9).withValues(alpha: 0.25),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  text,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    height: 1,
-                    fontWeight: FontWeight.w400,
+    // Spec 2b「大背景模式」：不再包蓝色卡片，内容直接落在柔光渐层上。
+    return Column(
+      children: [
+        SizedBox(
+          width: 150,
+          height: 150,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // design 稿里图标背后的 150px 白色柔光。
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      Colors.white.withValues(alpha: 0.85),
+                      Colors.white.withValues(alpha: 0),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 2),
-                ShaderMask(
-                  shaderCallback: (rect) {
-                    return const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.white, Color(0x33FFFFFF)],
-                      stops: [0.40, 1],
-                    ).createShader(rect);
-                  },
-                  child: Text(
-                    '$temp℃',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 64,
-                      height: 1,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  mood,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    height: 1.42,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 124,
-            height: 124,
-            child: Transform.translate(
-              offset: Offset(2 * wave, -4 * wave),
-              child: _AnimatedWeatherIcon(
-                weatherCode: snapshot.weatherCode,
-                hour: DateTime.now().hour,
-                size: 124,
-                progress: progress,
               ),
+              Transform.translate(
+                offset: Offset(2 * wave, -4 * wave),
+                child: _AnimatedWeatherIcon(
+                  weatherCode: snapshot.weatherCode,
+                  hour: DateTime.now().hour,
+                  size: 124,
+                  progress: progress,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$temp',
+              style: const TextStyle(
+                color: _W2b.ink,
+                fontSize: 96,
+                height: 0.8,
+                fontWeight: FontWeight.w200,
+                letterSpacing: -5,
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(top: 10, left: 4),
+              child: Text(
+                '°',
+                style: TextStyle(
+                  color: _W2b.ink,
+                  fontSize: 30,
+                  height: 1,
+                  fontWeight: FontWeight.w200,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _WeatherHeroChip(label: text),
+            _WeatherHeroChip(label: '体感 $feels°'),
+            _WeatherHeroChip(label: range),
+          ],
+        ),
+        const SizedBox(height: 18),
+        Text(
+          mood.replaceAll('\n', ''),
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: _W2b.inkSoft,
+            fontSize: 13,
+            height: 1.5,
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Spec 2b：主视觉下方的半透明信息药丸（天气 / 体感 / 温区）。
+class _WeatherHeroChip extends StatelessWidget {
+  const _WeatherHeroChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: _W2b.glassLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _W2b.glassBorderSoft),
+      ),
+      // Row(min) 才会收缩包裹；Container.alignment 会把药丸撑满整行。
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: _W2b.ink,
+              fontSize: 12,
+              height: 1,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -776,21 +964,25 @@ class _WeatherMetricGrid extends StatelessWidget {
         title: '体感',
         value: '${snapshot.apparentTemperature.round()}℃',
         icon: CupertinoIcons.thermometer_sun,
+        tone: _WeatherMetricTone.amber,
       ),
       _WeatherMetricData(
         title: '降雨概率',
         value: '${day.maxRainProbability.round()}%',
-        icon: CupertinoIcons.umbrella,
+        icon: CupertinoIcons.umbrella_fill,
+        tone: _WeatherMetricTone.blue,
       ),
       _WeatherMetricData(
         title: '湿度',
         value: '${snapshot.humidity.round()}%',
-        icon: CupertinoIcons.drop,
+        icon: CupertinoIcons.drop_fill,
+        tone: _WeatherMetricTone.teal,
       ),
       _WeatherMetricData(
         title: '风速',
         value: '${snapshot.windSpeed.round()}km/h',
         icon: CupertinoIcons.wind,
+        tone: _WeatherMetricTone.indigo,
       ),
     ];
 
@@ -814,11 +1006,75 @@ class _WeatherMetricData {
     required this.title,
     required this.value,
     required this.icon,
+    required this.tone,
   });
 
   final String title;
   final String value;
   final IconData icon;
+  final _WeatherMetricTone tone;
+}
+
+/// Spec 2b 图标语义色板：体感橙 / 降雨蓝 / 湿度青 / 风速靛。
+/// 圆底是 `linear-gradient(150deg,#FFFFFF,tint)`，字形走 135° 双色实心渐变。
+enum _WeatherMetricTone {
+  amber(Color(0xFFFCEBCC), Color(0xFFFFD97A), Color(0xFFF59A15), 0.22),
+  blue(Color(0xFFE1EBFF), Color(0xFF8FB6FF), Color(0xFF2E6BE6), 0.20),
+  teal(Color(0xFFDFF5F4), Color(0xFF4FE3DD), Color(0xFF0FA49F), 0.22),
+  indigo(Color(0xFFE4E9FF), Color(0xFF93B4FF), Color(0xFF5C93FF), 0.20);
+
+  const _WeatherMetricTone(
+    this.tint,
+    this.glyphStart,
+    this.glyphEnd,
+    this.shadowOpacity,
+  );
+
+  final Color tint;
+  final Color glyphStart;
+  final Color glyphEnd;
+  final double shadowOpacity;
+}
+
+/// Spec 2b：38px 渐变圆底 + 双色实心字形。
+class _WeatherMetricIcon extends StatelessWidget {
+  const _WeatherMetricIcon({required this.icon, required this.tone});
+
+  final IconData icon;
+  final _WeatherMetricTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 38,
+      height: 38,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          // CSS 150deg ≈ 从左上偏上流向右下偏下。
+          begin: const Alignment(-0.5, -1),
+          end: const Alignment(0.5, 1),
+          colors: [Colors.white, tone.tint],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: tone.glyphEnd.withValues(alpha: tone.shadowOpacity),
+            blurRadius: 9,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ShaderMask(
+        shaderCallback: (rect) => LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [tone.glyphStart, tone.glyphEnd],
+        ).createShader(rect),
+        child: Icon(icon, color: Colors.white, size: 19),
+      ),
+    );
+  }
 }
 
 class _WeatherMetricCard extends StatelessWidget {
@@ -830,26 +1086,23 @@ class _WeatherMetricCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 88,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
+        color: _W2b.glass,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _W2b.glassBorder),
+        boxShadow: const [
           BoxShadow(
-            color: const Color(0xFF4D9BFF).withValues(alpha: 0.25),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
+            color: Color(0x1F1E467C), // rgba(30,70,124,.12)
+            blurRadius: 28,
+            offset: Offset(0, 14),
           ),
         ],
       ),
       child: Row(
         children: [
-          SizedBox(
-            width: 36,
-            height: 36,
-            child: Icon(data.icon, color: const Color(0xFF4B9AFF), size: 31),
-          ),
-          const SizedBox(width: 24),
+          _WeatherMetricIcon(icon: data.icon, tone: data.tone),
+          const SizedBox(width: 18),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -860,8 +1113,8 @@ class _WeatherMetricCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Color(0xFFBFBFBF),
-                    fontSize: 14,
+                    color: _W2b.inkSoft,
+                    fontSize: 13,
                     height: 1,
                     fontWeight: FontWeight.w400,
                   ),
@@ -873,7 +1126,7 @@ class _WeatherMetricCard extends StatelessWidget {
                   child: Text(
                     data.value,
                     style: const TextStyle(
-                      color: Colors.black,
+                      color: _W2b.ink,
                       fontSize: 20,
                       height: 1,
                       fontWeight: FontWeight.w700,
@@ -901,8 +1154,8 @@ class _TodayHourlyHeader extends StatelessWidget {
         const Text(
           '今天',
           style: TextStyle(
-            color: Color(0xFF333333),
-            fontSize: 20,
+            color: _W2b.ink,
+            fontSize: 18,
             height: 1,
             fontWeight: FontWeight.w700,
           ),
@@ -918,18 +1171,14 @@ class _TodayHourlyHeader extends StatelessWidget {
               Text(
                 '未来7天',
                 style: TextStyle(
-                  color: Color(0x99333333),
-                  fontSize: 14,
+                  color: _W2b.inkSoft,
+                  fontSize: 13,
                   height: 1,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               SizedBox(width: 4),
-              Icon(
-                CupertinoIcons.chevron_right,
-                color: Color(0x99333333),
-                size: 13,
-              ),
+              Icon(CupertinoIcons.chevron_right, color: _W2b.inkSoft, size: 13),
             ],
           ),
         ),
@@ -1032,7 +1281,7 @@ class _HourlyWeatherPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final foreground = selected ? Colors.white : const Color(0xFFBFBFBF);
+    final foreground = selected ? Colors.white : _W2b.inkSoft;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
@@ -1041,7 +1290,7 @@ class _HourlyWeatherPill extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: selected ? null : Colors.white,
+        color: selected ? null : _W2b.glass,
         gradient: selected
             ? const LinearGradient(
                 begin: Alignment.topCenter,
@@ -1049,13 +1298,16 @@ class _HourlyWeatherPill extends StatelessWidget {
                 colors: [Color(0xFF4B9AFF), Color(0xFF8ABAFF)],
               )
             : null,
+        border: Border.all(
+          color: selected ? Colors.transparent : _W2b.glassBorder,
+        ),
         boxShadow: [
           BoxShadow(
             color: selected
-                ? const Color(0xFF4E9BFF).withValues(alpha: 0.25)
-                : Colors.black.withValues(alpha: 0.10),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
+                ? const Color(0xFF4E9BFF).withValues(alpha: 0.28)
+                : const Color(0x1F1E467C),
+            blurRadius: selected ? 16 : 28,
+            offset: Offset(0, selected ? 8 : 14),
           ),
         ],
       ),
@@ -1111,23 +1363,44 @@ class _HourlyWeatherPill extends StatelessWidget {
 }
 
 class _FutureWeatherRow extends StatelessWidget {
-  const _FutureWeatherRow({required this.day});
+  const _FutureWeatherRow({required this.day, this.highlight = false});
 
   final _WeatherDay day;
 
+  /// 「今天」这行走 1a 的蓝色渐变高亮。
+  final bool highlight;
+
   @override
   Widget build(BuildContext context) {
+    final title = highlight ? Colors.white : _W2b.ink;
+    final subtle = highlight
+        ? Colors.white.withValues(alpha: 0.75)
+        : _W2b.inkSoft;
+
     return Container(
       height: 76,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: highlight ? null : _W2b.glass,
+        gradient: highlight
+            ? const LinearGradient(
+                // 1a: linear-gradient(225deg,#AACDFF,#4B9AFF)
+                begin: Alignment.topRight,
+                end: Alignment.bottomLeft,
+                colors: [Color(0xFFAACDFF), Color(0xFF4B9AFF)],
+              )
+            : null,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: highlight ? Colors.transparent : _W2b.glassBorder,
+        ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF509AFD).withValues(alpha: 0.25),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
+            color: highlight
+                ? const Color(0xFF509AFD).withValues(alpha: 0.28)
+                : const Color(0x1F1E467C),
+            blurRadius: highlight ? 16 : 28,
+            offset: Offset(0, highlight ? 8 : 14),
           ),
         ],
       ),
@@ -1142,8 +1415,8 @@ class _FutureWeatherRow extends StatelessWidget {
                 Text(
                   day.futureTitle,
                   maxLines: 1,
-                  style: const TextStyle(
-                    color: Color(0xFF333333),
+                  style: TextStyle(
+                    color: title,
                     fontSize: 16,
                     height: 1,
                     fontWeight: FontWeight.w600,
@@ -1152,8 +1425,8 @@ class _FutureWeatherRow extends StatelessWidget {
                 const SizedBox(height: 7),
                 Text(
                   day.dateLabel,
-                  style: const TextStyle(
-                    color: Color(0xFFAAAAAA),
+                  style: TextStyle(
+                    color: subtle,
                     fontSize: 12,
                     height: 1,
                     fontWeight: FontWeight.w500,
@@ -1180,8 +1453,8 @@ class _FutureWeatherRow extends StatelessWidget {
               children: [
                 Text(
                   day.weatherText,
-                  style: const TextStyle(
-                    color: Color(0xFF333333),
+                  style: TextStyle(
+                    color: title,
                     fontSize: 14,
                     height: 1,
                     fontWeight: FontWeight.w400,
@@ -1192,13 +1465,15 @@ class _FutureWeatherRow extends StatelessWidget {
                   children: [
                     Icon(
                       CupertinoIcons.drop,
-                      color: const Color(0xFF4B9AFF).withValues(alpha: 0.70),
+                      color: highlight
+                          ? Colors.white.withValues(alpha: 0.85)
+                          : const Color(0xFF4B9AFF).withValues(alpha: 0.70),
                       size: 10,
                     ),
                     Text(
                       '${day.maxRainProbability.round()}%',
-                      style: const TextStyle(
-                        color: Color(0xFFA5A5A5),
+                      style: TextStyle(
+                        color: subtle,
                         fontSize: 10,
                         height: 1,
                         fontWeight: FontWeight.w500,
@@ -1207,7 +1482,9 @@ class _FutureWeatherRow extends StatelessWidget {
                     const SizedBox(width: 6),
                     Icon(
                       CupertinoIcons.wind,
-                      color: const Color(0xFF4B9AFF).withValues(alpha: 0.70),
+                      color: highlight
+                          ? Colors.white.withValues(alpha: 0.85)
+                          : const Color(0xFF4B9AFF).withValues(alpha: 0.70),
                       size: 10,
                     ),
                     Flexible(
@@ -1215,8 +1492,8 @@ class _FutureWeatherRow extends StatelessWidget {
                         '${day.maxWindSpeed.round()}km/h',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFFA5A5A5),
+                        style: TextStyle(
+                          color: subtle,
                           fontSize: 10,
                           height: 1,
                           fontWeight: FontWeight.w500,
@@ -1228,41 +1505,51 @@ class _FutureWeatherRow extends StatelessWidget {
               ],
             ),
           ),
-          const Spacer(),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Row(
-              children: [
-                Text(
-                  '${day.minTemperature.round()}℃',
-                  style: const TextStyle(
-                    color: Color(0xFF4193FD),
-                    fontSize: 20,
-                    height: 1,
-                    fontWeight: FontWeight.w600,
-                  ),
+          // Expanded 给温区一个上界，FittedBox 才能真正 scaleDown；
+          // 否则宽温区（如 "24℃ ~ 32℃"）会把这一行撑溢出。
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  children: [
+                    Text(
+                      '${day.minTemperature.round()}℃',
+                      style: TextStyle(
+                        color: highlight
+                            ? Colors.white
+                            : const Color(0xFF4193FD),
+                        fontSize: 20,
+                        height: 1,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '~',
+                      style: TextStyle(
+                        color: subtle,
+                        fontSize: 20,
+                        height: 1,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${day.maxTemperature.round()}℃',
+                      style: TextStyle(
+                        color: highlight
+                            ? Colors.white
+                            : const Color(0xFFFE9D0B),
+                        fontSize: 20,
+                        height: 1,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 4),
-                const Text(
-                  '~',
-                  style: TextStyle(
-                    color: Color(0xFFA5A5A5),
-                    fontSize: 20,
-                    height: 1,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '${day.maxTemperature.round()}℃',
-                  style: const TextStyle(
-                    color: Color(0xFFFE9D0B),
-                    fontSize: 20,
-                    height: 1,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ],
