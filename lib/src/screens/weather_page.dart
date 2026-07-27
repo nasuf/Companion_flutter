@@ -20,6 +20,14 @@ abstract final class _W2b {
     blurRadius: 12,
     offset: Offset(0, 4),
   );
+
+  /// 小时药丸底色：白 → 浅蓝。天气图标是浅蓝/白的 3D 体块，
+  /// 落在近白色玻璃上边缘会糊，所以这一层要带住蓝调。
+  static const hourPillTop = Color(0xC7FFFFFF); // rgba(255,255,255,.78)
+  static const hourPillBottom = Color(0xF0D6E4F8); // #D6E4F8 @ .94
+
+  /// 图标背后的柔光托底，进一步压出轮廓。
+  static const hourIconHalo = Color(0xFF4B9AFF);
 }
 
 class WeatherPage extends StatefulWidget {
@@ -1354,14 +1362,17 @@ class _HourlyWeatherPill extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: selected ? null : _W2b.glass,
         gradient: selected
             ? const LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [Color(0xFF4B9AFF), Color(0xFF8ABAFF)],
               )
-            : null,
+            : const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [_W2b.hourPillTop, _W2b.hourPillBottom],
+              ),
         border: Border.all(
           color: selected ? Colors.transparent : _W2b.glassBorder,
         ),
@@ -1396,11 +1407,34 @@ class _HourlyWeatherPill extends StatelessWidget {
             ),
           ),
           SizedBox(
-            width: 32,
-            height: 32,
-            child: Image.asset(
-              _weatherAsset(hour.weatherCode, hour: hour.time.hour),
-              fit: BoxFit.cover,
+            width: 40,
+            height: 40,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // 选中态药丸本身是蓝底，图标已有对比，不再叠柔光。
+                if (!selected)
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          _W2b.hourIconHalo.withValues(alpha: 0.18),
+                          _W2b.hourIconHalo.withValues(alpha: 0),
+                        ],
+                      ),
+                    ),
+                    child: const SizedBox.expand(),
+                  ),
+                SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: Image.asset(
+                    _weatherAsset(hour.weatherCode, hour: hour.time.hour),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ],
             ),
           ),
           SizedBox(
