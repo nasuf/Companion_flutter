@@ -754,6 +754,18 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
                   text.trim().isEmpty ? null : text,
                 ),
               ),
+              const SizedBox(height: 10),
+              // 只读: 换 embedding 模型要连同全部存量向量一起重算, 并重新标定
+              // 十余个相似度阈值 —— 是一次数据迁移, 不是改配置项. 给输入框等于
+              // 给一个"点了检索就静默失效"的按钮.
+              _ReadOnlyModelField(
+                label: '记忆向量模型 · 本地 Ollama',
+                value: '${resolved['embedding_model'] ?? ''}',
+                note: (resolved['embedding_model_calibrated'] == false)
+                    ? '生效模型与阈值标定的模型不一致，记忆检索正在静默失准'
+                    : '换模型需重算全部向量并重标阈值，仅供查看',
+                warning: resolved['embedding_model_calibrated'] == false,
+              ),
             ],
           ),
         ),
@@ -799,6 +811,7 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
                 ('本地小模型', '${resolved['local_small_model'] ?? ''}'),
                 ('视觉理解', '${resolved['vision_model'] ?? ''}'),
                 ('语音转写', '${resolved['asr_model'] ?? ''}'),
+                ('记忆向量', '${resolved['embedding_model'] ?? ''}'),
               ])
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
@@ -1208,6 +1221,72 @@ class _MediaModelFieldState extends State<_MediaModelField> {
                 : Colors.black.withValues(alpha: 0.035),
             borderRadius: BorderRadius.circular(12),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 只读的模型展示位. 存在的理由是不一致会更让人困惑 —— 视觉、语音都在这一屏,
+/// 唯独记忆向量模型不见踪影, 运维会以为漏配了. 展示但不给输入框, 因为换它要连同
+/// 全部存量向量重算并重标十余个相似度阈值, 是一次数据迁移而不是配置变更.
+class _ReadOnlyModelField extends StatelessWidget {
+  const _ReadOnlyModelField({
+    required this.label,
+    required this.value,
+    required this.note,
+    this.warning = false,
+  });
+
+  final String label;
+  final String value;
+  final String note;
+  final bool warning;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _adminModelsCaption(context, label),
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.03)
+                : Colors.black.withValues(alpha: 0.02),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            value.isEmpty ? '—' : value,
+            style: TextStyle(
+              color: (isDark ? AppColors.text : const Color(0xFF12171B))
+                  .withValues(alpha: 0.68),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 4, right: 6),
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: warning
+                    ? const Color(0xFFE5484D)
+                    : const Color(0xFF3DA47A),
+                shape: BoxShape.circle,
+              ),
+            ),
+            Expanded(child: _adminModelsCaption(context, note)),
+          ],
         ),
       ],
     );
