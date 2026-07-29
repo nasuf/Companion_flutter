@@ -748,20 +748,23 @@ class _WeatherGlowBlob extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // design 稿 1:1：`width×height` 的椭圆（border-radius:50%）里填一个
+    // `radial-gradient(circle, color, transparent)`（默认 farthest-corner）。
+    // 渐变圆半径 = 到最远角的距离 ≈ 0.75×最短边，实色在中心、到椭圆边约剩
+    // 1/4 浓度，再被椭圆裁成圆边 —— 所以是「大而饱和、柔圆边」的色块，
+    // 不是中心一点的虚光，也不会有矩形硬接缝（椭圆裁剪代替矩形裁剪）。
     return Opacity(
       opacity: opacity,
       child: Container(
         width: width,
         height: height,
         decoration: BoxDecoration(
-          // radius 必须 ≤ 0.5：这样渐变圆（0.5×最短边=190px）落在盒子半宽
-          // (210px) 之内，颜色在触到矩形盒子边界前就已淡透 —— 不会出现方形硬边
-          // 接缝。之前用 0.75 让圆超出盒子、被矩形裁断，才成了方块。
-          // 浓度不靠放大半径，而靠一段实色核（0→45% 保持实色，再线性渐隐到
-          // 190px 处透明），既是「有存在感的色块」又是圆形柔边。
+          borderRadius: BorderRadius.all(
+            Radius.elliptical(width / 2, height / 2),
+          ),
           gradient: RadialGradient(
-            colors: [color, color, color.withValues(alpha: 0)],
-            stops: const [0.0, 0.45, 1.0],
+            radius: 0.75,
+            colors: [color, color.withValues(alpha: 0)],
           ),
         ),
       ),
