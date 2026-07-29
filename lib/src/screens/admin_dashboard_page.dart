@@ -131,6 +131,13 @@ extension _AdminStatsApi on CompanionApi {
     return _ResourceStats.fromJson(json);
   }
 
+  Future<_CronHealthSummary> fetchCronHealth() async {
+    final json =
+        await _adminHttpRequest(this, 'GET', '/admin-api/stats/cron-health')
+            as Map<String, dynamic>;
+    return _CronHealthSummary.fromJson(json);
+  }
+
   Future<_MediaUsageStats> fetchMediaUsage({int days = 7}) async {
     // Flutter only renders the aggregate tiles, so request the smallest
     // allowed per-user page (limit=1) to keep the payload minimal.
@@ -593,6 +600,80 @@ class _TokenUsageStats {
 /// Voice/image usage rollup (运营管理 → 媒体用量).
 /// Flutter renders aggregate tiles only; the per-user breakdown lives in the
 /// web admin console as a paginated table.
+/// 一条需要排查的项 (可能来自定时任务, 也可能来自数据不变量)。
+class _CronProblem {
+  const _CronProblem({required this.name, required this.detail});
+
+  final String name;
+  final String detail;
+}
+
+/// 定时任务健康 + 数据不变量的移动端汇总。
+///
+/// 服务端返回完整的任务表 (web 端要铺), 这里只留计数和问题项 —— 手机上滚 27 行
+/// 正常任务没有意义, 但"哪个坏了"必须看得到。
+class _CronHealthSummary {
+  const _CronHealthSummary({
+    required this.jobTotal,
+    required this.jobUnhealthy,
+    required this.invariantTotal,
+    required this.invariantViolated,
+    required this.invariantChecked,
+    required this.problems,
+  });
+
+  final int jobTotal;
+  final int jobUnhealthy;
+  final int invariantTotal;
+  final int invariantViolated;
+  final DateTime? invariantChecked;
+  final List<_CronProblem> problems;
+
+  static int _asInt(dynamic v) => v is num ? v.toInt() : 0;
+
+  static String _asText(dynamic v) => v is String ? v : '';
+
+  factory _CronHealthSummary.fromJson(Map<String, dynamic> json) {
+    final cron = (json['cron'] as Map?)?.cast<String, dynamic>() ?? {};
+    final inv = (json['invariants'] as Map?)?.cast<String, dynamic>() ?? {};
+
+    final problems = <_CronProblem>[];
+    for (final raw in (cron['jobs'] as List? ?? const [])) {
+      final job = (raw as Map?)?.cast<String, dynamic>() ?? {};
+      final verdict = _asText(job['verdict']);
+      if (verdict == 'healthy' || verdict == 'unknown') continue;
+      problems.add(_CronProblem(
+        name: _asText(job['job_id']),
+        detail: _asText(job['detail']).isNotEmpty
+            ? _asText(job['detail'])
+            : _asText(job['fail_reason']),
+      ));
+    }
+
+    final results = (inv['results'] as List? ?? const []);
+    for (final raw in results) {
+      final item = (raw as Map?)?.cast<String, dynamic>() ?? {};
+      final status = _asText(item['status']);
+      if (status != 'violated' && status != 'error') continue;
+      problems.add(_CronProblem(
+        name: _asText(item['title']),
+        detail: _asText(item['detail']),
+      ));
+    }
+
+    final checkedRaw = _asText(inv['checked_at']);
+    return _CronHealthSummary(
+      jobTotal: _asInt(cron['total']),
+      jobUnhealthy: _asInt(cron['unhealthy_count']),
+      invariantTotal: results.length,
+      invariantViolated: _asInt(inv['violated_count']),
+      invariantChecked:
+          checkedRaw.isEmpty ? null : DateTime.tryParse(checkedRaw),
+      problems: problems,
+    );
+  }
+}
+
 class _MediaUsageStats {
   const _MediaUsageStats({
     required this.voiceCount,
@@ -3984,6 +4065,8 @@ class _AdminResourcePageState extends State<_AdminResourcePage>
   bool _loading = false;
   String? _error;
   _ResourceStats? _data;
+  // 巡检数据独立于资源指标: 它取不到时资源页仍应正常显示, 反之亦然。
+  _CronHealthSummary? _cronHealth;
   DateTime? _lastRefreshed;
   Timer? _timer;
   int _loadSeq = 0;
@@ -4029,9 +4112,17 @@ class _AdminResourcePageState extends State<_AdminResourcePage>
     try {
       widget.api.authToken = widget.session.token;
       final data = await widget.api.fetchResourceStats();
+      // 巡检失败不该让整页报错 —— 资源指标本身还是有用的。
+      _CronHealthSummary? health;
+      try {
+        health = await widget.api.fetchCronHealth();
+      } catch (_) {
+        health = null;
+      }
       if (!mounted || seq != _loadSeq) return;
       setState(() {
         _data = data;
+        _cronHealth = health;
         _lastRefreshed = DateTime.now();
         _error = null;
         _loading = false;
@@ -4101,7 +4192,92 @@ class _AdminResourcePageState extends State<_AdminResourcePage>
         _buildDatabase(data),
         const SizedBox(height: 12),
         _buildRedis(data),
+        if (_cronHealth != null) ...[
+          const SizedBox(height: 12),
+          _buildCronHealth(_cronHealth!),
+        ],
       ],
+    );
+  }
+
+  /// 定时任务与数据巡检 — 只给汇总与出问题的项。
+  ///
+  /// 移动端不铺 27 行任务表 (web 端有), 但只给一个"2 项异常"的数字同样没用 ——
+  /// 管理员在手机上看到告警, 下一个问题一定是"哪个坏了"。所以列出问题项名称,
+  /// 正常的一概不列。
+  Widget _buildCronHealth(_CronHealthSummary health) {
+    return _AdminCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _AdminSectionTitle(title: '定时任务与数据巡检'),
+          _AdminStatGrid(
+            tiles: [
+              _AdminStatTile(
+                label: '定时任务',
+                value: '${health.jobTotal - health.jobUnhealthy}/${health.jobTotal}',
+                sub: health.jobUnhealthy > 0 ? '${health.jobUnhealthy} 项异常' : '全部正常',
+                warn: health.jobUnhealthy > 0,
+              ),
+              _AdminStatTile(
+                label: '数据不变量',
+                value: health.invariantChecked == null
+                    ? '—'
+                    : '${health.invariantTotal - health.invariantViolated}/${health.invariantTotal}',
+                sub: health.invariantChecked == null
+                    ? '尚未巡检'
+                    : (health.invariantViolated > 0
+                        ? '${health.invariantViolated} 项违反'
+                        : '全部通过'),
+                warn: health.invariantViolated > 0,
+              ),
+            ],
+          ),
+          if (health.problems.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            for (final p in health.problems)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(top: 5, right: 8),
+                      child: Icon(
+                        CupertinoIcons.exclamationmark_circle_fill,
+                        size: 12,
+                        color: CupertinoColors.systemOrange,
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            p.name,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (p.detail.isNotEmpty)
+                            Text(
+                              p.detail,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                color: CupertinoColors.systemGrey,
+                                height: 1.35,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ],
+      ),
     );
   }
 
