@@ -642,11 +642,11 @@ class _CronHealthSummary {
       final job = (raw as Map?)?.cast<String, dynamic>() ?? {};
       final verdict = _asText(job['verdict']);
       if (verdict == 'healthy' || verdict == 'unknown') continue;
+      // 只读 detail: 服务端已把失败原因并进去。再退回 fail_reason 的话, 健康任务
+      // 会把几十天前那条陈旧错误显示出来。
       problems.add(_CronProblem(
         name: _asText(job['job_id']),
-        detail: _asText(job['detail']).isNotEmpty
-            ? _asText(job['detail'])
-            : _asText(job['fail_reason']),
+        detail: _asText(job['detail']),
       ));
     }
 
