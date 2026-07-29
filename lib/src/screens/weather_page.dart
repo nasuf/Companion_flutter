@@ -666,7 +666,9 @@ class _WeatherBackground extends StatelessWidget {
                   color: Color(0x4D785ADC), // rgba(120,90,220,.30)
                 ),
               ),
-            const Positioned.fill(child: _WeatherGrain()),
+            const Positioned.fill(
+              child: _WeatherGrain(dotColor: Color(0x29FFFFFF), opacity: 0.6),
+            ),
           ] else if (forecast) ...[
             Positioned(
               left: -120,
@@ -686,6 +688,9 @@ class _WeatherBackground extends StatelessWidget {
                 color: Color(0xFF9FE8E4),
                 opacity: 0.7,
               ),
+            ),
+            const Positioned.fill(
+              child: _WeatherGrain(dotColor: Color(0x80FFFFFF), opacity: 0.5),
             ),
           ] else ...[
             Positioned(
@@ -717,6 +722,9 @@ class _WeatherBackground extends StatelessWidget {
                 opacity: 0.7,
               ),
             ),
+            const Positioned.fill(
+              child: _WeatherGrain(dotColor: Color(0x80FFFFFF), opacity: 0.5),
+            ),
           ],
         ],
       ),
@@ -746,27 +754,38 @@ class _WeatherGlowBlob extends StatelessWidget {
         width: width,
         height: height,
         decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
+          // design 稿是 CSS `radial-gradient(circle, color, transparent)`，默认
+          // farthest-corner：颜色线性铺到最远角才透明，在box边缘仍有约 1/4 浓度，
+          // 所以读起来是「有边缘的色块」而非中心一点的虚光。Flutter 默认
+          // radius=0.5 会在半途就淡透 → 太虚。0.75 ≈ 最远角半径 / 最短边，还原
+          // CSS 落点；保持线性（无实色平台）避免出现方形硬边接缝。
+          gradient: RadialGradient(
+            radius: 0.75,
+            colors: [color, color.withValues(alpha: 0)],
+          ),
         ),
       ),
     );
   }
 }
 
-/// Spec 2b 深色的白点噪点层（`radial-gradient(white .16 .6px) / 3px`, opacity .6）。
+/// Spec 2b 的白点噪点层（`radial-gradient(white α .6px) / 3px`）。
+/// 浅色：white .5 @ opacity .5；深色：white .16 @ opacity .6。
 /// 用 RepaintBoundary + shouldRepaint=false 让 Flutter 把它栅格缓存，
 /// 呼吸动效重建时不会逐帧重画这几万个点。
 class _WeatherGrain extends StatelessWidget {
-  const _WeatherGrain();
+  const _WeatherGrain({required this.dotColor, required this.opacity});
+
+  final Color dotColor;
+  final double opacity;
 
   @override
   Widget build(BuildContext context) {
-    return const RepaintBoundary(
+    return RepaintBoundary(
       child: Opacity(
-        opacity: 0.6,
+        opacity: opacity,
         child: CustomPaint(
-          painter: _WeatherGrainPainter(),
+          painter: _WeatherGrainPainter(dotColor),
           size: Size.infinite,
         ),
       ),
@@ -775,11 +794,13 @@ class _WeatherGrain extends StatelessWidget {
 }
 
 class _WeatherGrainPainter extends CustomPainter {
-  const _WeatherGrainPainter();
+  const _WeatherGrainPainter(this.dotColor);
+
+  final Color dotColor;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = const Color(0x29FFFFFF); // white .16
+    final paint = Paint()..color = dotColor;
     const step = 3.0;
     const r = 0.3;
     for (var y = 0.0; y < size.height; y += step) {
@@ -790,7 +811,8 @@ class _WeatherGrainPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_WeatherGrainPainter oldDelegate) => false;
+  bool shouldRepaint(_WeatherGrainPainter oldDelegate) =>
+      oldDelegate.dotColor != dotColor;
 }
 
 class _WeatherHeroCard extends StatelessWidget {
