@@ -528,58 +528,55 @@ class _WeatherLocationPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final w = _W2b.of(context);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-        child: Container(
-          height: 32,
-          padding: const EdgeInsets.symmetric(horizontal: 13),
-          decoration: BoxDecoration(
-            color: w.glass,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: w.glassBorder),
-            boxShadow: [w.pillShadow],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(CupertinoIcons.location_solid, color: w.ink, size: 13),
-              const SizedBox(width: 6),
-              // 用 ConstrainedBox 而非 Flexible：Flexible 会在 min-size Row 里
-              // 吃掉全部可用宽度，把药丸撑满整行。
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 120),
-                child: Text(
-                  location,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: w.ink,
-                    fontSize: 13,
-                    height: 1,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+    // 不用 BackdropFilter：整页在呼吸动效下每帧重合成，实时背景模糊会逐帧跑一
+    // 次全屏 GPU blur → 卡顿。药丸很小、其后的渐层近乎匀色，半透明白底本身就有
+    // 磨砂观感，省掉 blur 视觉几乎无差别。
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 13),
+      decoration: BoxDecoration(
+        color: w.glass,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: w.glassBorder),
+        boxShadow: [w.pillShadow],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(CupertinoIcons.location_solid, color: w.ink, size: 13),
+          const SizedBox(width: 6),
+          // 用 ConstrainedBox 而非 Flexible：Flexible 会在 min-size Row 里
+          // 吃掉全部可用宽度，把药丸撑满整行。
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 120),
+            child: Text(
+              location,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: w.ink,
+                fontSize: 13,
+                height: 1,
+                fontWeight: FontWeight.w700,
               ),
-              const SizedBox(width: 6),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 130),
-                child: Text(
-                  '$agentName所在地',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: w.inkFaint,
-                    fontSize: 11,
-                    height: 1,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 130),
+            child: Text(
+              '$agentName所在地',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: w.inkFaint,
+                fontSize: 11,
+                height: 1,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -597,22 +594,18 @@ class _WeatherBackButton extends StatelessWidget {
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
       onPressed: onTap,
-      child: ClipOval(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Container(
-            width: 36,
-            height: 36,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: w.glass,
-              shape: BoxShape.circle,
-              border: Border.all(color: w.glassBorder),
-              boxShadow: [w.pillShadow],
-            ),
-            child: Icon(CupertinoIcons.chevron_left, color: w.ink, size: 20),
-          ),
+      // 同上：去掉 BackdropFilter，改半透明白底，避免每帧全屏模糊。
+      child: Container(
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: w.glass,
+          shape: BoxShape.circle,
+          border: Border.all(color: w.glassBorder),
+          boxShadow: [w.pillShadow],
         ),
+        child: Icon(CupertinoIcons.chevron_left, color: w.ink, size: 20),
       ),
     );
   }
@@ -753,19 +746,22 @@ class _WeatherGlowBlob extends StatelessWidget {
     // 渐变圆半径 = 到最远角的距离 ≈ 0.75×最短边，实色在中心、到椭圆边约剩
     // 1/4 浓度，再被椭圆裁成圆边 —— 所以是「大而饱和、柔圆边」的色块，
     // 不是中心一点的虚光，也不会有矩形硬接缝（椭圆裁剪代替矩形裁剪）。
-    return Opacity(
-      opacity: opacity,
-      child: Container(
-        width: width,
-        height: height,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.all(
-            Radius.elliptical(width / 2, height / 2),
-          ),
-          gradient: RadialGradient(
-            radius: 0.75,
-            colors: [color, color.withValues(alpha: 0)],
-          ),
+    //
+    // opacity 直接烘进渐变颜色，而不是用 Opacity 组件：背景每帧随呼吸动效重建，
+    // Opacity 会每帧 saveLayer（离屏合成）→ 卡顿；乘进 alpha 后零额外开销。
+    final tint = opacity >= 1
+        ? color
+        : color.withValues(alpha: color.a * opacity);
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.all(
+          Radius.elliptical(width / 2, height / 2),
+        ),
+        gradient: RadialGradient(
+          radius: 0.75,
+          colors: [tint, tint.withValues(alpha: 0)],
         ),
       ),
     );
@@ -784,13 +780,13 @@ class _WeatherGrain extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // opacity 烘进颜色（去掉 Opacity 离屏层）；整层再包 RepaintBoundary，
+    // 呼吸动效每帧重建时直接复用已栅格化的图层，不重画。
+    final baked = dotColor.withValues(alpha: dotColor.a * opacity);
     return RepaintBoundary(
-      child: Opacity(
-        opacity: opacity,
-        child: CustomPaint(
-          painter: _WeatherGrainPainter(dotColor),
-          size: Size.infinite,
-        ),
+      child: CustomPaint(
+        painter: _WeatherGrainPainter(baked),
+        size: Size.infinite,
       ),
     );
   }
@@ -801,16 +797,32 @@ class _WeatherGrainPainter extends CustomPainter {
 
   final Color dotColor;
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = dotColor;
+  // 同一尺寸的点阵只算一次，缓存复用（避免每次栅格化都重建 3 万+ 个 Offset）。
+  static Size? _cachedSize;
+  static List<Offset>? _cachedPoints;
+
+  static List<Offset> _points(Size size) {
+    if (_cachedSize == size && _cachedPoints != null) return _cachedPoints!;
     const step = 3.0;
-    const r = 0.3;
+    final pts = <Offset>[];
     for (var y = 0.0; y < size.height; y += step) {
       for (var x = 0.0; x < size.width; x += step) {
-        canvas.drawCircle(Offset(x, y), r, paint);
+        pts.add(Offset(x, y));
       }
     }
+    _cachedSize = size;
+    _cachedPoints = pts;
+    return pts;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // drawPoints 一次性批量画完所有点，比 3 万+ 次 drawCircle 快得多。
+    final paint = Paint()
+      ..color = dotColor
+      ..strokeWidth = 0.6
+      ..strokeCap = StrokeCap.round;
+    canvas.drawPoints(PointMode.points, _points(size), paint);
   }
 
   @override
