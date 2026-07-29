@@ -754,14 +754,14 @@ class _WeatherGlowBlob extends StatelessWidget {
         width: width,
         height: height,
         decoration: BoxDecoration(
-          // design 稿是 CSS `radial-gradient(circle, color, transparent)`，默认
-          // farthest-corner：颜色线性铺到最远角才透明，在box边缘仍有约 1/4 浓度，
-          // 所以读起来是「有边缘的色块」而非中心一点的虚光。Flutter 默认
-          // radius=0.5 会在半途就淡透 → 太虚。0.75 ≈ 最远角半径 / 最短边，还原
-          // CSS 落点；保持线性（无实色平台）避免出现方形硬边接缝。
+          // radius 必须 ≤ 0.5：这样渐变圆（0.5×最短边=190px）落在盒子半宽
+          // (210px) 之内，颜色在触到矩形盒子边界前就已淡透 —— 不会出现方形硬边
+          // 接缝。之前用 0.75 让圆超出盒子、被矩形裁断，才成了方块。
+          // 浓度不靠放大半径，而靠一段实色核（0→45% 保持实色，再线性渐隐到
+          // 190px 处透明），既是「有存在感的色块」又是圆形柔边。
           gradient: RadialGradient(
-            radius: 0.75,
-            colors: [color, color.withValues(alpha: 0)],
+            colors: [color, color, color.withValues(alpha: 0)],
+            stops: const [0.0, 0.45, 1.0],
           ),
         ),
       ),
