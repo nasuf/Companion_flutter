@@ -15,8 +15,12 @@ class _GamePageState extends State<GamePage>
   late final AnimationController _controller;
   String? _latestStatus;
   GameWallet? _gameWallet;
-  _GameGroup? _activeGroup = _gameGroupCatalog.first;
-  _GameTile _activeGame = _gameGroupCatalog.first.games[1];
+  // Native game keys an admin has taken offline; hidden from the hub. Empty by
+  // default so every game shows until the catalog says otherwise.
+  Set<String> _disabledGameKeys = const {};
+  late List<_GameGroup> _visibleGroups;
+  _GameGroup? _activeGroup;
+  _GameTile? _activeGame;
   String? _error;
 
   @override
@@ -27,7 +31,59 @@ class _GamePageState extends State<GamePage>
       duration: const Duration(milliseconds: 18000),
       value: 0.5,
     );
+    _applyVisibleGroups();
     _load();
+  }
+
+  /// Rebuild the filtered catalog and re-anchor the active group/game to objects
+  /// that live inside it (the filtered groups are fresh instances, so identity
+  /// comparisons in the cards must use these, not the const catalog).
+  void _applyVisibleGroups() {
+    _visibleGroups = _computeVisibleGroups(_disabledGameKeys);
+    final activeGroupId = _activeGroup?.id;
+    _activeGroup = _visibleGroups.isEmpty
+        ? null
+        : _visibleGroups.firstWhere(
+            (group) => group.id == activeGroupId,
+            orElse: () => _visibleGroups.first,
+          );
+    _activeGame = _defaultActiveGame(_activeGroup);
+  }
+
+  static List<_GameGroup> _computeVisibleGroups(Set<String> disabled) {
+    final groups = <_GameGroup>[];
+    for (final group in _gameGroupCatalog) {
+      // Placeholder tiles (no native key) are "coming soon" art and stay; only
+      // real native games can be toggled off by the admin.
+      final games = group.games
+          .where(
+            (game) =>
+                game.nativeGameKey.isEmpty ||
+                !disabled.contains(game.nativeGameKey),
+          )
+          .toList();
+      if (games.isEmpty) continue;
+      groups.add(
+        _GameGroup(
+          id: group.id,
+          kicker: group.kicker,
+          title: group.title,
+          badge: group.badge,
+          metric: group.metric,
+          hero: group.hero,
+          accent: group.accent,
+          description: group.description,
+          games: games,
+        ),
+      );
+    }
+    return groups;
+  }
+
+  static _GameTile? _defaultActiveGame(_GameGroup? group) {
+    if (group == null || group.games.isEmpty) return null;
+    // Prefer the second tile (matches the previous default) when present.
+    return group.games.length > 1 ? group.games[1] : group.games.first;
   }
 
   @override
@@ -46,6 +102,7 @@ class _GamePageState extends State<GamePage>
       agentId: widget.session.agentId,
     );
     final walletFuture = widget.api.getGameWallet();
+    final catalogFuture = widget.api.getNativeGameCatalog();
     try {
       final status = await latestFuture;
       if (mounted) setState(() => _latestStatus = status);
@@ -57,6 +114,21 @@ class _GamePageState extends State<GamePage>
       if (mounted) setState(() => _gameWallet = wallet);
     } catch (_) {
       // Points are non-fatal for the hub.
+    }
+    try {
+      final catalog = await catalogFuture;
+      final disabled = catalog
+          .where((entry) => !entry.enabled && entry.gameKey.isNotEmpty)
+          .map((entry) => entry.gameKey)
+          .toSet();
+      if (mounted) {
+        setState(() {
+          _disabledGameKeys = disabled;
+          _applyVisibleGroups();
+        });
+      }
+    } catch (_) {
+      // Visibility is non-fatal: on failure keep showing the full catalog.
     }
   }
 
@@ -300,7 +372,7 @@ class _GamePageState extends State<GamePage>
       padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
       child: Column(
         children: [
-          for (final group in _gameGroupCatalog)
+          for (final group in _visibleGroups)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: _GameGroupCard(
@@ -732,7 +804,9 @@ class _GameRoundStatsPanel extends StatelessWidget {
           Row(
             children: [
               Expanded(child: _breakdown('胜场', wins, const Color(0xFF18A66F))),
-              Expanded(child: _breakdown('负场', losses, const Color(0xFFD84A4A))),
+              Expanded(
+                child: _breakdown('负场', losses, const Color(0xFFD84A4A)),
+              ),
               Expanded(child: _breakdown('平局', draws, AppColors.accent)),
               Expanded(
                 child: _breakdown(
@@ -1082,7 +1156,7 @@ class _GameGroupCard extends StatelessWidget {
 
   final _GameGroup group;
   final bool isOpen;
-  final _GameTile activeGame;
+  final _GameTile? activeGame;
   final VoidCallback onTap;
   final ValueChanged<_GameTile> onGameSelected;
 

@@ -25,7 +25,9 @@ extension _AdminGamesApi on CompanionApi {
             as List<dynamic>;
     return json
         .whereType<Map>()
-        .map((item) => _AdminGameConfig.fromJson(Map<String, dynamic>.from(item)))
+        .map(
+          (item) => _AdminGameConfig.fromJson(Map<String, dynamic>.from(item)),
+        )
         .toList();
   }
 
@@ -39,6 +41,21 @@ extension _AdminGamesApi on CompanionApi {
               'PUT',
               '/admin-api/game-configs/${Uri.encodeComponent(gameKey)}',
               body: payload,
+            )
+            as Map<String, dynamic>;
+    return _AdminGameConfig.fromJson(json);
+  }
+
+  Future<_AdminGameConfig> setGameVisibility(
+    String gameKey,
+    bool enabled,
+  ) async {
+    final json =
+        await _adminHttpRequest(
+              this,
+              'PUT',
+              '/admin-api/game-configs/${Uri.encodeComponent(gameKey)}/visibility',
+              body: {'enabled': enabled},
             )
             as Map<String, dynamic>;
     return _AdminGameConfig.fromJson(json);
@@ -241,6 +258,7 @@ class _AdminGameConfig {
     required this.minimumGames,
     required this.maximumStep,
     required this.algorithmOverrides,
+    required this.enabled,
     required this.version,
     required this.previewEngineConfig,
     required this.metrics,
@@ -258,6 +276,7 @@ class _AdminGameConfig {
   final int minimumGames;
   final int maximumStep;
   final Map<String, dynamic> algorithmOverrides;
+  final bool enabled;
   final int version;
   final Map<String, dynamic> previewEngineConfig;
   final _GameConfigMetrics metrics;
@@ -278,6 +297,7 @@ class _AdminGameConfig {
       algorithmOverrides: json['algorithm_overrides'] is Map
           ? Map<String, dynamic>.from(json['algorithm_overrides'] as Map)
           : <String, dynamic>{},
+      enabled: json['enabled'] is bool ? json['enabled'] as bool : true,
       version: _adminInt(json['version'], 1),
       previewEngineConfig: json['preview_engine_config'] is Map
           ? Map<String, dynamic>.from(json['preview_engine_config'] as Map)
@@ -465,10 +485,11 @@ class _AdminGamePointLedgerItem {
       };
       final outcome = metadata['outcome']?.toString();
       final gameKey = metadata['game_key']?.toString();
-      return [base, gameKey, outcomes[outcome] ?? outcome]
-          .whereType<String>()
-          .where((s) => s.isNotEmpty)
-          .join(' · ');
+      return [
+        base,
+        gameKey,
+        outcomes[outcome] ?? outcome,
+      ].whereType<String>().where((s) => s.isNotEmpty).join(' · ');
     }
     return base;
   }
@@ -562,6 +583,7 @@ class _GameBalanceTab extends StatefulWidget {
 class _GameBalanceTabState extends State<_GameBalanceTab> {
   bool _loading = true;
   String? _error;
+  String? _togglingKey;
   List<_AdminGameConfig> _configs = const [];
 
   @override
@@ -588,6 +610,34 @@ class _GameBalanceTabState extends State<_GameBalanceTab> {
       setState(() {
         _error = _asMessage(error);
         _loading = false;
+      });
+    }
+  }
+
+  Future<void> _toggleVisibility(_AdminGameConfig config, bool enabled) async {
+    if (_togglingKey != null) return;
+    setState(() {
+      _togglingKey = config.gameKey;
+      _error = null;
+    });
+    widget.api.authToken = widget.session.token;
+    try {
+      final updated = await widget.api.setGameVisibility(
+        config.gameKey,
+        enabled,
+      );
+      if (!mounted) return;
+      setState(() {
+        _configs = _configs
+            .map((c) => c.gameKey == updated.gameKey ? updated : c)
+            .toList();
+        _togglingKey = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = _asMessage(error);
+        _togglingKey = null;
       });
     }
   }
@@ -624,7 +674,13 @@ class _GameBalanceTabState extends State<_GameBalanceTab> {
             const SizedBox(height: 12),
           ],
           for (final config in _configs) ...[
-            _GameBalanceCard(config: config, onTap: () => _openEditor(config)),
+            _GameBalanceCard(
+              config: config,
+              onTap: () => _openEditor(config),
+              toggling: _togglingKey == config.gameKey,
+              onToggleVisibility: (enabled) =>
+                  _toggleVisibility(config, enabled),
+            ),
             const SizedBox(height: 12),
           ],
         ],
@@ -634,76 +690,105 @@ class _GameBalanceTabState extends State<_GameBalanceTab> {
 }
 
 class _GameBalanceCard extends StatelessWidget {
-  const _GameBalanceCard({required this.config, required this.onTap});
+  const _GameBalanceCard({
+    required this.config,
+    required this.onTap,
+    required this.toggling,
+    required this.onToggleVisibility,
+  });
 
   final _AdminGameConfig config;
   final VoidCallback onTap;
+  final bool toggling;
+  final ValueChanged<bool> onToggleVisibility;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: _AdminCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  config.title,
-                  style: TextStyle(
-                    color: isDark ? AppColors.text : const Color(0xFF12171B),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
+    return Opacity(
+      opacity: config.enabled ? 1 : 0.55,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: _AdminCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      config.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isDark
+                            ? AppColors.text
+                            : const Color(0xFF12171B),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                _AdminMiniBadge(
-                  text: config.playMode == 'cooperate' ? '合作' : '对战',
-                ),
-                const Spacer(),
-                Text(
-                  'v${config.version}',
-                  style: TextStyle(
+                  const SizedBox(width: 8),
+                  _AdminMiniBadge(
+                    text: config.playMode == 'cooperate' ? '合作' : '对战',
+                  ),
+                  if (!config.enabled) ...[
+                    const SizedBox(width: 6),
+                    _AdminMiniBadge(text: '已下线'),
+                  ],
+                  const Spacer(),
+                  // The switch consumes its own taps, so tapping it toggles
+                  // visibility without opening the editor.
+                  toggling
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8),
+                          child: CupertinoActivityIndicator(radius: 9),
+                        )
+                      : CupertinoSwitch(
+                          value: config.enabled,
+                          onChanged: onToggleVisibility,
+                        ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'v${config.version}',
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(
+                    CupertinoIcons.chevron_right,
+                    size: 16,
                     color: AppColors.muted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
                   ),
-                ),
-                const SizedBox(width: 6),
-                Icon(
-                  CupertinoIcons.chevron_right,
-                  size: 16,
-                  color: AppColors.muted,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                _GameStatChip(
-                  label: '强度',
-                  value: '${config.baseStrength}',
-                ),
-                const SizedBox(width: 8),
-                _GameStatChip(
-                  label: '目标胜率',
-                  value: _formatRate(config.targetUserRate),
-                ),
-                const SizedBox(width: 8),
-                _GameStatChip(
-                  label: '30日胜率',
-                  value: _formatRate(config.metrics.userRate30d),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _GameStatChip(label: '强度', value: '${config.baseStrength}'),
+                  const SizedBox(width: 8),
+                  _GameStatChip(
+                    label: '目标胜率',
+                    value: _formatRate(config.targetUserRate),
+                  ),
+                  const SizedBox(width: 8),
+                  _GameStatChip(
+                    label: '30日胜率',
+                    value: _formatRate(config.metrics.userRate30d),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1008,7 +1093,10 @@ class _GameConfigEditorPageState extends State<_GameConfigEditorPage> {
                   },
                 ),
                 const SizedBox(height: 16),
-                _AdminGamesNumberField(label: '基础强度 (0-100)', controller: _baseCtrl),
+                _AdminGamesNumberField(
+                  label: '基础强度 (0-100)',
+                  controller: _baseCtrl,
+                ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -1380,10 +1468,7 @@ class _GameLevelsTabState extends State<_GameLevelsTab> {
                 ),
                 const SizedBox(height: 10),
               ],
-              _AdminGamesSecondaryButton(
-                label: '+ 添加等级',
-                onPressed: _addTier,
-              ),
+              _AdminGamesSecondaryButton(label: '+ 添加等级', onPressed: _addTier),
               if (_error != null) ...[
                 const SizedBox(height: 12),
                 _AdminGamesErrorText(_error!),
@@ -1858,7 +1943,10 @@ class _GameRuleEditorPageState extends State<_GameRuleEditorPage> {
         ? 128
         : (int.tryParse(last.tileCtrl.text.trim()) ?? 64) * 2;
     setState(() {
-      _milestones = [..._milestones, _MilestoneDraft(tile: nextTile, points: 0)];
+      _milestones = [
+        ..._milestones,
+        _MilestoneDraft(tile: nextTile, points: 0),
+      ];
     });
   }
 
@@ -2271,7 +2359,9 @@ class _LedgerRowCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: isDark ? AppColors.text : const Color(0xFF12171B),
+                          color: isDark
+                              ? AppColors.text
+                              : const Color(0xFF12171B),
                           fontSize: 13.5,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 0,
@@ -2400,7 +2490,10 @@ class _GrantPointsDialogState extends State<_GrantPointsDialog> {
       return;
     }
     setState(() => _searching = true);
-    _debounce = Timer(const Duration(milliseconds: 300), () => _runSearch(query));
+    _debounce = Timer(
+      const Duration(milliseconds: 300),
+      () => _runSearch(query),
+    );
   }
 
   Future<void> _runSearch(String query) async {
@@ -2454,9 +2547,9 @@ class _GrantPointsDialogState extends State<_GrantPointsDialog> {
         note: _noteCtrl.text.trim(),
       );
       if (!mounted) return;
-      Navigator.of(context).pop(
-        '已为 ${selected.displayName} 赠送 $amount 积分，当前余额 $balance（等级不变）。',
-      );
+      Navigator.of(
+        context,
+      ).pop('已为 ${selected.displayName} 赠送 $amount 积分，当前余额 $balance（等级不变）。');
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -2829,12 +2922,14 @@ class _AdminGamesTextField extends StatelessWidget {
       children: [
         _AdminGamesFieldLabel(label),
         const SizedBox(height: 6),
-        _AdminGamesInputBox(child: CupertinoTextField(
-          controller: controller,
-          decoration: const BoxDecoration(),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-          style: _adminInputStyle(context),
-        )),
+        _AdminGamesInputBox(
+          child: CupertinoTextField(
+            controller: controller,
+            decoration: const BoxDecoration(),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            style: _adminInputStyle(context),
+          ),
+        ),
       ],
     );
   }
@@ -2949,10 +3044,9 @@ class _AdminGamesMultilineField extends StatelessWidget {
         minLines: 4,
         decoration: const BoxDecoration(),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        style: _adminInputStyle(context).copyWith(
-          fontFamily: 'monospace',
-          fontSize: 12.5,
-        ),
+        style: _adminInputStyle(
+          context,
+        ).copyWith(fontFamily: 'monospace', fontSize: 12.5),
       ),
     );
   }
@@ -3035,7 +3129,10 @@ class _AdminGamesInputBox extends StatelessWidget {
 }
 
 class _AdminGamesPrimaryButton extends StatelessWidget {
-  const _AdminGamesPrimaryButton({required this.label, required this.onPressed});
+  const _AdminGamesPrimaryButton({
+    required this.label,
+    required this.onPressed,
+  });
 
   final String label;
   final VoidCallback? onPressed;

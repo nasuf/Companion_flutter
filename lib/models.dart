@@ -1114,6 +1114,29 @@ class GamePointConvertResult {
   }
 }
 
+/// One native game's client visibility (from GET /games/native/catalog).
+/// The client keeps its own tile catalog; this only says whether to show it.
+class GameCatalogEntry {
+  const GameCatalogEntry({
+    required this.gameKey,
+    required this.title,
+    required this.enabled,
+  });
+
+  final String gameKey;
+  final String title;
+  final bool enabled;
+
+  factory GameCatalogEntry.fromJson(Map<String, dynamic> json) {
+    return GameCatalogEntry(
+      gameKey: json['game_key']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      // Default to visible so a malformed/missing flag never hides a game.
+      enabled: json['enabled'] is bool ? json['enabled'] as bool : true,
+    );
+  }
+}
+
 class StoreInventoryItem {
   const StoreInventoryItem({
     required this.productKind,

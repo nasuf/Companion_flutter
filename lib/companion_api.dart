@@ -1230,6 +1230,31 @@ class CompanionApi {
     }
   }
 
+  /// Per-game client visibility for the hub. Tolerates 404 (older server /
+  /// deploy window) by returning an empty list so every game stays visible.
+  Future<List<GameCatalogEntry>> getNativeGameCatalog() async {
+    try {
+      final result = await _request(
+        'GET',
+        '/games/native/catalog',
+        debugLabel: 'game.catalog',
+      );
+      if (result is List) {
+        return result
+            .whereType<Map>()
+            .map(
+              (item) =>
+                  GameCatalogEntry.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .toList();
+      }
+      return const [];
+    } on ApiException catch (error) {
+      if (error.statusCode == 404) return const [];
+      rethrow;
+    }
+  }
+
   Future<GameWallet> getGameWallet({String? gameKey}) async {
     final query = (gameKey != null && gameKey.isNotEmpty)
         ? '?${Uri(queryParameters: {'game_key': gameKey}).query}'
