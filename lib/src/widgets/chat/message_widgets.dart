@@ -581,9 +581,10 @@ class _Bubble extends StatelessWidget {
             apiBaseUrl: apiBaseUrl,
           )
         else if (audioAttachment != null)
-          _AudioAttachmentBubble(
+          _VoiceMessageBubble(
             attachment: audioAttachment,
             isMine: message.isMine,
+            transcript: message.isMine ? null : message.content,
             authToken: authToken,
             apiBaseUrl: apiBaseUrl,
           )
@@ -788,10 +789,7 @@ class _TypingBubbleState extends State<_TypingBubble>
                                 gradient: LinearGradient(
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
-                                  colors: [
-                                    Color(0xFF24D7D3),
-                                    chatVoiceAccent,
-                                  ],
+                                  colors: [Color(0xFF24D7D3), chatVoiceAccent],
                                 ),
                               ),
                             ),
@@ -941,6 +939,90 @@ BoxDecoration _pendingVoiceBubbleDecoration() {
   );
 }
 
+class _VoiceMessageBubble extends StatefulWidget {
+  const _VoiceMessageBubble({
+    required this.attachment,
+    required this.isMine,
+    required this.transcript,
+    this.authToken,
+    this.apiBaseUrl,
+  });
+
+  final ChatAttachment attachment;
+  final bool isMine;
+  final String? transcript;
+  final String? authToken;
+  final String? apiBaseUrl;
+
+  @override
+  State<_VoiceMessageBubble> createState() => _VoiceMessageBubbleState();
+}
+
+class _VoiceMessageBubbleState extends State<_VoiceMessageBubble> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final transcript = widget.transcript?.trim() ?? '';
+    return Column(
+      crossAxisAlignment: widget.isMine
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
+      children: [
+        _AudioAttachmentBubble(
+          attachment: widget.attachment,
+          isMine: widget.isMine,
+          authToken: widget.authToken,
+          apiBaseUrl: widget.apiBaseUrl,
+        ),
+        if (transcript.isNotEmpty && !widget.isMine) ...[
+          const SizedBox(height: 5),
+          CupertinoButton(
+            minimumSize: Size.zero,
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            onPressed: () => setState(() => _expanded = !_expanded),
+            child: Text(
+              _expanded ? '收起文字' : '查看文字',
+              style: TextStyle(
+                color: AppColors.muted,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            child: _expanded
+                ? Container(
+                    constraints: const BoxConstraints(maxWidth: 270),
+                    margin: const EdgeInsets.only(top: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 9,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceMuted,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.hairline),
+                    ),
+                    child: Text(
+                      transcript,
+                      style: TextStyle(
+                        color: AppColors.text,
+                        fontSize: 13,
+                        height: 1.42,
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class _AudioAttachmentBubble extends StatefulWidget {
   const _AudioAttachmentBubble({
     required this.attachment,
@@ -1052,12 +1134,25 @@ class _AudioAttachmentBubbleState extends State<_AudioAttachmentBubble> {
         bytes.addAll(chunk);
       }
       final directory = await getTemporaryDirectory();
-      final path = '${directory.path}/chat_audio_${widget.attachment.id}.m4a';
+      final path =
+          '${directory.path}/chat_audio_${widget.attachment.id}${_fileExtension()}';
       await File(path).writeAsBytes(bytes, flush: true);
       return path;
     } finally {
       client.close(force: true);
     }
+  }
+
+  String _fileExtension() {
+    return switch (widget.attachment.mime.toLowerCase()) {
+      'audio/wav' || 'audio/x-wav' => '.wav',
+      'audio/mpeg' || 'audio/mp3' => '.mp3',
+      'audio/ogg' => '.ogg',
+      'audio/opus' => '.opus',
+      'audio/flac' => '.flac',
+      'audio/aac' => '.aac',
+      _ => '.m4a',
+    };
   }
 
   Uri _audioUri() {

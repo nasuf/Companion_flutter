@@ -54,4 +54,34 @@ void main() {
     expect(upload.isVoiceUploadPending, isTrue);
     expect(upload.voicePendingDurationSeconds, 9);
   });
+
+  test('assistant voice message keeps its expandable source transcript', () {
+    final message = ChatMessage.fromJson({
+      'id': 'assistant-voice-1',
+      'conversation_id': 'conversation-1',
+      'role': 'assistant',
+      'content': '今天也辛苦啦，早点休息。',
+      'created_at': DateTime.now().toIso8601String(),
+      'metadata': {
+        'display_mode': 'voice',
+        'attachments': [
+          {
+            'id': 'audio-2',
+            'kind': 'audio',
+            'mime': 'audio/wav',
+            'size': 32000,
+            'duration_seconds': 4,
+            'url': '/chat/media/assistant_voice.wav',
+            'transcription_status': 'ready',
+            'transcription_text': '今天也辛苦啦，早点休息。',
+          },
+        ],
+      },
+    });
+
+    expect(message.isMine, isFalse);
+    expect(message.content, '今天也辛苦啦，早点休息。');
+    expect(message.attachments.single.showsAsVoice, isTrue);
+    expect(message.attachments.single.mime, 'audio/wav');
+  });
 }

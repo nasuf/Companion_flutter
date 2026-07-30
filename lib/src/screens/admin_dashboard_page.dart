@@ -644,10 +644,12 @@ class _CronHealthSummary {
       if (verdict == 'healthy' || verdict == 'unknown') continue;
       // 只读 detail: 服务端已把失败原因并进去。再退回 fail_reason 的话, 健康任务
       // 会把几十天前那条陈旧错误显示出来。
-      problems.add(_CronProblem(
-        name: _asText(job['job_id']),
-        detail: _asText(job['detail']),
-      ));
+      problems.add(
+        _CronProblem(
+          name: _asText(job['job_id']),
+          detail: _asText(job['detail']),
+        ),
+      );
     }
 
     final results = (inv['results'] as List? ?? const []);
@@ -655,10 +657,12 @@ class _CronHealthSummary {
       final item = (raw as Map?)?.cast<String, dynamic>() ?? {};
       final status = _asText(item['status']);
       if (status != 'violated' && status != 'error') continue;
-      problems.add(_CronProblem(
-        name: _asText(item['title']),
-        detail: _asText(item['detail']),
-      ));
+      problems.add(
+        _CronProblem(
+          name: _asText(item['title']),
+          detail: _asText(item['detail']),
+        ),
+      );
     }
 
     final checkedRaw = _asText(inv['checked_at']);
@@ -667,8 +671,9 @@ class _CronHealthSummary {
       jobUnhealthy: _asInt(cron['unhealthy_count']),
       invariantTotal: results.length,
       invariantViolated: _asInt(inv['violated_count']),
-      invariantChecked:
-          checkedRaw.isEmpty ? null : DateTime.tryParse(checkedRaw),
+      invariantChecked: checkedRaw.isEmpty
+          ? null
+          : DateTime.tryParse(checkedRaw),
       problems: problems,
     );
   }
@@ -687,6 +692,11 @@ class _MediaUsageStats {
     required this.asrCount,
     required this.asrCostCny,
     required this.asrPricePerSecond,
+    required this.ttsCount,
+    required this.ttsMilliseconds,
+    required this.ttsBytes,
+    required this.ttsBillableCharacters,
+    required this.ttsCostCny,
   });
 
   final int voiceCount;
@@ -705,12 +715,18 @@ class _MediaUsageStats {
   /// null = 未配置单价. Rendering ¥0.00 instead would read as "语音是免费的".
   final double? asrCostCny;
   final double asrPricePerSecond;
+  final int ttsCount;
+  final int ttsMilliseconds;
+  final int ttsBytes;
+  final int ttsBillableCharacters;
+  final double ttsCostCny;
 
   factory _MediaUsageStats.fromJson(Map<String, dynamic> json) {
     final voice = _jsonMap(json['voice']);
     final voiceText = _jsonMap(json['voice_text']);
     final image = _jsonMap(json['image']);
     final asr = _jsonMap(json['asr']);
+    final tts = _jsonMap(json['tts_output']);
     return _MediaUsageStats(
       voiceCount: _jsonInt(voice['count']),
       voiceSeconds: _jsonInt(voice['total_seconds']),
@@ -721,9 +737,13 @@ class _MediaUsageStats {
       imageBytes: _jsonInt(image['total_bytes']),
       asrSeconds: _jsonInt(asr['total_seconds']),
       asrCount: _jsonInt(asr['count']),
-      asrCostCny:
-          asr['cost_cny'] == null ? null : _jsonDouble(asr['cost_cny']),
+      asrCostCny: asr['cost_cny'] == null ? null : _jsonDouble(asr['cost_cny']),
       asrPricePerSecond: _jsonDouble(asr['price_cny_per_second']),
+      ttsCount: _jsonInt(tts['count']),
+      ttsMilliseconds: _jsonInt(tts['total_milliseconds']),
+      ttsBytes: _jsonInt(tts['total_bytes']),
+      ttsBillableCharacters: _jsonInt(tts['billable_characters']),
+      ttsCostCny: _jsonDouble(tts['cost_cny']),
     );
   }
 }
@@ -2838,24 +2858,22 @@ class _AdminOperationsPageState extends State<_AdminOperationsPage> {
     return _AdminStatGrid(
       tiles: [
         _AdminStatTile(
-          label: '语音消息',
+          label: '用户语音消息',
           value: _fmtFull(media.voiceCount),
           sub: '条',
         ),
         _AdminStatTile(
-          label: '纯语音时长',
+          label: '用户语音时长',
           value: _fmtMediaDuration(media.voiceSeconds),
           sub: '发出语音 · 共 ${_fmtFull(media.voiceSeconds)} 秒',
         ),
         _AdminStatTile(
           label: '语音转文字时长',
           value: _fmtMediaDuration(media.voiceTextSeconds),
-          sub: '${_fmtFull(media.voiceTextCount)} 次 · 共 ${_fmtFull(media.voiceTextSeconds)} 秒',
+          sub:
+              '${_fmtFull(media.voiceTextCount)} 次 · 共 ${_fmtFull(media.voiceTextSeconds)} 秒',
         ),
-        _AdminStatTile(
-          label: '语音总大小',
-          value: _fmtMediaBytes(media.voiceBytes),
-        ),
+        _AdminStatTile(label: '语音总大小', value: _fmtMediaBytes(media.voiceBytes)),
         _AdminStatTile(
           label: '图片消息',
           value: _fmtFull(media.imageCount),
@@ -2865,6 +2883,22 @@ class _AdminOperationsPageState extends State<_AdminOperationsPage> {
           label: '图片总大小',
           value: _fmtMediaBytes(media.imageBytes),
           sub: '图片理解按 token 计费',
+        ),
+        _AdminStatTile(
+          label: 'Agent 语音输出',
+          value: _fmtFull(media.ttsCount),
+          sub: '条',
+        ),
+        _AdminStatTile(
+          label: 'Agent 语音时长',
+          value: _fmtMediaDuration((media.ttsMilliseconds / 1000).round()),
+          sub: '${_fmtFull(media.ttsBillableCharacters)} 计费字符',
+        ),
+        _AdminStatTile(
+          label: 'Agent 语音费用',
+          value: '¥${media.ttsCostCny.toStringAsFixed(4)}',
+          sub: _fmtMediaBytes(media.ttsBytes),
+          accent: media.ttsCostCny > 0,
         ),
       ],
     );
@@ -2876,14 +2910,12 @@ class _AdminOperationsPageState extends State<_AdminOperationsPage> {
   /// 也因此没有并进上面的合计; 语音识别跟时间窗一致, 已并入合计.
   /// 图片理解虽然同属曾经漏记的支出, 但它本身按 token 计价, 已并入模型分布,
   /// 这里不重复展示.
-  Widget? _buildNonTokenCost(
-    _TokenUsageStats token,
-    _MediaUsageStats? media,
-  ) {
+  Widget? _buildNonTokenCost(_TokenUsageStats token, _MediaUsageStats? media) {
     final search = token.webSearch;
     final hasSearch = search != null && search.monthCalls > 0;
     final hasAsr = media != null && media.asrSeconds > 0;
-    if (!hasSearch && !hasAsr) return null;
+    final hasTts = media != null && media.ttsCount > 0;
+    if (!hasSearch && !hasAsr && !hasTts) return null;
 
     return _AdminStatGrid(
       tiles: [
@@ -2891,7 +2923,8 @@ class _AdminOperationsPageState extends State<_AdminOperationsPage> {
           _AdminStatTile(
             label: '联网搜索 (本月累计)',
             value: _fmtFull(search.monthCalls),
-            sub: '本窗口 ${_fmtFull(search.windowCalls)} 次 · 免费额度剩 ${_fmtFull(search.freeRemaining)} 次',
+            sub:
+                '本窗口 ${_fmtFull(search.windowCalls)} 次 · 免费额度剩 ${_fmtFull(search.freeRemaining)} 次',
           ),
           _AdminStatTile(
             label: '联网搜索费用 (本月)',
@@ -2919,6 +2952,19 @@ class _AdminOperationsPageState extends State<_AdminOperationsPage> {
             accent: (media.asrCostCny ?? 0) > 0,
           ),
         ],
+        if (hasTts) ...[
+          _AdminStatTile(
+            label: 'Agent 语音输出时长',
+            value: _fmtMediaDuration((media.ttsMilliseconds / 1000).round()),
+            sub: '${_fmtFull(media.ttsCount)} 条',
+          ),
+          _AdminStatTile(
+            label: 'Agent 语音输出费用',
+            value: '¥${media.ttsCostCny.toStringAsFixed(4)}',
+            sub: '${_fmtFull(media.ttsBillableCharacters)} 计费字符',
+            accent: media.ttsCostCny > 0,
+          ),
+        ],
       ],
     );
   }
@@ -2931,7 +2977,9 @@ class _AdminOperationsPageState extends State<_AdminOperationsPage> {
     // 语音识别按秒计价, 跟 token 用的是同一个时间窗, 可以直接加进合计.
     // 联网插件**不能**加 —— 它的免费额度按自然月重置, 费用只能按本月累计算,
     // 混进窗口口径的合计里会得到一个两种时间尺度相加的数字.
-    final extraCost = media?.asrCostCny ?? 0;
+    final asrCost = media?.asrCostCny ?? 0;
+    final ttsCost = media?.ttsCostCny ?? 0;
+    final extraCost = asrCost + ttsCost;
     return _AdminStatGrid(
       tiles: [
         _AdminStatTile(label: '请求次数', value: _fmtFull(totals.requestCount)),
@@ -2957,10 +3005,10 @@ class _AdminOperationsPageState extends State<_AdminOperationsPage> {
           label: '合计费用 (元)',
           value: '¥${(totals.costCny + extraCost).toStringAsFixed(4)}',
           sub: extraCost > 0
-              ? 'Token ¥${totals.costCny.toStringAsFixed(4)} + 语音识别 ¥${extraCost.toStringAsFixed(4)}'
+              ? 'Token ¥${totals.costCny.toStringAsFixed(4)} + ASR ¥${asrCost.toStringAsFixed(4)} + TTS ¥${ttsCost.toStringAsFixed(4)}'
               : totals.requestCount > 0
-                  ? '均 ¥${avgPerRequest.toStringAsFixed(6)}/请求'
-                  : null,
+              ? '均 ¥${avgPerRequest.toStringAsFixed(6)}/请求'
+              : null,
           accent: true,
         ),
       ],
@@ -3205,6 +3253,15 @@ class _AdminSystemSettingsPageState extends State<_AdminSystemSettingsPage> {
     return runtime.resolved['web_search_enabled'] == true;
   }
 
+  int get _ttsOutputProbability {
+    final runtime = _runtime;
+    if (runtime == null) return 0;
+    final configured = runtime.config['tts_output_probability'];
+    if (configured is num) return configured.round().clamp(0, 100).toInt();
+    final resolved = runtime.resolved['tts_output_probability'];
+    return resolved is num ? resolved.round().clamp(0, 100).toInt() : 0;
+  }
+
   Future<void> _toggleWebSearch(bool next) async {
     final runtime = _runtime;
     if (runtime == null || _savingKey != null) return;
@@ -3229,6 +3286,37 @@ class _AdminSystemSettingsPageState extends State<_AdminSystemSettingsPage> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
+        _error = _asMessage(error);
+        _savingKey = null;
+      });
+    }
+  }
+
+  Future<void> _changeTtsProbability(int next) async {
+    final runtime = _runtime;
+    if (runtime == null || _savingKey != null) return;
+    final probability = next.clamp(0, 100).toInt();
+    final previous = runtime;
+    setState(() {
+      _savingKey = 'tts';
+      _error = null;
+      _runtime = _RuntimeConfigBundle(
+        config: {...runtime.config, 'tts_output_probability': probability},
+        resolved: {...runtime.resolved, 'tts_output_probability': probability},
+      );
+    });
+    try {
+      widget.api.authToken = widget.session.token;
+      final updated = await widget.api.updateAdminTtsProbability(probability);
+      if (!mounted) return;
+      setState(() {
+        _runtime = updated;
+        _savingKey = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _runtime = previous;
         _error = _asMessage(error);
         _savingKey = null;
       });
@@ -3381,6 +3469,14 @@ class _AdminSystemSettingsPageState extends State<_AdminSystemSettingsPage> {
           onChanged: _toggleWebSearch,
         ),
         const SizedBox(height: 12),
+        _AdminTtsProbabilityCard(
+          value: _ttsOutputProbability,
+          saving: _savingKey == 'tts',
+          disabled:
+              _runtime == null || (_savingKey != null && _savingKey != 'tts'),
+          onChanged: _changeTtsProbability,
+        ),
+        const SizedBox(height: 12),
         _AdminAchievementCard(
           settings: _achievement,
           saving: _savingKey == 'achievement',
@@ -3403,6 +3499,107 @@ class _AdminSystemSettingsPageState extends State<_AdminSystemSettingsPage> {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _AdminTtsProbabilityCard extends StatefulWidget {
+  const _AdminTtsProbabilityCard({
+    required this.value,
+    required this.saving,
+    required this.disabled,
+    required this.onChanged,
+  });
+
+  final int value;
+  final bool saving;
+  final bool disabled;
+  final ValueChanged<int> onChanged;
+
+  @override
+  State<_AdminTtsProbabilityCard> createState() =>
+      _AdminTtsProbabilityCardState();
+}
+
+class _AdminTtsProbabilityCardState extends State<_AdminTtsProbabilityCard> {
+  late double _draft = widget.value.toDouble();
+
+  @override
+  void didUpdateWidget(covariant _AdminTtsProbabilityCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value) {
+      _draft = widget.value.toDouble();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final value = _draft.round().clamp(0, 100).toInt();
+    return _AdminCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD4A843).withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  '声',
+                  style: TextStyle(
+                    color: Color(0xFFD4A843),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _adminModelsTitle(context, 'Agent 语音输出概率'),
+                    const SizedBox(height: 3),
+                    _adminModelsCaption(
+                      context,
+                      '0% 全部文字，100% 所有允许的普通/主动聊天都输出语音。',
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                widget.saving ? '保存中…' : '$value%',
+                style: const TextStyle(
+                  color: Color(0xFFD4A843),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          CupertinoSlider(
+            value: _draft.clamp(0, 100).toDouble(),
+            min: 0,
+            max: 100,
+            divisions: 100,
+            onChanged: widget.disabled || widget.saving
+                ? null
+                : (next) => setState(() => _draft = next),
+            onChangeEnd: widget.disabled || widget.saving
+                ? null
+                : (next) => widget.onChanged(next.round()),
+          ),
+          _adminModelsCaption(context, '提醒、危机、安全、边界、系统状态与组件卡片始终保留文字。'),
+        ],
+      ),
     );
   }
 }
@@ -3933,9 +4130,9 @@ class _ResDatabase {
       available: json['available'] == true,
       sizeBytes: (json['size_bytes'] as num?)?.toInt(),
       sizePretty: _jsonNullableString(json['size_pretty']),
-      largestTables: _jsonList(json['largest_tables'])
-          .map(_ResTable.fromJson)
-          .toList(),
+      largestTables: _jsonList(
+        json['largest_tables'],
+      ).map(_ResTable.fromJson).toList(),
       connections: json['connections'] == null
           ? null
           : _ResConnections.fromJson(_jsonMap(json['connections'])),
@@ -4215,8 +4412,11 @@ class _AdminResourcePageState extends State<_AdminResourcePage>
             tiles: [
               _AdminStatTile(
                 label: '定时任务',
-                value: '${health.jobTotal - health.jobUnhealthy}/${health.jobTotal}',
-                sub: health.jobUnhealthy > 0 ? '${health.jobUnhealthy} 项异常' : '全部正常',
+                value:
+                    '${health.jobTotal - health.jobUnhealthy}/${health.jobTotal}',
+                sub: health.jobUnhealthy > 0
+                    ? '${health.jobUnhealthy} 项异常'
+                    : '全部正常',
                 warn: health.jobUnhealthy > 0,
               ),
               _AdminStatTile(
@@ -4227,8 +4427,8 @@ class _AdminResourcePageState extends State<_AdminResourcePage>
                 sub: health.invariantChecked == null
                     ? '尚未巡检'
                     : (health.invariantViolated > 0
-                        ? '${health.invariantViolated} 项违反'
-                        : '全部通过'),
+                          ? '${health.invariantViolated} 项违反'
+                          : '全部通过'),
                 warn: health.invariantViolated > 0,
               ),
             ],

@@ -24,27 +24,46 @@ extension _AdminModelsApi on CompanionApi {
   Future<_RuntimeConfigBundle> updateAdminRuntimeConfig(
     Map<String, dynamic> payload,
   ) async {
-    final json = await _adminHttpRequest(
-      this,
-      'PUT',
-      '/admin-api/runtime-config',
-      body: payload,
-    ) as Map<String, dynamic>;
+    final json =
+        await _adminHttpRequest(
+              this,
+              'PUT',
+              '/admin-api/runtime-config',
+              body: payload,
+            )
+            as Map<String, dynamic>;
+    return _RuntimeConfigBundle.fromJson(json);
+  }
+
+  Future<_RuntimeConfigBundle> updateAdminTtsProbability(
+    int probability,
+  ) async {
+    final json =
+        await _adminHttpRequest(
+              this,
+              'PUT',
+              '/admin-api/runtime-config/tts-output-probability',
+              body: {'probability': probability},
+            )
+            as Map<String, dynamic>;
     return _RuntimeConfigBundle.fromJson(json);
   }
 
   Future<_RuntimeOptions> fetchAdminRuntimeOptions() async {
-    final json = await _adminHttpRequest(
-      this,
-      'GET',
-      '/admin-api/runtime-config/options',
-    ) as Map<String, dynamic>;
+    final json =
+        await _adminHttpRequest(
+              this,
+              'GET',
+              '/admin-api/runtime-config/options',
+            )
+            as Map<String, dynamic>;
     return _RuntimeOptions.fromJson(json);
   }
 
   Future<List<_RegistryModel>> fetchAdminModelRegistry() async {
-    final json = await _adminHttpRequest(this, 'GET', '/admin-api/model-registry')
-        as Map<String, dynamic>;
+    final json =
+        await _adminHttpRequest(this, 'GET', '/admin-api/model-registry')
+            as Map<String, dynamic>;
     final models = json['models'];
     if (models is! List) return const [];
     return models
@@ -54,12 +73,14 @@ extension _AdminModelsApi on CompanionApi {
   }
 
   Future<_RegistryModel> createAdminModel(Map<String, dynamic> payload) async {
-    final json = await _adminHttpRequest(
-      this,
-      'POST',
-      '/admin-api/model-registry',
-      body: payload,
-    ) as Map<String, dynamic>;
+    final json =
+        await _adminHttpRequest(
+              this,
+              'POST',
+              '/admin-api/model-registry',
+              body: payload,
+            )
+            as Map<String, dynamic>;
     return _RegistryModel.fromJson(json);
   }
 
@@ -67,12 +88,14 @@ extension _AdminModelsApi on CompanionApi {
     String modelId,
     Map<String, dynamic> payload,
   ) async {
-    final json = await _adminHttpRequest(
-      this,
-      'PATCH',
-      '/admin-api/model-registry/${Uri.encodeComponent(modelId)}',
-      body: payload,
-    ) as Map<String, dynamic>;
+    final json =
+        await _adminHttpRequest(
+              this,
+              'PATCH',
+              '/admin-api/model-registry/${Uri.encodeComponent(modelId)}',
+              body: payload,
+            )
+            as Map<String, dynamic>;
     return _RegistryModel.fromJson(json);
   }
 }
@@ -93,6 +116,8 @@ const List<String> _kRuntimeConfigKeys = [
   'remote_small_model',
   'vision_model',
   'asr_model',
+  'tts_model',
+  'tts_output_probability',
   // Managed by the 全局模块开关 page; listed here so the models page
   // round-trips it on PUT instead of clearing it (full-document semantics).
   'web_search_enabled',
@@ -174,8 +199,7 @@ class _RuntimeOptions {
     if (rawBuckets is Map) {
       rawBuckets.forEach((key, value) {
         if (value is List) {
-          byProvider[key.toString()] =
-              value.map((e) => e.toString()).toList();
+          byProvider[key.toString()] = value.map((e) => e.toString()).toList();
         }
       });
     }
@@ -188,9 +212,9 @@ class _RuntimeOptions {
     final rawProviders = json['providers'];
     if (rawProviders is List) {
       providers.addAll(
-        rawProviders
-            .whereType<Map<String, dynamic>>()
-            .map(_ProviderOption.fromJson),
+        rawProviders.whereType<Map<String, dynamic>>().map(
+          _ProviderOption.fromJson,
+        ),
       );
     }
     return _RuntimeOptions(
@@ -221,6 +245,9 @@ class _RegistryModel {
     required this.displayName,
     required this.provider,
     required this.enabled,
+    required this.modelKind,
+    required this.billingUnit,
+    required this.unitPriceCny,
     required this.contextWindow,
     required this.inputCostPerMillion,
     required this.outputCostPerMillion,
@@ -233,6 +260,9 @@ class _RegistryModel {
   final String? displayName;
   final String provider;
   final bool enabled;
+  final String modelKind;
+  final String billingUnit;
+  final double? unitPriceCny;
   final int? contextWindow;
   final double? inputCostPerMillion;
   final double? outputCostPerMillion;
@@ -255,10 +285,15 @@ class _RegistryModel {
       displayName: asText(json['display_name']),
       provider: json['provider']?.toString() ?? '',
       enabled: json['enabled'] == true,
+      modelKind: json['model_kind']?.toString() ?? 'llm',
+      billingUnit: json['billing_unit']?.toString() ?? 'per_million_tokens',
+      unitPriceCny: asDouble(json['unit_price_cny']),
       contextWindow: asInt(json['context_window']),
       inputCostPerMillion: asDouble(json['input_cost_per_million']),
       outputCostPerMillion: asDouble(json['output_cost_per_million']),
-      cachedInputCostPerMillion: asDouble(json['cached_input_cost_per_million']),
+      cachedInputCostPerMillion: asDouble(
+        json['cached_input_cost_per_million'],
+      ),
       notes: asText(json['notes']),
     );
   }
@@ -394,7 +429,9 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
   void _changeRemoteProvider({required bool isChat, required String next}) {
     final options = _options;
     if (options == null) return;
-    final providerKey = isChat ? 'remote_chat_provider' : 'remote_small_provider';
+    final providerKey = isChat
+        ? 'remote_chat_provider'
+        : 'remote_small_provider';
     final modelKey = isChat ? 'remote_chat_model' : 'remote_small_model';
     _setConfig('online_model', true);
     _setConfig(providerKey, next);
@@ -421,7 +458,9 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
   Future<void> _pickRemoteProvider({required bool isChat}) async {
     final options = _options;
     if (options == null) return;
-    final providerKey = isChat ? 'remote_chat_provider' : 'remote_small_provider';
+    final providerKey = isChat
+        ? 'remote_chat_provider'
+        : 'remote_small_provider';
     final current = _effectiveText(providerKey);
     final selected = await _showChoiceSheet(
       title: isChat ? '大模型平台' : '小模型平台',
@@ -435,7 +474,8 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
                 : '${(options.byProvider[p.id] ?? const []).length} 个可用模型',
             // Selectable when usable (configured + has models); the current
             // provider stays selectable so the sheet can always show it.
-            enabled: (p.configured &&
+            enabled:
+                (p.configured &&
                     (options.byProvider[p.id] ?? const []).isNotEmpty) ||
                 p.id == current,
             selected: p.id == current,
@@ -450,7 +490,9 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
   Future<void> _pickRemoteModel({required bool isChat}) async {
     final options = _options;
     if (options == null) return;
-    final providerKey = isChat ? 'remote_chat_provider' : 'remote_small_provider';
+    final providerKey = isChat
+        ? 'remote_chat_provider'
+        : 'remote_small_provider';
     final modelKey = isChat ? 'remote_chat_model' : 'remote_small_model';
     final provider = _effectiveText(providerKey);
     final current = _effectiveText(modelKey);
@@ -549,13 +591,12 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
     setState(() => _togglingModelId = model.id);
     widget.api.authToken = widget.session.token;
     try {
-      final updated =
-          await widget.api.updateAdminModel(model.id, {'enabled': next});
+      final updated = await widget.api.updateAdminModel(model.id, {
+        'enabled': next,
+      });
       if (!mounted) return;
       setState(() {
-        _models = [
-          for (final m in _models) m.id == updated.id ? updated : m,
-        ];
+        _models = [for (final m in _models) m.id == updated.id ? updated : m];
         _togglingModelId = null;
       });
     } catch (error) {
@@ -645,7 +686,9 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
             ),
           ),
         Expanded(
-          child: _tab == 0 ? _buildRuntimeTab(context) : _buildRegistryTab(context),
+          child: _tab == 0
+              ? _buildRuntimeTab(context)
+              : _buildRegistryTab(context),
         ),
       ],
     );
@@ -679,7 +722,10 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _adminModelsTitle(context, online ? '云端模型路由' : '本地 Ollama 模式'),
+                    _adminModelsTitle(
+                      context,
+                      online ? '云端模型路由' : '本地 Ollama 模式',
+                    ),
                     const SizedBox(height: 4),
                     _adminModelsCaption(
                       context,
@@ -730,10 +776,7 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
             children: [
               _adminModelsTitle(context, '多模态模型'),
               const SizedBox(height: 4),
-              _adminModelsCaption(
-                context,
-                '图片理解与语音转写的模型 ID。留空表示使用服务器环境变量默认值。',
-              ),
+              _adminModelsCaption(context, '图片理解与语音转写的模型 ID。留空表示使用服务器环境变量默认值。'),
               const SizedBox(height: 12),
               _MediaModelField(
                 label: '视觉理解模型 · 火山方舟',
@@ -749,10 +792,16 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
                 label: '语音转写模型 · 阿里云百炼',
                 value: (config['asr_model'] as String?) ?? '',
                 placeholder: '${resolved['asr_model'] ?? ''}（环境默认）',
-                onChanged: (text) => _setConfig(
-                  'asr_model',
-                  text.trim().isEmpty ? null : text,
-                ),
+                onChanged: (text) =>
+                    _setConfig('asr_model', text.trim().isEmpty ? null : text),
+              ),
+              const SizedBox(height: 10),
+              _MediaModelField(
+                label: '语音输出模型 · 阿里云百炼',
+                value: (config['tts_model'] as String?) ?? '',
+                placeholder: '${resolved['tts_model'] ?? ''}（环境默认）',
+                onChanged: (text) =>
+                    _setConfig('tts_model', text.trim().isEmpty ? null : text),
               ),
               const SizedBox(height: 10),
               // 只读: 换 embedding 模型要连同全部存量向量一起重算, 并重新标定
@@ -811,6 +860,8 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
                 ('本地小模型', '${resolved['local_small_model'] ?? ''}'),
                 ('视觉理解', '${resolved['vision_model'] ?? ''}'),
                 ('语音转写', '${resolved['asr_model'] ?? ''}'),
+                ('语音输出', '${resolved['tts_model'] ?? ''}'),
+                ('语音概率', '${resolved['tts_output_probability'] ?? 0}%'),
                 ('记忆向量', '${resolved['embedding_model'] ?? ''}'),
               ])
                 Padding(
@@ -879,11 +930,14 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
               Expanded(
                 child: _adminModelsCaption(
                   context,
-                  '共 ${_models.length} 个模型 · 价格单位 元/百万 tokens。禁用后不再出现在模型配置下拉里。',
+                  '共 ${_models.length} 个模型 · LLM 按百万 tokens，TTS 按万字符。禁用后不再出现在对应配置中。',
                 ),
               ),
               CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 color: const Color(0xFF2D73FF),
                 borderRadius: BorderRadius.circular(999),
                 minimumSize: const Size(0, 30),
@@ -904,7 +958,8 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
         for (final model in sorted) ...[
           _RegistryModelCard(
             model: model,
-            providerLabel: options?.providerLabel(model.provider) ?? model.provider,
+            providerLabel:
+                options?.providerLabel(model.provider) ?? model.provider,
             toggling: _togglingModelId == model.id,
             onToggleEnabled: (next) => _toggleModelEnabled(model, next),
             onTap: () => _openModelEditor(model: model),
@@ -938,7 +993,9 @@ Widget _adminModelsTitle(BuildContext context, String text) {
   return Text(
     text,
     style: TextStyle(
-      color: AppColors.isDark(context) ? AppColors.text : const Color(0xFF12171B),
+      color: AppColors.isDark(context)
+          ? AppColors.text
+          : const Color(0xFF12171B),
       fontSize: 15,
       fontWeight: FontWeight.w900,
       letterSpacing: 0,
@@ -1373,13 +1430,18 @@ class _RegistryModelCard extends StatelessWidget {
               spacing: 8,
               runSpacing: 6,
               children: [
-                _chip(context, '输入 ${_price(model.inputCostPerMillion)}/M'),
-                _chip(context, '输出 ${_price(model.outputCostPerMillion)}/M'),
-                _chip(
-                  context,
-                  '缓存 ${_price(model.cachedInputCostPerMillion)}/M',
-                ),
-                if (model.contextWindow != null)
+                _chip(context, model.modelKind == 'tts' ? 'TTS' : 'LLM'),
+                if (model.modelKind == 'tts')
+                  _chip(context, '${_price(model.unitPriceCny)}/万字符')
+                else ...[
+                  _chip(context, '输入 ${_price(model.inputCostPerMillion)}/M'),
+                  _chip(context, '输出 ${_price(model.outputCostPerMillion)}/M'),
+                  _chip(
+                    context,
+                    '缓存 ${_price(model.cachedInputCostPerMillion)}/M',
+                  ),
+                ],
+                if (model.modelKind == 'llm' && model.contextWindow != null)
                   _chip(context, '上下文 ${model.contextWindow}'),
                 if (!model.enabled) _chip(context, '已禁用', danger: true),
               ],
@@ -1402,8 +1464,8 @@ class _RegistryModelCard extends StatelessWidget {
         color: danger
             ? const Color(0xFFE35B6F).withValues(alpha: 0.14)
             : isDark
-                ? Colors.white.withValues(alpha: 0.07)
-                : Colors.black.withValues(alpha: 0.045),
+            ? Colors.white.withValues(alpha: 0.07)
+            : Colors.black.withValues(alpha: 0.045),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -1412,8 +1474,8 @@ class _RegistryModelCard extends StatelessWidget {
           color: danger
               ? const Color(0xFFE35B6F)
               : isDark
-                  ? const Color(0x9EEBF2EE)
-                  : AppColors.muted,
+              ? const Color(0x9EEBF2EE)
+              : AppColors.muted,
           fontSize: 10.5,
           fontWeight: FontWeight.w700,
           decoration: TextDecoration.none,
@@ -1453,8 +1515,10 @@ class _AdminModelEditPageState extends State<_AdminModelEditPage> {
   late final TextEditingController _inputCost;
   late final TextEditingController _outputCost;
   late final TextEditingController _cachedInputCost;
+  late final TextEditingController _unitPrice;
   late final TextEditingController _notes;
   late String _provider;
+  late String _modelKind;
   late bool _enabled;
   bool _saving = false;
   String? _error;
@@ -1479,9 +1543,14 @@ class _AdminModelEditPageState extends State<_AdminModelEditPage> {
     _cachedInputCost = TextEditingController(
       text: existing?.cachedInputCostPerMillion?.toString() ?? '',
     );
+    _unitPrice = TextEditingController(
+      text: existing?.unitPriceCny?.toString() ?? '',
+    );
     _notes = TextEditingController(text: existing?.notes ?? '');
-    _provider = existing?.provider ??
+    _provider =
+        existing?.provider ??
         (widget.providers.isNotEmpty ? widget.providers.first.id : 'ollama');
+    _modelKind = existing?.modelKind ?? 'llm';
     _enabled = existing?.enabled ?? true;
   }
 
@@ -1493,6 +1562,7 @@ class _AdminModelEditPageState extends State<_AdminModelEditPage> {
     _inputCost.dispose();
     _outputCost.dispose();
     _cachedInputCost.dispose();
+    _unitPrice.dispose();
     _notes.dispose();
     super.dispose();
   }
@@ -1561,9 +1631,15 @@ class _AdminModelEditPageState extends State<_AdminModelEditPage> {
     final input = _parseCost(_inputCost, '输入价');
     final output = _parseCost(_outputCost, '输出价');
     final cached = _parseCost(_cachedInputCost, '缓存输入价');
-    final firstCostError = input.error ?? output.error ?? cached.error;
+    final unit = _parseCost(_unitPrice, '单位价格');
+    final firstCostError =
+        input.error ?? output.error ?? cached.error ?? unit.error;
     if (firstCostError != null) {
       setState(() => _error = firstCostError);
+      return;
+    }
+    if (_modelKind == 'tts' && unit.value == null) {
+      setState(() => _error = 'TTS 模型必须填写每万字符单价');
       return;
     }
     int? contextWindow;
@@ -1589,6 +1665,11 @@ class _AdminModelEditPageState extends State<_AdminModelEditPage> {
           'display_name': displayName.isEmpty ? null : displayName,
           'provider': _provider,
           'enabled': _enabled,
+          'model_kind': _modelKind,
+          'billing_unit': _modelKind == 'tts'
+              ? 'per_10k_characters'
+              : 'per_million_tokens',
+          'unit_price_cny': unit.value,
           'context_window': contextWindow,
           'input_cost_per_million': input.value,
           'output_cost_per_million': output.value,
@@ -1601,6 +1682,11 @@ class _AdminModelEditPageState extends State<_AdminModelEditPage> {
           'display_name': displayName.isEmpty ? null : displayName,
           'provider': _provider,
           'enabled': _enabled,
+          'model_kind': _modelKind,
+          'billing_unit': _modelKind == 'tts'
+              ? 'per_10k_characters'
+              : 'per_million_tokens',
+          'unit_price_cny': unit.value,
           'context_window': contextWindow,
           'input_cost_per_million': input.value,
           'output_cost_per_million': output.value,
@@ -1688,6 +1774,24 @@ class _AdminModelEditPageState extends State<_AdminModelEditPage> {
                   value: _providerLabel(_provider),
                   onTap: _pickProvider,
                 ),
+                const SizedBox(height: 12),
+                _fieldLabel('模型类别'),
+                CupertinoSlidingSegmentedControl<String>(
+                  groupValue: _modelKind,
+                  children: const {
+                    'llm': Padding(
+                      padding: EdgeInsets.symmetric(vertical: 6),
+                      child: Text('LLM'),
+                    ),
+                    'tts': Padding(
+                      padding: EdgeInsets.symmetric(vertical: 6),
+                      child: Text('TTS'),
+                    ),
+                  },
+                  onValueChanged: (value) {
+                    if (value != null) setState(() => _modelKind = value);
+                  },
+                ),
               ],
             ),
           ),
@@ -1696,16 +1800,28 @@ class _AdminModelEditPageState extends State<_AdminModelEditPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _adminModelsTitle(context, '价格 · 元/百万 tokens'),
+                _adminModelsTitle(
+                  context,
+                  _modelKind == 'tts' ? '价格 · 元/万字符' : '价格 · 元/百万 tokens',
+                ),
                 const SizedBox(height: 10),
-                _fieldLabel('输入单价'),
-                _textField(_inputCost, placeholder: '如 0.8', numeric: true),
-                const SizedBox(height: 12),
-                _fieldLabel('输出单价'),
-                _textField(_outputCost, placeholder: '如 2.0', numeric: true),
-                const SizedBox(height: 12),
-                _fieldLabel('缓存命中输入单价（留空 = 按未命中价估算）'),
-                _textField(_cachedInputCost, placeholder: '如 0.16', numeric: true),
+                if (_modelKind == 'tts') ...[
+                  _fieldLabel('单位价格'),
+                  _textField(_unitPrice, placeholder: '如 0.8', numeric: true),
+                ] else ...[
+                  _fieldLabel('输入单价'),
+                  _textField(_inputCost, placeholder: '如 0.8', numeric: true),
+                  const SizedBox(height: 12),
+                  _fieldLabel('输出单价'),
+                  _textField(_outputCost, placeholder: '如 2.0', numeric: true),
+                  const SizedBox(height: 12),
+                  _fieldLabel('缓存命中输入单价（留空 = 按未命中价估算）'),
+                  _textField(
+                    _cachedInputCost,
+                    placeholder: '如 0.16',
+                    numeric: true,
+                  ),
+                ],
               ],
             ),
           ),
@@ -1714,9 +1830,15 @@ class _AdminModelEditPageState extends State<_AdminModelEditPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _fieldLabel('上下文窗口（tokens，可选）'),
-                _textField(_contextWindow, placeholder: '如 131072', numeric: true),
-                const SizedBox(height: 12),
+                if (_modelKind == 'llm') ...[
+                  _fieldLabel('上下文窗口（tokens，可选）'),
+                  _textField(
+                    _contextWindow,
+                    placeholder: '如 131072',
+                    numeric: true,
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 _fieldLabel('备注（可选）'),
                 _textField(_notes, placeholder: '内部备注', maxLines: 3),
                 const SizedBox(height: 12),

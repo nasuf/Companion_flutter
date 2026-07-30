@@ -1595,7 +1595,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       case 'reply':
       case 'proactive':
         final text = payload['text']?.toString() ?? '';
-        if (text.isEmpty) return;
+        final rawAttachments = payload['attachments'];
+        final attachments = rawAttachments is List
+            ? [
+                for (final item in rawAttachments)
+                  if (item is Map)
+                    ChatAttachment.fromJson(Map<String, dynamic>.from(item)),
+              ]
+            : const <ChatAttachment>[];
+        if (text.isEmpty && attachments.isEmpty) return;
         final wasNearBottom = _isNearBottomNow();
         final shouldAutoScroll = widget.isActive && wasNearBottom;
         final messageId = payload['message_id']?.toString();
@@ -1609,13 +1617,28 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             ? ChatComponentCard.fromJson(rawComponentCard)
             : null;
         setState(() {
+          final metadata = <String, dynamic>{
+            if (componentCard != null) 'component_card': componentCard.toJson(),
+            if (attachments.isNotEmpty)
+              'attachments': attachments.map((item) => item.toJson()).toList(),
+            if (payload['display_mode'] != null)
+              'display_mode': payload['display_mode'],
+            if (payload['ai_emotion'] != null)
+              'ai_emotion': payload['ai_emotion'],
+            if (payload['emotion_intensity'] != null)
+              'emotion_intensity': payload['emotion_intensity'],
+          };
+          final stableId = assistantMessageId?.isNotEmpty == true
+              ? assistantMessageId
+              : messageId?.isNotEmpty == true
+              ? messageId
+              : null;
           final draft = ChatMessage.draft(
             conversationId: _conversationId,
             role: 'assistant',
             content: text,
-            metadata: componentCard == null
-                ? null
-                : {'component_card': componentCard.toJson()},
+            clientId: stableId,
+            metadata: metadata.isEmpty ? null : metadata,
           );
           _messages.add(draft);
           if (_isMusicStationCard(componentCard)) {

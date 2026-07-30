@@ -36,7 +36,9 @@ class ChatSocket {
 
   Uri _wsUri() {
     final normalized = baseUrl.replaceFirst(RegExp('^http'), 'ws');
-    return Uri.parse('$normalized/ws/$conversationId');
+    return Uri.parse(
+      '$normalized/ws/$conversationId',
+    ).replace(queryParameters: const {'client': 'flutter'});
   }
 
   Future<void> connect() async {
