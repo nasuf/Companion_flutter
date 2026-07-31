@@ -100,6 +100,7 @@ flutter:
     - assets/prototype/music/
     - assets/prototype/games/
     - assets/prototype/games/gomoku/
+    - assets/prototype/games/reversi/
     - assets/achievements/
     - assets/interaction/
     - assets/navigation/

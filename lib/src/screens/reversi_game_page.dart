@@ -20,6 +20,7 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
   ReversiEngine? _engine;
   ReversiMove? _lastMove;
   bool _resolving = false;
+  bool _timerPaused = false;
 
   @override
   void initState() {
@@ -53,7 +54,23 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
       _engine = null;
       _lastMove = null;
       _resolving = false;
+      _timerPaused = false;
     });
+  }
+
+  void _setTimerPaused(bool paused) {
+    if (!mounted || _timerPaused == paused) return;
+    setState(() => _timerPaused = paused);
+  }
+
+  Future<void> _closeGame() async {
+    final engine = _engine;
+    if (_runtime.session != null && !_runtime.completed) {
+      await _runtime.abort('closed', engine?.summaryJson() ?? const {});
+    }
+    _runtime.clearPresentation();
+    if (!mounted) return;
+    _clearActiveRound();
   }
 
   Future<void> _start() async {
@@ -77,6 +94,7 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
         );
         _lastMove = null;
         _resolving = false;
+        _timerPaused = false;
       });
     }
   }
@@ -228,66 +246,992 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
   @override
   Widget build(BuildContext context) {
     final engine = _engine;
-    return _NativeGameExperienceScaffold(
-      runtime: _runtime,
-      game: widget.game,
-      subtitle: engine == null
-          ? '和 ${_runtime.agentName} 翻一盘黑白棋'
-          : engine.isFinished
-          ? _reversiResultText(engine, _runtime.agentName)
-          : _runtime.aiThinking
-          ? '${_runtime.agentName} 正在算角和机动性'
-          : _resolving
-          ? '棋子正在翻面'
-          : engine.turn == ReversiActor.user
-          ? '你执黑，落在发光的位置'
-          : '${_runtime.agentName} 执白，轮到对方落子',
-      onStart: _start,
-      onActiveRoundDeleted: _clearActiveRound,
-      restartDisabled: _runtime.aiThinking || _resolving,
-      userTurnActive:
-          engine != null &&
-          !engine.isFinished &&
-          engine.turn == ReversiActor.user &&
-          !_runtime.aiThinking &&
-          !_resolving,
-      turnToken: engine == null
-          ? 'idle'
-          : '${engine.moveCount}:${engine.turn.name}',
-      turnLabel: _runtime.aiThinking ? '${_runtime.agentName} 在落子' : '轮到你',
-      moveCount: engine?.moveCount ?? 0,
-      currentSummary: () => _engine?.summaryJson() ?? const {},
-      activeChild: engine == null
-          ? null
-          : Column(
-              children: [
-                _NativeScoreHeader(
-                  left: '黑 · 你  ${engine.userCount}',
-                  center: '${engine.moves.length} 手',
-                  right: '白 · ${_runtime.agentName}  ${engine.agentCount}',
-                ),
-                const SizedBox(height: 10),
-                AspectRatio(
-                  aspectRatio: 1,
-                  child: _ReversiBoard(
-                    engine: engine,
-                    lastMove: _lastMove,
-                    thinking: _runtime.aiThinking,
-                    enabled:
-                        engine.turn == ReversiActor.user &&
-                        !_runtime.aiThinking &&
-                        !_resolving &&
-                        !engine.isFinished,
-                    onTap: _userPlay,
+    if (engine == null) {
+      return _ReversiHome(
+        rounds: _runtime.rounds,
+        starting: _runtime.starting,
+        error: _runtime.error,
+        onStart: _start,
+        onExit: () => Navigator.of(context).maybePop(),
+      );
+    }
+    return PopScope(
+      canPop: false,
+      child: _ReversiGameScreen(
+        engine: engine,
+        lastMove: _lastMove,
+        agentName: _runtime.agentName,
+        userName: widget.authSession.userFacingName,
+        agentAvatarUrl: widget.authSession.agentAvatarUrl,
+        userAvatarUrl: widget.authSession.userAvatarUrl,
+        startedAt: _runtime.session?.startedAt,
+        aiThinking: _runtime.aiThinking,
+        resolving: _resolving,
+        starting: _runtime.starting,
+        timerPaused: _timerPaused,
+        enabled:
+            engine.turn == ReversiActor.user &&
+            !_runtime.aiThinking &&
+            !_resolving &&
+            !_timerPaused &&
+            !engine.isFinished,
+        onTap: _userPlay,
+        onRestart: _start,
+        onExit: _closeGame,
+        onTimerPauseChanged: _setTimerPaused,
+      ),
+    );
+  }
+}
+
+const String _reversiAsset = 'assets/prototype/games/reversi/';
+
+class _ReversiHome extends StatelessWidget {
+  const _ReversiHome({
+    required this.rounds,
+    required this.starting,
+    required this.error,
+    required this.onStart,
+    required this.onExit,
+  });
+
+  final List<GameSession> rounds;
+  final bool starting;
+  final String? error;
+  final Future<void> Function() onStart;
+  final VoidCallback onExit;
+
+  @override
+  Widget build(BuildContext context) {
+    final summaries = rounds.map(_GameRoundSummary.fromSession).toList();
+    final total = summaries.length;
+    final wins = summaries.where((round) => round.isWin).length;
+    final rate = total == 0 ? 0 : (wins / total * 100).round();
+    final seconds = summaries.fold<int>(
+      0,
+      (sum, round) => sum + (round.durationSeconds ?? 0),
+    );
+    final values = ['$total', '$wins', '$rate%', _formatDuration(seconds)];
+    final labels = [
+      '${_reversiAsset}stat_label_total.png',
+      '${_reversiAsset}stat_label_wins.png',
+      '${_reversiAsset}stat_label_rate.png',
+      '${_reversiAsset}stat_label_time.png',
+    ];
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF69B9EE),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final height = constraints.maxHeight;
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: _GomokuBreathingMotion(
+                  duration: const Duration(milliseconds: 10000),
+                  scaleAmount: 0.004,
+                  child: Image.asset(
+                    '${_reversiAsset}home_bg.png',
+                    fit: BoxFit.cover,
                   ),
                 ),
-                const SizedBox(height: 11),
-                _ReversiPositionStrip(
+              ),
+              Positioned(
+                left: width * (46 / 393),
+                top: height * (129 / 852),
+                width: width * (300 / 393),
+                child: _GomokuBreathingMotion(
+                  duration: const Duration(milliseconds: 5000),
+                  scaleAmount: 0.008,
+                  translateY: 2,
+                  phase: 0.3,
+                  child: Image.asset(
+                    '${_reversiAsset}home_logo.png',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+              Positioned(
+                left: width * (36 / 393),
+                top: height * (313 / 852),
+                width: width * (321 / 393),
+                child: _GomokuBreathingMotion(
+                  duration: const Duration(milliseconds: 6200),
+                  scaleAmount: 0.005,
+                  translateY: 1.5,
+                  phase: 0.65,
+                  child: Image.asset(
+                    '${_reversiAsset}home_board.png',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+              if (error != null)
+                Positioned(
+                  left: width * 0.08,
+                  right: width * 0.08,
+                  top: height * 0.60,
+                  child: _GomokuNotice(text: error!, isError: true),
+                ),
+              Positioned(
+                left: width * (30 / 393),
+                top: height * (526 / 852),
+                width: width * (150 / 393),
+                child: _ReversiImageButton(
+                  base: '${_reversiAsset}home_btn_exit.png',
+                  textAsset: '${_reversiAsset}home_btn_exit_text.png',
+                  aspectRatio: 450 / 186,
+                  enabled: !starting,
+                  onTap: onExit,
+                ),
+              ),
+              Positioned(
+                left: width * (203 / 393),
+                top: height * (526 / 852),
+                width: width * (150 / 393),
+                child: _ReversiImageButton(
+                  base: '${_reversiAsset}home_btn_start.png',
+                  textAsset: '${_reversiAsset}home_btn_start_text.png',
+                  aspectRatio: 450 / 186,
+                  loading: starting,
+                  enabled: !starting,
+                  onTap: () => unawaited(onStart()),
+                ),
+              ),
+              for (var index = 0; index < 4; index += 1)
+                Positioned(
+                  left: width * ((5 + index * 98) / 393),
+                  top: height * (673 / 852),
+                  width: width * (90 / 393),
+                  child: _ReversiHomeStatCard(
+                    labelAsset: labels[index],
+                    value: values[index],
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  String _formatDuration(int seconds) {
+    if (seconds <= 0) return '0m';
+    if (seconds >= 3600) {
+      final hours = seconds / 3600;
+      final text = hours == hours.truncateToDouble()
+          ? hours.round().toString()
+          : hours.toStringAsFixed(1);
+      return '${text}H';
+    }
+    return '${(seconds / 60).ceil()}m';
+  }
+}
+
+class _ReversiHomeStatCard extends StatelessWidget {
+  const _ReversiHomeStatCard({required this.labelAsset, required this.value});
+
+  final String labelAsset;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 270 / 342,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final height = constraints.maxHeight;
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: Image.asset(
+                  '${_reversiAsset}home_stat_card.png',
+                  fit: BoxFit.fill,
+                ),
+              ),
+              Positioned(
+                left: width * 0.13,
+                right: width * 0.13,
+                top: height * (41 / 114),
+                height: height * (19 / 114),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Image.asset(labelAsset),
+                ),
+              ),
+              Positioned(
+                left: width * 0.12,
+                right: width * 0.12,
+                top: height * (67 / 114),
+                height: height * (26 / 114),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    value,
+                    style: const TextStyle(
+                      color: Color(0xFF502A2A),
+                      fontSize: 20,
+                      height: 1,
+                      fontWeight: FontWeight.w900,
+                      decoration: TextDecoration.none,
+                      shadows: [
+                        Shadow(
+                          color: Color(0x40000000),
+                          offset: Offset(1, 1),
+                          blurRadius: 1,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ReversiImageButton extends StatefulWidget {
+  const _ReversiImageButton({
+    required this.base,
+    required this.textAsset,
+    required this.aspectRatio,
+    required this.onTap,
+    this.textWidthFactor = 0.74,
+    this.textAlignment = Alignment.center,
+    this.enabled = true,
+    this.loading = false,
+  });
+
+  final String base;
+  final String textAsset;
+  final double aspectRatio;
+  final VoidCallback onTap;
+  final double textWidthFactor;
+  final Alignment textAlignment;
+  final bool enabled;
+  final bool loading;
+
+  @override
+  State<_ReversiImageButton> createState() => _ReversiImageButtonState();
+}
+
+class _ReversiImageButtonState extends State<_ReversiImageButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.enabled && !widget.loading;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
+      onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
+      onTapUp: enabled
+          ? (_) {
+              setState(() => _pressed = false);
+              widget.onTap();
+            }
+          : null,
+      child: AnimatedScale(
+        scale: _pressed ? 0.96 : 1,
+        duration: const Duration(milliseconds: 100),
+        child: Opacity(
+          opacity: enabled ? 1 : 0.72,
+          child: AspectRatio(
+            aspectRatio: widget.aspectRatio,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Positioned.fill(
+                  child: Image.asset(widget.base, fit: BoxFit.fill),
+                ),
+                if (widget.loading)
+                  const CupertinoActivityIndicator(color: Colors.white)
+                else
+                  Align(
+                    alignment: widget.textAlignment,
+                    child: FractionallySizedBox(
+                      widthFactor: widget.textWidthFactor,
+                      heightFactor: 0.62,
+                      child: Image.asset(widget.textAsset, fit: BoxFit.contain),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReversiGameScreen extends StatelessWidget {
+  const _ReversiGameScreen({
+    required this.engine,
+    required this.lastMove,
+    required this.agentName,
+    required this.userName,
+    required this.agentAvatarUrl,
+    required this.userAvatarUrl,
+    required this.startedAt,
+    required this.aiThinking,
+    required this.resolving,
+    required this.starting,
+    required this.timerPaused,
+    required this.enabled,
+    required this.onTap,
+    required this.onRestart,
+    required this.onExit,
+    required this.onTimerPauseChanged,
+  });
+
+  final ReversiEngine engine;
+  final ReversiMove? lastMove;
+  final String agentName;
+  final String userName;
+  final String? agentAvatarUrl;
+  final String? userAvatarUrl;
+  final DateTime? startedAt;
+  final bool aiThinking;
+  final bool resolving;
+  final bool starting;
+  final bool timerPaused;
+  final bool enabled;
+  final ValueChanged<int> onTap;
+  final Future<void> Function() onRestart;
+  final VoidCallback onExit;
+  final ValueChanged<bool> onTimerPauseChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final userTurn =
+        !engine.isFinished &&
+        engine.turn == ReversiActor.user &&
+        !aiThinking &&
+        !resolving;
+    final agentTurn =
+        !engine.isFinished && (engine.turn == ReversiActor.agent || aiThinking);
+    return Scaffold(
+      backgroundColor: const Color(0xFF85D3EB),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final height = constraints.maxHeight;
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: _GomokuBreathingMotion(
+                  duration: const Duration(milliseconds: 10000),
+                  scaleAmount: 0.005,
+                  phase: 0.4,
+                  child: Image.asset(
+                    '${_reversiAsset}game_bg.png',
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+              Positioned(
+                left: width * (50 / 393),
+                top: height * (101 / 852),
+                width: width * (88 / 393),
+                child: _ReversiAvatar(
+                  frameAsset: '${_reversiAsset}game_avatar_frame_user.png',
+                  imageUrl: userAvatarUrl,
+                  fallback: userName,
+                  active: userTurn,
+                  glowColor: const Color(0xFF49DFFF),
+                ),
+              ),
+              Positioned(
+                left: width * (283 / 393),
+                top: height * (101 / 852),
+                width: width * (88 / 393),
+                child: _ReversiAvatar(
+                  frameAsset: '${_reversiAsset}game_avatar_frame_agent.png',
+                  imageUrl: agentAvatarUrl,
+                  fallback: agentName,
+                  active: agentTurn,
+                  glowColor: const Color(0xFFFFC94D),
+                ),
+              ),
+              Positioned(
+                left: width * (44 / 393),
+                top: height * (192 / 852),
+                width: width * (100 / 393),
+                child: _ReversiNamePlate(
+                  asset: '${_reversiAsset}game_name_user.png',
+                  name: userName,
+                ),
+              ),
+              Positioned(
+                left: width * (277 / 393),
+                top: height * (192 / 852),
+                width: width * (100 / 393),
+                child: _ReversiNamePlate(
+                  asset: '${_reversiAsset}game_name_agent.png',
+                  name: agentName,
+                ),
+              ),
+              Positioned(
+                left: width * (177 / 393),
+                top: height * (129 / 852),
+                width: width * (74 / 393),
+                child: _GomokuBreathingMotion(
+                  duration: const Duration(milliseconds: 3600),
+                  scaleAmount: 0.012,
+                  translateY: 1.5,
+                  phase: 0.25,
+                  child: Image.asset(
+                    '${_reversiAsset}game_hourglass.png',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+              Positioned(
+                left: width * (176 / 393),
+                top: height * (214 / 852),
+                width: width * (70 / 393),
+                child: _ReversiRoundTimer(
+                  startedAt: startedAt,
+                  paused: timerPaused || engine.isFinished,
+                ),
+              ),
+              Positioned(
+                left: width * (17 / 393),
+                top: height * (274 / 852),
+                width: width * (368 / 393),
+                child: AspectRatio(
+                  aspectRatio: 368 / 374,
+                  child: _ReversiBoard(
+                    engine: engine,
+                    lastMove: lastMove,
+                    thinking: aiThinking,
+                    enabled: enabled,
+                    onTap: onTap,
+                  ),
+                ),
+              ),
+              Positioned(
+                left: width * (27 / 393),
+                top: height * (666 / 852),
+                width: width * (100 / 393),
+                child: _ReversiImageButton(
+                  base: '${_reversiAsset}game_btn_exit.png',
+                  textAsset: '${_reversiAsset}game_btn_exit_text.png',
+                  aspectRatio: 300 / 165,
+                  textWidthFactor: 0.46,
+                  textAlignment: const Alignment(0, 0.10),
+                  onTap: () => unawaited(_confirmExit(context)),
+                ),
+              ),
+              Positioned(
+                left: width * (144 / 393),
+                top: height * (666 / 852),
+                width: width * (100 / 393),
+                child: _ReversiImageButton(
+                  base: '${_reversiAsset}game_btn_pause.png',
+                  textAsset: '${_reversiAsset}game_btn_pause_text.png',
+                  aspectRatio: 300 / 165,
+                  textWidthFactor: 0.46,
+                  textAlignment: const Alignment(0, 0.10),
+                  onTap: () => unawaited(_showPause(context)),
+                ),
+              ),
+              if (engine.isFinished)
+                _ReversiFinishOverlay(
                   engine: engine,
-                  agentName: _runtime.agentName,
+                  agentName: agentName,
+                  restarting: starting,
+                  onRestart: onRestart,
+                  onExit: onExit,
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _confirmExit(BuildContext context) async {
+    onTimerPauseChanged(true);
+    await _showReversiModal(
+      context,
+      title: '退出对局',
+      message: '当前棋局还没结束，退出后本局进度会清空。',
+      actions: (dialogContext) => [
+        Expanded(
+          child: _ReversiModalButton(
+            asset: '${_reversiAsset}game_btn_pause.png',
+            label: '继续',
+            onTap: () => Navigator.of(dialogContext).pop(),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _ReversiModalButton(
+            asset: '${_reversiAsset}game_btn_exit.png',
+            label: '退出',
+            onTap: () {
+              Navigator.of(dialogContext).pop();
+              onExit();
+            },
+          ),
+        ),
+      ],
+    );
+    onTimerPauseChanged(false);
+  }
+
+  Future<void> _showPause(BuildContext context) async {
+    onTimerPauseChanged(true);
+    await _showReversiModal(
+      context,
+      title: '游戏暂停',
+      message: '要继续当前棋局，还是重新开一盘？',
+      actions: (dialogContext) => [
+        Expanded(
+          child: _ReversiModalButton(
+            asset: '${_reversiAsset}game_btn_pause.png',
+            label: '继续',
+            onTap: () => Navigator.of(dialogContext).pop(),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _ReversiModalButton(
+            asset: '${_reversiAsset}game_btn_exit.png',
+            label: '重新开局',
+            onTap: () {
+              Navigator.of(dialogContext).pop();
+              unawaited(onRestart());
+            },
+          ),
+        ),
+      ],
+    );
+    onTimerPauseChanged(false);
+  }
+}
+
+class _ReversiAvatar extends StatelessWidget {
+  const _ReversiAvatar({
+    required this.frameAsset,
+    required this.imageUrl,
+    required this.fallback,
+    required this.active,
+    required this.glowColor,
+  });
+
+  final String frameAsset;
+  final String? imageUrl;
+  final String fallback;
+  final bool active;
+  final Color glowColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 88 / 90,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final height = constraints.maxHeight;
+          final inner = width * (80 / 88);
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                left: width * (4 / 88),
+                top: height * (8 / 90),
+                width: inner,
+                height: inner,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: active
+                        ? [
+                            BoxShadow(
+                              color: glowColor.withValues(alpha: 0.75),
+                              blurRadius: 16,
+                              spreadRadius: 3,
+                            ),
+                          ]
+                        : const [],
+                  ),
+                  child: ClipOval(
+                    child: _Avatar(
+                      size: inner,
+                      label: fallback.trim().isEmpty
+                          ? '伴'
+                          : fallback.trim().characters.first,
+                      imageUrl: imageUrl,
+                      gradient: const [Color(0xFFE8F3FF), Color(0xFFD7E9FF)],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(child: Image.asset(frameAsset, fit: BoxFit.fill)),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ReversiNamePlate extends StatelessWidget {
+  const _ReversiNamePlate({required this.asset, required this.name});
+
+  final String asset;
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 300 / 120,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final height = constraints.maxHeight;
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fill(child: Image.asset(asset, fit: BoxFit.fill)),
+              Positioned(
+                left: -width * 0.15,
+                top: height * 0.20,
+                width: width * 1.30,
+                height: height * 0.72,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: _ReversiOutlinedText(text: name, fontSize: 15),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ReversiRoundTimer extends StatefulWidget {
+  const _ReversiRoundTimer({required this.startedAt, required this.paused});
+
+  final DateTime? startedAt;
+  final bool paused;
+
+  @override
+  State<_ReversiRoundTimer> createState() => _ReversiRoundTimerState();
+}
+
+class _ReversiRoundTimerState extends State<_ReversiRoundTimer> {
+  Timer? _timer;
+  late DateTime _fallbackStart;
+  DateTime? _pausedAt;
+  Duration _pausedDuration = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _fallbackStart = DateTime.now();
+    if (widget.paused) _pausedAt = DateTime.now();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && !widget.paused) setState(() {});
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReversiRoundTimer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.startedAt != widget.startedAt) {
+      _fallbackStart = DateTime.now();
+      _pausedDuration = Duration.zero;
+      _pausedAt = widget.paused ? DateTime.now() : null;
+      return;
+    }
+    if (!oldWidget.paused && widget.paused) {
+      _pausedAt = DateTime.now();
+    } else if (oldWidget.paused && !widget.paused && _pausedAt != null) {
+      _pausedDuration += DateTime.now().difference(_pausedAt!);
+      _pausedAt = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final start = widget.startedAt ?? _fallbackStart;
+    final now = _pausedAt ?? DateTime.now();
+    final elapsed = (now.difference(start) - _pausedDuration).inSeconds.clamp(
+      0,
+      5999,
+    );
+    final minutes = elapsed ~/ 60;
+    final seconds = elapsed % 60;
+    return AspectRatio(
+      aspectRatio: 210 / 75,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned.fill(
+            child: Image.asset(
+              '${_reversiAsset}game_timer_plate.png',
+              fit: BoxFit.fill,
+            ),
+          ),
+          _ReversiOutlinedText(
+            text: '$minutes:${seconds.toString().padLeft(2, '0')}',
+            fontSize: 15,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReversiOutlinedText extends StatelessWidget {
+  const _ReversiOutlinedText({required this.text, required this.fontSize});
+
+  final String text;
+  final double fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Text(
+          text,
+          style: TextStyle(
+            fontSize: fontSize,
+            height: 1,
+            fontWeight: FontWeight.w900,
+            decoration: TextDecoration.none,
+            foreground: Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 2.2
+              ..strokeJoin = StrokeJoin.round
+              ..color = Colors.black,
+          ),
+        ),
+        Text(
+          text,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: fontSize,
+            height: 1,
+            fontWeight: FontWeight.w900,
+            decoration: TextDecoration.none,
+            shadows: const [
+              Shadow(
+                color: Color(0x55000000),
+                offset: Offset(1, 1),
+                blurRadius: 1,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReversiModalButton extends StatelessWidget {
+  const _ReversiModalButton({
+    required this.asset,
+    required this.label,
+    required this.onTap,
+  });
+
+  final String asset;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: AspectRatio(
+        aspectRatio: 300 / 165,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Positioned.fill(child: Image.asset(asset, fit: BoxFit.fill)),
+            _ReversiOutlinedText(text: label, fontSize: 17),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _showReversiModal(
+  BuildContext context, {
+  required String title,
+  required String message,
+  required List<Widget> Function(BuildContext dialogContext) actions,
+}) {
+  return showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: '关闭',
+    barrierColor: Colors.black.withValues(alpha: 0.5),
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (dialogContext, _, __) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 46),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFFFF5D8), Color(0xFFE9C695)],
+              ),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: const Color(0xFF8A4B27), width: 3),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
                 ),
               ],
             ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF502A2A),
+                    fontSize: 22,
+                    height: 1,
+                    fontWeight: FontWeight.w900,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF75513B),
+                    fontSize: 13,
+                    height: 1.4,
+                    fontWeight: FontWeight.w600,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(children: actions(dialogContext)),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+    transitionBuilder: (_, animation, __, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutBack,
+        reverseCurve: Curves.easeIn,
+      );
+      return FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.88, end: 1).animate(curved),
+          child: child,
+        ),
+      );
+    },
+  );
+}
+
+class _ReversiFinishOverlay extends StatelessWidget {
+  const _ReversiFinishOverlay({
+    required this.engine,
+    required this.agentName,
+    required this.restarting,
+    required this.onRestart,
+    required this.onExit,
+  });
+
+  final ReversiEngine engine;
+  final String agentName;
+  final bool restarting;
+  final Future<void> Function() onRestart;
+  final VoidCallback onExit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: ColoredBox(
+        color: Colors.black.withValues(alpha: 0.45),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 46),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFF5D8), Color(0xFFE9C695)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: const Color(0xFF8A4B27), width: 3),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _reversiResultText(engine, agentName),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFF502A2A),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _ReversiModalButton(
+                          asset: '${_reversiAsset}game_btn_exit.png',
+                          label: '退出',
+                          onTap: onExit,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _ReversiModalButton(
+                          asset: '${_reversiAsset}game_btn_pause.png',
+                          label: restarting ? '...' : '再来一盘',
+                          onTap: () => unawaited(onRestart()),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -301,134 +1245,6 @@ String _reversiResultText(ReversiEngine engine, String agentName) =>
       ReversiStatus.draw => '这一盘 ${engine.userCount}:${engine.agentCount} 平分秋色',
       ReversiStatus.playing => '棋局进行中',
     };
-
-class _ReversiPositionStrip extends StatelessWidget {
-  const _ReversiPositionStrip({required this.engine, required this.agentName});
-
-  final ReversiEngine engine;
-  final String agentName;
-
-  @override
-  Widget build(BuildContext context) {
-    final occupied = math.max(1, engine.userCount + engine.agentCount);
-    final blackShare = (engine.userCount / occupied).clamp(0.06, 0.94);
-    final analysis = engine.analysisJson();
-    final userMobility = analysis['user_mobility'] as int;
-    final agentMobility = analysis['agent_mobility'] as int;
-    final userCorners = analysis['user_corner_count'] as int;
-    final agentCorners = analysis['agent_corner_count'] as int;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
-      decoration: BoxDecoration(
-        color: AppColors.surface.withValues(alpha: 0.68),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.text.withValues(alpha: 0.07)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Text(
-                engine.isFinished ? '最终盘面' : '黑白势力',
-                style: TextStyle(
-                  color: AppColors.text.withValues(alpha: 0.58),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '${engine.userCount} : ${engine.agentCount}',
-                style: TextStyle(
-                  color: AppColors.text,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 7),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: SizedBox(
-              height: 8,
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: (blackShare * 1000).round(),
-                    child: const ColoredBox(color: Color(0xFF14191D)),
-                  ),
-                  Expanded(
-                    flex: ((1 - blackShare) * 1000).round(),
-                    child: const ColoredBox(color: Color(0xFFF2EBD9)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _ReversiStatChip(
-                icon: CupertinoIcons.scope,
-                text: '可下 $userMobility : $agentMobility',
-              ),
-              const SizedBox(width: 7),
-              _ReversiStatChip(
-                icon: CupertinoIcons.square_grid_2x2,
-                text: '角落 $userCorners : $agentCorners',
-              ),
-              const Spacer(),
-              Text(
-                engine.isFinished
-                    ? _reversiResultText(engine, agentName)
-                    : '空位 ${engine.emptyCount}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: AppColors.text.withValues(alpha: 0.45),
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ReversiStatChip extends StatelessWidget {
-  const _ReversiStatChip({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
-    decoration: BoxDecoration(
-      color: const Color(0xFF13715D).withValues(alpha: 0.1),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 10, color: const Color(0xFF13715D)),
-        const SizedBox(width: 4),
-        Text(
-          text,
-          style: const TextStyle(
-            color: Color(0xFF13715D),
-            fontSize: 9,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ],
-    ),
-  );
-}
 
 class _ReversiBoard extends StatefulWidget {
   const _ReversiBoard({
@@ -497,8 +1313,7 @@ class _ReversiBoardState extends State<_ReversiBoard>
       child: RepaintBoundary(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final side = math.min(constraints.maxWidth, constraints.maxHeight);
-            final size = Size.square(side);
+            final size = constraints.biggest;
             final geometry = _ReversiBoardGeometry(size);
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -515,26 +1330,81 @@ class _ReversiBoardState extends State<_ReversiBoard>
                   _moveController,
                   _ambientController,
                 ]),
-                builder: (context, _) => CustomPaint(
-                  size: size,
-                  painter: _ReversiBoardPainter(
-                    board: widget.engine.board,
-                    legalMoves: legal,
-                    currentActor: widget.engine.turn,
-                    lastMove: widget.lastMove,
-                    moveProgress: Curves.easeInOutCubic.transform(
-                      _moveController.value,
-                    ),
-                    ambientProgress: _ambientController.value,
-                    thinking: widget.thinking,
-                    geometry: geometry,
-                    darkMode: AppColors.isDark(context),
-                  ),
-                ),
+                builder: (context, _) {
+                  final moveProgress = Curves.easeInOutCubic.transform(
+                    _moveController.value,
+                  );
+                  final pulse = 0.55 + _ambientController.value * 0.45;
+                  return Stack(
+                    children: [
+                      Positioned.fill(
+                        child: Image.asset(
+                          '${_reversiAsset}game_board.png',
+                          fit: BoxFit.fill,
+                        ),
+                      ),
+                      for (final index in legal.keys)
+                        _ReversiLegalHint(
+                          rect: geometry.cellRect(index),
+                          pulse: pulse,
+                        ),
+                      for (
+                        var index = 0;
+                        index < widget.engine.board.length;
+                        index += 1
+                      )
+                        if (widget.engine.board[index] != 0)
+                          _buildDisc(index, geometry, moveProgress),
+                    ],
+                  );
+                },
               ),
             );
           },
         ),
+      ),
+    );
+  }
+
+  Widget _buildDisc(
+    int index,
+    _ReversiBoardGeometry geometry,
+    double moveProgress,
+  ) {
+    var value = widget.engine.board[index];
+    var scaleX = 1.0;
+    var scaleY = 1.0;
+    var lift = 0.0;
+    final move = widget.lastMove;
+    if (move?.point.index == index && moveProgress < 1) {
+      final progress = Curves.elasticOut.transform(
+        (moveProgress / 0.56).clamp(0.0, 1.0),
+      );
+      scaleX = progress;
+      scaleY = progress;
+    } else if (move != null &&
+        move.flipped.any((point) => point.index == index) &&
+        moveProgress < 0.88) {
+      final local = ((moveProgress - 0.12) / 0.68).clamp(0.0, 1.0);
+      value = local < 0.5 ? move.boardBefore[index] : move.boardAfter[index];
+      scaleX = math.cos(local * math.pi).abs().clamp(0.045, 1.0);
+      scaleY = 1 + math.sin(local * math.pi) * 0.08;
+      lift = math.sin(local * math.pi) * geometry.discSize * 0.12;
+    }
+    final center = geometry.cellRect(index).center;
+    final size = geometry.discSize;
+    final asset = value == 1
+        ? '${_reversiAsset}game_disc_black.png'
+        : '${_reversiAsset}game_disc_white.png';
+    return Positioned(
+      left: center.dx - size / 2,
+      top: center.dy - size / 2 - lift,
+      width: size,
+      height: size,
+      child: Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.diagonal3Values(scaleX, scaleY, 1),
+        child: Image.asset(asset, fit: BoxFit.contain),
       ),
     );
   }
@@ -545,309 +1415,74 @@ class _ReversiBoardGeometry {
 
   final Size size;
 
-  double get inset => size.width * 0.045;
-  double get cell => (size.width - inset * 2) / ReversiEngine.size;
-  Rect get gridRect => Rect.fromLTWH(
-    inset,
-    inset,
-    cell * ReversiEngine.size,
-    cell * ReversiEngine.size,
-  );
+  static const List<double> _sourceX = [
+    87,
+    204,
+    321,
+    435,
+    553,
+    667,
+    784,
+    898,
+    1017,
+  ];
+  static const List<double> _sourceY = [
+    84,
+    196,
+    315,
+    431,
+    551,
+    667,
+    788,
+    903,
+    1022,
+  ];
 
-  Rect cellRect(int index) => Rect.fromLTWH(
-    inset + (index % ReversiEngine.size) * cell,
-    inset + (index ~/ ReversiEngine.size) * cell,
-    cell,
-    cell,
-  );
+  double _x(int index) => size.width * (_sourceX[index] / 1104);
+  double _y(int index) => size.height * (_sourceY[index] / 1122);
+  double get discSize => size.width * (33 / 368);
+
+  Rect cellRect(int index) {
+    final row = index ~/ ReversiEngine.size;
+    final col = index % ReversiEngine.size;
+    return Rect.fromLTRB(_x(col), _y(row), _x(col + 1), _y(row + 1));
+  }
 
   int? indexAt(Offset position) {
-    if (!gridRect.contains(position)) return null;
-    final col = ((position.dx - inset) / cell).floor();
-    final row = ((position.dy - inset) / cell).floor();
-    if (row < 0 ||
-        row >= ReversiEngine.size ||
-        col < 0 ||
-        col >= ReversiEngine.size) {
-      return null;
+    for (var row = 0; row < ReversiEngine.size; row += 1) {
+      for (var col = 0; col < ReversiEngine.size; col += 1) {
+        final index = row * ReversiEngine.size + col;
+        if (cellRect(index).contains(position)) return index;
+      }
     }
-    return row * ReversiEngine.size + col;
+    return null;
   }
 }
 
-class _ReversiBoardPainter extends CustomPainter {
-  const _ReversiBoardPainter({
-    required this.board,
-    required this.legalMoves,
-    required this.currentActor,
-    required this.lastMove,
-    required this.moveProgress,
-    required this.ambientProgress,
-    required this.thinking,
-    required this.geometry,
-    required this.darkMode,
-  });
+class _ReversiLegalHint extends StatelessWidget {
+  const _ReversiLegalHint({required this.rect, required this.pulse});
 
-  final List<int> board;
-  final Map<int, List<int>> legalMoves;
-  final ReversiActor currentActor;
-  final ReversiMove? lastMove;
-  final double moveProgress;
-  final double ambientProgress;
-  final bool thinking;
-  final _ReversiBoardGeometry geometry;
-  final bool darkMode;
+  final Rect rect;
+  final double pulse;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final bounds = Offset.zero & size;
-    final radius = Radius.circular(size.width * 0.055);
-    final shape = RRect.fromRectAndRadius(bounds, radius);
-    canvas.save();
-    canvas.clipRRect(shape);
-    canvas.drawRRect(
-      shape,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0E594B), Color(0xFF073D35), Color(0xFF0B4A3D)],
-          stops: [0, 0.58, 1],
-        ).createShader(bounds),
-    );
-    _paintFelt(canvas, bounds);
-    final grid = geometry.gridRect;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(grid.inflate(size.width * 0.012), radius * 0.55),
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFCCA765), Color(0xFF76552D)],
-        ).createShader(grid),
-    );
-    canvas.drawRect(grid, Paint()..color = const Color(0xFF126B56));
-
-    for (var index = 0; index < board.length; index++) {
-      final rect = geometry.cellRect(index);
-      final row = index ~/ ReversiEngine.size;
-      final col = index % ReversiEngine.size;
-      canvas.drawRect(
-        rect.deflate(0.45),
-        Paint()
-          ..color = (row + col).isEven
-              ? const Color(0xFF16745E)
-              : const Color(0xFF126A57),
-      );
-      canvas.drawRect(
-        rect,
-        Paint()
-          ..color = const Color(0xFF073B32).withValues(alpha: 0.62)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(0.65, geometry.cell * 0.016),
-      );
-    }
-
-    for (final index in [27, 28, 35, 36]) {
-      canvas.drawCircle(
-        geometry.cellRect(index).center,
-        geometry.cell * 0.035,
-        Paint()..color = const Color(0xFFD9BD7C).withValues(alpha: 0.7),
-      );
-    }
-
-    final flipping =
-        lastMove?.flipped.map((point) => point.index).toSet() ?? const <int>{};
-    for (var index = 0; index < board.length; index++) {
-      final current = board[index];
-      if (current == 0) continue;
-      final rect = geometry.cellRect(index);
-      if (lastMove?.point.index == index && moveProgress < 1) {
-        final value = Curves.elasticOut.transform(
-          (moveProgress / 0.56).clamp(0.0, 1.0),
-        );
-        _paintDisc(canvas, rect, current, scaleX: value, scaleY: value);
-        continue;
-      }
-      if (flipping.contains(index) && moveProgress < 0.88) {
-        final local = ((moveProgress - 0.12) / 0.68).clamp(0.0, 1.0);
-        final before = lastMove!.boardBefore[index];
-        final after = lastMove!.boardAfter[index];
-        final scaleX = math.cos(local * math.pi).abs().clamp(0.045, 1.0);
-        _paintDisc(
-          canvas,
-          rect,
-          local < 0.5 ? before : after,
-          scaleX: scaleX,
-          scaleY: 1 + math.sin(local * math.pi) * 0.08,
-          lift: math.sin(local * math.pi) * geometry.cell * 0.08,
-        );
-        continue;
-      }
-      _paintDisc(canvas, rect, current);
-    }
-
-    final pulse = 0.55 + ambientProgress * 0.45;
-    for (final entry in legalMoves.entries) {
-      final center = geometry.cellRect(entry.key).center;
-      final actorValue = currentActor == ReversiActor.user ? 1 : -1;
-      canvas.drawCircle(
-        center,
-        geometry.cell * (0.19 + pulse * 0.025),
-        Paint()
-          ..color = actorValue == 1
-              ? Colors.black.withValues(alpha: 0.2 + pulse * 0.12)
-              : Colors.white.withValues(alpha: 0.18 + pulse * 0.12),
-      );
-      canvas.drawCircle(
-        center,
-        geometry.cell * 0.11,
-        Paint()
-          ..color = const Color(0xFFFFD980).withValues(alpha: 0.78)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(1.1, geometry.cell * 0.035),
-      );
-      if (entry.value.length >= 4) {
-        canvas.drawCircle(
-          center,
-          geometry.cell * 0.055,
-          Paint()..color = const Color(0xFFFFE7AE),
-        );
-      }
-    }
-
-    if (lastMove != null) {
-      final marker = geometry.cellRect(lastMove!.point.index).center;
-      canvas.drawCircle(
-        marker,
-        geometry.cell * 0.08,
-        Paint()
-          ..color = const Color(0xFFFFD36B)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(1, geometry.cell * 0.028),
-      );
-      if (moveProgress < 1) _paintFlipTrails(canvas, lastMove!, moveProgress);
-    }
-    canvas.drawRRect(
-      shape.deflate(1),
-      Paint()
-        ..color = Colors.white.withValues(alpha: darkMode ? 0.13 : 0.22)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2,
-    );
-    canvas.restore();
-  }
-
-  void _paintFelt(Canvas canvas, Rect bounds) {
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.025)
-      ..strokeWidth = 0.7;
-    for (var index = 0; index < 42; index++) {
-      final y = (index * 37 % 101) / 101 * bounds.height;
-      final x = (index * 61 % 97) / 97 * bounds.width;
-      canvas.drawLine(
-        Offset(x, y),
-        Offset(math.min(bounds.right, x + bounds.width * 0.13), y + 0.7),
-        paint,
-      );
-    }
-  }
-
-  void _paintDisc(
-    Canvas canvas,
-    Rect cell,
-    int value, {
-    double scaleX = 1,
-    double scaleY = 1,
-    double lift = 0,
-  }) {
-    if (value == 0) return;
-    final center = cell.center - Offset(0, lift);
-    final radius = geometry.cell * 0.37;
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.scale(scaleX, scaleY);
-    canvas.translate(-center.dx, -center.dy);
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: center + Offset(0, geometry.cell * 0.075),
-        width: radius * 1.82,
-        height: radius * 0.62,
+  Widget build(BuildContext context) {
+    final size = math.min(rect.width, rect.height) * (0.26 + pulse * 0.025);
+    return Positioned(
+      left: rect.center.dx - size / 2,
+      top: rect.center.dy - size / 2,
+      width: size,
+      height: size,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.black.withValues(alpha: 0.18 + pulse * 0.08),
+          border: Border.all(
+            color: const Color(0xFFFFD980).withValues(alpha: 0.82),
+            width: 1.3,
+          ),
+        ),
       ),
-      Paint()..color = Colors.black.withValues(alpha: 0.34),
     );
-    final discRect = Rect.fromCircle(center: center, radius: radius);
-    final colors = value == 1
-        ? const [Color(0xFF555C61), Color(0xFF15191C), Color(0xFF050607)]
-        : const [Color(0xFFFFFFFF), Color(0xFFF0E7D5), Color(0xFFC8BDAA)];
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()
-        ..shader = RadialGradient(
-          center: const Alignment(-0.42, -0.52),
-          radius: 1.08,
-          colors: colors,
-          stops: const [0, 0.52, 1],
-        ).createShader(discRect),
-    );
-    canvas.drawCircle(
-      center,
-      radius * 0.91,
-      Paint()
-        ..color = value == 1
-            ? Colors.white.withValues(alpha: 0.08)
-            : Colors.white.withValues(alpha: 0.45)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(0.7, geometry.cell * 0.018),
-    );
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: center - Offset(radius * 0.2, radius * 0.27),
-        width: radius * 0.62,
-        height: radius * 0.2,
-      ),
-      Paint()..color = Colors.white.withValues(alpha: value == 1 ? 0.13 : 0.52),
-    );
-    canvas.restore();
   }
-
-  void _paintFlipTrails(Canvas canvas, ReversiMove move, double progress) {
-    if (progress < 0.16 || progress > 0.88) return;
-    final fade = math.sin(((progress - 0.16) / 0.72) * math.pi);
-    for (final point in move.flipped) {
-      final center = geometry.cellRect(point.index).center;
-      for (var particle = 0; particle < 3; particle++) {
-        final angle = point.index * 0.43 + particle * math.pi * 2 / 3;
-        final offset =
-            Offset(math.cos(angle), math.sin(angle)) *
-            geometry.cell *
-            (0.23 + progress * 0.12);
-        canvas.drawCircle(
-          center + offset,
-          geometry.cell * 0.032 * fade,
-          Paint()
-            ..color = const Color(0xFFFFD878).withValues(alpha: fade * 0.8),
-        );
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _ReversiBoardPainter oldDelegate) =>
-      !listEquals(oldDelegate.board, board) ||
-      oldDelegate.legalMoves.keys
-          .toSet()
-          .difference(legalMoves.keys.toSet())
-          .isNotEmpty ||
-      legalMoves.keys
-          .toSet()
-          .difference(oldDelegate.legalMoves.keys.toSet())
-          .isNotEmpty ||
-      oldDelegate.lastMove?.number != lastMove?.number ||
-      oldDelegate.moveProgress != moveProgress ||
-      oldDelegate.ambientProgress != ambientProgress ||
-      oldDelegate.thinking != thinking ||
-      oldDelegate.geometry.gridRect != geometry.gridRect ||
-      oldDelegate.darkMode != darkMode;
 }
