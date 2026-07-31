@@ -20,6 +20,7 @@ class _GoGamePageState extends State<_GoGamePage> {
   GoEngine? _engine;
   GoMove? _lastMove;
   bool _resolving = false;
+  bool _timerPaused = false;
 
   @override
   void initState() {
@@ -53,7 +54,26 @@ class _GoGamePageState extends State<_GoGamePage> {
       _engine = null;
       _lastMove = null;
       _resolving = false;
+      _timerPaused = false;
     });
+  }
+
+  Future<void> _closeGame() async {
+    final engine = _engine;
+    if (_runtime.session != null && !_runtime.completed) {
+      await _runtime.abort(
+        _runtime.turnTimeoutVisible ? 'turn_timeout_ended' : 'closed',
+        engine?.summaryJson() ?? const {},
+      );
+    }
+    _runtime.clearPresentation();
+    if (!mounted) return;
+    _clearActiveRound();
+  }
+
+  void _setTimerPaused(bool paused) {
+    if (!mounted || _timerPaused == paused) return;
+    setState(() => _timerPaused = paused);
   }
 
   Future<void> _start() async {
@@ -75,6 +95,7 @@ class _GoGamePageState extends State<_GoGamePage> {
         _engine = GoEngine(aiConfig: GoAiConfig.fromJson(session.engineConfig));
         _lastMove = null;
         _resolving = false;
+        _timerPaused = false;
       });
     }
   }
@@ -93,19 +114,6 @@ class _GoGamePageState extends State<_GoGamePage> {
       return;
     }
     await _playAndReport(index);
-    if (!engine.isFinished) await _agentTurn();
-  }
-
-  Future<void> _userPass() async {
-    final engine = _engine;
-    if (engine == null ||
-        engine.isFinished ||
-        engine.turn != GoActor.user ||
-        _runtime.aiThinking ||
-        _resolving) {
-      return;
-    }
-    await _playAndReport(null);
     if (!engine.isFinished) await _agentTurn();
   }
 
@@ -211,221 +219,51 @@ class _GoGamePageState extends State<_GoGamePage> {
   @override
   Widget build(BuildContext context) {
     final engine = _engine;
-    return _NativeGameExperienceScaffold(
-      runtime: _runtime,
-      game: widget.game,
-      subtitle: engine == null
-          ? '和 ${_runtime.agentName} 下一盘 9 路快棋'
-          : engine.isFinished
-          ? _goResultText(engine, _runtime.agentName)
-          : _runtime.aiThinking
-          ? '${_runtime.agentName} 正在读这一片棋形'
-          : _resolving
-          ? '这一手正在落定'
-          : '你执黑，轮到你落子',
-      onStart: _start,
-      onActiveRoundDeleted: _clearActiveRound,
-      restartDisabled: _runtime.aiThinking || _resolving,
-      userTurnActive:
-          engine != null &&
-          !engine.isFinished &&
-          engine.turn == GoActor.user &&
-          !_runtime.aiThinking &&
-          !_resolving,
-      turnToken: engine == null
-          ? 'idle'
-          : '${engine.moveCount}:${engine.turn.name}',
-      turnLabel: _runtime.aiThinking ? '${_runtime.agentName} 在落子' : '轮到你',
-      moveCount: engine?.moveCount ?? 0,
-      currentSummary: () => _engine?.summaryJson() ?? const {},
-      activeChild: engine == null
-          ? null
-          : Column(
-              children: [
-                _NativeScoreHeader(
-                  left: '黑 · 你  提 ${engine.userCaptures}',
-                  center: '${engine.moves.length} 手',
-                  right: '白 · ${_runtime.agentName}  提 ${engine.agentCaptures}',
-                ),
-                const SizedBox(height: 10),
-                AspectRatio(
-                  aspectRatio: 1,
-                  child: _GoBoard(
-                    engine: engine,
-                    lastMove: _lastMove,
-                    thinking: _runtime.aiThinking,
-                    enabled:
-                        engine.turn == GoActor.user &&
-                        !_runtime.aiThinking &&
-                        !_resolving &&
-                        !engine.isFinished,
-                    onTap: _userPlay,
-                  ),
-                ),
-                const SizedBox(height: 11),
-                _GoPositionStrip(
-                  engine: engine,
-                  agentName: _runtime.agentName,
-                  onPass: _userPass,
-                  passEnabled:
-                      engine.turn == GoActor.user &&
-                      !_runtime.aiThinking &&
-                      !_resolving &&
-                      !engine.isFinished,
-                ),
-              ],
-            ),
-    );
-  }
-}
-
-String _goResultText(GoEngine engine, String agentName) {
-  final score = engine.score;
-  final margin = _goScoreLabel(score.margin);
-  return switch (engine.status) {
-    GoStatus.userWon => '你执黑胜 $margin 目',
-    GoStatus.agentWon => '$agentName 执白胜 $margin 目',
-    GoStatus.draw => '这一盘刚好持平',
-    GoStatus.playing => '棋局进行中',
-  };
-}
-
-String _goScoreLabel(double score) => score == score.roundToDouble()
-    ? score.toInt().toString()
-    : score.toStringAsFixed(1);
-
-class _GoPositionStrip extends StatelessWidget {
-  const _GoPositionStrip({
-    required this.engine,
-    required this.agentName,
-    required this.onPass,
-    required this.passEnabled,
-  });
-
-  final GoEngine engine;
-  final String agentName;
-  final VoidCallback onPass;
-  final bool passEnabled;
-
-  @override
-  Widget build(BuildContext context) {
-    final score = engine.score;
-    final isFinal = engine.isFinished;
-    final blackValue = isFinal ? score.userTotal : score.userStones.toDouble();
-    final whiteValue = isFinal
-        ? score.agentTotal
-        : score.agentStones.toDouble();
-    final total = math.max(1.0, blackValue + whiteValue);
-    final blackShare = blackValue + whiteValue == 0
-        ? 0.5
-        : (blackValue / total).clamp(0.08, 0.92);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(13, 11, 10, 10),
-      decoration: BoxDecoration(
-        color: AppColors.surface.withValues(alpha: 0.68),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.text.withValues(alpha: 0.07)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      isFinal ? '最终数目' : '盘面棋子',
-                      style: TextStyle(
-                        color: AppColors.text.withValues(alpha: 0.58),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${_goScoreLabel(blackValue)} : ${_goScoreLabel(whiteValue)}',
-                      style: TextStyle(
-                        color: AppColors.text,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 7),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: SizedBox(
-                    height: 7,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: (blackShare * 1000).round(),
-                          child: const ColoredBox(color: Color(0xFF17202A)),
-                        ),
-                        Expanded(
-                          flex: ((1 - blackShare) * 1000).round(),
-                          child: const ColoredBox(color: Color(0xFFF7F6F0)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  isFinal
-                      ? _goResultText(engine, agentName)
-                      : '白棋含 6.5 目贴目 · 连续两次停着后数目',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: AppColors.text.withValues(alpha: 0.45),
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Tooltip(
-            message: '停一手',
-            child: CupertinoButton(
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(52, 52),
-              onPressed: passEnabled ? onPass : null,
-              child: Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: passEnabled
-                      ? const Color(0xFF1C6B5A)
-                      : AppColors.text.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(15),
-                  boxShadow: passEnabled
-                      ? [
-                          BoxShadow(
-                            color: const Color(
-                              0xFF1C6B5A,
-                            ).withValues(alpha: 0.22),
-                            blurRadius: 12,
-                            offset: const Offset(0, 5),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Icon(
-                  Icons.front_hand_rounded,
-                  color: passEnabled
-                      ? Colors.white
-                      : AppColors.text.withValues(alpha: 0.28),
-                  size: 22,
-                ),
-              ),
-            ),
-          ),
-        ],
+    if (engine == null) {
+      return _GoHome(
+        rounds: _runtime.rounds,
+        starting: _runtime.starting,
+        error: _runtime.error,
+        onStart: _start,
+        onExit: () => Navigator.of(context).maybePop(),
+      );
+    }
+    final userTurnActive =
+        !engine.isFinished &&
+        engine.turn == GoActor.user &&
+        !_runtime.aiThinking &&
+        !_resolving &&
+        !_timerPaused;
+    return PopScope(
+      canPop: false,
+      child: _NativeGameInteractionLayer(
+        runtime: _runtime,
+        game: widget.game,
+        onPlayAgain: _start,
+        onCloseGame: _closeGame,
+        userTurnActive: userTurnActive,
+        turnToken: '${engine.moveCount}:${engine.turn.name}',
+        turnTimeout: _nativeGameTurnTimeout(_nativeGoGameKey),
+        turnLabel: _runtime.aiThinking ? '${_runtime.agentName} 在落子' : '轮到你落子',
+        moveCount: engine.moveCount,
+        showPlayers: false,
+        child: _GoGameScreen(
+          engine: engine,
+          lastMove: _lastMove,
+          agentName: _runtime.agentName,
+          userName: widget.authSession.userFacingName,
+          agentAvatarUrl: widget.authSession.agentAvatarUrl,
+          userAvatarUrl: widget.authSession.userAvatarUrl,
+          aiThinking: _runtime.aiThinking,
+          resolving: _resolving,
+          starting: _runtime.starting,
+          timerPaused: _timerPaused,
+          enabled: userTurnActive,
+          onTap: _userPlay,
+          onRestart: _start,
+          onExit: _closeGame,
+          onTimerPauseChanged: _setTimerPaused,
+        ),
       ),
     );
   }
@@ -438,6 +276,7 @@ class _GoBoard extends StatefulWidget {
     required this.thinking,
     required this.enabled,
     required this.onTap,
+    this.artwork = false,
   });
 
   final GoEngine engine;
@@ -445,6 +284,7 @@ class _GoBoard extends StatefulWidget {
   final bool thinking;
   final bool enabled;
   final ValueChanged<int> onTap;
+  final bool artwork;
 
   @override
   State<_GoBoard> createState() => _GoBoardState();
@@ -479,7 +319,7 @@ class _GoBoardState extends State<_GoBoard> with TickerProviderStateMixin {
 
   void _handleTap(TapUpDetails details, Size size) {
     if (!widget.enabled) return;
-    final geometry = _GoBoardGeometry(size);
+    final geometry = _GoBoardGeometry(size, artwork: widget.artwork);
     final index = geometry.indexAt(details.localPosition);
     if (index != null) widget.onTap(index);
   }
@@ -489,7 +329,7 @@ class _GoBoardState extends State<_GoBoard> with TickerProviderStateMixin {
     child: LayoutBuilder(
       builder: (context, constraints) {
         final side = math.min(constraints.maxWidth, constraints.maxHeight);
-        final size = Size.square(side);
+        final size = widget.artwork ? constraints.biggest : Size.square(side);
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTapUp: (details) => _handleTap(details, size),
@@ -505,6 +345,7 @@ class _GoBoardState extends State<_GoBoard> with TickerProviderStateMixin {
                 ),
                 thinking: widget.thinking,
                 darkMode: AppColors.isDark(context),
+                artwork: widget.artwork,
               ),
             ),
           ),
@@ -515,21 +356,29 @@ class _GoBoardState extends State<_GoBoard> with TickerProviderStateMixin {
 }
 
 class _GoBoardGeometry {
-  const _GoBoardGeometry(this.size);
+  const _GoBoardGeometry(this.size, {this.artwork = false});
 
   final Size size;
+  final bool artwork;
 
   double get inset => size.width * 0.105;
-  double get step => (size.width - inset * 2) / (GoEngine.boardSize - 1);
+  double get left => artwork ? size.width * (15 / 330) : inset;
+  double get right => artwork ? size.width * (315 / 330) : size.width - inset;
+  double get top => artwork ? (size.height - (right - left)) / 2 : inset;
+  double get bottom => artwork ? top + (right - left) : size.height - inset;
+  double get stepX => (right - left) / (GoEngine.boardSize - 1);
+  double get stepY => (bottom - top) / (GoEngine.boardSize - 1);
+  double get step => math.min(stepX, stepY);
+  double get stoneRadius => step * 0.455;
 
   Offset point(int index) => Offset(
-    inset + (index % GoEngine.boardSize) * step,
-    inset + (index ~/ GoEngine.boardSize) * step,
+    left + (index % GoEngine.boardSize) * stepX,
+    top + (index ~/ GoEngine.boardSize) * stepY,
   );
 
   int? indexAt(Offset position) {
-    final col = ((position.dx - inset) / step).round();
-    final row = ((position.dy - inset) / step).round();
+    final col = ((position.dx - left) / stepX).round();
+    final row = ((position.dy - top) / stepY).round();
     if (row < 0 ||
         row >= GoEngine.boardSize ||
         col < 0 ||
@@ -537,7 +386,12 @@ class _GoBoardGeometry {
       return null;
     }
     final index = row * GoEngine.boardSize + col;
-    return (point(index) - position).distance <= step * 0.48 ? index : null;
+    final center = point(index);
+    final normalizedDistance = math.sqrt(
+      math.pow((center.dx - position.dx) / stepX, 2) +
+          math.pow((center.dy - position.dy) / stepY, 2),
+    );
+    return normalizedDistance <= 0.48 ? index : null;
   }
 }
 
@@ -548,6 +402,7 @@ class _GoBoardPainter extends CustomPainter {
     required this.moveProgress,
     required this.thinking,
     required this.darkMode,
+    this.artwork = false,
   });
 
   final List<int> board;
@@ -555,10 +410,17 @@ class _GoBoardPainter extends CustomPainter {
   final double moveProgress;
   final bool thinking;
   final bool darkMode;
+  final bool artwork;
+  static const _starPoints = <int>[60, 66, 72, 174, 180, 186, 288, 294, 300];
 
   @override
   void paint(Canvas canvas, Size size) {
-    final geometry = _GoBoardGeometry(size);
+    final geometry = _GoBoardGeometry(size, artwork: artwork);
+    if (artwork) {
+      _paintArtworkBoard(canvas, size, geometry);
+      _paintStonesAndCaptures(canvas, geometry);
+      return;
+    }
     final boardRect = Offset.zero & size;
     final radius = Radius.circular(size.width * 0.038);
     canvas.drawRRect(
@@ -623,7 +485,7 @@ class _GoBoardPainter extends CustomPainter {
       canvas.drawLine(c, d, gridPaint);
     }
     final starPaint = Paint()..color = const Color(0xFF322014);
-    for (final point in const [20, 24, 40, 56, 60]) {
+    for (final point in _starPoints) {
       canvas.drawCircle(
         geometry.point(point),
         geometry.step * 0.085,
@@ -631,6 +493,122 @@ class _GoBoardPainter extends CustomPainter {
       );
     }
 
+    _paintStonesAndCaptures(canvas, geometry);
+  }
+
+  void _paintArtworkBoard(Canvas canvas, Size size, _GoBoardGeometry geometry) {
+    final rect = Offset.zero & size;
+    final radius = Radius.circular(size.width * (22 / 330));
+    final panel = RRect.fromRectAndRadius(rect.deflate(1), radius);
+    canvas.drawRRect(
+      panel,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFECC47D), Color(0xFFD9A357), Color(0xFFE7B96C)],
+          stops: [0, 0.54, 1],
+        ).createShader(rect),
+    );
+    canvas.save();
+    canvas.clipRRect(panel);
+    final grain = Paint()
+      ..color = const Color(0xFF7A4526).withValues(alpha: 0.09)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = math.max(0.5, size.width / 700);
+    for (var index = 0; index < 17; index += 1) {
+      final x = size.width * (index + 0.4) / 17;
+      final wave = math.sin(index * 1.37) * size.width * 0.012;
+      canvas.drawPath(
+        Path()
+          ..moveTo(x, -8)
+          ..cubicTo(
+            x + wave,
+            size.height * 0.3,
+            x - wave,
+            size.height * 0.7,
+            x + wave * 0.25,
+            size.height + 8,
+          ),
+        grain,
+      );
+    }
+    canvas.restore();
+    canvas.drawRRect(
+      panel,
+      Paint()
+        ..color = const Color(0xFF7B4626).withValues(alpha: 0.72)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.4, size.width * (2 / 330)),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        rect.deflate(size.width * (9 / 330)),
+        Radius.circular(size.width * (15 / 330)),
+      ),
+      Paint()
+        ..color = const Color(0xFFFFD998).withValues(alpha: 0.5)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(0.8, size.width / 500),
+    );
+
+    final gridShadow = Paint()
+      ..color = const Color(0xFF2B190F).withValues(alpha: 0.22)
+      ..strokeWidth = math.max(1.8, size.width / 180)
+      ..strokeCap = StrokeCap.square;
+    final grid = Paint()
+      ..color = const Color(0xFF3B2417).withValues(alpha: 0.9)
+      ..strokeWidth = math.max(0.9, size.width / 390)
+      ..strokeCap = StrokeCap.square;
+    for (var line = 0; line < GoEngine.boardSize; line += 1) {
+      final verticalStart = geometry.point(line);
+      final verticalEnd = geometry.point(
+        (GoEngine.boardSize - 1) * GoEngine.boardSize + line,
+      );
+      final horizontalStart = geometry.point(line * GoEngine.boardSize);
+      final horizontalEnd = geometry.point(
+        line * GoEngine.boardSize + GoEngine.boardSize - 1,
+      );
+      const shadowOffset = Offset(0.7, 0.8);
+      canvas.drawLine(
+        verticalStart + shadowOffset,
+        verticalEnd + shadowOffset,
+        gridShadow,
+      );
+      canvas.drawLine(
+        horizontalStart + shadowOffset,
+        horizontalEnd + shadowOffset,
+        gridShadow,
+      );
+      canvas.drawLine(verticalStart, verticalEnd, grid);
+      canvas.drawLine(horizontalStart, horizontalEnd, grid);
+    }
+
+    for (final point in _starPoints) {
+      final center = geometry.point(point);
+      final starRect = Rect.fromCircle(
+        center: center,
+        radius: size.width * (4.5 / 330),
+      );
+      canvas.drawCircle(
+        center,
+        size.width * (4.5 / 330),
+        Paint()
+          ..shader = const RadialGradient(
+            center: Alignment(-0.35, -0.4),
+            colors: [Color(0xFFFFE49A), Color(0xFFC48A2C), Color(0xFF56301A)],
+            stops: [0, 0.65, 1],
+          ).createShader(starRect),
+      );
+      canvas.drawCircle(
+        center,
+        size.width * (2.1 / 330),
+        Paint()..color = const Color(0xFF3A2114),
+      );
+    }
+  }
+
+  void _paintStonesAndCaptures(Canvas canvas, _GoBoardGeometry geometry) {
     final lastIndex = lastMove?.index;
     for (var index = 0; index < board.length; index += 1) {
       final stone = board[index];
@@ -642,7 +620,7 @@ class _GoBoardPainter extends CustomPainter {
       _paintGoStone(
         canvas,
         geometry.point(index),
-        geometry.step * 0.455 * scale,
+        geometry.stoneRadius * scale,
         black: stone == 1,
         last: isLast,
       );

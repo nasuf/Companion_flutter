@@ -234,7 +234,7 @@ class GoEngine {
        _board = List<int>.from(board),
        _positionHistory = {...?positionHistory, _goBoardHash(board)};
 
-  static const int boardSize = 9;
+  static const int boardSize = 19;
   static const int boardArea = boardSize * boardSize;
   static const int _empty = 0;
   static const int _userStone = 1;
@@ -580,7 +580,7 @@ Map<String, dynamic> _searchGoMove(Map<String, dynamic> input) {
   root.children.sort((a, b) => b.visits.compareTo(a.visits));
   var best = _chooseGoRootMove(root.children, random, moveTemperature);
   final occupied = rootState.board.where((stone) => stone != 0).length;
-  if (best.action == -1 && occupied < 61) {
+  if (best.action == -1 && occupied < GoEngine.boardArea * 0.75) {
     best = root.children.firstWhere(
       (child) => child.action != -1,
       orElse: () => best,
@@ -673,7 +673,7 @@ double _rolloutGo(_GoSearchState start, math.Random random, int rolloutDepth) {
   while (!state.terminal && guard++ < rolloutDepth) {
     final occupied = state.board.where((stone) => stone != 0).length;
     final int action;
-    if (occupied > 66 && random.nextDouble() < 0.22) {
+    if (occupied > GoEngine.boardArea * 0.81 && random.nextDouble() < 0.22) {
       action = -1;
     } else {
       action = _chooseGoRolloutAction(state, random) ?? -1;
@@ -734,7 +734,11 @@ int? _chooseGoRolloutAction(_GoSearchState state, math.Random random) {
     if (placement == null) continue;
     final row = action ~/ GoEngine.boardSize;
     final col = action % GoEngine.boardSize;
-    final edge = math.min(math.min(row, col), math.min(8 - row, 8 - col));
+    final farEdge = GoEngine.boardSize - 1;
+    final edge = math.min(
+      math.min(row, col),
+      math.min(farEdge - row, farEdge - col),
+    );
     var value = placement.captured.length * 8.0;
     value += placement.liberties * 0.22;
     value += edge == 2 ? 1.1 : (edge == 0 ? -0.7 : 0.45);
@@ -750,7 +754,7 @@ int? _chooseGoRolloutAction(_GoSearchState state, math.Random random) {
 double _goMovePrior(_GoSearchState state, int action) {
   if (action == -1) {
     final occupied = state.board.where((stone) => stone != 0).length;
-    return occupied > 68 ? 0.72 : 0.01;
+    return occupied > GoEngine.boardArea * 0.84 ? 0.72 : 0.01;
   }
   final placement = _tryGoPlacement(
     state.board,
@@ -761,7 +765,11 @@ double _goMovePrior(_GoSearchState state, int action) {
   if (placement == null) return -1000;
   final row = action ~/ GoEngine.boardSize;
   final col = action % GoEngine.boardSize;
-  final edge = math.min(math.min(row, col), math.min(8 - row, 8 - col));
+  final farEdge = GoEngine.boardSize - 1;
+  final edge = math.min(
+    math.min(row, col),
+    math.min(farEdge - row, farEdge - col),
+  );
   var score = placement.captured.length * 8.0 + placement.liberties * 0.22;
   score += switch (edge) {
     0 => -0.7,
@@ -947,4 +955,4 @@ int _goStateHash(List<int> board, int turn, int passes) {
   return hash;
 }
 
-const _goColumns = 'ABCDEFGHJ';
+const _goColumns = 'ABCDEFGHJKLMNOPQRST';
