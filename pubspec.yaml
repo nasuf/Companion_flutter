@@ -101,6 +101,7 @@ flutter:
     - assets/prototype/games/
     - assets/prototype/games/gomoku/
     - assets/prototype/games/reversi/
+    - assets/prototype/games/xiangqi/
     - assets/achievements/
     - assets/interaction/
     - assets/navigation/

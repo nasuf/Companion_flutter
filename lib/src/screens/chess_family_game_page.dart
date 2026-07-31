@@ -23,6 +23,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
   int? _selectedSquare;
   Set<int> _legalTargets = const {};
   bool _isFullscreen = false;
+  bool _xiangqiTimerPaused = false;
   bool _chessAssetsPrecached = false;
 
   String get _gameKey => widget.kind == ChessFamilyKind.chess
@@ -91,7 +92,8 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       );
       _selectedSquare = null;
       _legalTargets = const {};
-      _isFullscreen = true;
+      _isFullscreen = widget.kind == ChessFamilyKind.chess;
+      _xiangqiTimerPaused = false;
     });
   }
 
@@ -110,7 +112,13 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       _selectedSquare = null;
       _legalTargets = const {};
       _isFullscreen = false;
+      _xiangqiTimerPaused = false;
     });
+  }
+
+  void _setXiangqiTimerPaused(bool paused) {
+    if (!mounted || _xiangqiTimerPaused == paused) return;
+    setState(() => _xiangqiTimerPaused = paused);
   }
 
   Future<void> _handleSquareTap(int square) async {
@@ -243,6 +251,58 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
   @override
   Widget build(BuildContext context) {
     final engine = _engine;
+    if (widget.kind == ChessFamilyKind.xiangqi) {
+      if (engine == null) {
+        return _XiangqiHome(
+          rounds: _runtime.rounds,
+          starting: _runtime.starting,
+          error: _runtime.error,
+          onStart: _startGame,
+          onExit: () => Navigator.of(context).maybePop(),
+        );
+      }
+      final userTurnActive =
+          !engine.isFinished &&
+          !engine.isAgentTurn &&
+          !_runtime.aiThinking &&
+          !_runtime.starting &&
+          !_xiangqiTimerPaused;
+      return PopScope(
+        canPop: false,
+        child: _NativeGameInteractionLayer(
+          runtime: _runtime,
+          game: widget.game,
+          onPlayAgain: _startGame,
+          onCloseGame: _closeGame,
+          userTurnActive: userTurnActive,
+          turnToken:
+              '${_runtime.session?.id}:${engine.moveCount}:${engine.isAgentTurn ? 'agent' : 'user'}',
+          turnTimeout: _nativeGameTurnTimeout(_gameKey),
+          turnLabel: _runtime.aiThinking
+              ? '${_runtime.agentName} 在走棋'
+              : '轮到你走棋',
+          moveCount: engine.moveCount,
+          showPlayers: false,
+          child: _XiangqiGameScreen(
+            engine: engine,
+            selectedSquare: _selectedSquare,
+            legalTargets: _legalTargets,
+            agentName: _runtime.agentName,
+            userName: widget.authSession.userFacingName,
+            agentAvatarUrl: widget.authSession.agentAvatarUrl,
+            userAvatarUrl: widget.authSession.userAvatarUrl,
+            aiThinking: _runtime.aiThinking,
+            starting: _runtime.starting,
+            timerPaused: _xiangqiTimerPaused,
+            enabled: userTurnActive,
+            onSquareTap: _handleSquareTap,
+            onRestart: _startGame,
+            onExit: _closeGame,
+            onTimerPauseChanged: _setXiangqiTimerPaused,
+          ),
+        ),
+      );
+    }
     final compact = Scaffold(
       backgroundColor: AppColors.page,
       body: Stack(
@@ -550,12 +610,14 @@ class _ChessFamilyBoard extends StatelessWidget {
     required this.selectedSquare,
     required this.legalTargets,
     required this.onSquareTap,
+    this.xiangqiArtworkAsset,
   });
 
   final ChessFamilyEngine engine;
   final int? selectedSquare;
   final Set<int> legalTargets;
   final ValueChanged<int> onSquareTap;
+  final String? xiangqiArtworkAsset;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -566,19 +628,30 @@ class _ChessFamilyBoard extends StatelessWidget {
           onSquareTap(square);
         }
       },
-      child: CustomPaint(
-        painter: _ChessFamilyBoardPainter(
-          kind: engine.kind,
-          files: engine.files,
-          ranks: engine.ranks,
-          pieces: engine.pieces,
-          lastMove: engine.moves.isEmpty ? null : engine.moves.last,
-          selectedSquare: selectedSquare,
-          legalTargets: legalTargets,
-        ),
-        child: engine.kind == ChessFamilyKind.chess
-            ? _ChessPieceLayer(size: constraints.biggest, pieces: engine.pieces)
-            : null,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (xiangqiArtworkAsset case final asset?)
+            Image.asset(asset, fit: BoxFit.fill),
+          CustomPaint(
+            painter: _ChessFamilyBoardPainter(
+              kind: engine.kind,
+              files: engine.files,
+              ranks: engine.ranks,
+              pieces: engine.pieces,
+              lastMove: engine.moves.isEmpty ? null : engine.moves.last,
+              selectedSquare: selectedSquare,
+              legalTargets: legalTargets,
+              xiangqiArtwork: xiangqiArtworkAsset != null,
+            ),
+            child: engine.kind == ChessFamilyKind.chess
+                ? _ChessPieceLayer(
+                    size: constraints.biggest,
+                    pieces: engine.pieces,
+                  )
+                : null,
+          ),
+        ],
       ),
     ),
   );
@@ -593,12 +666,15 @@ class _ChessFamilyBoard extends StatelessWidget {
       final rank = 7 - row;
       return engine.squareAt(file, rank);
     }
-    final geometry = _XiangqiBoardGeometry(size);
+    final geometry = _XiangqiBoardGeometry(
+      size,
+      artwork: xiangqiArtworkAsset != null,
+    );
     final file =
-        ((point.dx - geometry.board.left + geometry.step / 2) / geometry.step)
+        ((point.dx - geometry.board.left + geometry.stepX / 2) / geometry.stepX)
             .floor();
     final row =
-        ((point.dy - geometry.board.top + geometry.step / 2) / geometry.step)
+        ((point.dy - geometry.board.top + geometry.stepY / 2) / geometry.stepY)
             .floor();
     if (file < 0 || file >= 9 || row < 0 || row >= 10) return null;
     return engine.squareAt(file, 9 - row);
@@ -669,7 +745,19 @@ const _chessPieceAssets = <String>[
 ];
 
 class _XiangqiBoardGeometry {
-  _XiangqiBoardGeometry(Size size) {
+  _XiangqiBoardGeometry(Size size, {bool artwork = false}) {
+    if (artwork) {
+      board = Rect.fromLTRB(
+        size.width * (40 / 785),
+        size.height * (44 / 819),
+        size.width * (745 / 785),
+        size.height * (759 / 819),
+      );
+      stepX = board.width / 8;
+      stepY = board.height / 9;
+      step = math.min(stepX, stepY);
+      return;
+    }
     final margin = math.max(20.0, size.shortestSide * 0.07);
     final availableWidth = math.max(0.0, size.width - margin * 2);
     final availableHeight = math.max(0.0, size.height - margin * 2);
@@ -680,13 +768,17 @@ class _XiangqiBoardGeometry {
       width: width,
       height: step * 9,
     );
+    stepX = step;
+    stepY = step;
   }
 
   late final Rect board;
   late final double step;
+  late final double stepX;
+  late final double stepY;
 
   Offset point(int file, int row) =>
-      Offset(board.left + file * step, board.top + row * step);
+      Offset(board.left + file * stepX, board.top + row * stepY);
 }
 
 extension _IterableFirstOrNull<T> on Iterable<T> {
@@ -707,6 +799,7 @@ class _ChessFamilyBoardPainter extends CustomPainter {
     required this.lastMove,
     required this.selectedSquare,
     required this.legalTargets,
+    this.xiangqiArtwork = false,
   });
 
   final ChessFamilyKind kind;
@@ -716,9 +809,14 @@ class _ChessFamilyBoardPainter extends CustomPainter {
   final ChessFamilyMove? lastMove;
   final int? selectedSquare;
   final Set<int> legalTargets;
+  final bool xiangqiArtwork;
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (kind == ChessFamilyKind.xiangqi && xiangqiArtwork) {
+      _paintXiangqiArtwork(canvas, size);
+      return;
+    }
     final rect = Offset.zero & size;
     final background = Paint()
       ..color = kind == ChessFamilyKind.chess
@@ -732,6 +830,50 @@ class _ChessFamilyBoardPainter extends CustomPainter {
       _paintChess(canvas, size);
     } else {
       _paintXiangqi(canvas, size);
+    }
+  }
+
+  void _paintXiangqiArtwork(Canvas canvas, Size size) {
+    final geometry = _XiangqiBoardGeometry(size, artwork: true);
+    final step = geometry.step;
+    for (final piece in pieces) {
+      _paintXiangqiPiece(
+        canvas,
+        geometry.point(piece.file, 9 - piece.rank),
+        step,
+        piece,
+        selected: piece.square == selectedSquare,
+      );
+    }
+    for (final target in legalTargets) {
+      final piece = _pieceBySquare(target);
+      final file = piece?.file ?? target % (files * 2);
+      final rank = piece?.rank ?? ranks - target ~/ (files * 2) - 1;
+      final center = geometry.point(file, 9 - rank);
+      if (piece == null) {
+        canvas.drawCircle(
+          center,
+          step * 0.15,
+          Paint()..color = const Color(0xFF176B5E).withValues(alpha: 0.3),
+        );
+        canvas.drawCircle(
+          center,
+          step * 0.1,
+          Paint()
+            ..color = const Color(0xFF176B5E)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.max(1.7, step * 0.052),
+        );
+      } else {
+        _paintXiangqiBrackets(
+          canvas,
+          center,
+          step * 0.52,
+          step * 0.16,
+          const Color(0xFF167765),
+          math.max(2.0, step * 0.065),
+        );
+      }
     }
   }
 
@@ -1407,6 +1549,9 @@ class _ChessFamilyBoardPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ChessFamilyBoardPainter oldDelegate) =>
+      oldDelegate.kind != kind ||
+      oldDelegate.xiangqiArtwork != xiangqiArtwork ||
+      oldDelegate.lastMove != lastMove ||
       oldDelegate.pieces != pieces ||
       oldDelegate.selectedSquare != selectedSquare ||
       oldDelegate.legalTargets != legalTargets;

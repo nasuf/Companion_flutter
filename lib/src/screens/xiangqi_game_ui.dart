@@ -1,0 +1,896 @@
+part of 'package:companion_flutter/main.dart';
+
+const String _xiangqiAsset = 'assets/prototype/games/xiangqi/';
+
+class _XiangqiHome extends StatelessWidget {
+  const _XiangqiHome({
+    required this.rounds,
+    required this.starting,
+    required this.error,
+    required this.onStart,
+    required this.onExit,
+  });
+
+  final List<GameSession> rounds;
+  final bool starting;
+  final String? error;
+  final Future<void> Function() onStart;
+  final VoidCallback onExit;
+
+  @override
+  Widget build(BuildContext context) {
+    final summaries = rounds.map(_GameRoundSummary.fromSession).toList();
+    final total = summaries.length;
+    final wins = summaries.where((round) => round.isWin).length;
+    final rate = total == 0 ? 0 : (wins / total * 100).round();
+    final seconds = summaries.fold<int>(
+      0,
+      (sum, round) => sum + (round.durationSeconds ?? 0),
+    );
+    final labels = ['总对局', '胜利局', '胜率', '时长'];
+    final values = ['$total', '$wins', '$rate%', _formatDuration(seconds)];
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFD8E2F3),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final height = constraints.maxHeight;
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: _GomokuBreathingMotion(
+                  duration: const Duration(milliseconds: 11000),
+                  scaleAmount: 0.004,
+                  phase: 0.35,
+                  child: Image.asset(
+                    '${_xiangqiAsset}home_bg.png',
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+              Positioned(
+                left: width * (14 / 393),
+                top: height * (80 / 852),
+                width: width * (365 / 393),
+                child: _GomokuBreathingMotion(
+                  duration: const Duration(milliseconds: 5600),
+                  scaleAmount: 0.008,
+                  translateY: 1.7,
+                  phase: 0.18,
+                  child: Image.asset(
+                    '${_xiangqiAsset}home_logo.png',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+              Positioned(
+                left: width * (14 / 393),
+                top: height * (226 / 852),
+                width: width * (365 / 393),
+                height: height * (251 / 852),
+                child: _GomokuBreathingMotion(
+                  duration: const Duration(milliseconds: 6500),
+                  scaleAmount: 0.006,
+                  translateY: 1.5,
+                  phase: 0.62,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(width * 0.025),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF36566B).withValues(alpha: 0.2),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(width * 0.025),
+                      child: Image.asset(
+                        '${_xiangqiAsset}home_board.png',
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (error != null)
+                Positioned(
+                  left: width * 0.08,
+                  right: width * 0.08,
+                  top: height * 0.535,
+                  child: _GomokuNotice(text: error!, isError: true),
+                ),
+              Positioned(
+                left: width * (18 / 393),
+                top: height * (525 / 852),
+                width: width * (166 / 393),
+                child: _XiangqiArtButton(
+                  asset: '${_xiangqiAsset}home_btn_exit.png',
+                  aspectRatio: 507 / 150,
+                  enabled: !starting,
+                  onTap: onExit,
+                ),
+              ),
+              Positioned(
+                left: width * (209 / 393),
+                top: height * (525 / 852),
+                width: width * (166 / 393),
+                child: _XiangqiArtButton(
+                  asset: '${_xiangqiAsset}home_btn_start.png',
+                  aspectRatio: 507 / 150,
+                  loading: starting,
+                  enabled: !starting,
+                  onTap: () => unawaited(onStart()),
+                ),
+              ),
+              for (var index = 0; index < 4; index += 1)
+                Positioned(
+                  left: width * ([9, 106, 201, 300][index] / 393),
+                  top: height * (704 / 852),
+                  width: width * (83 / 393),
+                  child: _XiangqiHomeStatCard(
+                    label: labels[index],
+                    value: values[index],
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  String _formatDuration(int seconds) {
+    if (seconds <= 0) return '0m';
+    if (seconds >= 3600) {
+      final hours = seconds / 3600;
+      final value = hours == hours.truncateToDouble()
+          ? hours.round().toString()
+          : hours.toStringAsFixed(1);
+      return '${value}H';
+    }
+    return '${(seconds / 60).ceil()}m';
+  }
+}
+
+class _XiangqiHomeStatCard extends StatelessWidget {
+  const _XiangqiHomeStatCard({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 83 / 89,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final height = constraints.maxHeight;
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: Image.asset(
+                  '${_xiangqiAsset}home_stat_card.png',
+                  fit: BoxFit.fill,
+                ),
+              ),
+              Positioned(
+                left: 5,
+                right: 5,
+                top: height * (17 / 89),
+                height: height * (20 / 89),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      color: Color(0xFF502A2A),
+                      fontSize: 15,
+                      height: 1,
+                      fontWeight: FontWeight.w900,
+                      decoration: TextDecoration.none,
+                      shadows: [
+                        Shadow(
+                          color: Color(0x40000000),
+                          offset: Offset(1, 1),
+                          blurRadius: 1,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 5,
+                right: 5,
+                top: height * (41 / 89),
+                height: height * (27 / 89),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    value,
+                    style: const TextStyle(
+                      color: Color(0xFF502A2A),
+                      fontSize: 20,
+                      height: 1,
+                      fontWeight: FontWeight.w900,
+                      decoration: TextDecoration.none,
+                      shadows: [
+                        Shadow(
+                          color: Color(0x40000000),
+                          offset: Offset(1, 1),
+                          blurRadius: 1,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _XiangqiTextButton extends StatefulWidget {
+  const _XiangqiTextButton({
+    required this.label,
+    required this.onTap,
+    this.enabled = true,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final bool enabled;
+
+  @override
+  State<_XiangqiTextButton> createState() => _XiangqiTextButtonState();
+}
+
+class _XiangqiTextButtonState extends State<_XiangqiTextButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.enabled;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
+      onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
+      onTapUp: enabled
+          ? (_) {
+              setState(() => _pressed = false);
+              widget.onTap();
+            }
+          : null,
+      child: AnimatedScale(
+        scale: _pressed ? 0.96 : 1,
+        duration: const Duration(milliseconds: 90),
+        child: Opacity(
+          opacity: enabled ? 1 : 0.7,
+          child: AspectRatio(
+            aspectRatio: 390 / 138,
+            child: Stack(
+              alignment: const Alignment(0, 0.25),
+              children: [
+                Positioned.fill(
+                  child: Image.asset(
+                    '${_xiangqiAsset}home_button.png',
+                    fit: BoxFit.fill,
+                  ),
+                ),
+                _XiangqiOutlinedText(
+                  text: widget.label,
+                  fontSize: 24,
+                  fillColor: const Color(0xFFFFE49B),
+                  strokeColor: const Color(0xFF5C211B),
+                  strokeWidth: 3,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _XiangqiGameScreen extends StatelessWidget {
+  const _XiangqiGameScreen({
+    required this.engine,
+    required this.selectedSquare,
+    required this.legalTargets,
+    required this.agentName,
+    required this.userName,
+    required this.agentAvatarUrl,
+    required this.userAvatarUrl,
+    required this.aiThinking,
+    required this.starting,
+    required this.timerPaused,
+    required this.enabled,
+    required this.onSquareTap,
+    required this.onRestart,
+    required this.onExit,
+    required this.onTimerPauseChanged,
+  });
+
+  final ChessFamilyEngine engine;
+  final int? selectedSquare;
+  final Set<int> legalTargets;
+  final String agentName;
+  final String userName;
+  final String? agentAvatarUrl;
+  final String? userAvatarUrl;
+  final bool aiThinking;
+  final bool starting;
+  final bool timerPaused;
+  final bool enabled;
+  final ValueChanged<int> onSquareTap;
+  final Future<void> Function() onRestart;
+  final Future<void> Function() onExit;
+  final ValueChanged<bool> onTimerPauseChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final userTurn = enabled && !engine.isFinished;
+    final agentTurn = !engine.isFinished && (engine.isAgentTurn || aiThinking);
+    final turnToken =
+        '${engine.moveCount}:${engine.isAgentTurn ? 'agent' : 'user'}';
+    return Scaffold(
+      backgroundColor: const Color(0xFFDCE7F5),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final height = constraints.maxHeight;
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: _GomokuBreathingMotion(
+                  duration: const Duration(milliseconds: 11000),
+                  scaleAmount: 0.004,
+                  phase: 0.45,
+                  child: Image.asset(
+                    '${_xiangqiAsset}game_bg.png',
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+              Positioned(
+                left: width * (37 / 393),
+                top: height * (71 / 852),
+                width: width * (100 / 393),
+                child: _XiangqiAvatar(
+                  frameAsset: '${_xiangqiAsset}game_avatar_frame_user.png',
+                  imageUrl: userAvatarUrl,
+                  fallback: userName,
+                  active: userTurn,
+                  glowColor: const Color(0xFF4CE0C1),
+                ),
+              ),
+              Positioned(
+                left: width * (262 / 393),
+                top: height * (132 / 852),
+                width: width * (100 / 393),
+                child: _XiangqiAvatar(
+                  frameAsset: '${_xiangqiAsset}game_avatar_frame_agent.png',
+                  imageUrl: agentAvatarUrl,
+                  fallback: agentName,
+                  active: agentTurn,
+                  glowColor: const Color(0xFFFFD870),
+                ),
+              ),
+              Positioned(
+                left: width * (147 / 393),
+                top: height * (104 / 852),
+                width: width * (105 / 393),
+                child: _GomokuBreathingMotion(
+                  duration: const Duration(milliseconds: 4200),
+                  scaleAmount: 0.012,
+                  translateY: 1.2,
+                  phase: 0.22,
+                  child: Image.asset(
+                    '${_xiangqiAsset}game_timer.png',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+              Positioned(
+                left: width * (135 / 393),
+                top: height * (132 / 852),
+                width: width * (130 / 393),
+                height: height * (33 / 852),
+                child: _XiangqiTurnTimer(
+                  token: turnToken,
+                  paused:
+                      timerPaused ||
+                      aiThinking ||
+                      engine.isAgentTurn ||
+                      engine.isFinished,
+                  timeout: _nativeGameTurnTimeout(_nativeXiangqiGameKey),
+                ),
+              ),
+              Positioned(
+                left: width * (16 / 393),
+                top: height * (173 / 852),
+                width: width * (141 / 393),
+                child: _XiangqiNamePlate(
+                  asset: '${_xiangqiAsset}game_name_user.png',
+                  name: userName,
+                ),
+              ),
+              Positioned(
+                left: width * (239 / 393),
+                top: height * (235 / 852),
+                width: width * (141 / 393),
+                child: _XiangqiNamePlate(
+                  asset: '${_xiangqiAsset}game_name_agent.png',
+                  name: agentName,
+                ),
+              ),
+              Positioned(
+                left: width * (14 / 393),
+                top: height * (289 / 852),
+                width: width * (365 / 393),
+                height: height * (381 / 852),
+                child: _ChessFamilyBoard(
+                  engine: engine,
+                  selectedSquare: selectedSquare,
+                  legalTargets: legalTargets,
+                  onSquareTap: onSquareTap,
+                  xiangqiArtworkAsset: '${_xiangqiAsset}game_board.png',
+                ),
+              ),
+              Positioned(
+                left: width * (26 / 393),
+                top: height * (684 / 852),
+                width: width * (130 / 393),
+                child: _XiangqiArtButton(
+                  asset: '${_xiangqiAsset}game_btn_exit.png',
+                  onTap: () => unawaited(_confirmExit(context)),
+                ),
+              ),
+              Positioned(
+                left: width * (168 / 393),
+                top: height * (684 / 852),
+                width: width * (130 / 393),
+                child: _XiangqiArtButton(
+                  asset: '${_xiangqiAsset}game_btn_pause.png',
+                  onTap: () => unawaited(_showPause(context)),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _confirmExit(BuildContext context) async {
+    onTimerPauseChanged(true);
+    await _showXiangqiModal(
+      context,
+      title: '退出对局',
+      message: '当前棋局还没有结束，退出后本局进度会清空。',
+      actions: (dialogContext) => [
+        Expanded(
+          child: _XiangqiTextButton(
+            label: '继续',
+            onTap: () => Navigator.of(dialogContext).pop(),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _XiangqiTextButton(
+            label: '退出',
+            onTap: () {
+              Navigator.of(dialogContext).pop();
+              unawaited(onExit());
+            },
+          ),
+        ),
+      ],
+    );
+    onTimerPauseChanged(false);
+  }
+
+  Future<void> _showPause(BuildContext context) async {
+    onTimerPauseChanged(true);
+    await _showXiangqiModal(
+      context,
+      title: '游戏暂停',
+      message: '要继续当前棋局，还是重新开一盘？',
+      actions: (dialogContext) => [
+        Expanded(
+          child: _XiangqiTextButton(
+            label: '继续',
+            onTap: () => Navigator.of(dialogContext).pop(),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _XiangqiTextButton(
+            label: starting ? '载入中' : '重开',
+            enabled: !starting,
+            onTap: () {
+              Navigator.of(dialogContext).pop();
+              unawaited(onRestart());
+            },
+          ),
+        ),
+      ],
+    );
+    onTimerPauseChanged(false);
+  }
+}
+
+class _XiangqiAvatar extends StatelessWidget {
+  const _XiangqiAvatar({
+    required this.frameAsset,
+    required this.imageUrl,
+    required this.fallback,
+    required this.active,
+    required this.glowColor,
+  });
+
+  final String frameAsset;
+  final String? imageUrl;
+  final String fallback;
+  final bool active;
+  final Color glowColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 100 / 99,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final inner = width * 0.79;
+          return Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 260),
+                width: inner,
+                height: inner,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: active
+                      ? [
+                          BoxShadow(
+                            color: glowColor.withValues(alpha: 0.32),
+                            blurRadius: 12,
+                            spreadRadius: 2,
+                          ),
+                        ]
+                      : const [],
+                ),
+                child: ClipOval(
+                  child: _Avatar(
+                    size: inner,
+                    label: fallback.trim().isEmpty
+                        ? '伴'
+                        : fallback.trim().characters.first,
+                    imageUrl: imageUrl,
+                    gradient: const [Color(0xFFEAF6FF), Color(0xFFD9EDFF)],
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: Image.asset(frameAsset, fit: BoxFit.contain),
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: AnimatedOpacity(
+                    opacity: active ? 1 : 0,
+                    duration: const Duration(milliseconds: 260),
+                    child: _GomokuBreathingMotion(
+                      duration: const Duration(milliseconds: 1800),
+                      scaleAmount: 0.035,
+                      child: Image.asset(
+                        '${_xiangqiAsset}game_avatar_glow.png',
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _XiangqiNamePlate extends StatelessWidget {
+  const _XiangqiNamePlate({required this.asset, required this.name});
+
+  final String asset;
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 141 / 40,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned.fill(child: Image.asset(asset, fit: BoxFit.fill)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: _XiangqiOutlinedText(
+                text: name,
+                fontSize: 15,
+                fillColor: Colors.white,
+                strokeColor: Colors.black,
+                strokeWidth: 2.2,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _XiangqiTurnTimer extends StatefulWidget {
+  const _XiangqiTurnTimer({
+    required this.token,
+    required this.paused,
+    required this.timeout,
+  });
+
+  final String token;
+  final bool paused;
+  final Duration timeout;
+
+  @override
+  State<_XiangqiTurnTimer> createState() => _XiangqiTurnTimerState();
+}
+
+class _XiangqiTurnTimerState extends State<_XiangqiTurnTimer> {
+  Timer? _timer;
+  late int _remaining;
+
+  @override
+  void initState() {
+    super.initState();
+    _remaining = widget.timeout.inSeconds;
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || widget.paused || _remaining <= 0) return;
+      setState(() => _remaining -= 1);
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _XiangqiTurnTimer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.token != widget.token ||
+        oldWidget.timeout != widget.timeout) {
+      _remaining = widget.timeout.inSeconds;
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: _XiangqiOutlinedText(
+        text: '$_remaining',
+        fontSize: 25,
+        fillColor: const Color(0xFFFFCE0B),
+        strokeColor: const Color(0xFF121212),
+        strokeWidth: 2.8,
+      ),
+    );
+  }
+}
+
+class _XiangqiArtButton extends StatefulWidget {
+  const _XiangqiArtButton({
+    required this.asset,
+    required this.onTap,
+    this.enabled = true,
+    this.loading = false,
+    this.aspectRatio = 390 / 138,
+  });
+
+  final String asset;
+  final VoidCallback onTap;
+  final bool enabled;
+  final bool loading;
+  final double aspectRatio;
+
+  @override
+  State<_XiangqiArtButton> createState() => _XiangqiArtButtonState();
+}
+
+class _XiangqiArtButtonState extends State<_XiangqiArtButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.enabled && !widget.loading;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
+      onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
+      onTapUp: enabled
+          ? (_) {
+              setState(() => _pressed = false);
+              widget.onTap();
+            }
+          : null,
+      child: AnimatedScale(
+        scale: _pressed ? 0.96 : 1,
+        duration: const Duration(milliseconds: 90),
+        child: Opacity(
+          opacity: enabled ? 1 : 0.72,
+          child: AspectRatio(
+            aspectRatio: widget.aspectRatio,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Positioned.fill(
+                  child: Image.asset(widget.asset, fit: BoxFit.fill),
+                ),
+                if (widget.loading)
+                  const CupertinoActivityIndicator(color: Color(0xFFFFF0C5)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _XiangqiOutlinedText extends StatelessWidget {
+  const _XiangqiOutlinedText({
+    required this.text,
+    required this.fontSize,
+    required this.fillColor,
+    required this.strokeColor,
+    required this.strokeWidth,
+  });
+
+  final String text;
+  final double fontSize;
+  final Color fillColor;
+  final Color strokeColor;
+  final double strokeWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Text(
+          text,
+          style: TextStyle(
+            fontSize: fontSize,
+            height: 1,
+            fontWeight: FontWeight.w900,
+            decoration: TextDecoration.none,
+            foreground: Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = strokeWidth
+              ..strokeJoin = StrokeJoin.round
+              ..color = strokeColor,
+          ),
+        ),
+        Text(
+          text,
+          style: TextStyle(
+            color: fillColor,
+            fontSize: fontSize,
+            height: 1,
+            fontWeight: FontWeight.w900,
+            decoration: TextDecoration.none,
+            shadows: const [
+              Shadow(
+                color: Color(0x55000000),
+                offset: Offset(1, 1),
+                blurRadius: 1,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+Future<void> _showXiangqiModal(
+  BuildContext context, {
+  required String title,
+  required String message,
+  required List<Widget> Function(BuildContext dialogContext) actions,
+}) {
+  return showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: '关闭',
+    barrierColor: Colors.black.withValues(alpha: 0.48),
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (dialogContext, _, __) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 44),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 17),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFFFF8E2), Color(0xFFE8D3A9)],
+              ),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: const Color(0xFF7B4A31), width: 3),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.32),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF502A2A),
+                    fontSize: 22,
+                    height: 1,
+                    fontWeight: FontWeight.w900,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xCC502A2A),
+                    fontSize: 13,
+                    height: 1.45,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 17),
+                Row(children: actions(dialogContext)),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+    transitionBuilder: (_, animation, __, child) {
+      final curve = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutBack,
+        reverseCurve: Curves.easeIn,
+      );
+      return FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(scale: curve, child: child),
+      );
+    },
+  );
+}

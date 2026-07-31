@@ -75,6 +75,7 @@ part 'src/screens/game_page.dart';
 part 'src/screens/gomoku_game_page.dart';
 part 'src/screens/go_game_page.dart';
 part 'src/screens/chess_family_game_page.dart';
+part 'src/screens/xiangqi_game_ui.dart';
 part 'src/screens/native_casual_game_pages.dart';
 part 'src/screens/native_fullscreen_game_surface.dart';
 part 'src/screens/native_game_overlays.dart';
