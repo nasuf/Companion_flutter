@@ -426,9 +426,9 @@ String? _jsonNullableString(Object? value) {
   return text == null || text.isEmpty ? null : text;
 }
 
-int _jsonInt(Object? value) {
+int _jsonInt(Object? value, {int fallback = 0}) {
   if (value is int) return value;
-  return int.tryParse(value?.toString() ?? '') ?? 0;
+  return int.tryParse(value?.toString() ?? '') ?? fallback;
 }
 
 String _adminRoleLabel(String role) {
@@ -2276,6 +2276,15 @@ class _AdminAgentConversationsPage extends StatelessWidget {
     );
   }
 
+  void _openTtsConfig(BuildContext context) {
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) =>
+            _AdminAgentTtsPage(api: api, session: session, agent: agent),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final conversations = [...agent.conversations]
@@ -2287,6 +2296,15 @@ class _AdminAgentConversationsPage extends StatelessWidget {
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 40),
         children: [
+          _AdminCard(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: _AdminNavRow(
+              title: '语音配置',
+              subtitle: '音色 · 语速 · 音调 · 情绪 · 即时试听',
+              onTap: () => _openTtsConfig(context),
+            ),
+          ),
+          const SizedBox(height: 12),
           if (conversations.isEmpty)
             const _AdminStatePanel(title: '暂无对话', message: '该 AI 还没有任何会话记录。')
           else
@@ -2409,6 +2427,505 @@ class _AdminConversationPageState extends State<_AdminConversationPage> {
       itemCount: _messages.length,
       itemBuilder: (context, index) =>
           _AdminMessageBubble(message: _messages[index]),
+    );
+  }
+}
+
+int _ttsInstructionCharacters(String value) {
+  var total = 0;
+  for (final rune in value.trim().runes) {
+    final isHan =
+        (rune >= 0x3400 && rune <= 0x4DBF) ||
+        (rune >= 0x4E00 && rune <= 0x9FFF) ||
+        (rune >= 0xF900 && rune <= 0xFAFF) ||
+        (rune >= 0x20000 && rune <= 0x323AF);
+    total += isHan ? 2 : 1;
+  }
+  return total;
+}
+
+class _AdminAgentTtsPage extends StatefulWidget {
+  const _AdminAgentTtsPage({
+    required this.api,
+    required this.session,
+    required this.agent,
+  });
+
+  final CompanionApi api;
+  final AuthSession session;
+  final _AdminAgentSummary agent;
+
+  @override
+  State<_AdminAgentTtsPage> createState() => _AdminAgentTtsPageState();
+}
+
+class _AdminAgentTtsPageState extends State<_AdminAgentTtsPage> {
+  final TextEditingController _instructionController = TextEditingController();
+  final TextEditingController _previewController = TextEditingController(
+    text: '你好，很高兴见到你。今天想聊点什么？',
+  );
+  final TextEditingController _seedController = TextEditingController();
+  final AudioPlayer _player = AudioPlayer();
+  List<_AdminTtsVoiceProfile> _voices = const [];
+  String? _voiceProfileId;
+  double _rate = 1;
+  double _pitch = 1;
+  double _volume = 50;
+  double _emotionScale = 1;
+  bool _autoEmotion = true;
+  String _emotion = '中性';
+  double _intensity = 50;
+  bool _loading = true;
+  bool _saving = false;
+  bool _previewing = false;
+  String? _error;
+  String? _notice;
+  String? _previewPath;
+  _AdminTtsPreview? _preview;
+
+  static const _emotions = [
+    '中性',
+    '高兴',
+    '悲伤',
+    '愤怒',
+    '惊讶',
+    '恐惧',
+    '厌恶',
+    '焦虑',
+    '失望',
+    '欣慰',
+    '感激',
+    '戏谑',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _instructionController.dispose();
+    _previewController.dispose();
+    _seedController.dispose();
+    unawaited(_player.dispose());
+    final path = _previewPath;
+    if (path != null) unawaited(_deletePreviewFile(path));
+    super.dispose();
+  }
+
+  Future<void> _deletePreviewFile(String path) async {
+    try {
+      await File(path).delete();
+    } catch (_) {}
+  }
+
+  String get _selectedVoiceName {
+    for (final voice in _voices) {
+      if (voice.id == _voiceProfileId) return voice.displayName;
+    }
+    return '请选择';
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    widget.api.authToken = widget.session.token;
+    try {
+      final values = await Future.wait<Object>([
+        widget.api.fetchAdminAgentTtsConfig(widget.agent.id),
+        widget.api.fetchAdminTtsVoices(),
+      ]);
+      final config = values[0] as _AdminAgentTtsConfig;
+      final voices = values[1] as List<_AdminTtsVoiceProfile>;
+      _AdminTtsVoiceProfile? fallback;
+      for (final voice in voices) {
+        if (voice.enabled &&
+            voice.gender == (config.gender == 'male' ? 'male' : 'female')) {
+          fallback = voice;
+          break;
+        }
+      }
+      if (fallback == null) {
+        for (final voice in voices) {
+          if (voice.enabled) {
+            fallback = voice;
+            break;
+          }
+        }
+      }
+      if (!mounted) return;
+      final currentVoiceIsEnabled = voices.any(
+        (voice) => voice.id == config.voiceProfileId && voice.enabled,
+      );
+      _instructionController.text = config.instruction ?? '';
+      _seedController.text = config.seed.toString();
+      setState(() {
+        _voices = voices;
+        _voiceProfileId = currentVoiceIsEnabled
+            ? config.voiceProfileId
+            : fallback?.id;
+        _rate = config.rate;
+        _pitch = config.pitch;
+        _volume = config.volume.toDouble();
+        _autoEmotion = config.autoEmotion;
+        _emotionScale = config.emotionScale;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = _asMessage(error);
+        _loading = false;
+      });
+    }
+  }
+
+  Map<String, dynamic>? _payload() {
+    final profileId = _voiceProfileId;
+    if (profileId == null || profileId.isEmpty) {
+      setState(() => _error = '请选择可用音色');
+      return null;
+    }
+    final instruction = _instructionController.text.trim();
+    if (_ttsInstructionCharacters(instruction) > 100) {
+      setState(() => _error = '风格指令超过 100 个计费字符');
+      return null;
+    }
+    return {
+      'voice_profile_id': profileId,
+      'rate': double.parse(_rate.toStringAsFixed(2)),
+      'pitch': double.parse(_pitch.toStringAsFixed(2)),
+      'volume': _volume.round(),
+      'seed': (int.tryParse(_seedController.text) ?? 0).clamp(0, 65535).toInt(),
+      'instruction': instruction.isEmpty ? null : instruction,
+      'auto_emotion': _autoEmotion,
+      'emotion_scale': double.parse(_emotionScale.toStringAsFixed(2)),
+    };
+  }
+
+  Future<void> _save() async {
+    final payload = _payload();
+    if (payload == null) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+      _notice = null;
+    });
+    widget.api.authToken = widget.session.token;
+    try {
+      await widget.api.updateAdminAgentTtsConfig(widget.agent.id, payload);
+      if (!mounted) return;
+      setState(() => _notice = '已保存，下一条语音回复立即生效');
+    } catch (error) {
+      if (mounted) setState(() => _error = _asMessage(error));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _previewVoice() async {
+    final payload = _payload();
+    final text = _previewController.text.trim();
+    if (payload == null || text.isEmpty) return;
+    setState(() {
+      _previewing = true;
+      _error = null;
+      _notice = null;
+    });
+    widget.api.authToken = widget.session.token;
+    try {
+      final preview = await widget.api.previewAdminAgentTts(widget.agent.id, {
+        ...payload,
+        'text': text,
+        'emotion': _emotion,
+        'intensity': _intensity.round(),
+      });
+      final directory = await getTemporaryDirectory();
+      final oldPath = _previewPath;
+      final path =
+          '${directory.path}/tts_preview_${DateTime.now().microsecondsSinceEpoch}.wav';
+      await File(path).writeAsBytes(preview.bytes, flush: true);
+      if (oldPath != null) {
+        try {
+          await File(oldPath).delete();
+        } catch (_) {}
+      }
+      await _player.stop();
+      await _player.play(DeviceFileSource(path));
+      if (!mounted) return;
+      setState(() {
+        _preview = preview;
+        _previewPath = path;
+      });
+    } catch (error) {
+      if (mounted) setState(() => _error = _asMessage(error));
+    } finally {
+      if (mounted) setState(() => _previewing = false);
+    }
+  }
+
+  Future<void> _pickVoice() async {
+    final enabled = _voices.where((voice) => voice.enabled).toList();
+    final value = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: const Text('选择音色'),
+        actions: [
+          for (final voice in enabled)
+            CupertinoActionSheetAction(
+              isDefaultAction: voice.id == _voiceProfileId,
+              onPressed: () => Navigator.pop(context, voice.id),
+              child: Text(
+                '${voice.displayName} · ${voice.gender == 'male' ? '男声' : '女声'}'
+                '${voice.source == 'cloned' ? ' · 复刻' : ''}',
+              ),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+      ),
+    );
+    if (value != null && mounted) setState(() => _voiceProfileId = value);
+  }
+
+  Future<void> _pickEmotion() async {
+    final value = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: const Text('试听情绪'),
+        actions: [
+          for (final emotion in _emotions)
+            CupertinoActionSheetAction(
+              isDefaultAction: emotion == _emotion,
+              onPressed: () => Navigator.pop(context, emotion),
+              child: Text(emotion),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+      ),
+    );
+    if (value != null && mounted) setState(() => _emotion = value);
+  }
+
+  Widget _slider({
+    required String label,
+    required double value,
+    required double min,
+    required double max,
+    bool integerValue = false,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+            Text(
+              value.toStringAsFixed(integerValue ? 0 : 2),
+              style: const TextStyle(
+                fontSize: 12,
+                color: CupertinoColors.systemGrey,
+              ),
+            ),
+          ],
+        ),
+        CupertinoSlider(value: value, min: min, max: max, onChanged: onChanged),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _AdminScaffold(
+      title: '语音配置',
+      subtitle: widget.agent.name,
+      child: _loading
+          ? const Center(child: CupertinoActivityIndicator())
+          : ListView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 40),
+              children: [
+                _AdminCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _AdminNavRow(
+                        title: '音色',
+                        subtitle: _selectedVoiceName,
+                        onTap: _pickVoice,
+                      ),
+                      const SizedBox(height: 12),
+                      _slider(
+                        label: '语速',
+                        value: _rate,
+                        min: 0.5,
+                        max: 2,
+                        onChanged: (value) => setState(() => _rate = value),
+                      ),
+                      _slider(
+                        label: '音调',
+                        value: _pitch,
+                        min: 0.5,
+                        max: 2,
+                        onChanged: (value) => setState(() => _pitch = value),
+                      ),
+                      _slider(
+                        label: '音量',
+                        value: _volume,
+                        min: 0,
+                        max: 100,
+                        integerValue: true,
+                        onChanged: (value) => setState(() => _volume = value),
+                      ),
+                      CupertinoTextField(
+                        controller: _seedController,
+                        placeholder: '随机种子 0–65535',
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(5),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      CupertinoTextField(
+                        controller: _instructionController,
+                        placeholder: '风格指令（留空使用默认）',
+                        minLines: 3,
+                        maxLines: 5,
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_ttsInstructionCharacters(_instructionController.text)} / 100 计费字符',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color:
+                              _ttsInstructionCharacters(
+                                    _instructionController.text,
+                                  ) >
+                                  100
+                              ? CupertinoColors.systemRed
+                              : CupertinoColors.systemGrey,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text('自动情绪', style: TextStyle(fontSize: 13)),
+                          ),
+                          CupertinoSwitch(
+                            value: _autoEmotion,
+                            onChanged: (value) =>
+                                setState(() => _autoEmotion = value),
+                          ),
+                        ],
+                      ),
+                      if (_autoEmotion)
+                        _slider(
+                          label: '情绪强度倍率',
+                          value: _emotionScale,
+                          min: 0,
+                          max: 2,
+                          onChanged: (value) =>
+                              setState(() => _emotionScale = value),
+                        ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: CupertinoButton.filled(
+                          onPressed: _saving ? null : _save,
+                          child: Text(_saving ? '保存中...' : '保存并立即生效'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _AdminCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '即时试听',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      CupertinoTextField(
+                        controller: _previewController,
+                        minLines: 2,
+                        maxLines: 4,
+                        placeholder: '输入试听文本',
+                      ),
+                      const SizedBox(height: 10),
+                      if (_autoEmotion) ...[
+                        _AdminNavRow(
+                          title: '模拟情绪',
+                          subtitle: _emotion,
+                          onTap: _pickEmotion,
+                        ),
+                        _slider(
+                          label: '模拟强度',
+                          value: _intensity,
+                          min: 0,
+                          max: 100,
+                          integerValue: true,
+                          onChanged: (value) =>
+                              setState(() => _intensity = value),
+                        ),
+                      ],
+                      SizedBox(
+                        width: double.infinity,
+                        child: CupertinoButton(
+                          color: const Color(0xFF2D73FF),
+                          onPressed: _previewing ? null : _previewVoice,
+                          child: Text(_previewing ? '生成中...' : '生成并播放试听'),
+                        ),
+                      ),
+                      if (_preview != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '${((_preview!.durationMilliseconds ?? 0) / 1000).toStringAsFixed(2)} 秒 · '
+                          '${_preview!.billableCharacters ?? 0} 字符 · '
+                          '¥${(_preview!.costCny ?? 0).toStringAsFixed(6)}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: CupertinoColors.systemGrey,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (_notice != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _notice!,
+                    style: const TextStyle(color: CupertinoColors.activeGreen),
+                  ),
+                ],
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _error!,
+                    style: const TextStyle(color: CupertinoColors.systemRed),
+                  ),
+                ],
+              ],
+            ),
     );
   }
 }

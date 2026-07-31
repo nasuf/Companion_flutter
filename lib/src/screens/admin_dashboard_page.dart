@@ -200,9 +200,9 @@ extension _AdminStatsApi on CompanionApi {
 // Models
 // ===========================================================================
 
-double _jsonDouble(Object? value) {
+double _jsonDouble(Object? value, {double fallback = 0}) {
   if (value is num) return value.toDouble();
-  return double.tryParse(value?.toString() ?? '') ?? 0;
+  return double.tryParse(value?.toString() ?? '') ?? fallback;
 }
 
 bool _jsonBool(Object? value) {

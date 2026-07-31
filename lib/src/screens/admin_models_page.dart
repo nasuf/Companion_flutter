@@ -13,6 +13,57 @@ part of 'package:companion_flutter/main.dart';
 
 // ── API bindings ───────────────────────────────────────────────────────────
 
+Future<dynamic> _adminMultipartRequest(
+  CompanionApi api,
+  String path, {
+  required Map<String, String> fields,
+  required String fileName,
+  required String fileMime,
+  required List<int> fileBytes,
+}) async {
+  final client = HttpClient();
+  client.connectionTimeout = const Duration(seconds: 70);
+  try {
+    final boundary =
+        'companion-admin-${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}';
+    final request = await client.postUrl(Uri.parse('${api.baseUrl}$path'));
+    request.headers.contentType = ContentType(
+      'multipart',
+      'form-data',
+      parameters: {'boundary': boundary},
+    );
+    if (api.authToken != null && api.authToken!.isNotEmpty) {
+      request.headers.set(
+        HttpHeaders.authorizationHeader,
+        'Bearer ${api.authToken}',
+      );
+    }
+    for (final entry in fields.entries) {
+      request.write(
+        '--$boundary\r\n'
+        'Content-Disposition: form-data; name="${entry.key}"\r\n\r\n'
+        '${entry.value}\r\n',
+      );
+    }
+    request.write(
+      '--$boundary\r\n'
+      'Content-Disposition: form-data; name="file"; '
+      'filename="${fileName.replaceAll('"', '_')}"\r\n'
+      'Content-Type: $fileMime\r\n\r\n',
+    );
+    request.add(fileBytes);
+    request.write('\r\n--$boundary--\r\n');
+    final response = await request.close();
+    final text = await response.transform(utf8.decoder).join();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException(response.statusCode, _adminErrorText(text));
+    }
+    return text.isEmpty ? null : jsonDecode(text);
+  } finally {
+    client.close(force: true);
+  }
+}
+
 extension _AdminModelsApi on CompanionApi {
   Future<_RuntimeConfigBundle> fetchAdminRuntimeConfig() async {
     final json =
@@ -98,9 +149,226 @@ extension _AdminModelsApi on CompanionApi {
             as Map<String, dynamic>;
     return _RegistryModel.fromJson(json);
   }
+
+  Future<List<_AdminTtsVoiceProfile>> fetchAdminTtsVoices() async {
+    final json =
+        await _adminHttpRequest(this, 'GET', '/admin-api/tts/voices')
+            as Map<String, dynamic>;
+    return _jsonList(
+      json['voices'],
+    ).map(_AdminTtsVoiceProfile.fromJson).toList(growable: false);
+  }
+
+  Future<_AdminTtsVoiceProfile> updateAdminTtsVoice(
+    String profileId,
+    Map<String, dynamic> payload,
+  ) async {
+    final json =
+        await _adminHttpRequest(
+              this,
+              'PATCH',
+              '/admin-api/tts/voices/${Uri.encodeComponent(profileId)}',
+              body: payload,
+            )
+            as Map<String, dynamic>;
+    return _AdminTtsVoiceProfile.fromJson(json);
+  }
+
+  Future<void> deleteAdminTtsVoice(String profileId) async {
+    await _adminHttpRequest(
+      this,
+      'DELETE',
+      '/admin-api/tts/voices/${Uri.encodeComponent(profileId)}',
+    );
+  }
+
+  Future<_AdminTtsVoiceProfile> cloneAdminTtsVoice({
+    required File file,
+    required String displayName,
+    required String gender,
+    required String prefix,
+  }) async {
+    final json =
+        await _adminMultipartRequest(
+              this,
+              '/admin-api/tts/voices/clone',
+              fields: {
+                'display_name': displayName,
+                'gender': gender,
+                'prefix': prefix,
+                'consent_confirmed': 'true',
+              },
+              fileName: file.uri.pathSegments.last,
+              fileMime: 'audio/mp4',
+              fileBytes: await file.readAsBytes(),
+            )
+            as Map<String, dynamic>;
+    return _AdminTtsVoiceProfile.fromJson(json);
+  }
+
+  Future<_AdminAgentTtsConfig> fetchAdminAgentTtsConfig(String agentId) async {
+    final json =
+        await _adminHttpRequest(
+              this,
+              'GET',
+              '/admin-api/tts/agents/${Uri.encodeComponent(agentId)}',
+            )
+            as Map<String, dynamic>;
+    return _AdminAgentTtsConfig.fromJson(json);
+  }
+
+  Future<_AdminAgentTtsConfig> updateAdminAgentTtsConfig(
+    String agentId,
+    Map<String, dynamic> payload,
+  ) async {
+    final json =
+        await _adminHttpRequest(
+              this,
+              'PUT',
+              '/admin-api/tts/agents/${Uri.encodeComponent(agentId)}',
+              body: payload,
+            )
+            as Map<String, dynamic>;
+    return _AdminAgentTtsConfig.fromJson(json);
+  }
+
+  Future<_AdminTtsPreview> previewAdminAgentTts(
+    String agentId,
+    Map<String, dynamic> payload,
+  ) async {
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 70);
+    try {
+      final request = await client.postUrl(
+        Uri.parse(
+          '$baseUrl/admin-api/tts/agents/${Uri.encodeComponent(agentId)}/preview',
+        ),
+      );
+      request.headers.contentType = ContentType.json;
+      if (authToken != null && authToken!.isNotEmpty) {
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer $authToken',
+        );
+      }
+      request.write(jsonEncode(payload));
+      final response = await request.close();
+      final bytes = await consolidateHttpClientResponseBytes(response);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw ApiException(
+          response.statusCode,
+          _adminErrorText(utf8.decode(bytes, allowMalformed: true)),
+        );
+      }
+      return _AdminTtsPreview(
+        bytes: bytes,
+        durationMilliseconds: int.tryParse(
+          response.headers.value('x-tts-duration-milliseconds') ?? '',
+        ),
+        billableCharacters: int.tryParse(
+          response.headers.value('x-tts-billable-characters') ?? '',
+        ),
+        costCny: double.tryParse(
+          response.headers.value('x-tts-cost-cny') ?? '',
+        ),
+      );
+    } finally {
+      client.close(force: true);
+    }
+  }
 }
 
 // ── Data models ────────────────────────────────────────────────────────────
+
+class _AdminTtsVoiceProfile {
+  const _AdminTtsVoiceProfile({
+    required this.id,
+    required this.displayName,
+    required this.voiceId,
+    required this.gender,
+    required this.source,
+    required this.enabled,
+    required this.agentCount,
+  });
+
+  final String id;
+  final String displayName;
+  final String voiceId;
+  final String gender;
+  final String source;
+  final bool enabled;
+  final int agentCount;
+
+  factory _AdminTtsVoiceProfile.fromJson(Map<String, dynamic> json) {
+    return _AdminTtsVoiceProfile(
+      id: _jsonString(json['id']),
+      displayName: _jsonString(json['display_name']),
+      voiceId: _jsonString(json['voice_id']),
+      gender: _jsonString(json['gender']),
+      source: _jsonString(json['source']),
+      enabled: json['enabled'] == true,
+      agentCount: _jsonInt(json['agent_count']),
+    );
+  }
+}
+
+class _AdminAgentTtsConfig {
+  const _AdminAgentTtsConfig({
+    required this.agentId,
+    required this.agentName,
+    required this.gender,
+    required this.voiceProfileId,
+    required this.rate,
+    required this.pitch,
+    required this.volume,
+    required this.seed,
+    required this.instruction,
+    required this.autoEmotion,
+    required this.emotionScale,
+  });
+
+  final String agentId;
+  final String agentName;
+  final String? gender;
+  final String? voiceProfileId;
+  final double rate;
+  final double pitch;
+  final int volume;
+  final int seed;
+  final String? instruction;
+  final bool autoEmotion;
+  final double emotionScale;
+
+  factory _AdminAgentTtsConfig.fromJson(Map<String, dynamic> json) {
+    return _AdminAgentTtsConfig(
+      agentId: _jsonString(json['agent_id']),
+      agentName: _jsonString(json['agent_name']),
+      gender: _jsonNullableString(json['gender']),
+      voiceProfileId: _jsonNullableString(json['voice_profile_id']),
+      rate: _jsonDouble(json['rate'], fallback: 1),
+      pitch: _jsonDouble(json['pitch'], fallback: 1),
+      volume: _jsonInt(json['volume'], fallback: 50),
+      seed: _jsonInt(json['seed']),
+      instruction: _jsonNullableString(json['instruction']),
+      autoEmotion: json['auto_emotion'] != false,
+      emotionScale: _jsonDouble(json['emotion_scale'], fallback: 1),
+    );
+  }
+}
+
+class _AdminTtsPreview {
+  const _AdminTtsPreview({
+    required this.bytes,
+    required this.durationMilliseconds,
+    required this.billableCharacters,
+    required this.costCny,
+  });
+
+  final List<int> bytes;
+  final int? durationMilliseconds;
+  final int? billableCharacters;
+  final double? costCny;
+}
 
 /// Payload keys round-tripped verbatim between GET and PUT. Keeping the whole
 /// map (instead of cherry-picking fields) preserves server-side semantics for
@@ -312,7 +580,7 @@ class _AdminModelsPage extends StatefulWidget {
 }
 
 class _AdminModelsPageState extends State<_AdminModelsPage> {
-  int _tab = 0; // 0 = 模型配置, 1 = 模型库
+  int _tab = 0; // 0 = model config, 1 = registry, 2 = TTS voices
   bool _loading = true;
   String? _error;
 
@@ -665,6 +933,10 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
                   padding: EdgeInsets.symmetric(vertical: 6),
                   child: Text('模型库', style: TextStyle(fontSize: 13)),
                 ),
+                2: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 6),
+                  child: Text('音色库', style: TextStyle(fontSize: 13)),
+                ),
               },
               onValueChanged: (value) => setState(() => _tab = value ?? 0),
             ),
@@ -686,9 +958,14 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
             ),
           ),
         Expanded(
-          child: _tab == 0
-              ? _buildRuntimeTab(context)
-              : _buildRegistryTab(context),
+          child: switch (_tab) {
+            0 => _buildRuntimeTab(context),
+            1 => _buildRegistryTab(context),
+            _ => _AdminTtsVoiceLibrary(
+              api: widget.api,
+              session: widget.session,
+            ),
+          },
         ),
       ],
     );
@@ -1884,6 +2161,443 @@ class _AdminModelEditPageState extends State<_AdminModelEditPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AdminTtsVoiceLibrary extends StatefulWidget {
+  const _AdminTtsVoiceLibrary({required this.api, required this.session});
+
+  final CompanionApi api;
+  final AuthSession session;
+
+  @override
+  State<_AdminTtsVoiceLibrary> createState() => _AdminTtsVoiceLibraryState();
+}
+
+class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
+  final AudioRecorder _recorder = AudioRecorder();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _prefixController = TextEditingController(
+    text: 'voice',
+  );
+  List<_AdminTtsVoiceProfile> _voices = const [];
+  bool _loading = true;
+  bool _saving = false;
+  bool _recording = false;
+  bool _consent = false;
+  String _gender = 'female';
+  String? _recordingPath;
+  String? _error;
+  int _recordingSeconds = 0;
+  Timer? _recordingTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _recordingTimer?.cancel();
+    unawaited(_recorder.dispose());
+    final path = _recordingPath;
+    if (path != null) unawaited(_deleteRecordingFile(path));
+    _nameController.dispose();
+    _prefixController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _deleteRecordingFile(String path) async {
+    try {
+      await File(path).delete();
+    } catch (_) {}
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    widget.api.authToken = widget.session.token;
+    try {
+      final voices = await widget.api.fetchAdminTtsVoices();
+      if (!mounted) return;
+      setState(() {
+        _voices = voices;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = _asMessage(error);
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _startRecording() async {
+    if (!await _recorder.hasPermission()) {
+      setState(() => _error = '请先允许麦克风权限');
+      return;
+    }
+    final directory = await getTemporaryDirectory();
+    final previousPath = _recordingPath;
+    if (previousPath != null) {
+      try {
+        await File(previousPath).delete();
+      } catch (_) {}
+    }
+    final path =
+        '${directory.path}/tts_clone_${DateTime.now().microsecondsSinceEpoch}.m4a';
+    await _recorder.start(chatVoiceRecordConfig, path: path);
+    _recordingTimer?.cancel();
+    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      setState(() => _recordingSeconds += 1);
+      if (_recordingSeconds >= 30) unawaited(_stopRecording());
+    });
+    if (!mounted) return;
+    setState(() {
+      _recording = true;
+      _recordingSeconds = 0;
+      _recordingPath = null;
+      _error = null;
+    });
+  }
+
+  Future<void> _stopRecording() async {
+    if (!_recording) return;
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+    if (mounted) setState(() => _recording = false);
+    final path = await _recorder.stop();
+    if (!mounted) return;
+    setState(() {
+      _recordingPath = path;
+    });
+  }
+
+  Future<void> _cloneVoice() async {
+    final path = _recordingPath;
+    final name = _nameController.text.trim();
+    final prefix = _prefixController.text.trim();
+    if (path == null || _recordingSeconds < 3) {
+      setState(() => _error = '请先录制 3–30 秒清晰人声');
+      return;
+    }
+    if (name.isEmpty || !RegExp(r'^[A-Za-z0-9]{1,10}$').hasMatch(prefix)) {
+      setState(() => _error = '请填写名称，并使用 1–10 位字母或数字作为前缀');
+      return;
+    }
+    if (!_consent) {
+      setState(() => _error = '请确认已获得声音本人授权');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    widget.api.authToken = widget.session.token;
+    try {
+      await widget.api.cloneAdminTtsVoice(
+        file: File(path),
+        displayName: name,
+        gender: _gender,
+        prefix: prefix,
+      );
+      try {
+        await File(path).delete();
+      } catch (_) {}
+      if (!mounted) return;
+      _nameController.clear();
+      _prefixController.text = 'voice';
+      setState(() {
+        _recordingPath = null;
+        _recordingSeconds = 0;
+        _consent = false;
+      });
+      await _load();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = _asMessage(error));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _updateVoice(
+    _AdminTtsVoiceProfile voice,
+    Map<String, dynamic> payload,
+  ) async {
+    widget.api.authToken = widget.session.token;
+    try {
+      await widget.api.updateAdminTtsVoice(voice.id, payload);
+      await _load();
+    } catch (error) {
+      if (mounted) setState(() => _error = _asMessage(error));
+    }
+  }
+
+  Future<void> _deleteVoice(_AdminTtsVoiceProfile voice) async {
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('删除复刻音色'),
+        content: Text('确定删除“${voice.displayName}”吗？此操作不可恢复。'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    widget.api.authToken = widget.session.token;
+    try {
+      await widget.api.deleteAdminTtsVoice(voice.id);
+      await _load();
+    } catch (error) {
+      if (mounted) setState(() => _error = _asMessage(error));
+    }
+  }
+
+  Future<void> _pickGender(_AdminTtsVoiceProfile voice) async {
+    final value = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: Text(voice.displayName),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.pop(context, 'female'),
+            child: const Text('女声'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.pop(context, 'male'),
+            child: const Text('男声'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+      ),
+    );
+    if (value != null && value != voice.gender) {
+      await _updateVoice(voice, {'gender': value});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading && _voices.isEmpty) {
+      return const Center(child: CupertinoActivityIndicator());
+    }
+    return ListView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 40),
+      children: [
+        _AdminCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _adminModelsTitle(context, '录制真人音色'),
+              const SizedBox(height: 6),
+              _adminModelsCaption(context, '录制 3–30 秒清晰人声；创建前必须取得本人授权。'),
+              const SizedBox(height: 14),
+              CupertinoTextField(
+                controller: _nameController,
+                placeholder: '音色显示名',
+                enabled: !_saving,
+              ),
+              const SizedBox(height: 10),
+              CupertinoTextField(
+                controller: _prefixController,
+                placeholder: '1–10 位英文或数字前缀',
+                enabled: !_saving,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+                  LengthLimitingTextInputFormatter(10),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _PickerRow(
+                label: '性别',
+                value: _gender == 'male' ? '男声' : '女声',
+                enabled: !_saving,
+                onTap: () async {
+                  final value = await showCupertinoModalPopup<String>(
+                    context: context,
+                    builder: (context) => CupertinoActionSheet(
+                      title: const Text('选择性别'),
+                      actions: [
+                        CupertinoActionSheetAction(
+                          isDefaultAction: _gender == 'female',
+                          onPressed: () => Navigator.pop(context, 'female'),
+                          child: const Text('女声'),
+                        ),
+                        CupertinoActionSheetAction(
+                          isDefaultAction: _gender == 'male',
+                          onPressed: () => Navigator.pop(context, 'male'),
+                          child: const Text('男声'),
+                        ),
+                      ],
+                      cancelButton: CupertinoActionSheetAction(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('取消'),
+                      ),
+                    ),
+                  );
+                  if (value != null && mounted) {
+                    setState(() => _gender = value);
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: CupertinoButton(
+                      color: _recording
+                          ? CupertinoColors.destructiveRed
+                          : const Color(0xFF2D73FF),
+                      onPressed: _saving
+                          ? null
+                          : (_recording ? _stopRecording : _startRecording),
+                      child: Text(
+                        _recording
+                            ? '停止录音 ${_recordingSeconds}s'
+                            : _recordingPath == null
+                            ? '开始录音'
+                            : '重新录音（${_recordingSeconds}s）',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CupertinoSwitch(
+                    value: _consent,
+                    onChanged: _saving
+                        ? null
+                        : (value) => setState(() => _consent = value),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      '我确认已获得声音本人明确授权，可用于音色复刻和语音合成。',
+                      style: TextStyle(fontSize: 13, height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: CupertinoButton.filled(
+                  onPressed: _saving ? null : _cloneVoice,
+                  child: Text(_saving ? '创建中...' : '创建复刻音色'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: CupertinoColors.systemRed.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              _error!,
+              style: const TextStyle(
+                color: CupertinoColors.systemRed,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 16),
+        for (final voice in _voices) ...[
+          _AdminCard(
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            voice.displayName,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '${voice.source == 'cloned' ? '复刻' : '系统'} · '
+                            '${voice.gender == 'male' ? '男声' : '女声'} · '
+                            '${voice.agentCount} 个 Agent',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: CupertinoColors.systemGrey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    CupertinoSwitch(
+                      value: voice.enabled,
+                      onChanged: (value) =>
+                          _updateVoice(voice, {'enabled': value}),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                _AdminDetailLine(label: 'Voice ID', value: voice.voiceId),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    CupertinoButton(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      onPressed: () => _pickGender(voice),
+                      child: const Text('修改性别'),
+                    ),
+                    if (voice.source == 'cloned')
+                      CupertinoButton(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        onPressed: voice.agentCount > 0
+                            ? null
+                            : () => _deleteVoice(voice),
+                        child: const Text(
+                          '删除',
+                          style: TextStyle(
+                            color: CupertinoColors.destructiveRed,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+      ],
     );
   }
 }
