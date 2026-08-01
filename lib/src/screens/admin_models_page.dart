@@ -2007,6 +2007,7 @@ class _AdminModelEditPageState extends State<_AdminModelEditPage> {
       keyboardType: numeric
           ? const TextInputType.numberWithOptions(decimal: true)
           : TextInputType.text,
+      onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
       style: TextStyle(
         color: isDark ? AppColors.text : const Color(0xFF12171B),
         fontSize: 13.5,
@@ -2028,6 +2029,7 @@ class _AdminModelEditPageState extends State<_AdminModelEditPage> {
       title: _isEdit ? '编辑模型' : '新增模型',
       subtitle: _isEdit ? widget.existing!.identifier : '登记到模型库后可在模型配置中选用',
       child: ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 40),
         children: [
@@ -2401,6 +2403,7 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
       return const Center(child: CupertinoActivityIndicator());
     }
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 40),
       children: [
@@ -2416,12 +2419,16 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
                 controller: _nameController,
                 placeholder: '音色显示名',
                 enabled: !_saving,
+                onTapOutside: (_) =>
+                    FocusManager.instance.primaryFocus?.unfocus(),
               ),
               const SizedBox(height: 10),
               CupertinoTextField(
                 controller: _prefixController,
                 placeholder: '1–10 位英文或数字前缀',
                 enabled: !_saving,
+                onTapOutside: (_) =>
+                    FocusManager.instance.primaryFocus?.unfocus(),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
                   LengthLimitingTextInputFormatter(10),
@@ -2477,6 +2484,10 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
                             : _recordingPath == null
                             ? '开始录音'
                             : '重新录音（${_recordingSeconds}s）',
+                        style: const TextStyle(
+                          color: CupertinoColors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
