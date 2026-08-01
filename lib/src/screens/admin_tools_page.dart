@@ -2724,23 +2724,36 @@ class _AdminAgentTtsPageState extends State<_AdminAgentTtsPage> {
     bool integerValue = false,
     required ValueChanged<double> onChanged,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
-            Text(
-              value.toStringAsFixed(integerValue ? 0 : 2),
-              style: const TextStyle(
-                fontSize: 12,
-                color: CupertinoColors.systemGrey,
+    return SizedBox(
+      width: double.infinity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(label, style: const TextStyle(fontSize: 13)),
               ),
+              Text(
+                value.toStringAsFixed(integerValue ? 0 : 2),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: CupertinoColors.systemGrey,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(
+            width: double.infinity,
+            child: CupertinoSlider(
+              value: value,
+              min: min,
+              max: max,
+              onChanged: onChanged,
             ),
-          ],
-        ),
-        CupertinoSlider(value: value, min: min, max: max, onChanged: onChanged),
-      ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -2749,183 +2762,206 @@ class _AdminAgentTtsPageState extends State<_AdminAgentTtsPage> {
     return _AdminScaffold(
       title: '语音配置',
       subtitle: widget.agent.name,
-      child: _loading
-          ? const Center(child: CupertinoActivityIndicator())
-          : ListView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(18, 8, 18, 40),
-              children: [
-                _AdminCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _AdminNavRow(
-                        title: '音色',
-                        subtitle: _selectedVoiceName,
-                        onTap: _pickVoice,
-                      ),
-                      const SizedBox(height: 12),
-                      _slider(
-                        label: '语速',
-                        value: _rate,
-                        min: 0.5,
-                        max: 2,
-                        onChanged: (value) => setState(() => _rate = value),
-                      ),
-                      _slider(
-                        label: '音调',
-                        value: _pitch,
-                        min: 0.5,
-                        max: 2,
-                        onChanged: (value) => setState(() => _pitch = value),
-                      ),
-                      _slider(
-                        label: '音量',
-                        value: _volume,
-                        min: 0,
-                        max: 100,
-                        integerValue: true,
-                        onChanged: (value) => setState(() => _volume = value),
-                      ),
-                      CupertinoTextField(
-                        controller: _seedController,
-                        placeholder: '随机种子 0–65535',
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          LengthLimitingTextInputFormatter(5),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      CupertinoTextField(
-                        controller: _instructionController,
-                        placeholder: '风格指令（留空使用默认）',
-                        minLines: 3,
-                        maxLines: 5,
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${_ttsInstructionCharacters(_instructionController.text)} / 100 计费字符',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color:
-                              _ttsInstructionCharacters(
-                                    _instructionController.text,
-                                  ) >
-                                  100
-                              ? CupertinoColors.systemRed
-                              : CupertinoColors.systemGrey,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: Text('自动情绪', style: TextStyle(fontSize: 13)),
-                          ),
-                          CupertinoSwitch(
-                            value: _autoEmotion,
-                            onChanged: (value) =>
-                                setState(() => _autoEmotion = value),
-                          ),
-                        ],
-                      ),
-                      if (_autoEmotion)
-                        _slider(
-                          label: '情绪强度倍率',
-                          value: _emotionScale,
-                          min: 0,
-                          max: 2,
-                          onChanged: (value) =>
-                              setState(() => _emotionScale = value),
-                        ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: CupertinoButton.filled(
-                          onPressed: _saving ? null : _save,
-                          child: Text(_saving ? '保存中...' : '保存并立即生效'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _AdminCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        '即时试听',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      CupertinoTextField(
-                        controller: _previewController,
-                        minLines: 2,
-                        maxLines: 4,
-                        placeholder: '输入试听文本',
-                      ),
-                      const SizedBox(height: 10),
-                      if (_autoEmotion) ...[
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: _loading
+            ? const Center(child: CupertinoActivityIndicator())
+            : ListView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 40),
+                children: [
+                  _AdminCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         _AdminNavRow(
-                          title: '模拟情绪',
-                          subtitle: _emotion,
-                          onTap: _pickEmotion,
+                          title: '音色',
+                          subtitle: _selectedVoiceName,
+                          onTap: _pickVoice,
+                        ),
+                        const SizedBox(height: 12),
+                        _slider(
+                          label: '语速',
+                          value: _rate,
+                          min: 0.5,
+                          max: 2,
+                          onChanged: (value) => setState(() => _rate = value),
                         ),
                         _slider(
-                          label: '模拟强度',
-                          value: _intensity,
+                          label: '音调',
+                          value: _pitch,
+                          min: 0.5,
+                          max: 2,
+                          onChanged: (value) => setState(() => _pitch = value),
+                        ),
+                        _slider(
+                          label: '音量',
+                          value: _volume,
                           min: 0,
                           max: 100,
                           integerValue: true,
-                          onChanged: (value) =>
-                              setState(() => _intensity = value),
+                          onChanged: (value) => setState(() => _volume = value),
                         ),
-                      ],
-                      SizedBox(
-                        width: double.infinity,
-                        child: CupertinoButton(
-                          color: const Color(0xFF2D73FF),
-                          onPressed: _previewing ? null : _previewVoice,
-                          child: Text(_previewing ? '生成中...' : '生成并播放试听'),
+                        CupertinoTextField(
+                          controller: _seedController,
+                          placeholder: '随机种子 0–65535',
+                          keyboardType: TextInputType.number,
+                          onTapOutside: (_) =>
+                              FocusManager.instance.primaryFocus?.unfocus(),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(5),
+                          ],
                         ),
-                      ),
-                      if (_preview != null) ...[
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 12),
+                        CupertinoTextField(
+                          controller: _instructionController,
+                          placeholder: '风格指令（留空使用默认）',
+                          minLines: 3,
+                          maxLines: 5,
+                          onTapOutside: (_) =>
+                              FocusManager.instance.primaryFocus?.unfocus(),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                        const SizedBox(height: 4),
                         Text(
-                          '${((_preview!.durationMilliseconds ?? 0) / 1000).toStringAsFixed(2)} 秒 · '
-                          '${_preview!.billableCharacters ?? 0} 字符 · '
-                          '¥${(_preview!.costCny ?? 0).toStringAsFixed(6)}',
-                          style: const TextStyle(
+                          '${_ttsInstructionCharacters(_instructionController.text)} / 100 计费字符',
+                          style: TextStyle(
                             fontSize: 12,
-                            color: CupertinoColors.systemGrey,
+                            color:
+                                _ttsInstructionCharacters(
+                                      _instructionController.text,
+                                    ) >
+                                    100
+                                ? CupertinoColors.systemRed
+                                : CupertinoColors.systemGrey,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                '自动情绪',
+                                style: TextStyle(fontSize: 13),
+                              ),
+                            ),
+                            CupertinoSwitch(
+                              value: _autoEmotion,
+                              onChanged: (value) =>
+                                  setState(() => _autoEmotion = value),
+                            ),
+                          ],
+                        ),
+                        if (_autoEmotion)
+                          _slider(
+                            label: '情绪强度倍率',
+                            value: _emotionScale,
+                            min: 0,
+                            max: 2,
+                            onChanged: (value) =>
+                                setState(() => _emotionScale = value),
+                          ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: CupertinoButton.filled(
+                            onPressed: _saving ? null : _save,
+                            child: Text(_saving ? '保存中...' : '保存并立即生效'),
                           ),
                         ),
                       ],
-                    ],
+                    ),
                   ),
-                ),
-                if (_notice != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _notice!,
-                    style: const TextStyle(color: CupertinoColors.activeGreen),
+                  const SizedBox(height: 16),
+                  _AdminCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '即时试听',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        CupertinoTextField(
+                          controller: _previewController,
+                          minLines: 2,
+                          maxLines: 4,
+                          placeholder: '输入试听文本',
+                          onTapOutside: (_) =>
+                              FocusManager.instance.primaryFocus?.unfocus(),
+                        ),
+                        const SizedBox(height: 10),
+                        if (_autoEmotion) ...[
+                          _AdminNavRow(
+                            title: '模拟情绪',
+                            subtitle: _emotion,
+                            onTap: _pickEmotion,
+                          ),
+                          _slider(
+                            label: '模拟强度',
+                            value: _intensity,
+                            min: 0,
+                            max: 100,
+                            integerValue: true,
+                            onChanged: (value) =>
+                                setState(() => _intensity = value),
+                          ),
+                        ],
+                        SizedBox(
+                          width: double.infinity,
+                          child: CupertinoButton(
+                            color: const Color(0xFF2D73FF),
+                            onPressed: _previewing ? null : _previewVoice,
+                            child: Text(
+                              _previewing ? '生成中...' : '生成并播放试听',
+                              style: const TextStyle(
+                                color: CupertinoColors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (_preview != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            '${((_preview!.durationMilliseconds ?? 0) / 1000).toStringAsFixed(2)} 秒 · '
+                            '${_preview!.billableCharacters ?? 0} 字符 · '
+                            '¥${(_preview!.costCny ?? 0).toStringAsFixed(6)}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: CupertinoColors.systemGrey,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
+                  if (_notice != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _notice!,
+                      style: const TextStyle(
+                        color: CupertinoColors.activeGreen,
+                      ),
+                    ),
+                  ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _error!,
+                      style: const TextStyle(color: CupertinoColors.systemRed),
+                    ),
+                  ],
                 ],
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _error!,
-                    style: const TextStyle(color: CupertinoColors.systemRed),
-                  ),
-                ],
-              ],
-            ),
+              ),
+      ),
     );
   }
 }
