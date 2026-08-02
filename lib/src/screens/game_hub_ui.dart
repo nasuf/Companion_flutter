@@ -426,16 +426,20 @@ class _HubLevelCard extends StatelessWidget {
               ),
             ),
           ),
+          // Plain artwork, exactly as the 等级说明 sheet draws it. The badge used
+          // to carry sparks on top, which read as a rank marker the ladder has
+          // no concept of.
           Positioned(
             left: 32 * s,
             top: 26 * s,
             width: 57 * s,
             height: 68 * s,
-            child: Image.asset(glove, fit: BoxFit.contain),
+            child: Image.asset(
+              glove,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.medium,
+            ),
           ),
-          _spark(s, 51, 52, 7, 0.25),
-          _spark(s, 56.5, 53.5, 9, 0.31),
-          _spark(s, 63, 58, 9, 0.31),
           // Both lines keep a margin off the card edge; the ladder's names run
           // up to six characters, which used to fill the card edge to edge.
           Positioned(
@@ -486,18 +490,6 @@ class _HubLevelCard extends StatelessWidget {
       ),
     );
   }
-
-  Widget _spark(double s, double x, double y, double size, double turns) =>
-      Positioned(
-        left: x * s,
-        top: y * s,
-        width: size * s,
-        height: size * s,
-        child: Transform.rotate(
-          angle: turns * 2 * math.pi,
-          child: Image.asset('$_hubArt/level_spark.png', fit: BoxFit.contain),
-        ),
-      );
 }
 
 /// Cartoon lettering from the design: white glyphs with a dark brown rim.

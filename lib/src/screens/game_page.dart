@@ -19,6 +19,7 @@ class _GamePageState extends State<GamePage>
   // The history request that feeds the three header counters is still in
   // flight; the pills spin instead of showing a placeholder zero.
   bool _statsLoading = true;
+  bool _levelSheetOpen = false;
   int? _totalRounds;
   int _totalSeconds = 0;
   int _todaySeconds = 0;
@@ -145,15 +146,14 @@ class _GamePageState extends State<GamePage>
 
   /// Fetch the ladder lazily and keep it for the rest of the session — the
   /// sheet is opened repeatedly and the table almost never changes.
-  void _openLevelSheet() {
+  Future<void> _openLevelSheet() async {
     _levelTiers ??= widget.api.listGameLevelTiers();
-    unawaited(
-      showHubLevelSheet(
-        context,
-        tiers: _levelTiers!,
-        lifetimeEarned: _gameWallet?.lifetimeEarned ?? 0,
-      ),
-    );
+    setState(() => _levelSheetOpen = true);
+    try {
+      await showHubLevelSheet(context, tiers: _levelTiers!);
+    } finally {
+      if (mounted) setState(() => _levelSheetOpen = false);
+    }
   }
 
   void _showPointsInfoDialog() {
@@ -267,25 +267,31 @@ class _GamePageState extends State<GamePage>
         final progress = Curves.easeInOut.transform(_controller.value);
         return Scaffold(
           backgroundColor: const Color(0xFF9FD0E6),
-          body: Stack(
-            children: [
-              _HubBackground(progress: progress),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  // The design is a 393pt frame; everything scales from there.
-                  final s = constraints.maxWidth / _hubRefWidth;
-                  return CustomScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    slivers: [
-                      SliverToBoxAdapter(child: _topBar(context, s)),
-                      SliverToBoxAdapter(child: _statsHeader(s)),
-                      SliverToBoxAdapter(child: _gameGroupsSection(s)),
-                      SliverToBoxAdapter(child: SizedBox(height: 120 * s)),
-                    ],
-                  );
-                },
-              ),
-            ],
+          // Every card here breathes on a repeating ticker. Behind the level
+          // sheet's frosted backdrop that motion is invisible but would force a
+          // full-screen blur pass every frame, so the hub holds still instead.
+          body: TickerMode(
+            enabled: !_levelSheetOpen,
+            child: Stack(
+              children: [
+                _HubBackground(progress: progress),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    // The design is a 393pt frame; everything scales from there.
+                    final s = constraints.maxWidth / _hubRefWidth;
+                    return CustomScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      slivers: [
+                        SliverToBoxAdapter(child: _topBar(context, s)),
+                        SliverToBoxAdapter(child: _statsHeader(s)),
+                        SliverToBoxAdapter(child: _gameGroupsSection(s)),
+                        SliverToBoxAdapter(child: SizedBox(height: 120 * s)),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -343,7 +349,7 @@ class _GamePageState extends State<GamePage>
                     tierName: labels.title,
                     stageName: labels.subtitle,
                     glove: hubLevelGlove(level),
-                    onTap: _openLevelSheet,
+                    onTap: () => unawaited(_openLevelSheet()),
                   ),
                 ),
                 const Spacer(),

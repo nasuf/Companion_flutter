@@ -103,36 +103,63 @@ List<_HubLevelStage> _hubGroupStages(List<GameLevelTier> tiers) {
   return stages;
 }
 
+/// Strength of the frosted backdrop once the sheet is fully open.
+const _hubSheetBlurSigma = 14.0;
+
 Future<void> showHubLevelSheet(
   BuildContext context, {
   required Future<List<GameLevelTier>> tiers,
-  required int lifetimeEarned,
 }) {
   return showGeneralDialog<void>(
     context: context,
     barrierDismissible: true,
     barrierLabel: '关闭',
-    barrierColor: Colors.black.withValues(alpha: 0.28),
+    // The frosted layer below carries the dim, so the barrier itself stays
+    // clear; two stacked scrims would double up during the transition.
+    barrierColor: Colors.transparent,
     transitionDuration: const Duration(milliseconds: 260),
-    pageBuilder: (_, _, _) =>
-        _HubLevelSheet(tiers: tiers, lifetimeEarned: lifetimeEarned),
-    transitionBuilder: (_, animation, _, child) => FadeTransition(
-      opacity: animation,
-      child: ScaleTransition(
-        scale: Tween<double>(begin: 0.94, end: 1).animate(
-          CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-        ),
-        child: child,
-      ),
-    ),
+    pageBuilder: (_, _, _) => _HubLevelSheet(tiers: tiers),
+    // Runs on every frame of the transition, so it reads the animation directly
+    // rather than wrapping it again.
+    transitionBuilder: (_, animation, _, child) {
+      final curve = animation.status == AnimationStatus.reverse
+          ? Curves.easeInCubic
+          : Curves.easeOutCubic;
+      final t = curve.transform(animation.value.clamp(0.0, 1.0));
+      // A zero-sigma blur still costs a full-screen filter pass, so the frosted
+      // layer only exists while the sheet is on screen.
+      final backdrop = t <= 0.001
+          ? const SizedBox.shrink()
+          : BackdropFilter(
+              filter: ImageFilter.blur(
+                sigmaX: _hubSheetBlurSigma * t,
+                sigmaY: _hubSheetBlurSigma * t,
+              ),
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: 0.28 * t),
+                child: const SizedBox.expand(),
+              ),
+            );
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          // Taps have to reach the barrier underneath for dismissal, and a
+          // ColoredBox is hit-test opaque on its own.
+          IgnorePointer(child: backdrop),
+          Opacity(
+            opacity: t,
+            child: Transform.scale(scale: 0.94 + 0.06 * t, child: child),
+          ),
+        ],
+      );
+    },
   );
 }
 
 class _HubLevelSheet extends StatelessWidget {
-  const _HubLevelSheet({required this.tiers, required this.lifetimeEarned});
+  const _HubLevelSheet({required this.tiers});
 
   final Future<List<GameLevelTier>> tiers;
-  final int lifetimeEarned;
 
   static const String _intro = '通过棋类、休闲游戏积累积分，积分达标即可完成等级晋升，晋升标准如下：';
   static const String _footer =
@@ -258,7 +285,6 @@ class _HubLevelSheet extends StatelessWidget {
                           scale: s,
                           stage: stages[index],
                           index: index,
-                          lifetimeEarned: lifetimeEarned,
                         ),
                       ),
                   ],
@@ -290,13 +316,11 @@ class _HubLevelStageRow extends StatelessWidget {
     required this.scale,
     required this.stage,
     required this.index,
-    required this.lifetimeEarned,
   });
 
   final double scale;
   final _HubLevelStage stage;
   final int index;
-  final int lifetimeEarned;
 
   @override
   Widget build(BuildContext context) {
@@ -310,7 +334,11 @@ class _HubLevelStageRow extends StatelessWidget {
           SizedBox(
             width: 27 * s,
             height: 32 * s,
-            child: Image.asset(asset, fit: BoxFit.contain),
+            child: Image.asset(
+              asset,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.medium,
+            ),
           ),
           SizedBox(width: 4 * s),
           SizedBox(
@@ -361,7 +389,6 @@ class _HubLevelStageRow extends StatelessWidget {
                     scale: s,
                     asset: _hubTierGlove(stage.name, index, colourIndex),
                     points: tier.cumulativePoints,
-                    reached: lifetimeEarned >= tier.cumulativePoints,
                   ),
               ],
             ),
@@ -377,13 +404,11 @@ class _HubLevelTierMark extends StatelessWidget {
     required this.scale,
     required this.asset,
     required this.points,
-    required this.reached,
   });
 
   final double scale;
   final String asset;
   final int points;
-  final bool reached;
 
   @override
   Widget build(BuildContext context) {
@@ -392,12 +417,13 @@ class _HubLevelTierMark extends StatelessWidget {
       width: 26 * s,
       child: Column(
         children: [
-          Opacity(
-            opacity: reached ? 1 : 0.32,
-            child: SizedBox(
-              width: 18 * s,
-              height: 22 * s,
-              child: Image.asset(asset, fit: BoxFit.contain),
+          SizedBox(
+            width: 18 * s,
+            height: 22 * s,
+            child: Image.asset(
+              asset,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.medium,
             ),
           ),
           SizedBox(height: 1 * s),
@@ -407,7 +433,7 @@ class _HubLevelTierMark extends StatelessWidget {
               '$points',
               maxLines: 1,
               style: TextStyle(
-                color: _hubInkSoft.withValues(alpha: reached ? 1 : 0.55),
+                color: _hubInkSoft,
                 fontSize: 7 * s,
                 height: 1,
                 fontWeight: FontWeight.w900,
