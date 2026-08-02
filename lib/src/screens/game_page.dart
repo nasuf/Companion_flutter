@@ -105,8 +105,10 @@ class _GamePageState extends State<GamePage>
     try {
       final wallet = await walletFuture;
       if (mounted) setState(() => _gameWallet = wallet);
-    } catch (_) {
-      // Points are non-fatal for the hub.
+    } catch (error) {
+      // The wallet gates whether a game can start at all, so this one is worth
+      // surfacing — unlike the catalog and the counters below.
+      if (mounted) setState(() => _error = _formatError(error));
     }
     try {
       final catalog = await catalogFuture;
@@ -132,8 +134,10 @@ class _GamePageState extends State<GamePage>
           _todaySeconds = stats.todaySeconds;
         });
       }
-    } catch (error) {
-      if (mounted) setState(() => _error = _formatError(error));
+    } catch (_) {
+      // Counters are decorative, and this endpoint is newer than the rest of
+      // the hub — a server that predates it must not turn the whole page into
+      // an error. Leave the numbers at zero and carry on.
     } finally {
       if (mounted) setState(() => _statsLoading = false);
     }
