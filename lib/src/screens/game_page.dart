@@ -342,11 +342,7 @@ class _GamePageState extends State<GamePage>
                     scale: s,
                     tierName: labels.title,
                     stageName: labels.subtitle,
-                    glove: _hubTierGlove(
-                      level?.tierName ?? '',
-                      level?.stageName ?? '',
-                      0,
-                    ),
+                    glove: hubLevelGlove(level),
                     onTap: _openLevelSheet,
                   ),
                 ),

@@ -4,46 +4,78 @@ const _hubGloveArt = '$_hubArt/gloves';
 const _hubFrameFill = Color(0xFFECAF5D);
 const _hubFrameEdge = Color(0xFF632601);
 
-/// Stage artwork keyed by the glove material in the ladder's copy. The kit has
-/// no yellow or rainbow glove, so those steps borrow the nearest tone.
-const _hubGloveByMaterial = <String, String>{
-  '皮革': 'glove_1.png',
-  '尼龙': 'glove_2.png',
-  '战术': 'glove_3.png',
-  '巨岩': 'glove_9.png',
-  '玄铁': 'glove_11.png',
-};
-
-/// Artwork for a step inside a stage, keyed by its colour.
-const _hubGloveByColour = <String, String>{
-  '白': 'glove_2.png',
-  '绿': 'glove_4.png',
-  '黄': 'glove_6.png',
-  '蓝': 'glove_7.png',
-  '黑': 'glove_11.png',
-  '彩': 'glove_10.png',
-};
-
-const _hubGloveFallback = <String>[
-  'glove_1.png',
-  'glove_2.png',
-  'glove_3.png',
-  'glove_9.png',
-  'glove_11.png',
+/// The design lays the gloves out as a 5×5 grid: a row per material, and the
+/// same material in five colours across it. Material is the visible difference
+/// (plain leather, ribbed nylon, fingerless tactical, segmented rock, etched
+/// crystal), so the row is picked by the stage's name and the column by the
+/// step's position inside that stage.
+const _hubGloveMaterials = <String>[
+  'leather',
+  'nylon',
+  'tactical',
+  'rock',
+  'crystal',
 ];
 
-String _hubStageGlove(String stageName, int index) {
-  for (final entry in _hubGloveByMaterial.entries) {
-    if (stageName.contains(entry.key)) return '$_hubGloveArt/${entry.value}';
-  }
-  return '$_hubGloveArt/${_hubGloveFallback[index % _hubGloveFallback.length]}';
+/// Keyword in the ladder's stage name → row of the grid.
+const _hubMaterialByStage = <String, String>{
+  '皮革': 'leather',
+  '尼龙': 'nylon',
+  '战术': 'tactical',
+  '巨岩': 'rock',
+  '玄铁': 'crystal',
+};
+
+/// Columns, in ladder order. The artwork's third step is orange on some rows
+/// and gold on others, so the column is positional rather than colour-matched.
+const _hubGloveColours = <String>['white', 'green', 'gold', 'blue', 'dark'];
+
+String _hubGloveAsset(String material, int colourIndex) {
+  final colour =
+      _hubGloveColours[colourIndex.clamp(0, _hubGloveColours.length - 1)];
+  return '$_hubGloveArt/${material}_$colour.png';
 }
 
-String _hubTierGlove(String tierName, String stageName, int index) {
-  for (final entry in _hubGloveByColour.entries) {
-    if (tierName.contains(entry.key)) return '$_hubGloveArt/${entry.value}';
+/// Falls back to the stage's position when an admin renames a stage away from
+/// the seeded material names.
+String _hubStageMaterial(String stageName, int stageIndex) {
+  for (final entry in _hubMaterialByStage.entries) {
+    if (stageName.contains(entry.key)) return entry.value;
   }
-  return _hubStageGlove(stageName, index);
+  return _hubGloveMaterials[stageIndex % _hubGloveMaterials.length];
+}
+
+/// The row's own icon is its last (darkest) step, exactly as in the design.
+String _hubStageGlove(String stageName, int stageIndex) => _hubGloveAsset(
+  _hubStageMaterial(stageName, stageIndex),
+  _hubGloveColours.length - 1,
+);
+
+String _hubTierGlove(String stageName, int stageIndex, int colourIndex) =>
+    _hubGloveAsset(_hubStageMaterial(stageName, stageIndex), colourIndex);
+
+/// Column for a step named by its colour. The wallet reports the player's level
+/// by name only, without its position in the ladder.
+const _hubColumnByTierName = <String, int>{
+  '白': 0,
+  '绿': 1,
+  '黄': 2,
+  '蓝': 3,
+  '黑': 4,
+  '彩': 4,
+};
+
+/// Glove for the player's current level, for the hub's badge.
+String hubLevelGlove(GameLevel? level) {
+  if (level == null) return _hubGloveAsset(_hubGloveMaterials.first, 0);
+  var column = 0;
+  for (final entry in _hubColumnByTierName.entries) {
+    if (level.tierName.contains(entry.key)) {
+      column = entry.value;
+      break;
+    }
+  }
+  return _hubTierGlove(level.stageName, 0, column);
 }
 
 /// One stage of the ladder plus the tiers inside it.
@@ -324,10 +356,10 @@ class _HubLevelStageRow extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final tier in stage.tiers)
+                for (final (colourIndex, tier) in stage.tiers.indexed)
                   _HubLevelTierMark(
                     scale: s,
-                    asset: _hubTierGlove(tier.tierName, stage.name, index),
+                    asset: _hubTierGlove(stage.name, index, colourIndex),
                     points: tier.cumulativePoints,
                     reached: lifetimeEarned >= tier.cumulativePoints,
                   ),
