@@ -370,12 +370,16 @@ class _HubLevelCard extends StatelessWidget {
     required this.scale,
     required this.tierName,
     required this.stageName,
+    required this.glove,
     required this.onTap,
   });
 
   final double scale;
   final String tierName;
   final String stageName;
+
+  /// Artwork for the player's current step, so the badge matches their colour.
+  final String glove;
   final VoidCallback onTap;
 
   @override
@@ -427,7 +431,7 @@ class _HubLevelCard extends StatelessWidget {
             top: 26 * s,
             width: 57 * s,
             height: 68 * s,
-            child: Image.asset('$_hubArt/level_badge.png', fit: BoxFit.contain),
+            child: Image.asset(glove, fit: BoxFit.contain),
           ),
           _spark(s, 51, 52, 7, 0.25),
           _spark(s, 56.5, 53.5, 9, 0.31),
