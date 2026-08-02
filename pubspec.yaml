@@ -103,6 +103,8 @@ flutter:
     - assets/prototype/games/go/
     - assets/prototype/games/reversi/
     - assets/prototype/games/xiangqi/
+    - assets/prototype/games/chess-figma/
+    - assets/prototype/games/checkers-figma/
     - assets/achievements/
     - assets/interaction/
     - assets/navigation/

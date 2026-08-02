@@ -24,6 +24,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
   Set<int> _legalTargets = const {};
   bool _isFullscreen = false;
   bool _xiangqiTimerPaused = false;
+  bool _chessTimerPaused = false;
   bool _chessAssetsPrecached = false;
 
   String get _gameKey => widget.kind == ChessFamilyKind.chess
@@ -92,8 +93,9 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       );
       _selectedSquare = null;
       _legalTargets = const {};
-      _isFullscreen = widget.kind == ChessFamilyKind.chess;
+      _isFullscreen = false;
       _xiangqiTimerPaused = false;
+      _chessTimerPaused = false;
     });
   }
 
@@ -113,12 +115,18 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       _legalTargets = const {};
       _isFullscreen = false;
       _xiangqiTimerPaused = false;
+      _chessTimerPaused = false;
     });
   }
 
   void _setXiangqiTimerPaused(bool paused) {
     if (!mounted || _xiangqiTimerPaused == paused) return;
     setState(() => _xiangqiTimerPaused = paused);
+  }
+
+  void _setChessTimerPaused(bool paused) {
+    if (!mounted || _chessTimerPaused == paused) return;
+    setState(() => _chessTimerPaused = paused);
   }
 
   Future<void> _handleSquareTap(int square) async {
@@ -251,6 +259,58 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
   @override
   Widget build(BuildContext context) {
     final engine = _engine;
+    if (widget.kind == ChessFamilyKind.chess) {
+      if (engine == null) {
+        return _ChessHome(
+          rounds: _runtime.rounds,
+          starting: _runtime.starting,
+          error: _runtime.error,
+          onStart: _startGame,
+          onExit: () => Navigator.of(context).maybePop(),
+        );
+      }
+      final userTurnActive =
+          !engine.isFinished &&
+          !engine.isAgentTurn &&
+          !_runtime.aiThinking &&
+          !_runtime.starting &&
+          !_chessTimerPaused;
+      return PopScope(
+        canPop: false,
+        child: _NativeGameInteractionLayer(
+          runtime: _runtime,
+          game: widget.game,
+          onPlayAgain: _startGame,
+          onCloseGame: _closeGame,
+          userTurnActive: userTurnActive,
+          turnToken:
+              '${_runtime.session?.id}:${engine.moveCount}:${engine.isAgentTurn ? 'agent' : 'user'}',
+          turnTimeout: _nativeGameTurnTimeout(_gameKey),
+          turnLabel: _runtime.aiThinking
+              ? '${_runtime.agentName} 在走棋'
+              : '轮到你走棋',
+          moveCount: engine.moveCount,
+          showPlayers: false,
+          child: _ChessGameScreen(
+            engine: engine,
+            selectedSquare: _selectedSquare,
+            legalTargets: _legalTargets,
+            agentName: _runtime.agentName,
+            userName: widget.authSession.userFacingName,
+            agentAvatarUrl: widget.authSession.agentAvatarUrl,
+            userAvatarUrl: widget.authSession.userAvatarUrl,
+            aiThinking: _runtime.aiThinking,
+            starting: _runtime.starting,
+            timerPaused: _chessTimerPaused,
+            enabled: userTurnActive,
+            onSquareTap: _handleSquareTap,
+            onRestart: _startGame,
+            onExit: _closeGame,
+            onTimerPauseChanged: _setChessTimerPaused,
+          ),
+        ),
+      );
+    }
     if (widget.kind == ChessFamilyKind.xiangqi) {
       if (engine == null) {
         return _XiangqiHome(
