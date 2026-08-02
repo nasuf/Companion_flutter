@@ -105,6 +105,11 @@ flutter:
     - assets/prototype/games/xiangqi/
     - assets/prototype/games/chess-figma/
     - assets/prototype/games/checkers-figma/
+    - assets/prototype/games/minesweeper-figma/
+    - assets/prototype/games/tetris-figma/
+    - assets/prototype/games/merge-figma/
+    - assets/prototype/games/hub-figma/
+    - assets/prototype/games/hub-figma/gloves/
     - assets/achievements/
     - assets/interaction/
     - assets/navigation/

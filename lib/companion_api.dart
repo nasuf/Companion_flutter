@@ -1265,6 +1265,16 @@ class CompanionApi {
     return GameWallet.fromJson(json);
   }
 
+  /// The full level ladder, for the level-explanation sheet on the game hub.
+  Future<List<GameLevelTier>> listGameLevelTiers() async {
+    final json =
+        await _request('GET', '/game-wallet/levels', debugLabel: 'game.levels')
+            as List;
+    return json
+        .map((item) => GameLevelTier.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<GamePointConvertResult> convertGamePointsToShop({
     required int amount,
   }) async {

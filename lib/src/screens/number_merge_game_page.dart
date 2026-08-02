@@ -21,6 +21,8 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
   NumberMergeMove? _lastMove;
   final List<Map<String, dynamic>> _actionHistory = [];
   bool _resolving = false;
+  // True while the pause / exit sheet is on screen.
+  bool _paused = false;
 
   @override
   void initState() {
@@ -260,219 +262,79 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
     'actions': List<Map<String, dynamic>>.of(_actionHistory),
   };
 
+  Future<void> _closeGame() async {
+    if (_runtime.session != null && !_runtime.completed) {
+      await _runtime.abort(
+        _runtime.turnTimeoutVisible ? 'turn_timeout_ended' : 'closed',
+        _sessionSummary(),
+      );
+    }
+    _runtime.clearPresentation();
+    if (!mounted) return;
+    _clearActiveRound();
+  }
+
   @override
   Widget build(BuildContext context) {
     final engine = _engine;
-    return _NativeGameExperienceScaffold(
-      runtime: _runtime,
-      game: widget.game,
-      subtitle: engine == null
-          ? '和 ${_runtime.agentName} 轮流滑动，慢慢合到 2048'
-          : engine.status == NumberMergeStatus.completed
-          ? '你们一起合出了 ${engine.maxTile}'
-          : engine.status == NumberMergeStatus.failed
-          ? '盘面装满了，这局已经完整保存'
-          : _runtime.aiThinking
-          ? '${_runtime.agentName} 正在计算出生概率'
-          : _resolving
-          ? '数字正在靠拢'
-          : engine.turn == NumberMergeActor.user
-          ? '轮到你选择滑动方向'
-          : '轮到 ${_runtime.agentName} 接着合',
-      onStart: _start,
-      onActiveRoundDeleted: _clearActiveRound,
-      restartDisabled: _runtime.aiThinking || _resolving,
-      userTurnActive:
-          engine != null &&
-          !engine.isFinished &&
-          engine.turn == NumberMergeActor.user &&
-          !_runtime.aiThinking &&
-          !_resolving,
-      turnToken: engine == null
-          ? 'idle'
-          : '${engine.moveCount}:${engine.turn.name}',
-      turnLabel: _runtime.aiThinking
-          ? '${_runtime.agentName} 在合并'
-          : _resolving
-          ? '数字移动中'
-          : '轮到你滑动',
-      moveCount: engine?.moveCount ?? 0,
-      currentSummary: _sessionSummary,
-      activeChild: engine == null
-          ? null
-          : Column(
-              children: [
-                _NativeScoreHeader(
-                  // 合作模式：左右是双方贡献分，中间是共同总分。
-                  left: '你 ${engine.userScore}',
-                  center: '共同 ${engine.score}',
-                  right: '${_runtime.agentName} ${engine.agentScore}',
-                ),
-                const SizedBox(height: 10),
-                AspectRatio(
-                  aspectRatio: 1,
-                  child: _NumberMergeBoard(
-                    engine: engine,
-                    lastMove: _lastMove,
-                    thinking: _runtime.aiThinking,
-                    enabled:
-                        engine.turn == NumberMergeActor.user &&
-                        !_runtime.aiThinking &&
-                        !_resolving &&
-                        !engine.isFinished,
-                    onMove: _userMove,
-                  ),
-                ),
-                const SizedBox(height: 11),
-                _NumberMergePositionStrip(
-                  engine: engine,
-                  enabled:
-                      engine.turn == NumberMergeActor.user &&
-                      !_runtime.aiThinking &&
-                      !_resolving &&
-                      !engine.isFinished,
-                  onMove: _userMove,
-                ),
-              ],
-            ),
-    );
-  }
-}
-
-class _NumberMergePositionStrip extends StatelessWidget {
-  const _NumberMergePositionStrip({
-    required this.engine,
-    required this.enabled,
-    required this.onMove,
-  });
-
-  final NumberMergeEngine engine;
-  final bool enabled;
-  final ValueChanged<NumberMergeDirection> onMove;
-
-  @override
-  Widget build(BuildContext context) {
-    final maxExponent = math.max(1, math.log(engine.target) ~/ math.ln2);
-    final currentExponent = math.log(math.max(2, engine.maxTile)) / math.ln2;
-    final progress = (currentExponent / maxExponent).clamp(0.0, 1.0);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(11, 10, 11, 11),
-      decoration: BoxDecoration(
-        color: AppColors.surface.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.text.withValues(alpha: 0.07)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Text(
-                '最大 ${engine.maxTile}',
-                style: TextStyle(
-                  color: AppColors.text,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '${engine.totalMerges} 次合并 · ${engine.emptyCount} 个空位',
-                style: TextStyle(
-                  color: AppColors.text.withValues(alpha: 0.48),
-                  fontSize: 9,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 7),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: SizedBox(
-              height: 7,
-              child: LinearProgressIndicator(
-                value: progress,
-                backgroundColor: const Color(0xFF173B4A).withValues(alpha: 0.1),
-                valueColor: const AlwaysStoppedAnimation(Color(0xFF0C9E9A)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 9),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _NumberMergeDirectionButton(
-                icon: CupertinoIcons.arrow_up,
-                enabled: enabled && engine.canMove(NumberMergeDirection.up),
-                onPressed: () => onMove(NumberMergeDirection.up),
-              ),
-              const SizedBox(width: 7),
-              _NumberMergeDirectionButton(
-                icon: CupertinoIcons.arrow_left,
-                enabled: enabled && engine.canMove(NumberMergeDirection.left),
-                onPressed: () => onMove(NumberMergeDirection.left),
-              ),
-              const SizedBox(width: 7),
-              _NumberMergeDirectionButton(
-                icon: CupertinoIcons.arrow_down,
-                enabled: enabled && engine.canMove(NumberMergeDirection.down),
-                onPressed: () => onMove(NumberMergeDirection.down),
-              ),
-              const SizedBox(width: 7),
-              _NumberMergeDirectionButton(
-                icon: CupertinoIcons.arrow_right,
-                enabled: enabled && engine.canMove(NumberMergeDirection.right),
-                onPressed: () => onMove(NumberMergeDirection.right),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NumberMergeDirectionButton extends StatelessWidget {
-  const _NumberMergeDirectionButton({
-    required this.icon,
-    required this.enabled,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final bool enabled;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) => CupertinoButton(
-    padding: EdgeInsets.zero,
-    minimumSize: const Size(42, 38),
-    onPressed: enabled ? onPressed : null,
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 160),
-      width: 42,
-      height: 38,
-      decoration: BoxDecoration(
-        color: enabled
-            ? const Color(0xFF0C6371).withValues(alpha: 0.13)
-            : AppColors.text.withValues(alpha: 0.035),
-        borderRadius: BorderRadius.circular(11),
-        border: Border.all(
-          color: enabled
-              ? const Color(0xFF0C6371).withValues(alpha: 0.2)
-              : Colors.transparent,
+    if (engine == null) {
+      return _MergeHome(
+        rounds: _runtime.rounds,
+        starting: _runtime.starting,
+        error: _runtime.error,
+        onStart: _start,
+        onExit: () => Navigator.of(context).maybePop(),
+      );
+    }
+    final userTurnActive =
+        !engine.isFinished &&
+        engine.turn == NumberMergeActor.user &&
+        !_runtime.aiThinking &&
+        !_resolving &&
+        // The pause / exit sheet is up: the player is right there, so the idle
+        // nudge shouldn't count down behind it.
+        !_paused;
+    return PopScope(
+      canPop: false,
+      child: _NativeGameInteractionLayer(
+        runtime: _runtime,
+        game: widget.game,
+        onPlayAgain: _start,
+        onCloseGame: _closeGame,
+        userTurnActive: userTurnActive,
+        turnToken:
+            '${_runtime.session?.id}:${engine.moveCount}:${engine.turn.name}',
+        turnTimeout: _nativeGameTurnTimeout(_nativeNumberMergeGameKey),
+        turnLabel: _runtime.aiThinking
+            ? '${_runtime.agentName} 在合并'
+            : _resolving
+            ? '数字移动中'
+            : '轮到你滑动',
+        moveCount: engine.moveCount,
+        showPlayers: false,
+        child: _MergeGameScreen(
+          engine: engine,
+          lastMove: _lastMove,
+          agentName: _runtime.agentName,
+          userName: widget.authSession.userFacingName,
+          agentAvatarUrl: widget.authSession.agentAvatarUrl,
+          userAvatarUrl: widget.authSession.userAvatarUrl,
+          aiThinking: _runtime.aiThinking,
+          starting: _runtime.starting,
+          enabled: userTurnActive,
+          onMove: (direction) => unawaited(_userMove(direction)),
+          onRestart: _start,
+          onExit: _closeGame,
+          onPauseChanged: _setPaused,
         ),
       ),
-      alignment: Alignment.center,
-      child: Icon(
-        icon,
-        size: 18,
-        color: enabled
-            ? const Color(0xFF0C6371)
-            : AppColors.text.withValues(alpha: 0.18),
-      ),
-    ),
-  );
+    );
+  }
+
+  void _setPaused(bool value) {
+    if (_paused == value || !mounted) return;
+    setState(() => _paused = value);
+  }
 }
 
 class _NumberMergeBoard extends StatefulWidget {
@@ -482,6 +344,7 @@ class _NumberMergeBoard extends StatefulWidget {
     required this.thinking,
     required this.enabled,
     required this.onMove,
+    this.figmaStyle = false,
   });
 
   final NumberMergeEngine engine;
@@ -489,6 +352,7 @@ class _NumberMergeBoard extends StatefulWidget {
   final bool thinking;
   final bool enabled;
   final ValueChanged<NumberMergeDirection> onMove;
+  final bool figmaStyle;
 
   @override
   State<_NumberMergeBoard> createState() => _NumberMergeBoardState();
@@ -561,12 +425,17 @@ class _NumberMergeBoardState extends State<_NumberMergeBoard>
         _drag = Offset.zero;
         _handled = false;
       },
-      child: CustomPaint(
-        painter: _NumberMergeBoardPainter(
-          engine: widget.engine,
-          lastMove: widget.lastMove,
-          moveProgress: Curves.easeOutCubic.transform(_moveController.value),
-          thinking: widget.thinking,
+      // Own layer so every repaint replaces the whole board rather than a
+      // damaged sub-rect.
+      child: RepaintBoundary(
+        child: CustomPaint(
+          painter: _NumberMergeBoardPainter(
+            engine: widget.engine,
+            lastMove: widget.lastMove,
+            moveProgress: Curves.easeOutCubic.transform(_moveController.value),
+            thinking: widget.thinking,
+            figmaStyle: widget.figmaStyle,
+          ),
         ),
       ),
     ),
@@ -579,15 +448,22 @@ class _NumberMergeBoardPainter extends CustomPainter {
     required this.lastMove,
     required this.moveProgress,
     required this.thinking,
+    this.figmaStyle = false,
   });
 
   final NumberMergeEngine engine;
   final NumberMergeMove? lastMove;
   final double moveProgress;
   final bool thinking;
+  final bool figmaStyle;
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Tile glows are blurred past their cell, and near the board edge that
+    // spilled outside `size`. Painting outside the reported bounds leaves stale
+    // ink behind when Flutter repaints only the damaged region, which is what
+    // put ghost digits on already-cleared cells.
+    canvas.clipRect(Offset.zero & size);
     const outerInset = 7.0;
     final side = math.min(size.width, size.height) - outerInset * 2;
     final boardRect = Rect.fromLTWH(
@@ -597,25 +473,52 @@ class _NumberMergeBoardPainter extends CustomPainter {
       side,
     );
     final outer = RRect.fromRectAndRadius(boardRect, const Radius.circular(26));
-    canvas.drawShadow(Path()..addRRect(outer), Colors.black, 16, true);
-    canvas.drawRRect(
-      outer,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF183744), Color(0xFF0B1926)],
-        ).createShader(boardRect),
-    );
+    if (!figmaStyle) {
+      canvas.drawShadow(Path()..addRRect(outer), Colors.black, 16, true);
+      canvas.drawRRect(
+        outer,
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF183744), Color(0xFF0B1926)],
+          ).createShader(boardRect),
+      );
+    }
     final inner = boardRect.deflate(11);
     final gap = inner.width * 0.025;
     final tileSize = (inner.width - gap * 3) / 4;
     for (var index = 0; index < 16; index += 1) {
       final rect = _rectFor(index, inner, tileSize, gap);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, Radius.circular(tileSize * 0.17)),
-        Paint()..color = const Color(0xFF081721).withValues(alpha: 0.72),
-      );
+      if (figmaStyle) {
+        // Empty slot from the board art: dark slate, faint lighter edge, and
+        // deliberately no placeholder digit.
+        final slot = RRect.fromRectAndRadius(
+          rect,
+          Radius.circular(tileSize * 0.22),
+        );
+        canvas.drawRRect(
+          slot,
+          Paint()
+            ..shader = const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF353540), Color(0xFF42444F)],
+            ).createShader(rect),
+        );
+        canvas.drawRRect(
+          slot.deflate(tileSize * 0.02),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = tileSize * 0.028
+            ..color = const Color(0xFF626474).withValues(alpha: 0.75),
+        );
+      } else {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(rect, Radius.circular(tileSize * 0.17)),
+          Paint()..color = const Color(0xFF081721).withValues(alpha: 0.72),
+        );
+      }
     }
 
     final move = lastMove;
@@ -698,19 +601,61 @@ class _NumberMergeBoardPainter extends CustomPainter {
     canvas.translate(rect.center.dx, rect.center.dy);
     canvas.scale(scale, scale);
     canvas.translate(-rect.center.dx, -rect.center.dy);
+    if (figmaStyle) {
+      _paintFigmaTile(canvas, rect, value);
+    } else {
+      _paintClassicTile(canvas, rect, value);
+    }
+    canvas.restore();
+  }
+
+  /// Lit keycap in the style of the home-screen board art: flat body with a
+  /// slight bottom-up lift, a bright rim, and an outer glow in the tile's hue.
+  void _paintFigmaTile(Canvas canvas, Rect rect, int value) {
+    final colors = _numberMergeFigmaColors(value);
+    final radius = Radius.circular(rect.width * 0.22);
+    final body = RRect.fromRectAndRadius(rect, radius);
+
+    canvas.drawRRect(
+      body,
+      Paint()
+        ..color = colors[2].withValues(alpha: 0.42)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, rect.width * 0.075),
+    );
+    canvas.drawRRect(
+      body,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [colors[0], colors[1]],
+        ).createShader(rect),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect.deflate(rect.width * 0.018), radius),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = rect.width * 0.028
+        ..color = colors[2],
+    );
+
+    _paintTileValue(canvas, rect, value, light: false);
+  }
+
+  void _paintClassicTile(Canvas canvas, Rect rect, int value) {
+    final colors = _numberMergeColors(value);
     final rounded = RRect.fromRectAndRadius(
       rect.deflate(1.2),
       Radius.circular(rect.width * 0.17),
     );
     canvas.drawShadow(Path()..addRRect(rounded), Colors.black, 5, true);
-    final colors = _numberMergeColors(value);
     canvas.drawRRect(
       rounded,
       Paint()
         ..shader = LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: colors,
+          colors: [colors[0], colors[1]],
         ).createShader(rect),
     );
     canvas.drawRRect(
@@ -720,45 +665,72 @@ class _NumberMergeBoardPainter extends CustomPainter {
         ..strokeWidth = 1
         ..color = Colors.white.withValues(alpha: 0.22),
     );
-    final digits = '$value'.length;
-    final fontSize =
-        rect.width *
-        (digits <= 2
-            ? 0.36
-            : digits == 3
-            ? 0.3
-            : 0.24);
-    final painter = TextPainter(
-      text: TextSpan(
-        text: '$value',
-        style: TextStyle(
-          color: value <= 4 ? const Color(0xFF263640) : Colors.white,
-          fontSize: fontSize,
-          fontWeight: FontWeight.w900,
-          shadows: value <= 4
-              ? null
-              : const [
-                  Shadow(
-                    color: Colors.black26,
-                    blurRadius: 3,
-                    offset: Offset(0, 1),
-                  ),
-                ],
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: rect.width * 0.9);
-    painter.paint(
-      canvas,
-      rect.center - Offset(painter.width / 2, painter.height / 2),
-    );
+    _paintTileValue(canvas, rect, value, light: value <= 4);
     canvas.drawCircle(
       Offset(rect.left + rect.width * 0.23, rect.top + rect.height * 0.19),
       rect.width * 0.035,
       Paint()..color = Colors.white.withValues(alpha: 0.3),
     );
-    canvas.restore();
   }
+
+  void _paintTileValue(
+    Canvas canvas,
+    Rect rect,
+    int value, {
+    required bool light,
+  }) {
+    final digits = '$value'.length;
+    final fontSize =
+        rect.width *
+        switch (digits) {
+          1 || 2 => 0.42,
+          3 => 0.34,
+          _ => 0.26,
+        };
+    final painter = TextPainter(
+      text: TextSpan(
+        text: '$value',
+        style: TextStyle(
+          color: light ? const Color(0xFF263640) : const Color(0xFFF8F2E6),
+          fontSize: fontSize,
+          height: 1,
+          fontWeight: FontWeight.w900,
+          letterSpacing: -fontSize * 0.02,
+          shadows: light
+              ? null
+              : [
+                  Shadow(
+                    color: const Color(0xFF3A2408).withValues(alpha: 0.55),
+                    blurRadius: fontSize * 0.14,
+                    offset: Offset(0, fontSize * 0.06),
+                  ),
+                ],
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.center,
+    )..layout(maxWidth: rect.width);
+    painter.paint(
+      canvas,
+      rect.center - Offset(painter.width / 2, painter.height / 2),
+    );
+  }
+
+  /// `[bodyTop, bodyBottom, rim]` sampled from the home-screen board art.
+  /// Values above 128 continue the ramp; the artwork only covers 4 – 128.
+  List<Color> _numberMergeFigmaColors(int value) => switch (value) {
+    2 => const [Color(0xFF8C8A88), Color(0xFFA8A29B), Color(0xFFE6E2D6)],
+    4 => const [Color(0xFF9B8E84), Color(0xFFB2A094), Color(0xFFFAF7E6)],
+    8 => const [Color(0xFF936E59), Color(0xFFAC7B5A), Color(0xFFF6D9A8)],
+    16 => const [Color(0xFFAF775D), Color(0xFFD8825C), Color(0xFFFFF3B5)],
+    32 => const [Color(0xFFA8676B), Color(0xFFCC6D6E), Color(0xFFE3A980)],
+    64 => const [Color(0xFF9F4E46), Color(0xFFC6564E), Color(0xFFE4A780)],
+    128 => const [Color(0xFFB99C7B), Color(0xFFC6A47E), Color(0xFFD7D0A2)],
+    256 => const [Color(0xFFB0608C), Color(0xFFD06896), Color(0xFFECB2CD)],
+    512 => const [Color(0xFF8060B4), Color(0xFF966CD0), Color(0xFFC4B0F0)],
+    1024 => const [Color(0xFF5678B4), Color(0xFF648CD0), Color(0xFFA8CCF0)],
+    _ => const [Color(0xFFC4A85C), Color(0xFFDEBE68), Color(0xFFFFF0AA)],
+  };
 
   List<Color> _numberMergeColors(int value) => switch (value) {
     2 => const [Color(0xFFF3F0E7), Color(0xFFDDE6E2)],
@@ -779,5 +751,6 @@ class _NumberMergeBoardPainter extends CustomPainter {
       oldDelegate.engine.stateHash != engine.stateHash ||
       oldDelegate.lastMove?.number != lastMove?.number ||
       oldDelegate.moveProgress != moveProgress ||
-      oldDelegate.thinking != thinking;
+      oldDelegate.thinking != thinking ||
+      oldDelegate.figmaStyle != figmaStyle;
 }

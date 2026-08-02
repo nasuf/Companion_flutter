@@ -27,6 +27,9 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
   int _agentMoveElapsed = 0;
   int _userActionSequence = 0;
   bool _finishing = false;
+  // The duel clock keeps running on a Timer, so the pause / exit sheets have to
+  // freeze it explicitly or the match plays on behind the dialog.
+  bool _paused = false;
   double _horizontalDrag = 0;
   double _verticalDrag = 0;
   Future<void> _eventChain = Future<void>.value();
@@ -63,6 +66,7 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
     setState(() {
       _engine = null;
       _finishing = false;
+      _paused = false;
       _userGravityElapsed = 0;
       _agentMoveElapsed = 0;
       _userActionSequence = 0;
@@ -110,6 +114,7 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
       _userGravityElapsed = 0;
       _agentMoveElapsed = 0;
       _userActionSequence = 0;
+      _paused = false;
       _eventChain = Future<void>.value();
       _lastTickAt = DateTime.now();
     });
@@ -119,7 +124,7 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
   void _tick() {
     final engine = _engine;
     if (engine == null || engine.isFinished || _finishing) return;
-    if (_runtime.turnTimeoutVisible) {
+    if (_paused || _runtime.turnTimeoutVisible) {
       _lastTickAt = DateTime.now();
       return;
     }
@@ -295,7 +300,15 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
     return engine != null &&
         !engine.isFinished &&
         !_runtime.completed &&
-        !_finishing;
+        !_finishing &&
+        !_paused;
+  }
+
+  void _setPaused(bool value) {
+    if (_paused == value || !mounted) return;
+    setState(() => _paused = value);
+    // Drop the elapsed slice so the pause never counts against the clock.
+    if (!value) _lastTickAt = DateTime.now();
   }
 
   void _move(int delta) {
@@ -378,493 +391,71 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
   Map<String, dynamic> _sessionSummary() =>
       _engine?.summaryJson() ?? const <String, dynamic>{};
 
+  Future<void> _closeGame() async {
+    if (_runtime.session != null && !_runtime.completed) {
+      await _runtime.abort(
+        _runtime.turnTimeoutVisible ? 'turn_timeout_ended' : 'closed',
+        _sessionSummary(),
+      );
+    }
+    _runtime.clearPresentation();
+    if (!mounted) return;
+    _clearActiveRound();
+  }
+
   @override
   Widget build(BuildContext context) {
     final engine = _engine;
-    return _NativeGameExperienceScaffold(
-      runtime: _runtime,
-      game: widget.game,
-      subtitle: engine == null
-          ? '和 ${_runtime.agentName} 同时开局，90 秒比分见真章'
-          : engine.isFinished
-          ? '本局已经结束'
-          : '双方同时落块 · 还剩 ${engine.remainingSeconds} 秒',
-      onStart: _start,
-      onActiveRoundDeleted: _clearActiveRound,
-      restartDisabled: _finishing,
-      showPlayers: false,
-      userTurnActive:
-          engine != null &&
-          !engine.isFinished &&
-          !_runtime.completed &&
-          !_finishing,
-      turnToken: engine == null ? 'idle' : 'input:$_userActionSequence',
-      turnLabel: '双方同时行动',
-      moveCount: engine == null
-          ? 0
-          : engine.user.piecesPlaced + engine.agent.piecesPlaced,
-      currentSummary: _sessionSummary,
-      activeChild: engine == null
-          ? null
-          : _TetrisDuelStage(
-              engine: engine,
-              runtime: _runtime,
-              canControl: _canControl,
-              onMove: _move,
-              onRotate: _rotate,
-              onHold: _hold,
-              onHardDrop: _hardDrop,
-              onPanStart: _onPanStart,
-              onPanUpdate: _onPanUpdate,
-              onPanEnd: _onPanEnd,
-            ),
-    );
-  }
-}
-
-class _TetrisDuelStage extends StatefulWidget {
-  const _TetrisDuelStage({
-    required this.engine,
-    required this.runtime,
-    required this.canControl,
-    required this.onMove,
-    required this.onRotate,
-    required this.onHold,
-    required this.onHardDrop,
-    required this.onPanStart,
-    required this.onPanUpdate,
-    required this.onPanEnd,
-  });
-
-  final TetrisDuelEngine engine;
-  final _NativeGameRuntime runtime;
-  final bool canControl;
-  final ValueChanged<int> onMove;
-  final VoidCallback onRotate;
-  final VoidCallback onHold;
-  final VoidCallback onHardDrop;
-  final GestureDragStartCallback onPanStart;
-  final GestureDragUpdateCallback onPanUpdate;
-  final GestureDragEndCallback onPanEnd;
-
-  @override
-  State<_TetrisDuelStage> createState() => _TetrisDuelStageState();
-}
-
-class _TetrisDuelStageState extends State<_TetrisDuelStage>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulse = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1600),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: _pulse,
-    builder: (context, _) => Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _TetrisDuelHeader(
-          engine: widget.engine,
-          runtime: widget.runtime,
-          pulse: _pulse.value,
+    if (engine == null) {
+      return _TetrisHome(
+        rounds: _runtime.rounds,
+        starting: _runtime.starting,
+        error: _runtime.error,
+        onStart: _start,
+        onExit: () => Navigator.of(context).maybePop(),
+      );
+    }
+    return PopScope(
+      canPop: false,
+      child: _NativeGameInteractionLayer(
+        runtime: _runtime,
+        game: widget.game,
+        onPlayAgain: _start,
+        onCloseGame: _closeGame,
+        // `_paused` is set while the pause / exit sheet is up, which also stops
+        // the idle-nudge countdown.
+        userTurnActive:
+            !engine.isFinished &&
+            !_runtime.completed &&
+            !_finishing &&
+            !_paused,
+        turnToken: '${_runtime.session?.id}:input:$_userActionSequence',
+        turnTimeout: _nativeGameTurnTimeout(_nativeTetrisDuelGameKey),
+        turnLabel: '双方同时行动',
+        moveCount: engine.user.piecesPlaced + engine.agent.piecesPlaced,
+        showPlayers: false,
+        child: _TetrisGameScreen(
+          engine: engine,
+          agentName: _runtime.agentName,
+          userName: widget.authSession.userFacingName,
+          agentAvatarUrl: widget.authSession.agentAvatarUrl,
+          userAvatarUrl: widget.authSession.userAvatarUrl,
+          canControl: _canControl,
+          starting: _runtime.starting,
+          onMove: _move,
+          onRotate: _rotate,
+          onHold: _hold,
+          onHardDrop: _hardDrop,
+          onPanStart: _onPanStart,
+          onPanUpdate: _onPanUpdate,
+          onPanEnd: _onPanEnd,
+          onRestart: _start,
+          onExit: _closeGame,
+          onPauseChanged: _setPaused,
         ),
-        const SizedBox(height: 12),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final gap = constraints.maxWidth < 390 ? 8.0 : 12.0;
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: _TetrisBoardPanel(
-                    label: '你',
-                    board: widget.engine.user,
-                    accent: const Color(0xFF39D5FF),
-                    interactive: widget.canControl,
-                    onTap: widget.onRotate,
-                    onPanStart: widget.onPanStart,
-                    onPanUpdate: widget.onPanUpdate,
-                    onPanEnd: widget.onPanEnd,
-                  ),
-                ),
-                SizedBox(width: gap),
-                Expanded(
-                  child: _TetrisBoardPanel(
-                    label: widget.runtime.agentName,
-                    board: widget.engine.agent,
-                    accent: const Color(0xFFFF5A9B),
-                    interactive: false,
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: 12),
-        _TetrisControls(
-          enabled: widget.canControl,
-          onLeft: () => widget.onMove(-1),
-          onRight: () => widget.onMove(1),
-          onRotate: widget.onRotate,
-          onHold: widget.onHold,
-          onDrop: widget.onHardDrop,
-        ),
-      ],
-    ),
-  );
-}
-
-class _TetrisDuelHeader extends StatelessWidget {
-  const _TetrisDuelHeader({
-    required this.engine,
-    required this.runtime,
-    required this.pulse,
-  });
-
-  final TetrisDuelEngine engine;
-  final _NativeGameRuntime runtime;
-  final double pulse;
-
-  @override
-  Widget build(BuildContext context) {
-    final urgent = engine.remainingSeconds <= 15;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF10152C).withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: const Color(0xFF5869B4).withValues(alpha: 0.34),
-        ),
-      ),
-      child: Row(
-        children: [
-          _TetrisDuelIdentity(
-            name: '你',
-            imageUrl: runtime.authSession.userAvatarUrl,
-            score: engine.user.score,
-            color: const Color(0xFF39D5FF),
-            pulse: pulse,
-          ),
-          Expanded(
-            child: Column(
-              children: [
-                Text(
-                  '${engine.remainingSeconds}',
-                  style: TextStyle(
-                    color: urgent ? const Color(0xFFFFC857) : Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-                Text(
-                  '双方同步进行',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.48),
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _TetrisDuelIdentity(
-            name: runtime.agentName,
-            imageUrl: runtime.authSession.agentAvatarUrl,
-            score: engine.agent.score,
-            color: const Color(0xFFFF5A9B),
-            pulse: pulse,
-            alignEnd: true,
-          ),
-        ],
       ),
     );
   }
-}
-
-class _TetrisDuelIdentity extends StatelessWidget {
-  const _TetrisDuelIdentity({
-    required this.name,
-    required this.imageUrl,
-    required this.score,
-    required this.color,
-    required this.pulse,
-    this.alignEnd = false,
-  });
-
-  final String name;
-  final String? imageUrl;
-  final int score;
-  final Color color;
-  final double pulse;
-  final bool alignEnd;
-
-  @override
-  Widget build(BuildContext context) {
-    final avatar = Container(
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: color, width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.18 + pulse * 0.2),
-            blurRadius: 8 + pulse * 8,
-          ),
-        ],
-      ),
-      child: _Avatar(
-        size: 32,
-        label: name.isEmpty ? '?' : name.characters.first,
-        gradient: [color.withValues(alpha: 0.72), const Color(0xFF151B38)],
-        imageUrl: imageUrl,
-      ),
-    );
-    final text = Column(
-      crossAxisAlignment: alignEnd
-          ? CrossAxisAlignment.end
-          : CrossAxisAlignment.start,
-      children: [
-        Text(
-          name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        Text(
-          '$score',
-          style: TextStyle(
-            color: color,
-            fontSize: 12,
-            fontWeight: FontWeight.w900,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-      ],
-    );
-    return SizedBox(
-      width: 104,
-      child: Row(
-        mainAxisAlignment: alignEnd
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
-        children: alignEnd
-            ? [Flexible(child: text), const SizedBox(width: 7), avatar]
-            : [avatar, const SizedBox(width: 7), Flexible(child: text)],
-      ),
-    );
-  }
-}
-
-class _TetrisBoardPanel extends StatelessWidget {
-  const _TetrisBoardPanel({
-    required this.label,
-    required this.board,
-    required this.accent,
-    required this.interactive,
-    this.onTap,
-    this.onPanStart,
-    this.onPanUpdate,
-    this.onPanEnd,
-  });
-
-  final String label;
-  final TetrisBoardEngine board;
-  final Color accent;
-  final bool interactive;
-  final VoidCallback? onTap;
-  final GestureDragStartCallback? onPanStart;
-  final GestureDragUpdateCallback? onPanUpdate;
-  final GestureDragEndCallback? onPanEnd;
-
-  @override
-  Widget build(BuildContext context) {
-    final boardWidget = AspectRatio(
-      aspectRatio: TetrisBoardEngine.width / TetrisBoardEngine.height,
-      child: CustomPaint(
-        painter: _TetrisBoardPainter(board: board, accent: accent),
-      ),
-    );
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: AppColors.text.withValues(alpha: 0.76),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-            Text(
-              '${board.lines} 行',
-              style: TextStyle(
-                color: accent,
-                fontSize: 9,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 5),
-        Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: const Color(0xFF080B18),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: accent.withValues(alpha: 0.62)),
-            boxShadow: [
-              BoxShadow(color: accent.withValues(alpha: 0.14), blurRadius: 14),
-            ],
-          ),
-          child: interactive
-              ? GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onTap,
-                  onPanStart: onPanStart,
-                  onPanUpdate: onPanUpdate,
-                  onPanEnd: onPanEnd,
-                  child: boardWidget,
-                )
-              : boardWidget,
-        ),
-        const SizedBox(height: 5),
-        Text(
-          'Lv.${board.level} · ${board.piecesPlaced} 块',
-          style: TextStyle(
-            color: AppColors.text.withValues(alpha: 0.42),
-            fontSize: 8,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TetrisControls extends StatelessWidget {
-  const _TetrisControls({
-    required this.enabled,
-    required this.onLeft,
-    required this.onRight,
-    required this.onRotate,
-    required this.onHold,
-    required this.onDrop,
-  });
-
-  final bool enabled;
-  final VoidCallback onLeft;
-  final VoidCallback onRight;
-  final VoidCallback onRotate;
-  final VoidCallback onHold;
-  final VoidCallback onDrop;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      _TetrisControlButton(
-        icon: Icons.chevron_left_rounded,
-        onTap: onLeft,
-        enabled: enabled,
-      ),
-      const SizedBox(width: 7),
-      _TetrisControlButton(
-        icon: Icons.rotate_right_rounded,
-        onTap: onRotate,
-        enabled: enabled,
-      ),
-      const SizedBox(width: 7),
-      _TetrisControlButton(
-        icon: Icons.chevron_right_rounded,
-        onTap: onRight,
-        enabled: enabled,
-      ),
-      const Spacer(),
-      _TetrisControlButton(
-        icon: Icons.inventory_2_outlined,
-        onTap: onHold,
-        enabled: enabled,
-      ),
-      const SizedBox(width: 7),
-      _TetrisControlButton(
-        icon: Icons.keyboard_double_arrow_down_rounded,
-        onTap: onDrop,
-        enabled: enabled,
-        emphasized: true,
-      ),
-    ],
-  );
-}
-
-class _TetrisControlButton extends StatelessWidget {
-  const _TetrisControlButton({
-    required this.icon,
-    required this.onTap,
-    required this.enabled,
-    this.emphasized = false,
-  });
-
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool enabled;
-  final bool emphasized;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    child: CupertinoButton(
-      padding: EdgeInsets.zero,
-      minimumSize: const Size(42, 42),
-      onPressed: enabled ? onTap : null,
-      child: Container(
-        width: emphasized ? 54 : 42,
-        height: 42,
-        decoration: BoxDecoration(
-          gradient: emphasized
-              ? const LinearGradient(
-                  colors: [Color(0xFF7D5CFF), Color(0xFFFF5A9B)],
-                )
-              : null,
-          color: emphasized ? null : const Color(0xFF151B38),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: emphasized
-                ? const Color(0xFFFFC857).withValues(alpha: 0.62)
-                : const Color(0xFF5966A6).withValues(alpha: 0.4),
-          ),
-        ),
-        alignment: Alignment.center,
-        child: Icon(
-          icon,
-          color: enabled ? Colors.white : Colors.white.withValues(alpha: 0.3),
-          size: 22,
-        ),
-      ),
-    ),
-  );
 }
 
 class _TetrisBoardPainter extends CustomPainter {

@@ -13,14 +13,17 @@ class GamePage extends StatefulWidget {
 class _GamePageState extends State<GamePage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  String? _latestStatus;
   GameWallet? _gameWallet;
+  // Header counters: total rounds, lifetime play time, and time played today.
+  Future<List<GameLevelTier>>? _levelTiers;
+  int? _totalRounds;
+  int _totalSeconds = 0;
+  int _todaySeconds = 0;
   // Native game keys an admin has taken offline; hidden from the hub. Empty by
   // default so every game shows until the catalog says otherwise.
   Set<String> _disabledGameKeys = const {};
   late List<_GameGroup> _visibleGroups;
   _GameGroup? _activeGroup;
-  _GameTile? _activeGame;
   String? _error;
 
   @override
@@ -47,7 +50,6 @@ class _GamePageState extends State<GamePage>
             (group) => group.id == activeGroupId,
             orElse: () => _visibleGroups.first,
           );
-    _activeGame = _defaultActiveGame(_activeGroup);
   }
 
   static List<_GameGroup> _computeVisibleGroups(Set<String> disabled) {
@@ -80,12 +82,6 @@ class _GamePageState extends State<GamePage>
     return groups;
   }
 
-  static _GameTile? _defaultActiveGame(_GameGroup? group) {
-    if (group == null || group.games.isEmpty) return null;
-    // Prefer the second tile (matches the previous default) when present.
-    return group.games.length > 1 ? group.games[1] : group.games.first;
-  }
-
   @override
   void dispose() {
     _controller.dispose();
@@ -95,20 +91,11 @@ class _GamePageState extends State<GamePage>
   Future<void> _load() async {
     if (!mounted) return;
     setState(() => _error = null);
-    // Start both requests together so the header cards load concurrently
-    // instead of on two sequential round-trips. The latest-session lookup is a
-    // lightweight status-only query (no full session payload).
-    final latestFuture = widget.api.getLatestNativeGameSession(
-      agentId: widget.session.agentId,
-    );
+    // Start every request together so the header loads on one round-trip
+    // instead of three sequential ones.
     final walletFuture = widget.api.getGameWallet();
     final catalogFuture = widget.api.getNativeGameCatalog();
-    try {
-      final status = await latestFuture;
-      if (mounted) setState(() => _latestStatus = status);
-    } catch (error) {
-      if (mounted) setState(() => _error = _formatError(error));
-    }
+    final sessionsFuture = widget.api.listNativeGameSessions(limit: 100);
     try {
       final wallet = await walletFuture;
       if (mounted) setState(() => _gameWallet = wallet);
@@ -130,13 +117,74 @@ class _GamePageState extends State<GamePage>
     } catch (_) {
       // Visibility is non-fatal: on failure keep showing the full catalog.
     }
+    try {
+      final sessions = await sessionsFuture;
+      final now = DateTime.now();
+      var total = 0;
+      var today = 0;
+      for (final session in sessions) {
+        final summary = _GameRoundSummary.fromSession(session);
+        final seconds = summary.durationSeconds ?? 0;
+        total += seconds;
+        final playedAt = summary.playedAt?.toLocal();
+        if (playedAt != null &&
+            playedAt.year == now.year &&
+            playedAt.month == now.month &&
+            playedAt.day == now.day) {
+          today += seconds;
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _totalRounds = sessions.length;
+          _totalSeconds = total;
+          _todaySeconds = today;
+        });
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = _formatError(error));
+    }
+  }
+
+  /// Fetch the ladder lazily and keep it for the rest of the session — the
+  /// sheet is opened repeatedly and the table almost never changes.
+  void _openLevelSheet() {
+    _levelTiers ??= widget.api.listGameLevelTiers();
+    unawaited(
+      showHubLevelSheet(
+        context,
+        tiers: _levelTiers!,
+        lifetimeEarned: _gameWallet?.lifetimeEarned ?? 0,
+      ),
+    );
+  }
+
+  void _showPointsInfoDialog() {
+    showCupertinoDialog<void>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('游戏积分'),
+        content: const Text('每天会自动赠送一份游戏积分，玩过的对局也会累计成陪玩等级。'),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Compact durations for the header pills: `142H` / `35m` / `48s`.
+  static String _hubDuration(int seconds) {
+    if (seconds >= 3600) return '${seconds ~/ 3600}H';
+    if (seconds >= 60) return '${seconds ~/ 60}m';
+    return '${seconds}s';
   }
 
   Future<void> _openGame(_GameGroup group, _GameTile game) async {
-    setState(() {
-      _activeGroup = group;
-      _activeGame = game;
-    });
+    setState(() => _activeGroup = group);
     if (!game.isOnline) return;
     // Play gate: a user with 0 game points cannot start a new game until the
     // next day's grant. The server enforces this too (403), this is the UX hint.
@@ -221,18 +269,24 @@ class _GamePageState extends State<GamePage>
       builder: (context, _) {
         final progress = Curves.easeInOut.transform(_controller.value);
         return Scaffold(
-          backgroundColor: AppColors.page,
+          backgroundColor: const Color(0xFF9FD0E6),
           body: Stack(
             children: [
-              _GameBackground(progress: progress),
-              CustomScrollView(
-                physics: const BouncingScrollPhysics(),
-                slivers: [
-                  SliverToBoxAdapter(child: _topActions(context)),
-                  SliverToBoxAdapter(child: _intro()),
-                  SliverToBoxAdapter(child: _gameGroupsSection()),
-                  const SliverToBoxAdapter(child: SizedBox(height: 126)),
-                ],
+              _HubBackground(progress: progress),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  // The design is a 393pt frame; everything scales from there.
+                  final s = constraints.maxWidth / _hubRefWidth;
+                  return CustomScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    slivers: [
+                      SliverToBoxAdapter(child: _topBar(context, s)),
+                      SliverToBoxAdapter(child: _statsHeader(s)),
+                      SliverToBoxAdapter(child: _gameGroupsSection(s)),
+                      SliverToBoxAdapter(child: SizedBox(height: 120 * s)),
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -241,168 +295,181 @@ class _GamePageState extends State<GamePage>
     );
   }
 
-  Widget _topActions(BuildContext context) {
+  Widget _topBar(BuildContext context, double s) {
     return Padding(
       padding: EdgeInsets.fromLTRB(
-        18,
-        MediaQuery.paddingOf(context).top + 12,
-        18,
-        10,
+        16 * s,
+        MediaQuery.paddingOf(context).top + 10 * s,
+        8 * s,
+        0,
       ),
       child: Row(
         children: [
-          CupertinoButton(
-            padding: EdgeInsets.zero,
-            minimumSize: const Size(38, 38),
-            borderRadius: BorderRadius.circular(19),
-            onPressed: () => Navigator.maybePop(context),
-            child: _GlassButton(
-              size: 38,
-              child: const Icon(CupertinoIcons.chevron_left, size: 17),
-            ),
+          _HubRoundButton(
+            icon: CupertinoIcons.chevron_left,
+            onTap: () => Navigator.maybePop(context),
           ),
           const Spacer(),
-          CupertinoButton(
-            padding: EdgeInsets.zero,
-            minimumSize: const Size(36, 36),
-            borderRadius: BorderRadius.circular(18),
-            onPressed: _load,
-            child: Container(
-              height: 36,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: _glassDecoration(18),
-              child: Center(
-                child: Text(
-                  '刷新',
-                  style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ),
+          _HubCoinBar(
+            scale: s,
+            balance: _gameWallet?.balance,
+            onPlus: _showPointsInfoDialog,
           ),
         ],
       ),
     );
   }
 
-  Widget _intro() {
-    final status = _latestStatus;
+  Widget _statsHeader(double s) {
+    final wallet = _gameWallet;
+    final level = wallet?.level;
+    final next = wallet?.nextTier;
+    final earned = wallet?.lifetimeEarned ?? 0;
+    final floor = level?.cumulativePoints ?? 0;
+    final ceiling = next?.cumulativePoints;
+    final span = ceiling == null ? 0 : ceiling - floor;
+    final done = (earned - floor).clamp(0, span == 0 ? 1 : span);
+    final labels = _hubLevelLabels(level);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+      padding: EdgeInsets.fromLTRB(45 * s, 31 * s, 45 * s, 0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'LIVE MINI GAME',
-            style: TextStyle(
-              color: AppColors.accent,
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.3,
+          SizedBox(
+            height: 156 * s,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: EdgeInsets.only(top: 2 * s),
+                  child: _HubLevelCard(
+                    scale: s,
+                    tierName: labels.title,
+                    stageName: labels.subtitle,
+                    onTap: _openLevelSheet,
+                  ),
+                ),
+                const Spacer(),
+                Column(
+                  children: [
+                    _HubStatPill(
+                      scale: s,
+                      icon: '$_hubArt/icon_rounds.png',
+                      label: '累计相伴',
+                      value: _totalRounds == null ? '--' : '$_totalRounds 局',
+                    ),
+                    SizedBox(height: 11 * s),
+                    _HubStatPill(
+                      scale: s,
+                      icon: '$_hubArt/icon_hours.png',
+                      label: '游戏时长',
+                      value: _hubDuration(_totalSeconds),
+                    ),
+                    SizedBox(height: 11 * s),
+                    _HubStatPill(
+                      scale: s,
+                      icon: '$_hubArt/icon_today.png',
+                      label: '今日活跃',
+                      value: _hubDuration(_todaySeconds),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 10),
-          Text(
-            '和 ${widget.session.agentName ?? 'AI'} 一起玩',
-            style: TextStyle(
-              color: AppColors.text,
-              fontSize: 34,
-              height: 1.05,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            status == null
-                ? '不用多说，一起玩一会儿就好'
-                : '最近一局 · ${_localizedGameStatus(status)}',
-            style: TextStyle(
-              color: AppColors.text.withValues(alpha: 0.56),
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
+          SizedBox(height: 26 * s),
+          _HubProgressBar(
+            value: span <= 0 ? 1 : done / span,
+            label: ceiling == null ? '$earned' : '$done/$span',
           ),
           if (_error != null) ...[
-            const SizedBox(height: 8),
+            SizedBox(height: 10 * s),
             Text(
               _error!,
-              style: const TextStyle(
-                color: Color(0xFFCC3D3D),
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: const Color(0xFFFFD5D5),
+                fontSize: 12 * s,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ],
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _MetricCard(
-                  value: _localizedGameStatus(status),
-                  label: '最近一局',
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _MetricCard(
-                  value: status == null ? '--' : '自然对局',
-                  label: '陪玩方式',
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _MetricCard(
-                  value: _gameWallet == null ? '--' : '${_gameWallet!.balance}',
-                  label: '积分',
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
   }
 
-  Widget _gameGroupsSection() {
+  Widget _gameGroupsSection(double s) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+      padding: EdgeInsets.fromLTRB(21 * s, 31 * s, 21 * s, 0),
       child: Column(
         children: [
           for (final group in _visibleGroups)
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _GameGroupCard(
-                group: group,
-                isOpen: group == _activeGroup,
-                activeGame: _activeGame,
-                onTap: () => setState(() {
-                  _activeGroup = group == _activeGroup ? null : group;
-                }),
-                onGameSelected: (game) => _openGame(group, game),
+              padding: EdgeInsets.only(bottom: 20 * s),
+              child: AnimatedSize(
+                duration: const Duration(milliseconds: 420),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: Column(
+                  children: [
+                    _HubGroupBanner(
+                      scale: s,
+                      group: group,
+                      isOpen: group == _activeGroup,
+                      onTap: () => setState(() {
+                        _activeGroup = group == _activeGroup ? null : group;
+                      }),
+                    ),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 360),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, animation) {
+                        final curved = CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeOutCubic,
+                          reverseCurve: Curves.easeInCubic,
+                        );
+                        return FadeTransition(
+                          opacity: curved,
+                          child: SizeTransition(
+                            sizeFactor: curved,
+                            alignment: const AlignmentDirectional(-1.0, -1.0),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: group == _activeGroup
+                          ? Padding(
+                              key: ValueKey(group.id),
+                              padding: EdgeInsets.only(top: 4 * s),
+                              child: GridView.count(
+                                padding: EdgeInsets.zero,
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                crossAxisCount: 2,
+                                mainAxisSpacing: 16 * s,
+                                crossAxisSpacing: 10 * s,
+                                childAspectRatio: 170 / 138,
+                                children: [
+                                  for (final game in group.games)
+                                    _HubGameTile(
+                                      scale: s,
+                                      game: game,
+                                      onTap: () => _openGame(group, game),
+                                    ),
+                                ],
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
+                ),
               ),
             ),
         ],
       ),
     );
-  }
-
-  String _localizedGameStatus(String? status) {
-    switch (status) {
-      case 'playing':
-        return '进行中';
-      case 'settled':
-        return '已结束';
-      case 'aborted':
-        return '已退出';
-      case 'created':
-        return '准备中';
-      default:
-        return '未开局';
-    }
   }
 
   void _showNoPointsDialog() {
@@ -975,45 +1042,6 @@ class _BoardBackgroundPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class _MetricCard extends StatelessWidget {
-  const _MetricCard({required this.value, required this.label});
-
-  final String value;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 58,
-      decoration: _glassDecoration(14),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: AppColors.text,
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            style: TextStyle(
-              color: AppColors.text.withValues(alpha: 0.48),
-              fontSize: 9,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _GamePlaceholderStage extends StatelessWidget {
   const _GamePlaceholderStage({required this.game});
 
@@ -1091,485 +1119,6 @@ class _NativeBadge extends StatelessWidget {
           style: const TextStyle(
             color: Colors.white,
             fontSize: 11,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PressScale extends StatefulWidget {
-  const _PressScale({
-    required this.child,
-    required this.onTap,
-    this.pressedScale = 0.975,
-    this.borderRadius = 18,
-  });
-
-  final Widget child;
-  final VoidCallback onTap;
-  final double pressedScale;
-  final double borderRadius;
-
-  @override
-  State<_PressScale> createState() => _PressScaleState();
-}
-
-class _PressScaleState extends State<_PressScale> {
-  bool _pressed = false;
-
-  void _setPressed(bool value) {
-    if (_pressed == value) return;
-    setState(() => _pressed = value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => _setPressed(true),
-      onTapCancel: () => _setPressed(false),
-      onTapUp: (_) => _setPressed(false),
-      onTap: widget.onTap,
-      child: AnimatedScale(
-        scale: _pressed ? widget.pressedScale : 1,
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOutCubic,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(widget.borderRadius),
-          child: widget.child,
-        ),
-      ),
-    );
-  }
-}
-
-class _GameGroupCard extends StatelessWidget {
-  const _GameGroupCard({
-    required this.group,
-    required this.isOpen,
-    required this.activeGame,
-    required this.onTap,
-    required this.onGameSelected,
-  });
-
-  final _GameGroup group;
-  final bool isOpen;
-  final _GameTile? activeGame;
-  final VoidCallback onTap;
-  final ValueChanged<_GameTile> onGameSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return _PressScale(
-      onTap: onTap,
-      pressedScale: 0.985,
-      borderRadius: 26,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: group.accent.withValues(alpha: isOpen ? 0.13 : 0.08),
-          borderRadius: BorderRadius.circular(26),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
-          boxShadow: [
-            BoxShadow(
-              color: group.accent.withValues(alpha: isOpen ? 0.15 : 0.07),
-              blurRadius: 22,
-              offset: const Offset(0, 12),
-            ),
-          ],
-        ),
-        child: AnimatedSize(
-          duration: const Duration(milliseconds: 420),
-          curve: Curves.easeOutCubic,
-          alignment: Alignment.topCenter,
-          child: Column(
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 420),
-                curve: Curves.easeOutCubic,
-                height: isOpen ? 184 : 128,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Image.asset(group.hero, fit: BoxFit.cover),
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.72),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        left: 16,
-                        right: 16,
-                        bottom: 16,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              group.kicker,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.72),
-                                fontSize: 10,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              group.title,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0,
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              group.description,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.78),
-                                fontSize: 12,
-                                height: 1.28,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                _WhiteChip(text: group.badge),
-                                const SizedBox(width: 7),
-                                _WhiteChip(text: group.metric),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 360),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) {
-                  final curved = CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeOutCubic,
-                    reverseCurve: Curves.easeInCubic,
-                  );
-                  return FadeTransition(
-                    opacity: curved,
-                    child: SizeTransition(
-                      sizeFactor: curved,
-                      alignment: const AlignmentDirectional(-1.0, -1.0),
-                      child: child,
-                    ),
-                  );
-                },
-                child: isOpen
-                    ? Padding(
-                        key: ValueKey(group.id),
-                        padding: const EdgeInsets.only(top: 10),
-                        child: GridView.count(
-                          padding: EdgeInsets.zero,
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 10,
-                          crossAxisSpacing: 10,
-                          childAspectRatio: 1.18,
-                          children: [
-                            for (final game in group.games)
-                              _SmallGameTile(
-                                game: game,
-                                selected: game == activeGame,
-                                onTap: () => onGameSelected(game),
-                              ),
-                          ],
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SmallGameTile extends StatefulWidget {
-  const _SmallGameTile({
-    required this.game,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final _GameTile game;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  State<_SmallGameTile> createState() => _SmallGameTileState();
-}
-
-class _SmallGameTileState extends State<_SmallGameTile>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _breathController;
-  late final Animation<double> _breath;
-  late final Animation<double> _glow;
-
-  @override
-  void initState() {
-    super.initState();
-    final staggerMs = widget.game.title.hashCode.abs() % 900;
-    _breathController = AnimationController(
-      vsync: this,
-      duration: Duration(milliseconds: 4300 + staggerMs),
-      value: (widget.game.title.hashCode.abs() % 1000) / 1000,
-    )..repeat(reverse: true);
-    _breath = Tween<double>(begin: 1.0, end: 1.09).animate(
-      CurvedAnimation(parent: _breathController, curve: Curves.easeInOutSine),
-    );
-    _glow = Tween<double>(begin: 0.0, end: 0.16).animate(
-      CurvedAnimation(parent: _breathController, curve: Curves.easeInOutSine),
-    );
-  }
-
-  @override
-  void dispose() {
-    _breathController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return _PressScale(
-      onTap: widget.onTap,
-      pressedScale: 0.965,
-      borderRadius: 18,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            AnimatedBuilder(
-              animation: _breathController,
-              builder: (context, child) {
-                return Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Transform.scale(scale: _breath.value, child: child),
-                    IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: RadialGradient(
-                            center: const Alignment(-0.35, -0.45),
-                            radius: 0.9,
-                            colors: [
-                              Colors.white.withValues(alpha: _glow.value),
-                              Colors.transparent,
-                            ],
-                            stops: const [0.0, 0.74],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-              child: Image.asset(
-                widget.game.image,
-                fit: BoxFit.cover,
-                filterQuality: FilterQuality.medium,
-              ),
-            ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.76),
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              left: 8,
-              top: 8,
-              child: _GameStatusTag(isOnline: widget.game.isOnline),
-            ),
-            Positioned(
-              left: 10,
-              right: 10,
-              bottom: 10,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.game.title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    widget.game.note,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.78),
-                      fontSize: 10,
-                      height: 1.24,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _GameStatusTag extends StatelessWidget {
-  const _GameStatusTag({required this.isOnline});
-
-  final bool isOnline;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 26,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-        color: isOnline ? null : Colors.white.withValues(alpha: 0.20),
-        gradient: isOnline
-            ? LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: const [
-                  Color(0xFF64EAA2),
-                  Color(0xFF19C778),
-                  Color(0xFF078E55),
-                ],
-                stops: const [0.0, 0.52, 1.0],
-              )
-            : null,
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(
-          color: isOnline
-              ? Colors.white.withValues(alpha: 0.58)
-              : Colors.white.withValues(alpha: 0.18),
-        ),
-        boxShadow: isOnline
-            ? [
-                BoxShadow(
-                  color: const Color(0xFF03A85E).withValues(alpha: 0.28),
-                  blurRadius: 16,
-                  offset: const Offset(0, 7),
-                ),
-                BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.20),
-                  blurRadius: 5,
-                  offset: const Offset(0, -1),
-                ),
-              ]
-            : null,
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          if (isOnline)
-            Positioned.fill(
-              top: 1,
-              bottom: 13,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(12),
-                  ),
-                  color: Colors.white.withValues(alpha: 0.20),
-                ),
-              ),
-            ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (isOnline) ...[
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.white.withValues(alpha: 0.70),
-                        blurRadius: 7,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 5),
-              ],
-              Text(
-                isOnline ? '已上线' : '待上线',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: isOnline ? 1 : 0.86),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WhiteChip extends StatelessWidget {
-  const _WhiteChip({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 26,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.20),
-        borderRadius: BorderRadius.circular(13),
-      ),
-      child: Center(
-        child: Text(
-          text,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10,
             fontWeight: FontWeight.w900,
           ),
         ),

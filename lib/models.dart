@@ -1027,18 +1027,62 @@ class WalletBalance {
 class GameLevel {
   const GameLevel({
     required this.stageName,
+    required this.stageCaption,
     required this.tierName,
     required this.cumulativePoints,
   });
 
+  /// `皮革手套` — the glove itself.
   final String stageName;
+
+  /// `初学起步` — the descriptive line shown under the name.
+  final String stageCaption;
+
+  /// `白` — the colour ranking this step inside the stage.
   final String tierName;
   final int cumulativePoints;
 
   factory GameLevel.fromJson(Map<String, dynamic> json) {
     return GameLevel(
       stageName: json['stage_name']?.toString() ?? '',
+      stageCaption: json['stage_caption']?.toString() ?? '',
       tierName: json['tier_name']?.toString() ?? '',
+      cumulativePoints: (json['cumulative_points'] as num?)?.round() ?? 0,
+    );
+  }
+}
+
+/// One rung of the admin-editable level ladder (`game_level_tiers`).
+class GameLevelTier {
+  const GameLevelTier({
+    required this.sortOrder,
+    required this.stageName,
+    required this.stageCaption,
+    required this.tierName,
+    required this.upgradePoints,
+    required this.cumulativePoints,
+  });
+
+  final int sortOrder;
+
+  /// `皮革手套` — the glove itself.
+  final String stageName;
+
+  /// `初学起步` — the descriptive line shown under the name.
+  final String stageCaption;
+
+  /// `白` — the colour ranking this step inside the stage.
+  final String tierName;
+  final int upgradePoints;
+  final int cumulativePoints;
+
+  factory GameLevelTier.fromJson(Map<String, dynamic> json) {
+    return GameLevelTier(
+      sortOrder: (json['sort_order'] as num?)?.round() ?? 0,
+      stageName: json['stage_name']?.toString() ?? '',
+      stageCaption: json['stage_caption']?.toString() ?? '',
+      tierName: json['tier_name']?.toString() ?? '',
+      upgradePoints: (json['upgrade_points'] as num?)?.round() ?? 0,
       cumulativePoints: (json['cumulative_points'] as num?)?.round() ?? 0,
     );
   }

@@ -336,12 +336,19 @@ class _AdminGameConfigVersion {
 class _GameLevelTier {
   _GameLevelTier({
     required this.stageName,
+    required this.stageCaption,
     required this.tierName,
     required this.upgradePoints,
     required this.cumulativePoints,
   });
 
+  /// `皮革手套` — the glove itself.
   String stageName;
+
+  /// `初学起步` — the descriptive line clients show under the name.
+  String stageCaption;
+
+  /// `白` — the colour ranking this step inside the stage.
   String tierName;
   int upgradePoints;
   int cumulativePoints;
@@ -349,6 +356,7 @@ class _GameLevelTier {
   factory _GameLevelTier.fromJson(Map<String, dynamic> json) {
     return _GameLevelTier(
       stageName: json['stage_name']?.toString() ?? '',
+      stageCaption: json['stage_caption']?.toString() ?? '',
       tierName: json['tier_name']?.toString() ?? '',
       upgradePoints: _adminInt(json['upgrade_points']),
       cumulativePoints: _adminInt(json['cumulative_points']),
@@ -357,6 +365,7 @@ class _GameLevelTier {
 
   Map<String, dynamic> toPayload() => {
     'stage_name': stageName,
+    'stage_caption': stageCaption,
     'tier_name': tierName,
     'upgrade_points': upgradePoints,
     'cumulative_points': cumulativePoints,
@@ -1417,6 +1426,7 @@ class _GameLevelsTabState extends State<_GameLevelsTab> {
         ..._tiers,
         _GameLevelTier(
           stageName: last?.stageName ?? '',
+          stageCaption: last?.stageCaption ?? '',
           tierName: '',
           upgradePoints: 0,
           cumulativePoints: last?.cumulativePoints ?? 0,
@@ -1515,6 +1525,7 @@ class _LevelTierEditorCard extends StatefulWidget {
 
 class _LevelTierEditorCardState extends State<_LevelTierEditorCard> {
   late final TextEditingController _stageCtrl;
+  late final TextEditingController _captionCtrl;
   late final TextEditingController _tierCtrl;
   late final TextEditingController _upgradeCtrl;
   late final TextEditingController _cumulativeCtrl;
@@ -1525,6 +1536,11 @@ class _LevelTierEditorCardState extends State<_LevelTierEditorCard> {
     _stageCtrl = TextEditingController(text: widget.tier.stageName)
       ..addListener(() {
         widget.tier.stageName = _stageCtrl.text;
+        widget.onChanged();
+      });
+    _captionCtrl = TextEditingController(text: widget.tier.stageCaption)
+      ..addListener(() {
+        widget.tier.stageCaption = _captionCtrl.text;
         widget.onChanged();
       });
     _tierCtrl = TextEditingController(text: widget.tier.tierName)
@@ -1549,6 +1565,7 @@ class _LevelTierEditorCardState extends State<_LevelTierEditorCard> {
   @override
   void dispose() {
     _stageCtrl.dispose();
+    _captionCtrl.dispose();
     _tierCtrl.dispose();
     _upgradeCtrl.dispose();
     _cumulativeCtrl.dispose();
@@ -1578,9 +1595,11 @@ class _LevelTierEditorCardState extends State<_LevelTierEditorCard> {
             ],
           ),
           const SizedBox(height: 10),
-          _AdminGamesTextField(label: '大阶段', controller: _stageCtrl),
+          _AdminGamesTextField(label: '手套名称', controller: _stageCtrl),
           const SizedBox(height: 10),
-          _AdminGamesTextField(label: '等级全称', controller: _tierCtrl),
+          _AdminGamesTextField(label: '阶段文案', controller: _captionCtrl),
+          const SizedBox(height: 10),
+          _AdminGamesTextField(label: '手套颜色', controller: _tierCtrl),
           const SizedBox(height: 10),
           Row(
             children: [

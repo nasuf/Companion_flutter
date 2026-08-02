@@ -582,7 +582,6 @@ class _NativeGameExperienceScaffold extends StatefulWidget {
     this.turnLabel = '等待开局',
     this.moveCount = 0,
     this.currentSummary,
-    this.showPlayers = true,
   });
 
   final _NativeGameRuntime runtime;
@@ -597,7 +596,6 @@ class _NativeGameExperienceScaffold extends StatefulWidget {
   final String turnLabel;
   final int moveCount;
   final Map<String, dynamic> Function()? currentSummary;
-  final bool showPlayers;
 
   @override
   State<_NativeGameExperienceScaffold> createState() =>
@@ -656,7 +654,7 @@ class _NativeGameExperienceScaffoldState
             turnTimeout: _nativeGameTurnTimeout(widget.game.nativeGameKey),
             turnLabel: widget.turnLabel,
             moveCount: widget.moveCount,
-            showPlayers: widget.showPlayers,
+            showPlayers: true,
             child: activeChild,
           );
     final compact = Scaffold(
