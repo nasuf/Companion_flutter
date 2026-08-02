@@ -944,6 +944,15 @@ class CompanionApi {
         .toList();
   }
 
+  /// Aggregate play counters for the hub header. Computed server-side so the
+  /// totals aren't capped by a session page size.
+  Future<NativePlayStats> getNativePlayStats() async {
+    final json =
+        await _request('GET', '/games/native/stats', debugLabel: 'game.stats')
+            as Map<String, dynamic>;
+    return NativePlayStats.fromJson(json);
+  }
+
   Future<GameSession> createNativeGameSession({
     required String agentId,
     required String gameKey,

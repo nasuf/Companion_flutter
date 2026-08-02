@@ -1052,6 +1052,28 @@ class GameLevel {
   }
 }
 
+/// Aggregate play counters for the game hub header.
+class NativePlayStats {
+  const NativePlayStats({
+    required this.totalRounds,
+    required this.totalSeconds,
+    required this.todaySeconds,
+  });
+
+  /// Every native session the player started, finished or not.
+  final int totalRounds;
+  final int totalSeconds;
+  final int todaySeconds;
+
+  factory NativePlayStats.fromJson(Map<String, dynamic> json) {
+    return NativePlayStats(
+      totalRounds: (json['total_rounds'] as num?)?.round() ?? 0,
+      totalSeconds: (json['total_seconds'] as num?)?.round() ?? 0,
+      todaySeconds: (json['today_seconds'] as num?)?.round() ?? 0,
+    );
+  }
+}
+
 /// One rung of the admin-editable level ladder (`game_level_tiers`).
 class GameLevelTier {
   const GameLevelTier({

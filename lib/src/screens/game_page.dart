@@ -101,7 +101,7 @@ class _GamePageState extends State<GamePage>
     // instead of three sequential ones.
     final walletFuture = widget.api.getGameWallet();
     final catalogFuture = widget.api.getNativeGameCatalog();
-    final sessionsFuture = widget.api.listNativeGameSessions(limit: 100);
+    final statsFuture = widget.api.getNativePlayStats();
     try {
       final wallet = await walletFuture;
       if (mounted) setState(() => _gameWallet = wallet);
@@ -124,27 +124,12 @@ class _GamePageState extends State<GamePage>
       // Visibility is non-fatal: on failure keep showing the full catalog.
     }
     try {
-      final sessions = await sessionsFuture;
-      final now = DateTime.now();
-      var total = 0;
-      var today = 0;
-      for (final session in sessions) {
-        final summary = _GameRoundSummary.fromSession(session);
-        final seconds = summary.durationSeconds ?? 0;
-        total += seconds;
-        final playedAt = summary.playedAt?.toLocal();
-        if (playedAt != null &&
-            playedAt.year == now.year &&
-            playedAt.month == now.month &&
-            playedAt.day == now.day) {
-          today += seconds;
-        }
-      }
+      final stats = await statsFuture;
       if (mounted) {
         setState(() {
-          _totalRounds = sessions.length;
-          _totalSeconds = total;
-          _todaySeconds = today;
+          _totalRounds = stats.totalRounds;
+          _totalSeconds = stats.totalSeconds;
+          _todaySeconds = stats.todaySeconds;
         });
       }
     } catch (error) {
