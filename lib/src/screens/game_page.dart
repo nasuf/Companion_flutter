@@ -16,6 +16,9 @@ class _GamePageState extends State<GamePage>
   GameWallet? _gameWallet;
   // Header counters: total rounds, lifetime play time, and time played today.
   Future<List<GameLevelTier>>? _levelTiers;
+  // The history request that feeds the three header counters is still in
+  // flight; the pills spin instead of showing a placeholder zero.
+  bool _statsLoading = true;
   int? _totalRounds;
   int _totalSeconds = 0;
   int _todaySeconds = 0;
@@ -90,7 +93,10 @@ class _GamePageState extends State<GamePage>
 
   Future<void> _load() async {
     if (!mounted) return;
-    setState(() => _error = null);
+    setState(() {
+      _error = null;
+      _statsLoading = true;
+    });
     // Start every request together so the header loads on one round-trip
     // instead of three sequential ones.
     final walletFuture = widget.api.getGameWallet();
@@ -143,6 +149,8 @@ class _GamePageState extends State<GamePage>
       }
     } catch (error) {
       if (mounted) setState(() => _error = _formatError(error));
+    } finally {
+      if (mounted) setState(() => _statsLoading = false);
     }
   }
 
@@ -360,7 +368,8 @@ class _GamePageState extends State<GamePage>
                       scale: s,
                       icon: '$_hubArt/icon_rounds.png',
                       label: '累计相伴',
-                      value: _totalRounds == null ? '--' : '$_totalRounds 局',
+                      value: '${_totalRounds ?? 0} 局',
+                      loading: _statsLoading,
                     ),
                     SizedBox(height: 11 * s),
                     _HubStatPill(
@@ -368,6 +377,7 @@ class _GamePageState extends State<GamePage>
                       icon: '$_hubArt/icon_hours.png',
                       label: '游戏时长',
                       value: _hubDuration(_totalSeconds),
+                      loading: _statsLoading,
                     ),
                     SizedBox(height: 11 * s),
                     _HubStatPill(
@@ -375,6 +385,7 @@ class _GamePageState extends State<GamePage>
                       icon: '$_hubArt/icon_today.png',
                       label: '今日活跃',
                       value: _hubDuration(_todaySeconds),
+                      loading: _statsLoading,
                     ),
                   ],
                 ),

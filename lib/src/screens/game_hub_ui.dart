@@ -436,11 +436,13 @@ class _HubLevelCard extends StatelessWidget {
           _spark(s, 51, 52, 7, 0.25),
           _spark(s, 56.5, 53.5, 9, 0.31),
           _spark(s, 63, 58, 9, 0.31),
+          // Both lines keep a margin off the card edge; the ladder's names run
+          // up to six characters, which used to fill the card edge to edge.
           Positioned(
-            left: 0,
-            right: 0,
-            top: 102 * s,
-            height: 30 * s,
+            left: 9 * s,
+            right: 9 * s,
+            top: 103 * s,
+            height: 28 * s,
             child: Center(
               child: FittedBox(
                 fit: BoxFit.scaleDown,
@@ -449,7 +451,7 @@ class _HubLevelCard extends StatelessWidget {
                   maxLines: 1,
                   style: TextStyle(
                     color: _hubInk,
-                    fontSize: 24 * s,
+                    fontSize: 20 * s,
                     height: 1,
                     fontWeight: FontWeight.w900,
                     decoration: TextDecoration.none,
@@ -459,8 +461,8 @@ class _HubLevelCard extends StatelessWidget {
             ),
           ),
           Positioned(
-            left: 0,
-            right: 0,
+            left: 9 * s,
+            right: 9 * s,
             top: 131 * s,
             height: 18 * s,
             child: Center(
@@ -471,7 +473,7 @@ class _HubLevelCard extends StatelessWidget {
                   maxLines: 1,
                   style: TextStyle(
                     color: _hubInkSoft,
-                    fontSize: 13 * s,
+                    fontSize: 11.5 * s,
                     height: 1,
                     fontWeight: FontWeight.w900,
                     decoration: TextDecoration.none,
@@ -543,12 +545,17 @@ class _HubStatPill extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
+    this.loading = false,
   });
 
   final double scale;
   final String icon;
   final String label;
   final String value;
+
+  /// Counters come from a separate history request; spin until it lands rather
+  /// than flashing a placeholder zero.
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -622,14 +629,16 @@ class _HubStatPill extends StatelessWidget {
             top: 23 * s,
             height: 17 * s,
             child: Center(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: _HubOutlinedText(
-                  text: value,
-                  fontSize: 13 * s,
-                  strokeWidth: 2.6 * s,
-                ),
-              ),
+              child: loading
+                  ? CupertinoActivityIndicator(radius: 6.5 * s, color: _hubInk)
+                  : FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: _HubOutlinedText(
+                        text: value,
+                        fontSize: 13 * s,
+                        strokeWidth: 2.6 * s,
+                      ),
+                    ),
             ),
           ),
           Positioned(
