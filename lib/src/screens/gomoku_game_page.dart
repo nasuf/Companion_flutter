@@ -1070,9 +1070,9 @@ class _GomokuGameScreen extends StatelessWidget {
               _centered(
                 w,
                 h,
-                cx: 0.898,
-                cy: 0.831,
-                width: w * 0.108,
+                cx: 0.910,
+                cy: 0.829,
+                width: w * 0.064,
                 child: _GomokuHelpButton(
                   onTap: () => _showGomokuRulesDialog(context),
                 ),
@@ -1466,40 +1466,35 @@ class _GomokuTurnTimerPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
     final radius = size.shortestSide / 2;
-
-    // Dim the portrait so the dial reads clearly.
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()..color = Colors.white.withValues(alpha: 0.5),
-    );
-    // Faint dial edge.
-    canvas.drawCircle(
-      center,
-      radius * 0.9,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = radius * 0.05
-        ..color = Colors.white.withValues(alpha: 0.6),
-    );
-
-    // A red second-hand that sweeps one full clockwise turn over the timer,
-    // like a stopwatch — no depleting ring.
     final elapsed = (1 - remainingFraction).clamp(0.0, 1.0);
-    final angle = -math.pi / 2 + elapsed * 2 * math.pi;
-    final dir = Offset(math.cos(angle), math.sin(angle));
-    const red = Color(0xFFF5333A);
+    final handAngle = -math.pi / 2 + elapsed * 2 * math.pi;
+
+    // Gray pie mask over the sector not yet swept. It starts covering the whole
+    // portrait and shrinks clockwise as the red hand sweeps, revealing the
+    // portrait — the mask is "eaten away" over the turn.
+    final remainingSweep = (1 - elapsed) * 2 * math.pi;
+    if (remainingSweep > 0.0001) {
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        handAngle,
+        remainingSweep,
+        true,
+        Paint()..color = const Color(0xFF8E8E8E).withValues(alpha: 0.82),
+      );
+    }
+
+    // Red sweeping hand at the leading edge of the mask.
+    final dir = Offset(math.cos(handAngle), math.sin(handAngle));
+    const red = Color(0xFFC81E1E);
     canvas.drawLine(
-      center - dir * (radius * 0.16),
-      center + dir * (radius * 0.86),
+      center,
+      center + dir * (radius * 0.94),
       Paint()
         ..color = red
-        ..strokeWidth = radius * 0.09
+        ..strokeWidth = radius * 0.08
         ..strokeCap = StrokeCap.round,
     );
-    // Pivot cap.
-    canvas.drawCircle(center, radius * 0.1, Paint()..color = red);
-    canvas.drawCircle(center, radius * 0.045, Paint()..color = Colors.white);
+    canvas.drawCircle(center, radius * 0.08, Paint()..color = red);
   }
 
   @override
@@ -2094,13 +2089,13 @@ class _GomokuRulesCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Center(
-                    child: _StrokeText(text: '五子棋', fontSize: cardW * 0.135),
+                    child: _StrokeText(text: '五子棋', fontSize: cardW * 0.092),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Center(
-                    child: _StrokeText(text: '规则说明', fontSize: cardW * 0.115),
+                    child: _StrokeText(text: '规则说明', fontSize: cardW * 0.082),
                   ),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 20),
                   for (var i = 0; i < _rules.length; i += 1) ...[
                     if (i > 0) const SizedBox(height: 12),
                     Text(
