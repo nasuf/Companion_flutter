@@ -127,6 +127,8 @@ class ChessFamilyMove {
     required this.actor,
     required this.from,
     required this.to,
+    required this.fromSquare,
+    required this.toSquare,
     required this.algebraic,
     required this.notation,
     required this.piece,
@@ -141,6 +143,11 @@ class ChessFamilyMove {
   final ChessFamilyActor actor;
   final String from;
   final String to;
+
+  /// Board indices behind [from] and [to], so the UI can place the piece
+  /// without parsing square names.
+  final int fromSquare;
+  final int toSquare;
   final String algebraic;
   final String notation;
   final String piece;
@@ -321,6 +328,8 @@ class ChessFamilyEngine {
       actor: actor,
       from: fromName,
       to: toName,
+      fromSquare: move.from,
+      toSquare: move.to,
       algebraic: algebraic,
       notation: notation,
       piece: pieceSymbol,

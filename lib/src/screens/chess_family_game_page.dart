@@ -664,7 +664,21 @@ class _ChessStat extends StatelessWidget {
   );
 }
 
-class _ChessFamilyBoard extends StatelessWidget {
+/// A piece caught mid-slide between two points on the board.
+class _BoardPieceMotion {
+  const _BoardPieceMotion({
+    required this.piece,
+    required this.fromSquare,
+    required this.progress,
+  });
+
+  /// Carries the destination, since the engine has already applied the move.
+  final ChessBoardPiece piece;
+  final int fromSquare;
+  final double progress;
+}
+
+class _ChessFamilyBoard extends StatefulWidget {
   const _ChessFamilyBoard({
     required this.engine,
     required this.selectedSquare,
@@ -680,44 +694,156 @@ class _ChessFamilyBoard extends StatelessWidget {
   final String? xiangqiArtworkAsset;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) => GestureDetector(
-      onTapUp: (details) {
-        final square = _squareAt(details.localPosition, constraints.biggest);
-        if (square != null) {
-          onSquareTap(square);
-        }
-      },
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (xiangqiArtworkAsset case final asset?)
-            Image.asset(asset, fit: BoxFit.fill),
-          CustomPaint(
-            painter: _ChessFamilyBoardPainter(
-              kind: engine.kind,
-              files: engine.files,
-              ranks: engine.ranks,
-              pieces: engine.pieces,
-              lastMove: engine.moves.isEmpty ? null : engine.moves.last,
-              selectedSquare: selectedSquare,
-              legalTargets: legalTargets,
-              xiangqiArtwork: xiangqiArtworkAsset != null,
-            ),
-            child: engine.kind == ChessFamilyKind.chess
-                ? _ChessPieceLayer(
-                    size: constraints.biggest,
-                    pieces: engine.pieces,
-                  )
-                : null,
-          ),
-        ],
-      ),
-    ),
+  State<_ChessFamilyBoard> createState() => _ChessFamilyBoardState();
+}
+
+class _ChessFamilyBoardState extends State<_ChessFamilyBoard>
+    with SingleTickerProviderStateMixin {
+  /// Long enough to read as a move, short enough not to delay the reply.
+  static const _slide = Duration(milliseconds: 260);
+
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: _slide,
   );
+
+  /// The board as it looked before the move being animated, so the captured
+  /// piece stays put until the attacker lands on it.
+  List<ChessBoardPiece>? _beforeMove;
+
+  /// What the previous build drew. The engine is mutated in place, so it
+  /// cannot report the position the move started from.
+  List<ChessBoardPiece>? _lastRender;
+  ChessFamilyMove? _sliding;
+  int _seenMoveCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _seenMoveCount = widget.engine.moveCount;
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        setState(() {
+          _sliding = null;
+          _beforeMove = null;
+        });
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChessFamilyBoard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final engine = widget.engine;
+    // A restart hands over a fresh engine; drop any slide still in flight.
+    if (!identical(oldWidget.engine, engine) ||
+        engine.moveCount < _seenMoveCount) {
+      _controller.stop();
+      _sliding = null;
+      _beforeMove = null;
+      _lastRender = null;
+      _seenMoveCount = engine.moveCount;
+      return;
+    }
+    if (engine.moveCount == _seenMoveCount) return;
+    // Only the newest move is worth animating; if several landed at once (a
+    // replay or a restored session) just show the result.
+    final jumped = engine.moveCount - _seenMoveCount > 1;
+    _seenMoveCount = engine.moveCount;
+    final move = engine.moves.last;
+    final landed = engine.pieces.firstWhereOrNull(
+      (piece) => piece.square == move.toSquare,
+    );
+    // Chess draws its pieces as widgets in _ChessPieceLayer rather than on the
+    // canvas, so it is left alone here.
+    if (jumped ||
+        landed == null ||
+        _lastRender == null ||
+        engine.kind != ChessFamilyKind.xiangqi) {
+      _sliding = null;
+      _beforeMove = null;
+      return;
+    }
+    _sliding = move;
+    _beforeMove = _lastRender;
+    _controller.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final engine = widget.engine;
+    final current = engine.pieces;
+    _lastRender = current;
+    return LayoutBuilder(
+      builder: (context, constraints) => GestureDetector(
+        onTapUp: (details) {
+          final square = _squareAt(details.localPosition, constraints.biggest);
+          if (square != null) {
+            widget.onSquareTap(square);
+          }
+        },
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (widget.xiangqiArtworkAsset case final asset?)
+              Image.asset(asset, fit: BoxFit.fill),
+            AnimatedBuilder(
+              animation: _controller,
+              builder: (context, child) {
+                final motion = _motion(current);
+                return CustomPaint(
+                  painter: _ChessFamilyBoardPainter(
+                    kind: engine.kind,
+                    files: engine.files,
+                    ranks: engine.ranks,
+                    pieces: motion == null
+                        ? current
+                        : [
+                            for (final piece in _beforeMove ?? current)
+                              if (piece.square != motion.fromSquare) piece,
+                          ],
+                    lastMove: engine.moves.isEmpty ? null : engine.moves.last,
+                    motion: motion,
+                    selectedSquare: widget.selectedSquare,
+                    legalTargets: widget.legalTargets,
+                    xiangqiArtwork: widget.xiangqiArtworkAsset != null,
+                  ),
+                  child: child,
+                );
+              },
+              child: engine.kind == ChessFamilyKind.chess
+                  ? _ChessPieceLayer(size: constraints.biggest, pieces: current)
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  _BoardPieceMotion? _motion(List<ChessBoardPiece> current) {
+    final move = _sliding;
+    if (move == null || !_controller.isAnimating) return null;
+    final landed = current.firstWhereOrNull(
+      (piece) => piece.square == move.toSquare,
+    );
+    if (landed == null) return null;
+    return _BoardPieceMotion(
+      piece: landed,
+      fromSquare: move.fromSquare,
+      progress: Curves.easeOutCubic.transform(_controller.value),
+    );
+  }
 
   int? _squareAt(Offset point, Size size) {
     const padding = 12.0;
+    final engine = widget.engine;
     if (engine.kind == ChessFamilyKind.chess) {
       final cell = (math.min(size.width, size.height) - padding * 2) / 8;
       final file = ((point.dx - padding) / cell).floor();
@@ -728,7 +854,7 @@ class _ChessFamilyBoard extends StatelessWidget {
     }
     final geometry = _XiangqiBoardGeometry(
       size,
-      artwork: xiangqiArtworkAsset != null,
+      artwork: widget.xiangqiArtworkAsset != null,
     );
     final file =
         ((point.dx - geometry.board.left + geometry.stepX / 2) / geometry.stepX)
@@ -859,6 +985,7 @@ class _ChessFamilyBoardPainter extends CustomPainter {
     required this.lastMove,
     required this.selectedSquare,
     required this.legalTargets,
+    this.motion,
     this.xiangqiArtwork = false,
   });
 
@@ -869,7 +996,11 @@ class _ChessFamilyBoardPainter extends CustomPainter {
   final ChessFamilyMove? lastMove;
   final int? selectedSquare;
   final Set<int> legalTargets;
+  final _BoardPieceMotion? motion;
   final bool xiangqiArtwork;
+
+  int _fileOf(int square) => square % (files * 2);
+  int _rankOf(int square) => ranks - square ~/ (files * 2) - 1;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -896,6 +1027,7 @@ class _ChessFamilyBoardPainter extends CustomPainter {
   void _paintXiangqiArtwork(Canvas canvas, Size size) {
     final geometry = _XiangqiBoardGeometry(size, artwork: true);
     final step = geometry.step;
+    _paintXiangqiLastMove(canvas, geometry, step);
     for (final piece in pieces) {
       _paintXiangqiPiece(
         canvas,
@@ -935,6 +1067,78 @@ class _ChessFamilyBoardPainter extends CustomPainter {
         );
       }
     }
+    _paintXiangqiMotion(canvas, geometry, step);
+  }
+
+  /// Marks where the last move started and finished. Without it a piece that
+  /// simply appears somewhere else is easy to miss, especially after the agent
+  /// moves while the player is looking elsewhere on the board.
+  void _paintXiangqiLastMove(
+    Canvas canvas,
+    _XiangqiBoardGeometry geometry,
+    double step,
+  ) {
+    final move = lastMove;
+    if (move == null) return;
+    final origin = geometry.point(
+      _fileOf(move.fromSquare),
+      9 - _rankOf(move.fromSquare),
+    );
+    final destination = geometry.point(
+      _fileOf(move.toSquare),
+      9 - _rankOf(move.toSquare),
+    );
+    const trail = Color(0xFFE0662F);
+    canvas.drawCircle(
+      origin,
+      step * 0.3,
+      Paint()..color = trail.withValues(alpha: 0.16),
+    );
+    canvas.drawCircle(
+      origin,
+      step * 0.3,
+      Paint()
+        ..color = trail.withValues(alpha: 0.65)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.4, step * 0.036),
+    );
+    _paintXiangqiBrackets(
+      canvas,
+      destination,
+      step * 0.53,
+      step * 0.2,
+      trail,
+      math.max(2.2, step * 0.07),
+    );
+  }
+
+  /// The moving piece is drawn last so it passes over whatever it crosses,
+  /// including the piece it is about to capture.
+  void _paintXiangqiMotion(
+    Canvas canvas,
+    _XiangqiBoardGeometry geometry,
+    double step,
+  ) {
+    final moving = motion;
+    if (moving == null) return;
+    final origin = geometry.point(
+      _fileOf(moving.fromSquare),
+      9 - _rankOf(moving.fromSquare),
+    );
+    final destination = geometry.point(
+      moving.piece.file,
+      9 - moving.piece.rank,
+    );
+    final center = Offset.lerp(origin, destination, moving.progress)!;
+    // A slight lift sells the piece as being carried rather than dragged.
+    final lift = math.sin(moving.progress * math.pi) * step * 0.09;
+    _paintXiangqiPiece(
+      canvas,
+      center - Offset(0, lift),
+      step,
+      moving.piece,
+      selected: false,
+    );
   }
 
   void _paintChess(Canvas canvas, Size size) {
@@ -1285,6 +1489,7 @@ class _ChessFamilyBoardPainter extends CustomPainter {
       step * 0.49,
       const Color(0xA65C2C1B),
     );
+    _paintXiangqiLastMove(canvas, geometry, step);
     for (final piece in pieces) {
       _paintXiangqiPiece(
         canvas,
@@ -1326,6 +1531,7 @@ class _ChessFamilyBoardPainter extends CustomPainter {
         );
       }
     }
+    _paintXiangqiMotion(canvas, geometry, step);
   }
 
   void _paintXiangqiBoardGrain(Canvas canvas, Rect rect, double step) {
@@ -1614,5 +1820,7 @@ class _ChessFamilyBoardPainter extends CustomPainter {
       oldDelegate.lastMove != lastMove ||
       oldDelegate.pieces != pieces ||
       oldDelegate.selectedSquare != selectedSquare ||
-      oldDelegate.legalTargets != legalTargets;
+      oldDelegate.legalTargets != legalTargets ||
+      oldDelegate.motion?.progress != motion?.progress ||
+      oldDelegate.motion?.fromSquare != motion?.fromSquare;
 }

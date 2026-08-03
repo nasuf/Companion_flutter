@@ -35,6 +35,29 @@ void main() {
     );
   });
 
+  test('a move reports the board squares it ran between', () {
+    // The board animates the moved piece and marks where it came from, so the
+    // move has to carry the endpoints as indices and not just as names.
+    final engine = ChessFamilyEngine(kind: ChessFamilyKind.xiangqi);
+    final from = ChessSquare.fromName('b3', files: 9, ranks: 10);
+    final to = ChessSquare.fromName('e3', files: 9, ranks: 10);
+    final moved = engine.play(from: from, to: to).move;
+
+    expect(moved.fromSquare, from);
+    expect(moved.toSquare, to);
+    expect(moved.from, 'b3');
+    expect(moved.to, 'e3');
+    expect(
+      engine.pieces.where((piece) => piece.square == moved.toSquare),
+      hasLength(1),
+      reason: 'the animation looks up the landed piece by its square',
+    );
+    expect(
+      engine.pieces.where((piece) => piece.square == moved.fromSquare),
+      isEmpty,
+    );
+  });
+
   test('chess AI returns a legal move with search diagnostics', () async {
     final engine = ChessFamilyEngine(kind: ChessFamilyKind.chess);
     engine.play(from: ChessSquare.e2, to: ChessSquare.e4);
