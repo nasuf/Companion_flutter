@@ -51,21 +51,34 @@ class _NativeGameRuntime {
     return math.max(0, DateTime.now().difference(value).inSeconds);
   }
 
-  // Minimum wall-clock time (ms) an AI move should take so the opponent reads
-  // as human rather than instant. Comes from the server via engine_config
-  // (per-game, admin-tunable). Falls back to a modest default when a session
-  // predates the field. tetris_duel ignores this and paces via agent_move_ms.
+  // AI reaction-time range (ms) from the server via engine_config (per-game,
+  // admin-tunable). Each move targets a random delay in [min, max] so the AI
+  // never responds at a fixed cadence. Falls back to a modest default when a
+  // session predates the fields. tetris_duel ignores this (paces via
+  // agent_move_ms).
   int get aiMinResponseMs {
     final raw = session?.engineConfig['min_response_ms'];
     if (raw is num) return math.max(0, math.min(60000, raw.round()));
     return 600;
   }
 
-  /// Pads the AI's turn so at least [aiMinResponseMs] has elapsed since [since]
-  /// started, making an instant engine reply feel human. No-op when the engine
-  /// already thought for long enough.
+  int get aiMaxResponseMs {
+    final raw = session?.engineConfig['max_response_ms'];
+    if (raw is num) return math.max(0, math.min(60000, raw.round()));
+    return aiMinResponseMs;
+  }
+
+  final math.Random _pacingRng = math.Random();
+
+  /// Pads the AI's turn so it takes a random wall-clock time in
+  /// [aiMinResponseMs, aiMaxResponseMs] since [since] started, making an
+  /// instant engine reply feel human. No-op when the engine already thought
+  /// for longer than the drawn target.
   Future<void> paceAiMove(Stopwatch since) async {
-    final remaining = aiMinResponseMs - since.elapsedMilliseconds;
+    final lo = aiMinResponseMs;
+    final hi = math.max(lo, aiMaxResponseMs);
+    final target = hi > lo ? lo + _pacingRng.nextInt(hi - lo + 1) : lo;
+    final remaining = target - since.elapsedMilliseconds;
     if (remaining > 0) {
       await Future<void>.delayed(Duration(milliseconds: remaining));
     }
