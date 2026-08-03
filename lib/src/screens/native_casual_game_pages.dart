@@ -162,6 +162,7 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
   Future<void> _agentTurn() async {
     final engine = _engine;
     if (engine == null || engine.isFinished) return;
+    final sw = Stopwatch()..start();
     setState(() => _runtime.aiThinking = true);
     await _runtime.reportEvent(
       'ai_thinking_started',
@@ -175,6 +176,8 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
       final decision = await engine.chooseAiMove();
       if (!mounted) return;
       await _runtime.reportEvent('ai_move_decided', payload: decision.toJson());
+      await _runtime.paceAiMove(sw);
+      if (!mounted || engine.isFinished) return;
       final result = engine.playPath(decision.path, decision: decision);
       if (mounted) {
         setState(() {
@@ -401,8 +404,8 @@ class _Match3GamePageState extends State<_Match3GamePage> {
   Future<void> _match3AgentTurn() async {
     final engine = _engine;
     if (engine == null || engine.isFinished) return;
+    final sw = Stopwatch()..start();
     setState(() => _runtime.aiThinking = true);
-    await Future<void>.delayed(const Duration(milliseconds: 580));
     try {
       if (!mounted || engine.isFinished || engine.turn != Match3Actor.agent) {
         return;
@@ -410,6 +413,10 @@ class _Match3GamePageState extends State<_Match3GamePage> {
       final before = engine.stateJson();
       final decision = engine.chooseAgentSwap();
       await _runtime.reportEvent('ai_move_decided', payload: decision.toJson());
+      await _runtime.paceAiMove(sw);
+      if (!mounted || engine.isFinished || engine.turn != Match3Actor.agent) {
+        return;
+      }
       final result = engine.swap(decision.swap, decision: decision);
       await _presentTurn(result.turn, before);
       if (result.status != Match3Status.playing) {

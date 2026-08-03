@@ -126,6 +126,7 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
       while (mounted &&
           !engine.isFinished &&
           engine.turn == ReversiActor.agent) {
+        final sw = Stopwatch()..start();
         await _runtime.reportEvent(
           'ai_thinking_started',
           payload: {
@@ -143,7 +144,7 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
           'ai_move_decided',
           payload: decision.toJson(),
         );
-        await Future<void>.delayed(const Duration(milliseconds: 230));
+        await _runtime.paceAiMove(sw);
         if (!mounted ||
             engine.isFinished ||
             engine.turn != ReversiActor.agent) {

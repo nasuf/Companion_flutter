@@ -258,6 +258,7 @@ class _AdminGameConfig {
     required this.minimumGames,
     required this.maximumStep,
     required this.algorithmOverrides,
+    required this.minResponseMs,
     required this.enabled,
     required this.version,
     required this.previewEngineConfig,
@@ -276,6 +277,7 @@ class _AdminGameConfig {
   final int minimumGames;
   final int maximumStep;
   final Map<String, dynamic> algorithmOverrides;
+  final int minResponseMs;
   final bool enabled;
   final int version;
   final Map<String, dynamic> previewEngineConfig;
@@ -297,6 +299,7 @@ class _AdminGameConfig {
       algorithmOverrides: json['algorithm_overrides'] is Map
           ? Map<String, dynamic>.from(json['algorithm_overrides'] as Map)
           : <String, dynamic>{},
+      minResponseMs: _adminInt(json['min_response_ms'], 900),
       enabled: json['enabled'] is bool ? json['enabled'] as bool : true,
       version: _adminInt(json['version'], 1),
       previewEngineConfig: json['preview_engine_config'] is Map
@@ -881,6 +884,7 @@ class _GameConfigEditorPageState extends State<_GameConfigEditorPage> {
   late final TextEditingController _windowCtrl;
   late final TextEditingController _minGamesCtrl;
   late final TextEditingController _maxStepCtrl;
+  late final TextEditingController _minResponseCtrl;
   late final TextEditingController _overridesCtrl;
 
   bool _saving = false;
@@ -907,6 +911,7 @@ class _GameConfigEditorPageState extends State<_GameConfigEditorPage> {
     _windowCtrl = TextEditingController(text: '${c.adjustmentWindow}');
     _minGamesCtrl = TextEditingController(text: '${c.minimumGames}');
     _maxStepCtrl = TextEditingController(text: '${c.maximumStep}');
+    _minResponseCtrl = TextEditingController(text: '${c.minResponseMs}');
     _overridesCtrl = TextEditingController(
       text: const JsonEncoder.withIndent('  ').convert(c.algorithmOverrides),
     );
@@ -922,6 +927,7 @@ class _GameConfigEditorPageState extends State<_GameConfigEditorPage> {
     _windowCtrl.dispose();
     _minGamesCtrl.dispose();
     _maxStepCtrl.dispose();
+    _minResponseCtrl.dispose();
     _overridesCtrl.dispose();
     super.dispose();
   }
@@ -952,18 +958,24 @@ class _GameConfigEditorPageState extends State<_GameConfigEditorPage> {
     final window = int.tryParse(_windowCtrl.text.trim());
     final minGames = int.tryParse(_minGamesCtrl.text.trim());
     final maxStep = int.tryParse(_maxStepCtrl.text.trim());
+    final minResponse = int.tryParse(_minResponseCtrl.text.trim());
     if (base == null ||
         min == null ||
         max == null ||
         targetPercent == null ||
         window == null ||
         minGames == null ||
-        maxStep == null) {
+        maxStep == null ||
+        minResponse == null) {
       setState(() => _error = '请填写有效的数字');
       return null;
     }
     if (!(min <= base && base <= max)) {
       setState(() => _error = '基础强度必须在最低与最高强度之间');
+      return null;
+    }
+    if (minResponse < 0 || minResponse > 8000) {
+      setState(() => _error = 'AI 最小反应时长需在 0–8000 毫秒之间');
       return null;
     }
     Map<String, dynamic> overrides;
@@ -992,6 +1004,7 @@ class _GameConfigEditorPageState extends State<_GameConfigEditorPage> {
       'adjustment_window': window,
       'minimum_games': minGames,
       'maximum_step': maxStep,
+      'min_response_ms': minResponse,
       'algorithm_overrides': overrides,
     };
   }
@@ -1129,6 +1142,32 @@ class _GameConfigEditorPageState extends State<_GameConfigEditorPage> {
                   label: '目标用户胜率 (%)',
                   controller: _targetCtrl,
                   decimal: true,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _AdminCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _AdminGamesSectionHeader('AI 反应速度'),
+                const SizedBox(height: 12),
+                _AdminGamesNumberField(
+                  label: 'AI 最小反应时长 (毫秒)',
+                  controller: _minResponseCtrl,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'AI 每步至少花这么久才落子（引擎已思考更久则不再额外等待），数值越大越像真人在思考。范围 0–8000 毫秒；双人方块不受此项影响，按其自身节奏出手。',
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 11.5,
+                    height: 1.5,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
               ],
             ),

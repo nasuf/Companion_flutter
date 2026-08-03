@@ -51,6 +51,26 @@ class _NativeGameRuntime {
     return math.max(0, DateTime.now().difference(value).inSeconds);
   }
 
+  // Minimum wall-clock time (ms) an AI move should take so the opponent reads
+  // as human rather than instant. Comes from the server via engine_config
+  // (per-game, admin-tunable). Falls back to a modest default when a session
+  // predates the field. tetris_duel ignores this and paces via agent_move_ms.
+  int get aiMinResponseMs {
+    final raw = session?.engineConfig['min_response_ms'];
+    if (raw is num) return math.max(0, math.min(60000, raw.round()));
+    return 600;
+  }
+
+  /// Pads the AI's turn so at least [aiMinResponseMs] has elapsed since [since]
+  /// started, making an instant engine reply feel human. No-op when the engine
+  /// already thought for long enough.
+  Future<void> paceAiMove(Stopwatch since) async {
+    final remaining = aiMinResponseMs - since.elapsedMilliseconds;
+    if (remaining > 0) {
+      await Future<void>.delayed(Duration(milliseconds: remaining));
+    }
+  }
+
   Future<void> initialize() async {
     // History repair is useful, but it must not keep the local game board
     // behind a network loading state. Start replaying before the history

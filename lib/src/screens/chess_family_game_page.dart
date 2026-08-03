@@ -185,6 +185,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
   Future<void> _playAgentTurn() async {
     final engine = _engine;
     if (engine == null || engine.isFinished || !engine.isAgentTurn) return;
+    final sw = Stopwatch()..start();
     setState(() => _runtime.aiThinking = true);
     final before = engine.analyze();
     await _runtime.reportEvent(
@@ -198,6 +199,8 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       final decision = await engine.chooseAiMove();
       if (!mounted || engine.isFinished) return;
       await _runtime.reportEvent('ai_move_decided', payload: decision.toJson());
+      await _runtime.paceAiMove(sw);
+      if (!mounted || engine.isFinished) return;
       await _applyAgentMove(
         engine.playAlgebraic(decision.algebraic, decision: decision),
         before,

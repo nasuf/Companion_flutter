@@ -132,6 +132,7 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
   Future<void> _agentTurn() async {
     final engine = _engine;
     if (engine == null || engine.isFinished) return;
+    final sw = Stopwatch()..start();
     setState(() => _runtime.aiThinking = true);
     try {
       await _runtime.reportEvent(
@@ -148,7 +149,7 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
         return;
       }
       await _runtime.reportEvent('ai_move_decided', payload: decision.toJson());
-      await Future<void>.delayed(const Duration(milliseconds: 330));
+      await _runtime.paceAiMove(sw);
       if (!mounted ||
           engine.isFinished ||
           engine.turn != NumberMergeActor.agent) {

@@ -122,6 +122,7 @@ class _GoGamePageState extends State<_GoGamePage> {
     if (engine == null || engine.isFinished || engine.turn != GoActor.agent) {
       return;
     }
+    final sw = Stopwatch()..start();
     setState(() => _runtime.aiThinking = true);
     await _runtime.reportEvent(
       'ai_thinking_started',
@@ -134,7 +135,7 @@ class _GoGamePageState extends State<_GoGamePage> {
       final decision = await engine.chooseAiMove();
       if (!mounted || engine.isFinished || engine.turn != GoActor.agent) return;
       await _runtime.reportEvent('ai_move_decided', payload: decision.toJson());
-      await Future<void>.delayed(const Duration(milliseconds: 220));
+      await _runtime.paceAiMove(sw);
       if (!mounted || engine.isFinished || engine.turn != GoActor.agent) return;
       await _playAndReport(decision.index, decision: decision);
     } finally {

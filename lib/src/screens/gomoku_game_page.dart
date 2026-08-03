@@ -116,6 +116,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
   Future<void> _playAgentTurn() async {
     final engine = _engine;
     if (engine == null || engine.isFinished) return;
+    final sw = Stopwatch()..start();
     setState(() => _runtime.aiThinking = true);
     await _runtime.reportEvent(
       'ai_thinking_started',
@@ -125,7 +126,6 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
         'analysis': engine.analyze().toJson(),
       },
     );
-    await Future<void>.delayed(const Duration(milliseconds: 520));
     if (!mounted || engine.isFinished) return;
     final decision = await engine.chooseAiMove();
     // The search suspends this method; the round may have been restarted
@@ -135,6 +135,8 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
       'ai_move_decided',
       payload: {...decision.toJson(), 'play_style': 'natural_companion'},
     );
+    await _runtime.paceAiMove(sw);
+    if (!mounted || !identical(engine, _engine) || engine.isFinished) return;
     final result = engine.place(
       decision.point,
       GomokuActor.agent,
