@@ -5,6 +5,28 @@ import 'package:flutter/foundation.dart';
 
 enum ChessFamilyKind { chess, xiangqi }
 
+/// Repeated positions before the game is called a draw. Formal xiangqi rules
+/// judge perpetual check (长将) a loss for the checking side, which needs
+/// intent detection the bishop package does not model; a draw at least keeps
+/// the game from running forever.
+const int _xiangqiRepetitionDraw = 3;
+
+/// Half-moves without a capture before the game is called a draw — the 60-move
+/// 自然限着 rule, counted in plies.
+const int _xiangqiHalfMoveDraw = 120;
+
+/// The packaged xiangqi variant leaves every draw condition unset and inherits
+/// chess's stalemate rule, so a drawn ending never terminates and 困毙 is
+/// scored wrong. Both are corrected here.
+bishop.Variant _xiangqiVariant() => bishop.Xiangqi.xiangqi().copyWith(
+  // 困毙: in xiangqi the side with no legal move loses; in chess it is a draw.
+  gameEndConditions: const bishop.GameEndConditions(
+    stalemate: bishop.EndType.lose,
+  ).symmetric(),
+  repetitionDraw: _xiangqiRepetitionDraw,
+  halfMoveDraw: _xiangqiHalfMoveDraw,
+);
+
 enum ChessFamilyActor { user, agent }
 
 enum ChessFamilyStatus { playing, userWon, agentWon, draw }
@@ -221,7 +243,7 @@ class ChessFamilyEngine {
   static bishop.Variant _variant(ChessFamilyKind kind) =>
       kind == ChessFamilyKind.chess
       ? bishop.Variant.standard()
-      : bishop.Xiangqi.xiangqi();
+      : _xiangqiVariant();
 
   int get files => _game.size.h;
   int get ranks => _game.size.v;
@@ -423,10 +445,10 @@ class ChessFamilyEngine {
 
 Map<String, dynamic> _searchChessFamilyMove(Map<String, dynamic> input) {
   final kind = ChessFamilyKind.values.byName(input['kind']! as String);
+  // Must match ChessFamilyEngine._variant: searching under different rules to
+  // the ones being played would mis-score stalemates and repetitions.
   final game = bishop.Game(
-    variant: kind == ChessFamilyKind.chess
-        ? bishop.Variant.standard()
-        : bishop.Xiangqi.xiangqi(),
+    variant: ChessFamilyEngine._variant(kind),
     fen: input['fen']! as String,
   );
   return _ChessFamilySearch(
@@ -491,6 +513,25 @@ class _ChessFamilySearch {
   static const int _mate = 10000000;
   static const int _infinity = 100000000;
 
+  /// Anything past this is a forced mate rather than a material score.
+  static const int _mateThreshold = _mate ~/ 2;
+
+  /// Material lead at which the side to move should be hunting the general
+  /// instead of collecting the last few pieces.
+  static const int _finishingAdvantage = 1200;
+
+  /// Depth ceiling while finishing. Iterative deepening still stops on the
+  /// time budget, so this only lets a won position use the whole budget
+  /// instead of stopping early at [maxDepth].
+  static const int _finishingDepth = 10;
+
+  /// Board distance within which a piece counts as pressing the enemy general.
+  static const int _huntSpan = 10;
+
+  /// Kept far below a soldier so crowding the palace never looks worth losing
+  /// material for.
+  static const int _huntWeight = 3;
+
   final bishop.Game game;
   final ChessFamilyKind kind;
   final int budgetMilliseconds;
@@ -511,7 +552,8 @@ class _ChessFamilySearch {
     if (rootMoves.isEmpty) throw StateError('no_legal_move');
     var completedDepth = 0;
     var completed = <_RootLine>[];
-    for (var depth = 1; depth <= maxDepth; depth += 1) {
+    final depthCap = _depthCap();
+    for (var depth = 1; depth <= depthCap; depth += 1) {
       final iteration = <_RootLine>[];
       final ordered = _orderedMoves(rootMoves, 0, game.state.hash);
       var timedOut = false;
@@ -602,18 +644,19 @@ class _ChessFamilySearch {
     var a = alpha;
     final tt = _table[game.state.hash];
     if (tt != null && tt.depth >= depth) {
+      final ttScore = _scoreFromTable(tt.score, ply);
       if (tt.bound == _Bound.exact) {
         return _SearchLine(
-          score: tt.score,
+          score: ttScore,
           nodes: 1,
           moves: tt.bestMove == null ? const [] : [tt.bestMove!],
         );
       }
-      if (tt.bound == _Bound.lower) a = math.max(a, tt.score);
-      if (tt.bound == _Bound.upper && tt.score <= a) {
-        return _SearchLine(score: tt.score, nodes: 1);
+      if (tt.bound == _Bound.lower) a = math.max(a, ttScore);
+      if (tt.bound == _Bound.upper && ttScore <= a) {
+        return _SearchLine(score: ttScore, nodes: 1);
       }
-      if (a >= beta) return _SearchLine(score: tt.score, nodes: 1);
+      if (a >= beta) return _SearchLine(score: ttScore, nodes: 1);
     }
 
     final moves = game.generateLegalMoves();
@@ -687,7 +730,7 @@ class _ChessFamilySearch {
         : _Bound.exact;
     _table[game.state.hash] = _TranspositionEntry(
       depth: depth,
-      score: best,
+      score: _scoreToTable(best, ply),
       bound: bound,
       bestMove: bestMove.isEmpty ? null : bestMove,
     );
@@ -703,6 +746,16 @@ class _ChessFamilySearch {
     _nodes += 1;
     if (_timedOut) {
       return const _SearchLine(score: 0, nodes: 1, timedOut: true);
+    }
+    // Without this the capture sequence can walk into a mate and score it as
+    // ordinary material, which is how a won position stays invisible.
+    final result = game.result;
+    if (result is bishop.DrawnGame) {
+      return const _SearchLine(score: 0, nodes: 1);
+    }
+    if (result is bishop.WonGame) {
+      final score = result.winner == game.turn ? _mate - ply : -_mate + ply;
+      return _SearchLine(score: score, nodes: 1);
     }
     final standPat = _evaluateFor(game.turn);
     if (standPat >= beta) return _SearchLine(score: beta, nodes: 1);
@@ -768,7 +821,19 @@ class _ChessFamilySearch {
   }
 
   int _evaluateFor(int player) {
-    var score = game.evaluate(player);
+    final material = game.evaluate(player);
+    var score = material;
+    // Material alone keeps the agent trading pieces while mate sits past the
+    // horizon, which is how a won game turns into a grind. Once it is clearly
+    // ahead, reward crowding the enemy general so an attack builds up.
+    // Applied to whichever side is ahead, so the evaluation stays antisymmetric
+    // and negamax sees the same position the same way from either seat.
+    final playerTarget = material >= _finishingAdvantage
+        ? _royalSquare(player.opponent)
+        : null;
+    final opponentTarget = material <= -_finishingAdvantage
+        ? _royalSquare(player)
+        : null;
     final centreFile = (game.size.h - 1) / 2;
     final centreRank = (game.size.v - 1) / 2;
     for (var square = 0; square < game.size.numIndices; square += 1) {
@@ -781,6 +846,14 @@ class _ChessFamilySearch {
           (game.size.rank(square) - centreRank).abs();
       final centreBonus = math.max(0, 8 - (distance * 2).round());
       score += sign * centreBonus;
+      final target = piece.colour == player ? playerTarget : opponentTarget;
+      if (target != null) {
+        final int toGeneral =
+            (game.size.file(square) - game.size.file(target)).abs() +
+            (game.size.rank(square) - game.size.rank(target)).abs();
+        final int pressure = math.max(0, _huntSpan - toGeneral);
+        score += sign * pressure * _huntWeight;
+      }
       final symbol = game.variant.pieceSymbol(piece.type).toUpperCase();
       if (symbol == 'P') {
         final advancement = piece.colour == bishop.Bishop.white
@@ -800,11 +873,44 @@ class _ChessFamilySearch {
     final best = lines.first;
     final second = lines[1];
     if (best.line.score - second.line.score <= nearBestTolerance &&
-        best.line.score.abs() < _mate ~/ 2 &&
+        best.line.score.abs() < _mateThreshold &&
         _random.nextDouble() < nearBestProbability) {
       return second;
     }
     return best;
+  }
+
+  int? _royalSquare(int colour) {
+    for (var square = 0; square < game.size.numIndices; square += 1) {
+      if (!game.size.onBoard(square)) continue;
+      final piece = game.board[square];
+      if (piece.isEmpty || piece.colour != colour) continue;
+      if (game.variant.pieces[piece.type].type.royal) return square;
+    }
+    return null;
+  }
+
+  /// A won position is where a shallow search stalls: mate sits past the
+  /// horizon, so the agent keeps taking material instead of finishing. Once it
+  /// is clearly ahead, let the search run past [maxDepth] and spend the whole
+  /// time budget, which is what brings the mate into view.
+  int _depthCap() {
+    if (_evaluateFor(game.turn) < _finishingAdvantage) return maxDepth;
+    return math.max(maxDepth, _finishingDepth);
+  }
+
+  /// Mate scores count plies from the node that found them, so they have to be
+  /// re-based on the way into and out of the shared table.
+  int _scoreToTable(int score, int ply) {
+    if (score >= _mateThreshold) return score + ply;
+    if (score <= -_mateThreshold) return score - ply;
+    return score;
+  }
+
+  int _scoreFromTable(int score, int ply) {
+    if (score >= _mateThreshold) return score - ply;
+    if (score <= -_mateThreshold) return score + ply;
+    return score;
   }
 
   bool get _timedOut =>
