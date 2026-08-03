@@ -312,6 +312,7 @@ class _XiangqiGameScreen extends StatelessWidget {
     required this.starting,
     required this.timerPaused,
     required this.enabled,
+    required this.notice,
     required this.onSquareTap,
     required this.onRestart,
     required this.onExit,
@@ -329,6 +330,11 @@ class _XiangqiGameScreen extends StatelessWidget {
   final bool starting;
   final bool timerPaused;
   final bool enabled;
+
+  /// Something went wrong out of the player's sight — a failed sync or a move
+  /// the agent could not complete. Left invisible it just looks like the board
+  /// stopped responding.
+  final String? notice;
   final ValueChanged<int> onSquareTap;
   final Future<void> Function() onRestart;
   final Future<void> Function() onExit;
@@ -444,6 +450,13 @@ class _XiangqiGameScreen extends StatelessWidget {
                   xiangqiArtworkAsset: '${_xiangqiAsset}game_board.png',
                 ),
               ),
+              if (notice case final text?)
+                Positioned(
+                  left: width * (26 / 393),
+                  right: width * (26 / 393),
+                  top: height * (640 / 852),
+                  child: _XiangqiNotice(text: text),
+                ),
               Positioned(
                 left: width * (26 / 393),
                 top: height * (684 / 852),
@@ -525,6 +538,36 @@ class _XiangqiGameScreen extends StatelessWidget {
     );
     onTimerPauseChanged(false);
   }
+}
+
+class _XiangqiNotice extends StatelessWidget {
+  const _XiangqiNotice({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: const Color(0xFF7A2418).withValues(alpha: 0.92),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Color(0xFFFFE7C9),
+          fontSize: 12,
+          height: 1.3,
+          fontWeight: FontWeight.w700,
+          decoration: TextDecoration.none,
+        ),
+      ),
+    ),
+  );
 }
 
 class _XiangqiAvatar extends StatelessWidget {

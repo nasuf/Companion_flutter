@@ -171,6 +171,31 @@ void main() {
     }, timeout: const Timeout(Duration(minutes: 2)));
 
     test(
+      'every move the agent returns can actually be played',
+      () async {
+        // In a lost position the agent picks a move that walks into the check,
+        // which is legal here but absent from bishop's strict move list. Looking
+        // it up there threw, the turn stayed with the agent, and the whole board
+        // stopped responding with nothing shown to the player.
+        const fen = '4k4/9/4R4/9/9/9/9/9/9/3AKA3 b - - 0 1';
+        for (var attempt = 0; attempt < 4; attempt += 1) {
+          final engine = ChessFamilyEngine(
+            kind: ChessFamilyKind.xiangqi,
+            fen: fen,
+          );
+          expect(engine.isFinished, isFalse);
+          final decision = await engine.chooseAiMove();
+          expect(
+            () => engine.playAlgebraic(decision.algebraic),
+            returnsNormally,
+            reason: 'the agent chose ${decision.algebraic}',
+          );
+        }
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
       'converts a won game instead of grinding it out',
       () async {
         // Against careless play the agent used to collect every last piece

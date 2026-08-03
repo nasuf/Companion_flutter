@@ -198,24 +198,62 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       final decision = await engine.chooseAiMove();
       if (!mounted || engine.isFinished) return;
       await _runtime.reportEvent('ai_move_decided', payload: decision.toJson());
-      final result = engine.playAlgebraic(
-        decision.algebraic,
-        decision: decision,
+      await _applyAgentMove(
+        engine.playAlgebraic(decision.algebraic, decision: decision),
+        before,
       );
-      if (result.move.capturedPiece != null) {
-        _NativeGameHaptics.capture(1, keyMoment: result.move.moment != null);
-      } else {
-        _NativeGameHaptics.placement(keyMoment: result.move.moment != null);
-      }
-      await _reportMove(result.move, before);
-      if (result.status != ChessFamilyStatus.playing) {
-        await _finish(result.status);
-      }
     } catch (caught) {
-      _runtime.syncNotice = '这一步没有算完，请重新开一局：$caught';
+      // The turn belongs to the agent, so a search that throws leaves nobody
+      // able to move and the board looks frozen. Play something rather than
+      // stranding the game. If the move already went through and it was the
+      // reporting that failed, _anyAgentMove sees the turn has passed and
+      // declines, so this cannot move twice.
+      ChessFamilyMoveResult? fallback;
+      try {
+        fallback = _anyAgentMove(engine);
+        if (fallback != null) await _applyAgentMove(fallback, before);
+      } catch (_) {
+        fallback = null;
+      }
+      if (fallback == null) {
+        _runtime.syncNotice = '这一步没有算完，请重新开一局：$caught';
+      }
     } finally {
       if (mounted) setState(() => _runtime.aiThinking = false);
     }
+  }
+
+  Future<void> _applyAgentMove(
+    ChessFamilyMoveResult result,
+    ChessPositionAnalysis before,
+  ) async {
+    if (result.move.capturedPiece != null) {
+      _NativeGameHaptics.capture(1, keyMoment: result.move.moment != null);
+    } else {
+      _NativeGameHaptics.placement(keyMoment: result.move.moment != null);
+    }
+    await _reportMove(result.move, before);
+    if (result.status != ChessFamilyStatus.playing) {
+      await _finish(result.status);
+    }
+  }
+
+  /// Any move at all for the agent, used only to recover from a failed search.
+  /// The turn check also guards against playing twice when the failure came
+  /// after the move had already been made.
+  ChessFamilyMoveResult? _anyAgentMove(ChessFamilyEngine engine) {
+    if (engine.isFinished || !engine.isAgentTurn) return null;
+    for (final piece in engine.pieces) {
+      if (piece.actor != ChessFamilyActor.agent) continue;
+      final targets = engine.legalDestinations(piece.square);
+      if (targets.isEmpty) continue;
+      try {
+        return engine.play(from: piece.square, to: targets.first);
+      } catch (_) {
+        continue;
+      }
+    }
+    return null;
   }
 
   Future<void> _reportMove(
@@ -361,6 +399,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
             starting: _runtime.starting,
             timerPaused: _xiangqiTimerPaused,
             enabled: userTurnActive,
+            notice: _runtime.syncNotice,
             onSquareTap: _handleSquareTap,
             onRestart: _startGame,
             onExit: _closeGame,

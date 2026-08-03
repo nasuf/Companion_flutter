@@ -439,9 +439,15 @@ class ChessFamilyEngine {
     String algebraic, {
     ChessFamilyAiDecision? decision,
   }) {
-    final move = _game.getMove(algebraic);
-    if (move == null) throw StateError('invalid_move');
-    return play(from: move.from, to: move.to, decision: decision);
+    // Deliberately not bishop's getMove: that looks the move up in the strictly
+    // legal list, which no longer matches what the agent is allowed to search.
+    // A move the agent found would then be rejected here, stranding the turn.
+    for (final move in _availableMoves()) {
+      if (_game.toAlgebraic(move) == algebraic) {
+        return play(from: move.from, to: move.to, decision: decision);
+      }
+    }
+    throw StateError('invalid_move');
   }
 
   Future<ChessFamilyAiDecision> chooseAiMove() async {
