@@ -896,7 +896,6 @@ class _GomokuHomeStats extends StatelessWidget {
 // ===========================================================================
 
 const String _gomokuGameBg = '${_gomokuHomeAsset}game_bg.png';
-const String _gomokuMedal = '${_gomokuHomeAsset}game_medal.png';
 const String _gomokuNamePlate = '${_gomokuHomeAsset}game_name_plate.png';
 
 class _GomokuGameScreen extends StatelessWidget {
@@ -945,7 +944,7 @@ class _GomokuGameScreen extends StatelessWidget {
           // Figma outer avatar ring is 86px on a 393px frame; the inner image
           // is 80px, leaving a 3px ring on each side.
           final avatarD = w * (86 / 393);
-          final plateW = w * 0.382;
+          final plateW = w * 0.40;
           return Stack(
             children: [
               Positioned.fill(
@@ -957,31 +956,13 @@ class _GomokuGameScreen extends StatelessWidget {
                 ),
               ),
 
-              // Right (agent) name plate — sits left of the agent avatar.
+              // Both avatars sit at the same height (design 2:3). Each glows
+              // and shows a 30s turn countdown while it is that player's turn.
               _centered(
                 w,
                 h,
-                cx: 0.636,
-                cy: 0.237,
-                width: plateW,
-                child: _GomokuNamePlate(name: agentName),
-              ),
-              // Left (user) name plate — sits right of the user avatar.
-              _centered(
-                w,
-                h,
-                cx: 0.387,
-                cy: 0.148,
-                width: plateW,
-                child: _GomokuNamePlate(name: userName),
-              ),
-
-              // Agent avatar (top-right), glows while thinking.
-              _centered(
-                w,
-                h,
-                cx: 0.865,
-                cy: 0.237,
+                cx: 0.763,
+                cy: 0.149,
                 width: avatarD,
                 child: _GomokuAvatar(
                   imageUrl: agentAvatarUrl,
@@ -990,12 +971,11 @@ class _GomokuGameScreen extends StatelessWidget {
                   active: aiThinking,
                 ),
               ),
-              // User avatar (top-left), glows on the user's turn.
               _centered(
                 w,
                 h,
-                cx: 0.153,
-                cy: 0.150,
+                cx: 0.237,
+                cy: 0.149,
                 width: avatarD,
                 child: _GomokuAvatar(
                   imageUrl: userAvatarUrl,
@@ -1004,36 +984,30 @@ class _GomokuGameScreen extends StatelessWidget {
                   active: userTurn,
                 ),
               ),
-              // Figma: the 75×40 user badge starts at y=149 while the 86px
-              // avatar starts at y=85, creating a 22px overlap.
+              // Name plates sit directly under each avatar, overlapping its
+              // lower edge, with the player's stone colour shown as a chip.
               _centered(
                 w,
                 h,
-                cx: 0.149,
-                cy: 0.198,
-                width: w * 0.191,
-                child: const _GomokuBreathingMotion(
-                  duration: Duration(milliseconds: 4200),
-                  scaleAmount: 0.01,
-                  translateY: 1.2,
-                  phase: 0.15,
-                  child: _GomokuRankBadge(gray: false),
+                cx: 0.763,
+                cy: 0.225,
+                width: plateW,
+                child: _GomokuNamePlate(
+                  name: agentName,
+                  stone: GomokuStone.white,
+                  stoneOnRight: false,
                 ),
               ),
-              // The agent uses the same badge silhouette in gray, with the same
-              // overlap ratio under its avatar.
               _centered(
                 w,
                 h,
-                cx: 0.865,
-                cy: 0.281,
-                width: w * 0.191,
-                child: const _GomokuBreathingMotion(
-                  duration: Duration(milliseconds: 4200),
-                  scaleAmount: 0.01,
-                  translateY: 1.2,
-                  phase: 0.65,
-                  child: _GomokuRankBadge(gray: true),
+                cx: 0.237,
+                cy: 0.225,
+                width: plateW,
+                child: _GomokuNamePlate(
+                  name: userName,
+                  stone: GomokuStone.black,
+                  stoneOnRight: true,
                 ),
               ),
 
@@ -1051,6 +1025,16 @@ class _GomokuGameScreen extends StatelessWidget {
                 ),
               ),
 
+              // "你的回合" ribbon — flashes in from the right, holds ~2s, then
+              // slides out to the left whenever the user's turn begins.
+              Positioned(
+                left: 0,
+                right: 0,
+                top: h * 0.52 - (w * 0.17) / 2,
+                height: w * 0.17,
+                child: _GomokuTurnBanner(userTurn: userTurn),
+              ),
+
               if (syncNotice != null)
                 Positioned(
                   left: w * 0.08,
@@ -1059,10 +1043,10 @@ class _GomokuGameScreen extends StatelessWidget {
                   child: _GomokuNotice(text: syncNotice!, isError: false),
                 ),
 
-              // Bottom buttons.
+              // Bottom buttons — nudged down from the board per the design.
               Positioned(
                 left: w * 0.074,
-                top: h * 0.766,
+                top: h * 0.804,
                 width: w * 0.254,
                 child: _GomokuGameButton(
                   base: '${_gomokuHomeAsset}home_btn_exit.png',
@@ -1072,12 +1056,23 @@ class _GomokuGameScreen extends StatelessWidget {
               ),
               Positioned(
                 left: w * 0.374,
-                top: h * 0.766,
+                top: h * 0.804,
                 width: w * 0.254,
                 child: _GomokuGameButton(
                   base: '${_gomokuHomeAsset}home_btn_start.png',
                   label: '暂停',
                   onTap: () => _showPauseMenu(context),
+                ),
+              ),
+              // Help (?) button on the right — opens the rules popup.
+              _centered(
+                w,
+                h,
+                cx: 0.898,
+                cy: 0.831,
+                width: w * 0.108,
+                child: _GomokuHelpButton(
+                  onTap: () => _showGomokuRulesDialog(context),
                 ),
               ),
 
@@ -1292,48 +1287,6 @@ class _GomokuModalCard extends StatelessWidget {
   }
 }
 
-/// Winged rank badge from Figma. The user keeps the exported gold artwork;
-/// the agent uses the same silhouette with a neutral gray treatment.
-class _GomokuRankBadge extends StatelessWidget {
-  const _GomokuRankBadge({required this.gray});
-
-  final bool gray;
-
-  @override
-  Widget build(BuildContext context) {
-    final badge = Image.asset(_gomokuMedal, fit: BoxFit.contain);
-    return AspectRatio(
-      aspectRatio: 225 / 120,
-      child: gray
-          ? ColorFiltered(
-              colorFilter: const ColorFilter.matrix([
-                0.2126,
-                0.7152,
-                0.0722,
-                0,
-                8,
-                0.2126,
-                0.7152,
-                0.0722,
-                0,
-                8,
-                0.2126,
-                0.7152,
-                0.0722,
-                0,
-                8,
-                0,
-                0,
-                0,
-                1,
-                0,
-              ]),
-              child: badge,
-            )
-          : badge,
-    );
-  }
-}
 
 /// Circular avatar with a cream ring; the ring emits a cyan halo (pulsing) when
 /// it is this player's turn.
@@ -1355,8 +1308,13 @@ class _GomokuAvatar extends StatefulWidget {
 }
 
 class _GomokuAvatarState extends State<_GomokuAvatar>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
+  // Seconds a player has to move; the design shows a 30s dial per turn.
+  static const int _turnSeconds = 30;
+  static const Color _cyan = Color(0xFF44E0FF);
+
   late final AnimationController _pulse;
+  late final AnimationController _countdown;
 
   @override
   void initState() {
@@ -1364,6 +1322,10 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
     _pulse = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1100),
+    );
+    _countdown = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: _turnSeconds),
     );
     _sync();
   }
@@ -1377,15 +1339,20 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
   void _sync() {
     if (widget.active) {
       if (!_pulse.isAnimating) _pulse.repeat(reverse: true);
+      // Restart the dial from full at the start of every turn.
+      _countdown.forward(from: 0);
     } else {
       _pulse.stop();
       _pulse.value = 0;
+      _countdown.stop();
+      _countdown.value = 0;
     }
   }
 
   @override
   void dispose() {
     _pulse.dispose();
+    _countdown.dispose();
     super.dispose();
   }
 
@@ -1393,11 +1360,15 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
   Widget build(BuildContext context) {
     final d = widget.diameter;
     final ring = d * (3 / 86);
+    final inner = d - ring * 2;
     return AnimatedBuilder(
-      animation: _pulse,
+      animation: Listenable.merge([_pulse, _countdown]),
       builder: (context, _) {
         final t = Curves.easeInOut.transform(_pulse.value);
-        const cyan = Color(0xFF44E0FF);
+        final remainingFraction = (1 - _countdown.value).clamp(0.0, 1.0);
+        final remainingSeconds = (remainingFraction * _turnSeconds)
+            .ceil()
+            .clamp(0, _turnSeconds);
         return Container(
           width: d,
           height: d,
@@ -1406,19 +1377,19 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
             color: const Color(0xFFFBF3E4),
             border: Border.all(
               color: widget.active
-                  ? cyan
+                  ? _cyan
                   : const Color(0xFF7A2E2E).withValues(alpha: 0.45),
               width: widget.active ? ring * 0.6 : 1.4,
             ),
             boxShadow: widget.active
                 ? [
                     BoxShadow(
-                      color: cyan.withValues(alpha: 0.85),
+                      color: _cyan.withValues(alpha: 0.85),
                       blurRadius: 14 + t * 12,
                       spreadRadius: 1 + t * 3,
                     ),
                     BoxShadow(
-                      color: cyan.withValues(alpha: 0.45),
+                      color: _cyan.withValues(alpha: 0.45),
                       blurRadius: 28 + t * 16,
                       spreadRadius: 4 + t * 4,
                     ),
@@ -1433,13 +1404,47 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
           ),
           padding: EdgeInsets.all(ring),
           child: ClipOval(
-            child: _Avatar(
-              size: d - ring * 2,
-              label: widget.fallback.trim().isEmpty
-                  ? '伴'
-                  : widget.fallback.trim().characters.first,
-              imageUrl: widget.imageUrl,
-              gradient: const [Color(0xFFE8F3FF), Color(0xFFD7E9FF)],
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _Avatar(
+                  size: inner,
+                  label: widget.fallback.trim().isEmpty
+                      ? '伴'
+                      : widget.fallback.trim().characters.first,
+                  imageUrl: widget.imageUrl,
+                  gradient: const [Color(0xFFE8F3FF), Color(0xFFD7E9FF)],
+                ),
+                if (widget.active) ...[
+                  // Stopwatch dial: dim the portrait, drain a red ring, and show
+                  // the remaining seconds in cyan.
+                  CustomPaint(
+                    painter: _GomokuTurnTimerPainter(
+                      remainingFraction: remainingFraction,
+                    ),
+                  ),
+                  Center(
+                    child: Text(
+                      '$remainingSeconds',
+                      style: TextStyle(
+                        color: _cyan,
+                        fontSize: inner * 0.42,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                        shadows: const [
+                          Shadow(
+                            color: Color(0x99000000),
+                            offset: Offset(0, 1),
+                            blurRadius: 2,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         );
@@ -1448,14 +1453,76 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
   }
 }
 
-/// Cream name pill (art) with the player's name rendered on top.
+/// Draws the per-turn stopwatch: a translucent white disc over the portrait
+/// and a red ring that drains clockwise from the top as time runs out.
+class _GomokuTurnTimerPainter extends CustomPainter {
+  const _GomokuTurnTimerPainter({required this.remainingFraction});
+
+  final double remainingFraction;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final radius = size.shortestSide / 2;
+    final ringRadius = radius * 0.80;
+    final stroke = radius * 0.16;
+
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()..color = Colors.white.withValues(alpha: 0.52),
+    );
+    canvas.drawCircle(
+      center,
+      ringRadius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..color = Colors.white.withValues(alpha: 0.65),
+    );
+    if (remainingFraction > 0) {
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: ringRadius),
+        -math.pi / 2,
+        2 * math.pi * remainingFraction,
+        false,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke
+          ..strokeCap = StrokeCap.round
+          ..color = const Color(0xFFFF5A4D),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GomokuTurnTimerPainter oldDelegate) =>
+      oldDelegate.remainingFraction != remainingFraction;
+}
+
+/// Cream name pill (art) with the player's name and their stone colour shown
+/// as a chip on the side facing the board centre.
 class _GomokuNamePlate extends StatelessWidget {
-  const _GomokuNamePlate({required this.name});
+  const _GomokuNamePlate({
+    required this.name,
+    required this.stone,
+    required this.stoneOnRight,
+  });
 
   final String name;
+  final GomokuStone stone;
+  final bool stoneOnRight;
 
   @override
   Widget build(BuildContext context) {
+    final stoneChip = SvgPicture.asset(
+      stone == GomokuStone.black
+          ? '${_gomokuHomeAsset}game_stone_black.svg'
+          : '${_gomokuHomeAsset}game_stone_white.svg',
+      width: 22,
+      height: 22,
+      fit: BoxFit.contain,
+    );
     return AspectRatio(
       aspectRatio: 450 / 138,
       child: Stack(
@@ -1468,17 +1535,19 @@ class _GomokuNamePlate extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14),
             child: FittedBox(
               fit: BoxFit.scaleDown,
-              child: Text(
-                name,
-                maxLines: 1,
-                style: const TextStyle(
-                  color: Color(0xFF6B4A2E),
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0,
-                  height: 1,
-                  decoration: TextDecoration.none,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: stoneOnRight
+                    ? [
+                        Text(name, maxLines: 1, style: _kNamePlateStyle),
+                        const SizedBox(width: 6),
+                        stoneChip,
+                      ]
+                    : [
+                        stoneChip,
+                        const SizedBox(width: 6),
+                        Text(name, maxLines: 1, style: _kNamePlateStyle),
+                      ],
               ),
             ),
           ),
@@ -1487,6 +1556,15 @@ class _GomokuNamePlate extends StatelessWidget {
     );
   }
 }
+
+const TextStyle _kNamePlateStyle = TextStyle(
+  color: Color(0xFF6B4A2E),
+  fontSize: 22,
+  fontWeight: FontWeight.w900,
+  letterSpacing: 0,
+  height: 1,
+  decoration: TextDecoration.none,
+);
 
 /// Wooden framed 15×15 board that reuses the interactive board painter.
 class _GomokuDesignBoard extends StatelessWidget {
@@ -1715,6 +1793,388 @@ class _StrokeText extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// "你的回合" ribbon. Whenever the user's turn begins it flashes in from the
+/// right, holds for ~2s, then continues sliding out to the left.
+class _GomokuTurnBanner extends StatefulWidget {
+  const _GomokuTurnBanner({required this.userTurn});
+
+  final bool userTurn;
+
+  @override
+  State<_GomokuTurnBanner> createState() => _GomokuTurnBannerState();
+}
+
+class _GomokuTurnBannerState extends State<_GomokuTurnBanner>
+    with SingleTickerProviderStateMixin {
+  // 0.0–0.16 flash in (~450ms), hold to 0.85 (~2s), 0.85–1.0 slide out (~420ms).
+  static const double _inEnd = 0.16;
+  static const double _holdEnd = 0.85;
+
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2800),
+      value: 1, // start finished (hidden) until a turn actually begins
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.userTurn) _play();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _GomokuTurnBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.userTurn && !oldWidget.userTurn) _play();
+  }
+
+  void _play() {
+    if (!mounted) return;
+    final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduceMotion) {
+      _controller.value = 1; // skip the animated banner entirely
+      return;
+    }
+    _controller.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final v = _controller.value;
+          double dx;
+          double opacity;
+          if (v < _inEnd) {
+            final p = Curves.easeOut.transform((v / _inEnd).clamp(0.0, 1.0));
+            dx = 1.3 * (1 - p);
+            opacity = p;
+          } else if (v < _holdEnd) {
+            dx = 0;
+            opacity = 1;
+          } else {
+            final p = Curves.easeIn.transform(
+              ((v - _holdEnd) / (1 - _holdEnd)).clamp(0.0, 1.0),
+            );
+            dx = -1.3 * p;
+            opacity = 1 - p;
+          }
+          if (opacity <= 0) return const SizedBox.shrink();
+          return Opacity(
+            opacity: opacity,
+            child: FractionalTranslation(
+              translation: Offset(dx, 0),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final fontSize = constraints.maxHeight * 0.38;
+                  return Container(
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [
+                          Color(0x00000000),
+                          Color(0xCC000000),
+                          Color(0xCC000000),
+                          Color(0x00000000),
+                        ],
+                        stops: [0.0, 0.30, 0.70, 1.0],
+                      ),
+                    ),
+                    child: Text(
+                      '你的回合',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: fontSize,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 3,
+                        height: 1,
+                        decoration: TextDecoration.none,
+                        shadows: const [
+                          Shadow(
+                            color: Color(0xB3000000),
+                            offset: Offset(0, 1),
+                            blurRadius: 6,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Round "?" button (game-art cream face + brown outline) that opens the rules.
+class _GomokuHelpButton extends StatefulWidget {
+  const _GomokuHelpButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_GomokuHelpButton> createState() => _GomokuHelpButtonState();
+}
+
+class _GomokuHelpButtonState extends State<_GomokuHelpButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap();
+      },
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOut,
+        child: AspectRatio(
+          aspectRatio: 1,
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFFDF3E0), Color(0xFFF2DFBB)],
+              ),
+              border: Border.all(color: const Color(0xFF8A5A2B), width: 3),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF5A3418).withValues(alpha: 0.35),
+                  blurRadius: 6,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                child: Text(
+                  '?',
+                  style: TextStyle(
+                    color: const Color(0xFF7A4020),
+                    fontSize: 40,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                    shadows: [
+                      Shadow(
+                        color: Colors.white.withValues(alpha: 0.6),
+                        offset: const Offset(0, 1),
+                        blurRadius: 0,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Centered rules popup with a gaussian-blurred backdrop and a themed close (×)
+/// button in the top-right corner.
+void _showGomokuRulesDialog(BuildContext context) {
+  showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: '关闭',
+    barrierColor: Colors.black.withValues(alpha: 0.25),
+    transitionDuration: const Duration(milliseconds: 240),
+    pageBuilder: (dialogContext, _, __) {
+      return Stack(
+        children: [
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: const SizedBox.expand(),
+            ),
+          ),
+          Center(
+            child: _GomokuRulesCard(
+              onClose: () => Navigator.of(dialogContext).pop(),
+            ),
+          ),
+        ],
+      );
+    },
+    transitionBuilder: (_, animation, __, child) {
+      final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+      return FadeTransition(
+        opacity: curved,
+        child: child,
+      );
+    },
+  );
+}
+
+class _GomokuRulesCard extends StatelessWidget {
+  const _GomokuRulesCard({required this.onClose});
+
+  final VoidCallback onClose;
+
+  static const List<String> _rules = [
+    '1、黑白双方交替落子',
+    '2、率先横向 / 竖向 / 斜向连成五子直接获胜',
+    '3、棋盘布满无五子则平局',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final screenW = MediaQuery.of(context).size.width;
+    final cardW = math.min(screenW * 0.74, 340.0);
+    return SizedBox(
+      width: cardW,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // Dark-brown outer frame + tan inner line = the design's double edge.
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFF6DEB4),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFF7A3D1E), width: 3),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF5A2E14).withValues(alpha: 0.45),
+                  blurRadius: 28,
+                  offset: const Offset(0, 14),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.all(4),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(22, 24, 22, 24),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFFFDEFD6), Color(0xFFF6DEB4)],
+                ),
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: const Color(0xFFE7C58C), width: 1.5),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: _StrokeText(text: '五子棋', fontSize: cardW * 0.135),
+                  ),
+                  const SizedBox(height: 4),
+                  Center(
+                    child: _StrokeText(text: '规则说明', fontSize: cardW * 0.115),
+                  ),
+                  const SizedBox(height: 22),
+                  for (var i = 0; i < _rules.length; i += 1) ...[
+                    if (i > 0) const SizedBox(height: 12),
+                    Text(
+                      _rules[i],
+                      style: TextStyle(
+                        color: const Color(0xFF7A4A22),
+                        fontSize: cardW * 0.052,
+                        height: 1.35,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            top: -14,
+            right: -14,
+            child: _GomokuCloseButton(onTap: onClose),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Themed circular close (×) button used in the top-right of the rules popup.
+class _GomokuCloseButton extends StatefulWidget {
+  const _GomokuCloseButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_GomokuCloseButton> createState() => _GomokuCloseButtonState();
+}
+
+class _GomokuCloseButtonState extends State<_GomokuCloseButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap();
+      },
+      child: AnimatedScale(
+        scale: _pressed ? 0.9 : 1,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOut,
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: const Color(0xFF7A3D1E),
+            border: Border.all(color: const Color(0xFFFBF3E4), width: 2.5),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF3E2110).withValues(alpha: 0.4),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.close_rounded,
+            color: Color(0xFFFBF3E4),
+            size: 22,
+          ),
+        ),
+      ),
     );
   }
 }
