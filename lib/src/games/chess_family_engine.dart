@@ -5,6 +5,29 @@ import 'package:flutter/foundation.dart';
 
 enum ChessFamilyKind { chess, xiangqi }
 
+/// Square of [colour]'s royal piece, or null once it has been captured. The
+/// variant caches the square but leaves it stale after a capture.
+int? _royalSquareAt(bishop.Game game, int colour) {
+  final square = game.state.royalSquares[colour];
+  if (square < 0 || !game.size.onBoard(square)) return null;
+  final piece = game.board[square];
+  if (piece.isEmpty || piece.colour != colour) return null;
+  return game.variant.pieces[piece.type].type.royal ? square : null;
+}
+
+/// Are the two generals looking at each other down an open file?
+bool _royalsFacing(bishop.Game game, int? user, int? agent) {
+  if (user == null || agent == null) return false;
+  if (game.size.file(user) != game.size.file(agent)) return false;
+  final step = game.size.h * 2;
+  final low = user < agent ? user : agent;
+  final high = user < agent ? agent : user;
+  for (var square = low + step; square < high; square += step) {
+    if (!game.board[square].isEmpty) return false;
+  }
+  return true;
+}
+
 /// Repeated positions before the game is called a draw. Formal xiangqi rules
 /// judge perpetual check (长将) a loss for the checking side, which needs
 /// intent detection the bishop package does not model; a draw at least keeps
@@ -25,6 +48,10 @@ bishop.Variant _xiangqiVariant() => bishop.Xiangqi.xiangqi().copyWith(
   ).symmetric(),
   repetitionDraw: _xiangqiRepetitionDraw,
   halfMoveDraw: _xiangqiHalfMoveDraw,
+  // The packaged 白脸将 rule rejects the move outright, which would leave the
+  // board offering a destination it then refuses to play now that self-check
+  // is allowed. The face-off is judged a loss instead — see [_royalVerdict].
+  actions: const [],
 );
 
 enum ChessFamilyActor { user, agent }
@@ -252,14 +279,71 @@ class ChessFamilyEngine {
       ? bishop.Variant.standard()
       : _xiangqiVariant();
 
+  /// Move generation without the "your own royal may not be left attacked"
+  /// filter. Xiangqi here is played capture-the-king: any move is allowed, and
+  /// walking into check simply loses the general on the reply.
+  static const _selfCheckAllowed = bishop.MoveGenParams(
+    captures: true,
+    quiet: true,
+    castling: true,
+    legal: false,
+  );
+
+  /// Only xiangqi is played this way; chess keeps the standard rules.
+  bool get _allowsSelfCheck => kind == ChessFamilyKind.xiangqi;
+
+  List<bishop.Move> _availableMoves() => _allowsSelfCheck
+      ? _game.generatePlayerMoves(_game.turn, _selfCheckAllowed)
+      : _game.generateLegalMoves();
+
+  bool _hasRoyal(int colour) => _royalSquareOf(colour) != null;
+
+  /// The variant tracks each royal's square, but does not clear it when the
+  /// piece is captured — so the square still has to be checked.
+  int? _royalSquareOf(int colour) => _royalSquareAt(_game, colour);
+
+  /// 白脸将: the generals may not end up looking at each other down an open
+  /// file. Normally the variant makes such a move illegal, but nothing filters
+  /// it once self-check is allowed, and the far general cannot reach across the
+  /// board to punish it — so facing off is judged the same as losing the
+  /// general.
+  bool _generalsFacing() => _royalsFacing(
+    _game,
+    _royalSquareOf(bishop.Bishop.white),
+    _royalSquareOf(bishop.Bishop.black),
+  );
+
+  /// Decided by the general rather than by running out of moves: whoever loses
+  /// their general, or exposes it face to face, is out.
+  ///
+  /// A position with no answer to the check at all still ends immediately as a
+  /// checkmate — the packaged rules catch that before anyone gets to play the
+  /// losing move, and the outcome is the same either way.
+  ///
+  /// The face-off is attributed to whoever moved last. A game handed a position
+  /// that is already face to face would blame the next move for it, which only
+  /// matters for hand-written positions.
+  ChessFamilyStatus? get _royalVerdict {
+    if (!_allowsSelfCheck) return null;
+    if (!_hasRoyal(bishop.Bishop.white)) return ChessFamilyStatus.agentWon;
+    if (!_hasRoyal(bishop.Bishop.black)) return ChessFamilyStatus.userWon;
+    if (_moves.isNotEmpty && _generalsFacing()) {
+      return _moves.last.actor == ChessFamilyActor.user
+          ? ChessFamilyStatus.agentWon
+          : ChessFamilyStatus.userWon;
+    }
+    return null;
+  }
+
   int get files => _game.size.h;
   int get ranks => _game.size.v;
-  bool get isFinished => _game.gameOver;
+  bool get isFinished => _royalVerdict != null || _game.gameOver;
   int get moveCount => _moves.length;
   bool get isAgentTurn => _game.turn == bishop.Bishop.black;
   String get fen => _game.fen;
   List<ChessFamilyMove> get moves => List.unmodifiable(_moves);
-  ChessFamilyStatus get status => _statusFromResult(_game.result);
+  ChessFamilyStatus get status =>
+      _royalVerdict ?? _statusFromResult(_game.result);
   int squareAt(int file, int rank) => _game.size.square(file, rank);
 
   List<ChessBoardPiece> get pieces {
@@ -284,23 +368,18 @@ class ChessFamilyEngine {
     return result;
   }
 
-  /// Square of the general/king that is currently under attack, if any. The
-  /// board draws a warning on it: without one, the rule that every move must
-  /// answer the check looks like the pieces have simply stopped responding.
+  /// Square of the general/king that is currently under attack, if any. Since
+  /// answering a check is not enforced, this warning is the only thing standing
+  /// between the player and losing the general on the reply.
   int? get checkedRoyalSquare {
-    if (!_game.inCheck) return null;
-    for (var square = 0; square < _game.size.numIndices; square += 1) {
-      if (!_game.size.onBoard(square)) continue;
-      final piece = _game.board[square];
-      if (piece.isEmpty || piece.colour != _game.turn) continue;
-      if (_game.variant.pieces[piece.type].type.royal) return square;
-    }
-    return null;
+    if (isFinished || !_game.inCheck) return null;
+    return _royalSquareOf(_game.turn);
   }
 
   List<int> legalDestinations(int from) => [
-    for (final move in _game.generateLegalMoves())
-      if (move.from == from) move.to,
+    if (!isFinished)
+      for (final move in _availableMoves())
+        if (move.from == from) move.to,
   ];
 
   ChessFamilyMoveResult play({
@@ -310,8 +389,7 @@ class ChessFamilyEngine {
   }) {
     if (isFinished) throw StateError('game_finished');
     final actor = isAgentTurn ? ChessFamilyActor.agent : ChessFamilyActor.user;
-    final legal = _game
-        .generateLegalMoves()
+    final legal = _availableMoves()
         .where((move) => move.from == from && move.to == to)
         .toList();
     if (legal.isEmpty) throw StateError('invalid_move');
@@ -386,8 +464,8 @@ class ChessFamilyEngine {
     return ChessPositionAnalysis(
       fen: _game.fen,
       boardHash: _game.state.hash,
-      legalMoveCount: _game.gameOver ? 0 : _game.generateLegalMoves().length,
-      inCheck: _game.gameOver ? false : _game.inCheck,
+      legalMoveCount: isFinished ? 0 : _availableMoves().length,
+      inCheck: isFinished ? false : _game.inCheck,
       materialBalance: material,
       turn: _game.turn == bishop.Bishop.white
           ? ChessFamilyActor.user
@@ -563,6 +641,7 @@ class _ChessFamilySearch {
   final double nearBestProbability;
   final int nearBestTolerance;
   final math.Random _random = math.Random();
+  late final bool _allowsSelfCheck = kind == ChessFamilyKind.xiangqi;
   final Map<int, _TranspositionEntry> _table = {};
   final Map<int, List<String>> _killers = {};
   final Map<String, int> _history = {};
@@ -571,7 +650,7 @@ class _ChessFamilySearch {
 
   Map<String, dynamic> search() {
     _stopwatch.start();
-    final rootMoves = game.generateLegalMoves();
+    final rootMoves = _moves();
     if (rootMoves.isEmpty) throw StateError('no_legal_move');
     var completedDepth = 0;
     var completed = <_RootLine>[];
@@ -651,6 +730,8 @@ class _ChessFamilySearch {
     if (_timedOut) {
       return const _SearchLine(score: 0, nodes: 1, timedOut: true);
     }
+    final royal = _royalScore(ply);
+    if (royal != null) return _SearchLine(score: royal, nodes: 1);
     final result = game.result;
     if (result is bishop.DrawnGame) {
       return const _SearchLine(score: 0, nodes: 1);
@@ -682,7 +763,7 @@ class _ChessFamilySearch {
       if (a >= beta) return _SearchLine(score: ttScore, nodes: 1);
     }
 
-    final moves = game.generateLegalMoves();
+    final moves = _moves();
     if (moves.isEmpty) return _SearchLine(score: -_mate + ply, nodes: 1);
     final ordered = _orderedMoves(moves, ply, game.state.hash);
     var best = -_infinity;
@@ -772,6 +853,8 @@ class _ChessFamilySearch {
     }
     // Without this the capture sequence can walk into a mate and score it as
     // ordinary material, which is how a won position stays invisible.
+    final royal = _royalScore(ply);
+    if (royal != null) return _SearchLine(score: royal, nodes: 1);
     final result = game.result;
     if (result is bishop.DrawnGame) {
       return const _SearchLine(score: 0, nodes: 1);
@@ -784,7 +867,7 @@ class _ChessFamilySearch {
     if (standPat >= beta) return _SearchLine(score: beta, nodes: 1);
     var a = math.max(alpha, standPat);
     if (depth >= quiescenceDepth) return _SearchLine(score: a, nodes: 1);
-    final captures = game.generateLegalMoves().where((move) => move.capture);
+    final captures = _moves().where((move) => move.capture);
     final ordered = _orderedMoves(captures.toList(), ply, game.state.hash);
     var nodes = 1;
     var bestLine = <String>[];
@@ -934,6 +1017,23 @@ class _ChessFamilySearch {
     if (score >= _mateThreshold) return score - ply;
     if (score <= -_mateThreshold) return score + ply;
     return score;
+  }
+
+  List<bishop.Move> _moves() => _allowsSelfCheck
+      ? game.generatePlayerMoves(game.turn, ChessFamilyEngine._selfCheckAllowed)
+      : game.generateLegalMoves();
+
+  /// Capture-the-king scoring, from the seat of the side to move: losing your
+  /// general is a loss, taking theirs is a win, and a face-off was created by
+  /// the move that just landed, so it loses for the other side.
+  int? _royalScore(int ply) {
+    if (!_allowsSelfCheck) return null;
+    final mine = _royalSquareAt(game, game.turn);
+    if (mine == null) return -_mate + ply;
+    final theirs = _royalSquareAt(game, game.turn.opponent);
+    if (theirs == null) return _mate - ply;
+    if (_royalsFacing(game, mine, theirs)) return _mate - ply;
+    return null;
   }
 
   bool get _timedOut =>

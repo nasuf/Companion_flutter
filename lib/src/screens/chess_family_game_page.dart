@@ -1127,9 +1127,8 @@ class _ChessFamilyBoardPainter extends CustomPainter {
     );
   }
 
-  /// Ring on the general that is under attack. Every legal move has to answer
-  /// the check, so most pieces stop offering moves; without this the board just
-  /// looks unresponsive.
+  /// Ring on the general that is under attack. Nothing forces the player to
+  /// answer a check, so this is the only warning before the general is taken.
   void _paintXiangqiCheck(
     Canvas canvas,
     _XiangqiBoardGeometry geometry,

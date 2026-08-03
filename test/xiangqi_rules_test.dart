@@ -43,74 +43,115 @@ void main() {
       expect(quiet.checkedRoyalSquare, isNull);
     });
 
-    test('a check only restricts moves that leave the general attacked', () {
-      // Same check, but the player can answer it with either advisor as well as
-      // by stepping aside — the rule is "answer the check", not "move one
-      // specific piece".
+    test('being in check does not lock the other pieces', () {
+      // Standard xiangqi would only allow moves that answer the check. Here any
+      // move is playable — walking into the check just loses the general.
       final engine = ChessFamilyEngine(
         kind: ChessFamilyKind.xiangqi,
-        fen: '3kr4/9/9/9/9/9/9/9/9/3AKA3 w - - 0 1',
+        fen: '3kr4/9/9/9/P8/9/9/9/9/3AKA3 w - - 0 1',
       );
-      final movable = engine.pieces
-          .where((piece) => piece.actor == ChessFamilyActor.user)
-          .where((piece) => engine.legalDestinations(piece.square).isNotEmpty)
-          .length;
+      expect(engine.analyze().inCheck, isTrue);
+      final pawn = engine.pieces.singleWhere(
+        (piece) => piece.symbol.toUpperCase() == 'P',
+      );
       expect(
-        movable,
-        greaterThan(1),
-        reason: 'more than one piece can answer this check',
+        engine.legalDestinations(pawn.square),
+        isNotEmpty,
+        reason: 'a pawn far from the action must still be movable',
       );
     });
 
-    test('困毙 loses for the side with no move, unlike chess', () {
-      // Red to move: not in check, but every palace square is covered.
+    test('walking into check loses the general on the reply', () {
       final engine = ChessFamilyEngine(
         kind: ChessFamilyKind.xiangqi,
-        fen: '3r1r3/4k4/9/9/9/9/9/4p4/9/4K4 w - - 0 1',
+        fen: '3kr4/9/9/9/P8/9/9/9/9/3AKA3 w - - 0 1',
       );
-      expect(engine.isFinished, isTrue);
+      final pawn = engine.pieces.singleWhere(
+        (piece) => piece.symbol.toUpperCase() == 'P',
+      );
+      // Ignore the check and push the pawn instead.
+      final ignored = engine.play(
+        from: pawn.square,
+        to: engine.legalDestinations(pawn.square).first,
+      );
+      expect(ignored.status, ChessFamilyStatus.playing);
+
+      // The chariot now simply takes the general.
+      final chariot = engine.pieces.singleWhere(
+        (piece) => piece.symbol.toUpperCase() == 'R',
+      );
+      final general = engine.pieces.singleWhere(
+        (piece) =>
+            piece.symbol.toUpperCase() == 'K' &&
+            piece.actor == ChessFamilyActor.user,
+      );
       expect(
-        engine.status,
-        ChessFamilyStatus.agentWon,
-        reason: 'the stalemated side loses in xiangqi',
+        engine.legalDestinations(chariot.square),
+        contains(general.square),
+        reason: 'the general is there for the taking',
       );
+      final result = engine.play(from: chariot.square, to: general.square);
+      expect(result.move.capturedPiece, isNotNull);
+      expect(result.status, ChessFamilyStatus.agentWon);
+      expect(engine.isFinished, isTrue);
+    });
+
+    test('白脸将: exposing the generals to each other loses', () {
+      // The advisor on e2 is all that stands between the two generals.
+      final engine = ChessFamilyEngine(
+        kind: ChessFamilyKind.xiangqi,
+        fen: '4k4/9/9/9/9/9/9/9/4A4/4K4 w - - 0 1',
+      );
+      final advisor = engine.pieces.singleWhere(
+        (piece) => piece.symbol.toUpperCase() == 'A',
+      );
+      final result = engine.play(
+        from: advisor.square,
+        to: engine.legalDestinations(advisor.square).first,
+      );
+      expect(result.status, ChessFamilyStatus.agentWon);
+      expect(engine.isFinished, isTrue);
+    });
+
+    test('chess keeps the standard rules', () {
+      // Only xiangqi is played capture-the-king.
+      final engine = ChessFamilyEngine(kind: ChessFamilyKind.chess);
+      expect(engine.analyze().legalMoveCount, 20);
     });
 
     test('a repeated position is drawn instead of running forever', () {
-      // Two bare generals can never mate; without a repetition rule the game
-      // has no way to end.
+      // A chariot shuffling on the back rank can never mate a lone general;
+      // without a repetition rule the game has no way to end. The generals sit
+      // on different files so the face-off rule stays out of it.
       final engine = ChessFamilyEngine(
         kind: ChessFamilyKind.xiangqi,
-        fen: '4k4/9/9/9/9/9/9/9/9/4K4 w - - 0 1',
+        fen: '3k5/9/9/9/9/9/9/9/9/R4K3 w - - 0 1',
       );
+      const cycle = ['a1a2', 'd10d9', 'a2a1', 'd9d10'];
       var plies = 0;
-      while (!engine.isFinished && plies < 200) {
-        final options = <List<int>>[];
-        for (final piece in engine.pieces) {
-          if ((piece.actor == ChessFamilyActor.agent) != engine.isAgentTurn) {
-            continue;
-          }
-          for (final to in engine.legalDestinations(piece.square)) {
-            options.add([piece.square, to]);
-          }
-        }
-        if (options.isEmpty) break;
-        engine.play(from: options.first[0], to: options.first[1]);
+      while (!engine.isFinished && plies < 40) {
+        engine.playAlgebraic(cycle[plies % cycle.length]);
         plies += 1;
       }
       expect(engine.isFinished, isTrue);
       expect(engine.status, ChessFamilyStatus.draw);
     });
 
-    test('the search plays under the same rules as the board', () {
-      // A mismatch here would have the agent evaluating stalemates and
-      // repetitions differently to the game actually being played.
+    test('the packaged variant still needs every one of our overrides', () {
+      // Each of these is corrected in _xiangqiVariant; if a future version of
+      // the package fixes one, the override can go.
       final variant = bishop.Xiangqi.xiangqi();
-      expect(variant.repetitionDraw, isNull);
+      expect(variant.repetitionDraw, isNull, reason: 'no repetition draw');
+      expect(variant.halfMoveDraw, isNull, reason: 'no move-limit draw');
       expect(
         variant.gameEndConditions.white.stalemate,
         bishop.EndType.draw,
-        reason: 'guards the assumption that the packaged variant needs fixing',
+        reason: '困毙 is scored as a draw',
+      );
+      expect(
+        variant.actions,
+        isNotEmpty,
+        reason: '白脸将 ships as an action that rejects the move outright',
       );
     });
   });
