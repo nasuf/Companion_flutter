@@ -570,7 +570,7 @@ class _ReversiImageButtonState extends State<_ReversiImageButton> {
   }
 }
 
-class _ReversiGameScreen extends StatelessWidget {
+class _ReversiGameScreen extends StatefulWidget {
   const _ReversiGameScreen({
     required this.engine,
     required this.lastMove,
@@ -608,7 +608,64 @@ class _ReversiGameScreen extends StatelessWidget {
   final ValueChanged<bool> onTimerPauseChanged;
 
   @override
+  State<_ReversiGameScreen> createState() => _ReversiGameScreenState();
+}
+
+class _ReversiGameScreenState extends State<_ReversiGameScreen> {
+  // Result overlay held back ~1.4s after finish so the final board is visible
+  // first. Kept in this stable state so a sibling rebuild can't reset it.
+  bool _resultReady = false;
+  Timer? _resultTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncResultDelay();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReversiGameScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncResultDelay();
+  }
+
+  void _syncResultDelay() {
+    if (widget.engine.isFinished) {
+      if (!_resultReady && _resultTimer == null) {
+        _resultTimer = Timer(const Duration(milliseconds: 1400), () {
+          if (mounted) setState(() => _resultReady = true);
+        });
+      }
+    } else if (_resultReady || _resultTimer != null) {
+      _resultTimer?.cancel();
+      _resultTimer = null;
+      _resultReady = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _resultTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final engine = widget.engine;
+    final lastMove = widget.lastMove;
+    final agentName = widget.agentName;
+    final userName = widget.userName;
+    final agentAvatarUrl = widget.agentAvatarUrl;
+    final userAvatarUrl = widget.userAvatarUrl;
+    final startedAt = widget.startedAt;
+    final aiThinking = widget.aiThinking;
+    final resolving = widget.resolving;
+    final starting = widget.starting;
+    final timerPaused = widget.timerPaused;
+    final enabled = widget.enabled;
+    final onTap = widget.onTap;
+    final onRestart = widget.onRestart;
+    final onExit = widget.onExit;
     final userTurn =
         !engine.isFinished &&
         engine.turn == ReversiActor.user &&
@@ -742,19 +799,15 @@ class _ReversiGameScreen extends StatelessWidget {
                   onTap: () => unawaited(_showPause(context)),
                 ),
               ),
-              if (engine.isFinished)
-                // Hold the result briefly so the final board stays visible
-                // before the overlay covers it.
-                _DelayedVisible(
-                  show: true,
-                  delay: const Duration(milliseconds: 1400),
-                  child: _ReversiFinishOverlay(
-                    engine: engine,
-                    agentName: agentName,
-                    restarting: starting,
-                    onRestart: onRestart,
-                    onExit: onExit,
-                  ),
+              // Held back ~1.4s after finish so the final board stays visible
+              // before the overlay covers it.
+              if (engine.isFinished && _resultReady)
+                _ReversiFinishOverlay(
+                  engine: engine,
+                  agentName: agentName,
+                  restarting: starting,
+                  onRestart: onRestart,
+                  onExit: onExit,
                 ),
             ],
           );
@@ -764,7 +817,7 @@ class _ReversiGameScreen extends StatelessWidget {
   }
 
   Future<void> _confirmExit(BuildContext context) async {
-    onTimerPauseChanged(true);
+    widget.onTimerPauseChanged(true);
     await _showReversiModal(
       context,
       title: '退出对局',
@@ -784,17 +837,17 @@ class _ReversiGameScreen extends StatelessWidget {
             label: '退出',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              onExit();
+              widget.onExit();
             },
           ),
         ),
       ],
     );
-    onTimerPauseChanged(false);
+    widget.onTimerPauseChanged(false);
   }
 
   Future<void> _showPause(BuildContext context) async {
-    onTimerPauseChanged(true);
+    widget.onTimerPauseChanged(true);
     await _showReversiModal(
       context,
       title: '游戏暂停',
@@ -814,13 +867,13 @@ class _ReversiGameScreen extends StatelessWidget {
             label: '重新开局',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              unawaited(onRestart());
+              unawaited(widget.onRestart());
             },
           ),
         ),
       ],
     );
-    onTimerPauseChanged(false);
+    widget.onTimerPauseChanged(false);
   }
 }
 

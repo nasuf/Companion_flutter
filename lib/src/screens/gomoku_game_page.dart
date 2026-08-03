@@ -933,8 +933,46 @@ class _GomokuGameScreen extends StatefulWidget {
 
 class _GomokuGameScreenState extends State<_GomokuGameScreen> {
   // True while a modal (pause / exit confirm) is open, so the turn countdown
-  // and glow freeze instead of ticking behind the dialog.
+  // freezes instead of ticking behind the dialog.
   bool _paused = false;
+
+  // The result overlay is held back briefly after the game finishes so the
+  // finishing move stays visible first. Kept in this stable state (not a child
+  // widget) so a sibling rebuild can't reset the delay and re-flash the popup.
+  bool _resultReady = false;
+  Timer? _resultTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncResultDelay();
+  }
+
+  @override
+  void didUpdateWidget(covariant _GomokuGameScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncResultDelay();
+  }
+
+  void _syncResultDelay() {
+    if (widget.engine.isFinished) {
+      if (!_resultReady && _resultTimer == null) {
+        _resultTimer = Timer(const Duration(milliseconds: 1400), () {
+          if (mounted) setState(() => _resultReady = true);
+        });
+      }
+    } else if (_resultReady || _resultTimer != null) {
+      _resultTimer?.cancel();
+      _resultTimer = null;
+      _resultReady = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _resultTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1100,19 +1138,15 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
                 ),
               ),
 
-              if (finished)
-                // Hold the result briefly so the winning line stays visible
-                // before the overlay covers the board.
-                _DelayedVisible(
-                  show: true,
-                  delay: const Duration(milliseconds: 1400),
-                  child: _GomokuFinishOverlay(
-                    status: engine.status,
-                    agentName: agentName,
-                    restarting: starting,
-                    onRestart: onRestart,
-                    onExit: onExit,
-                  ),
+              // Held back ~1.4s after finish so the winning line stays visible
+              // before the overlay covers the board.
+              if (finished && _resultReady)
+                _GomokuFinishOverlay(
+                  status: engine.status,
+                  agentName: agentName,
+                  restarting: starting,
+                  onRestart: onRestart,
+                  onExit: onExit,
                 ),
             ],
           );
@@ -1322,8 +1356,9 @@ class _GomokuModalCard extends StatelessWidget {
 }
 
 
-/// Circular avatar with a cream ring; the ring emits a cyan halo (pulsing) when
-/// it is this player's turn.
+/// Circular avatar framed by a coin-ring asset — golden normally, swapped to
+/// the silver-white ring while it is this player's turn. Shows a 30s countdown
+/// dial over the portrait during that turn.
 class _GomokuAvatar extends StatefulWidget {
   const _GomokuAvatar({
     required this.imageUrl,
@@ -1344,21 +1379,16 @@ class _GomokuAvatar extends StatefulWidget {
 }
 
 class _GomokuAvatarState extends State<_GomokuAvatar>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   // Seconds a player has to move; the design shows a 30s dial per turn.
   static const int _turnSeconds = 30;
   static const Color _cyan = Color(0xFF44E0FF);
 
-  late final AnimationController _pulse;
   late final AnimationController _countdown;
 
   @override
   void initState() {
     super.initState();
-    _pulse = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1100),
-    );
     _countdown = AnimationController(
       vsync: this,
       duration: const Duration(seconds: _turnSeconds),
@@ -1375,10 +1405,8 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
       // Freeze/resume the turn dial when a modal (pause / exit) opens & closes,
       // keeping the current remaining time instead of restarting or ticking.
       if (widget.paused) {
-        _pulse.stop();
         _countdown.stop();
       } else {
-        _pulse.repeat(reverse: true);
         _countdown.forward();
       }
     }
@@ -1386,12 +1414,9 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
 
   void _sync() {
     if (widget.active && !widget.paused) {
-      if (!_pulse.isAnimating) _pulse.repeat(reverse: true);
       // Restart the dial from full at the start of every turn.
       _countdown.forward(from: 0);
     } else if (!widget.active) {
-      _pulse.stop();
-      _pulse.value = 0;
       _countdown.stop();
       _countdown.value = 0;
     }
@@ -1399,7 +1424,6 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
 
   @override
   void dispose() {
-    _pulse.dispose();
     _countdown.dispose();
     super.dispose();
   }
@@ -1411,9 +1435,8 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
     // (game_avatar_frame.png) overlays it as the golden coin frame.
     final inner = d * 0.74;
     return AnimatedBuilder(
-      animation: Listenable.merge([_pulse, _countdown]),
+      animation: _countdown,
       builder: (context, _) {
-        final t = Curves.easeInOut.transform(_pulse.value);
         final remainingFraction = (1 - _countdown.value).clamp(0.0, 1.0);
         final remainingSeconds = (remainingFraction * _turnSeconds)
             .ceil()
@@ -1424,27 +1447,6 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // Cyan turn glow pulsing behind the frame (edge highlight).
-              if (widget.active)
-                Container(
-                  width: d * 0.9,
-                  height: d * 0.9,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: _cyan.withValues(alpha: 0.8),
-                        blurRadius: 12 + t * 12,
-                        spreadRadius: 1 + t * 3,
-                      ),
-                      BoxShadow(
-                        color: _cyan.withValues(alpha: 0.4),
-                        blurRadius: 26 + t * 16,
-                        spreadRadius: 3 + t * 4,
-                      ),
-                    ],
-                  ),
-                ),
               // Portrait clipped to the ring's inner hole.
               ClipOval(
                 child: SizedBox(
@@ -1493,9 +1495,13 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
                   ),
                 ),
               ),
-              // Golden ring frame asset on top.
+              // Coin frame on top: golden by default, silver-white while it is
+              // this player's turn (design 2:3 / 125:1028) — the frame itself
+              // is the turn highlight, no extra glow.
               Image.asset(
-                '${_gomokuHomeAsset}game_avatar_frame.png',
+                widget.active
+                    ? '${_gomokuHomeAsset}game_avatar_frame_active.png'
+                    : '${_gomokuHomeAsset}game_avatar_frame.png',
                 width: d,
                 height: d,
                 fit: BoxFit.contain,
