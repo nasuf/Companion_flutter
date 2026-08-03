@@ -900,7 +900,7 @@ class _GomokuHomeStats extends StatelessWidget {
 const String _gomokuGameBg = '${_gomokuHomeAsset}game_bg.png';
 const String _gomokuNamePlate = '${_gomokuHomeAsset}game_name_plate.png';
 
-class _GomokuGameScreen extends StatelessWidget {
+class _GomokuGameScreen extends StatefulWidget {
   const _GomokuGameScreen({
     required this.engine,
     required this.agentName,
@@ -928,7 +928,27 @@ class _GomokuGameScreen extends StatelessWidget {
   final VoidCallback onExit;
 
   @override
+  State<_GomokuGameScreen> createState() => _GomokuGameScreenState();
+}
+
+class _GomokuGameScreenState extends State<_GomokuGameScreen> {
+  // True while a modal (pause / exit confirm) is open, so the turn countdown
+  // and glow freeze instead of ticking behind the dialog.
+  bool _paused = false;
+
+  @override
   Widget build(BuildContext context) {
+    final engine = widget.engine;
+    final agentName = widget.agentName;
+    final userName = widget.userName;
+    final agentAvatarUrl = widget.agentAvatarUrl;
+    final userAvatarUrl = widget.userAvatarUrl;
+    final aiThinking = widget.aiThinking;
+    final starting = widget.starting;
+    final syncNotice = widget.syncNotice;
+    final onPointTap = widget.onPointTap;
+    final onRestart = widget.onRestart;
+    final onExit = widget.onExit;
     final finished = engine.isFinished;
     final userTurn =
         !finished &&
@@ -971,6 +991,7 @@ class _GomokuGameScreen extends StatelessWidget {
                   fallback: agentName,
                   diameter: avatarD,
                   active: aiThinking,
+                  paused: _paused,
                 ),
               ),
               _centered(
@@ -984,6 +1005,7 @@ class _GomokuGameScreen extends StatelessWidget {
                   fallback: '你',
                   diameter: avatarD,
                   active: userTurn,
+                  paused: _paused,
                 ),
               ),
               // Name plates sit directly under each avatar, overlapping its
@@ -1042,7 +1064,7 @@ class _GomokuGameScreen extends StatelessWidget {
                   left: w * 0.08,
                   right: w * 0.08,
                   top: h * 0.70,
-                  child: _GomokuNotice(text: syncNotice!, isError: false),
+                  child: _GomokuNotice(text: syncNotice, isError: false),
                 ),
 
               // Bottom buttons — nudged down from the board per the design.
@@ -1079,12 +1101,18 @@ class _GomokuGameScreen extends StatelessWidget {
               ),
 
               if (finished)
-                _GomokuFinishOverlay(
-                  status: engine.status,
-                  agentName: agentName,
-                  restarting: starting,
-                  onRestart: onRestart,
-                  onExit: onExit,
+                // Hold the result briefly so the winning line stays visible
+                // before the overlay covers the board.
+                _DelayedVisible(
+                  show: true,
+                  delay: const Duration(milliseconds: 1400),
+                  child: _GomokuFinishOverlay(
+                    status: engine.status,
+                    agentName: agentName,
+                    restarting: starting,
+                    onRestart: onRestart,
+                    onExit: onExit,
+                  ),
                 ),
             ],
           );
@@ -1114,8 +1142,9 @@ class _GomokuGameScreen extends StatelessWidget {
     );
   }
 
-  void _confirmExit(BuildContext context) {
-    _showGomokuModal(
+  Future<void> _confirmExit(BuildContext context) async {
+    setState(() => _paused = true);
+    await _showGomokuModal(
       context,
       title: '退出对局',
       message: '当前这盘还没下完，退出后进度会清空。确定要退出吗？',
@@ -1134,16 +1163,18 @@ class _GomokuGameScreen extends StatelessWidget {
             label: '退出',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              onExit();
+              widget.onExit();
             },
           ),
         ),
       ],
     );
+    if (mounted) setState(() => _paused = false);
   }
 
-  void _showPauseMenu(BuildContext context) {
-    _showGomokuModal(
+  Future<void> _showPauseMenu(BuildContext context) async {
+    setState(() => _paused = true);
+    await _showGomokuModal(
       context,
       title: '游戏暂停',
       message: '要继续当前对局，还是重新开一盘？',
@@ -1162,24 +1193,25 @@ class _GomokuGameScreen extends StatelessWidget {
             label: '重新开局',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              unawaited(onRestart());
+              unawaited(widget.onRestart());
             },
           ),
         ),
       ],
     );
+    if (mounted) setState(() => _paused = false);
   }
 }
 
 /// Custom game-art modal (cream wood card + gold border) shown centered, used
 /// for the exit confirm and pause menu so we never fall back to a system sheet.
-void _showGomokuModal(
+Future<void> _showGomokuModal(
   BuildContext context, {
   required String title,
   String? message,
   required List<Widget> Function(BuildContext dialogContext) actions,
 }) {
-  showGeneralDialog<void>(
+  return showGeneralDialog<void>(
     context: context,
     barrierDismissible: true,
     barrierLabel: '关闭',
@@ -1298,12 +1330,14 @@ class _GomokuAvatar extends StatefulWidget {
     required this.fallback,
     required this.diameter,
     required this.active,
+    required this.paused,
   });
 
   final String? imageUrl;
   final String fallback;
   final double diameter;
   final bool active;
+  final bool paused;
 
   @override
   State<_GomokuAvatar> createState() => _GomokuAvatarState();
@@ -1335,15 +1369,27 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
   @override
   void didUpdateWidget(covariant _GomokuAvatar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.active != oldWidget.active) _sync();
+    if (widget.active != oldWidget.active) {
+      _sync();
+    } else if (widget.paused != oldWidget.paused && widget.active) {
+      // Freeze/resume the turn dial when a modal (pause / exit) opens & closes,
+      // keeping the current remaining time instead of restarting or ticking.
+      if (widget.paused) {
+        _pulse.stop();
+        _countdown.stop();
+      } else {
+        _pulse.repeat(reverse: true);
+        _countdown.forward();
+      }
+    }
   }
 
   void _sync() {
-    if (widget.active) {
+    if (widget.active && !widget.paused) {
       if (!_pulse.isAnimating) _pulse.repeat(reverse: true);
       // Restart the dial from full at the start of every turn.
       _countdown.forward(from: 0);
-    } else {
+    } else if (!widget.active) {
       _pulse.stop();
       _pulse.value = 0;
       _countdown.stop();
@@ -1361,9 +1407,9 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
   @override
   Widget build(BuildContext context) {
     final d = widget.diameter;
-    final goldBand = d * 0.1;
-    final creamRim = d * 0.035;
-    final inner = d - (goldBand + creamRim) * 2;
+    // The portrait fills the ring asset's transparent hole; the ring PNG
+    // (game_avatar_frame.png) overlays it as the golden coin frame.
+    final inner = d * 0.74;
     return AnimatedBuilder(
       animation: Listenable.merge([_pulse, _countdown]),
       builder: (context, _) {
@@ -1372,93 +1418,89 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
         final remainingSeconds = (remainingFraction * _turnSeconds)
             .ceil()
             .clamp(0, _turnSeconds);
-        return Container(
+        return SizedBox(
           width: d,
           height: d,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            // Golden coin-style frame (Figma), not a flat cream border.
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFFEAC372), Color(0xFFCE9A44), Color(0xFFAE7A2C)],
-            ),
-            border: Border.all(
-              color: const Color(0xFF6E4A22),
-              width: math.max(1.0, d * 0.02),
-            ),
-            boxShadow: widget.active
-                ? [
-                    BoxShadow(
-                      color: _cyan.withValues(alpha: 0.85),
-                      blurRadius: 14 + t * 12,
-                      spreadRadius: 1 + t * 3,
-                    ),
-                    BoxShadow(
-                      color: _cyan.withValues(alpha: 0.45),
-                      blurRadius: 28 + t * 16,
-                      spreadRadius: 4 + t * 4,
-                    ),
-                  ]
-                : [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.22),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-          ),
-          padding: EdgeInsets.all(goldBand),
-          child: Container(
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Color(0xFFF5ECD8),
-            ),
-            padding: EdgeInsets.all(creamRim),
-            child: ClipOval(
-              child: Stack(
-                fit: StackFit.expand,
-              children: [
-                _Avatar(
-                  size: inner,
-                  label: widget.fallback.trim().isEmpty
-                      ? '伴'
-                      : widget.fallback.trim().characters.first,
-                  imageUrl: widget.imageUrl,
-                  gradient: const [Color(0xFFE8F3FF), Color(0xFFD7E9FF)],
-                ),
-                if (widget.active) ...[
-                  // Stopwatch dial: dim the portrait, drain a red ring, and show
-                  // the remaining seconds in cyan.
-                  CustomPaint(
-                    painter: _GomokuTurnTimerPainter(
-                      remainingFraction: remainingFraction,
-                    ),
-                  ),
-                  Center(
-                    child: Text(
-                      '$remainingSeconds',
-                      style: TextStyle(
-                        color: _cyan,
-                        fontSize: inner * 0.32,
-                        fontWeight: FontWeight.w900,
-                        height: 1,
-                        letterSpacing: 0,
-                        decoration: TextDecoration.none,
-                        shadows: const [
-                          Shadow(
-                            color: Color(0x99000000),
-                            offset: Offset(0, 1),
-                            blurRadius: 2,
-                          ),
-                        ],
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Cyan turn glow pulsing behind the frame (edge highlight).
+              if (widget.active)
+                Container(
+                  width: d * 0.9,
+                  height: d * 0.9,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: _cyan.withValues(alpha: 0.8),
+                        blurRadius: 12 + t * 12,
+                        spreadRadius: 1 + t * 3,
                       ),
-                    ),
+                      BoxShadow(
+                        color: _cyan.withValues(alpha: 0.4),
+                        blurRadius: 26 + t * 16,
+                        spreadRadius: 3 + t * 4,
+                      ),
+                    ],
                   ),
-                ],
-              ],
-            ),
-          ),
+                ),
+              // Portrait clipped to the ring's inner hole.
+              ClipOval(
+                child: SizedBox(
+                  width: inner,
+                  height: inner,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _Avatar(
+                        size: inner,
+                        label: widget.fallback.trim().isEmpty
+                            ? '伴'
+                            : widget.fallback.trim().characters.first,
+                        imageUrl: widget.imageUrl,
+                        gradient: const [Color(0xFFE8F3FF), Color(0xFFD7E9FF)],
+                      ),
+                      if (widget.active) ...[
+                        // Countdown mask + sweeping red hand + seconds.
+                        CustomPaint(
+                          painter: _GomokuTurnTimerPainter(
+                            remainingFraction: remainingFraction,
+                          ),
+                        ),
+                        Center(
+                          child: Text(
+                            '$remainingSeconds',
+                            style: TextStyle(
+                              color: _cyan,
+                              fontSize: inner * 0.32,
+                              fontWeight: FontWeight.w900,
+                              height: 1,
+                              letterSpacing: 0,
+                              decoration: TextDecoration.none,
+                              shadows: const [
+                                Shadow(
+                                  color: Color(0x99000000),
+                                  offset: Offset(0, 1),
+                                  blurRadius: 2,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              // Golden ring frame asset on top.
+              Image.asset(
+                '${_gomokuHomeAsset}game_avatar_frame.png',
+                width: d,
+                height: d,
+                fit: BoxFit.contain,
+              ),
+            ],
           ),
         );
       },

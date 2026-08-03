@@ -86,17 +86,23 @@ class _NativeGameInteractionLayerState
         content,
         if (runtime.terminalPayload case final payload?)
           Positioned.fill(
-            child: _NativeGameOverlay(
-              key: ValueKey(
-                '${runtime.session?.id}:${runtime.terminalPresentedAt?.microsecondsSinceEpoch}',
+            // Hold the result briefly so the finishing move stays visible
+            // before the overlay covers the board.
+            child: _DelayedVisible(
+              show: true,
+              delay: const Duration(milliseconds: 1400),
+              child: _NativeGameOverlay(
+                key: ValueKey(
+                  '${runtime.session?.id}:${runtime.terminalPresentedAt?.microsecondsSinceEpoch}',
+                ),
+                gameKey: widget.game.nativeGameKey,
+                gameTitle: widget.game.title,
+                agentName: runtime.agentName,
+                payload: payload,
+                presentedAt: runtime.terminalPresentedAt ?? DateTime.now(),
+                onPrimary: widget.onPlayAgain,
+                onClose: widget.onCloseGame,
               ),
-              gameKey: widget.game.nativeGameKey,
-              gameTitle: widget.game.title,
-              agentName: runtime.agentName,
-              payload: payload,
-              presentedAt: runtime.terminalPresentedAt ?? DateTime.now(),
-              onPrimary: widget.onPlayAgain,
-              onClose: widget.onCloseGame,
             ),
           )
         else if (runtime.turnTimeoutVisible)
@@ -113,6 +119,62 @@ class _NativeGameInteractionLayerState
       ],
     );
   }
+}
+
+/// Delays showing [child] until [delay] after it first appears, so a result
+/// overlay doesn't snap over the board before the winning/losing move is
+/// visible. Hides immediately when [show] goes false (e.g. on restart).
+class _DelayedVisible extends StatefulWidget {
+  const _DelayedVisible({
+    required this.show,
+    required this.delay,
+    required this.child,
+  });
+
+  final bool show;
+  final Duration delay;
+  final Widget child;
+
+  @override
+  State<_DelayedVisible> createState() => _DelayedVisibleState();
+}
+
+class _DelayedVisibleState extends State<_DelayedVisible> {
+  bool _visible = false;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _apply();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DelayedVisible oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.show != oldWidget.show) _apply();
+  }
+
+  void _apply() {
+    _timer?.cancel();
+    if (widget.show) {
+      _timer = Timer(widget.delay, () {
+        if (mounted) setState(() => _visible = true);
+      });
+    } else {
+      _visible = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _visible ? widget.child : const SizedBox.shrink();
 }
 
 class _NativePlayersTurnBar extends StatefulWidget {

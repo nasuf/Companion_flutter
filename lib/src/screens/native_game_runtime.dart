@@ -480,10 +480,17 @@ class _NativeGameRuntime {
       }
     }
     if (updateUi && session?.id == sessionId) {
-      syncNotice = critical
-          ? '这一步暂时无法写入本地或同步：${_formatError(lastError!)}'
-          : '对局仍可继续，结算时会补齐过程：${_formatError(lastError!)}';
-      _notify();
+      if (critical) {
+        syncNotice = '这一步暂时无法写入本地或同步：${_formatError(lastError!)}';
+        _notify();
+      } else {
+        // Non-critical process-log events (e.g. a late event rejected with
+        // `session_finished` once the round has settled) are harmless — log
+        // them instead of flashing a raw error banner over the board.
+        debugPrint(
+          'Native game non-critical sync failed: ${_formatError(lastError!)}',
+        );
+      }
     }
   }
 

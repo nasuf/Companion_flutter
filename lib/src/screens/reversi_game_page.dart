@@ -743,12 +743,18 @@ class _ReversiGameScreen extends StatelessWidget {
                 ),
               ),
               if (engine.isFinished)
-                _ReversiFinishOverlay(
-                  engine: engine,
-                  agentName: agentName,
-                  restarting: starting,
-                  onRestart: onRestart,
-                  onExit: onExit,
+                // Hold the result briefly so the final board stays visible
+                // before the overlay covers it.
+                _DelayedVisible(
+                  show: true,
+                  delay: const Duration(milliseconds: 1400),
+                  child: _ReversiFinishOverlay(
+                    engine: engine,
+                    agentName: agentName,
+                    restarting: starting,
+                    onRestart: onRestart,
+                    onExit: onExit,
+                  ),
                 ),
             ],
           );
