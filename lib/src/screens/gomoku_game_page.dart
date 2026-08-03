@@ -945,8 +945,8 @@ class _GomokuGameScreen extends StatelessWidget {
           final h = constraints.maxHeight;
           // Figma outer avatar ring is 86px on a 393px frame; the inner image
           // is 80px, leaving a 3px ring on each side.
-          final avatarD = w * (86 / 393);
-          final plateW = w * 0.40;
+          final avatarD = w * (66 / 393);
+          final plateW = w * (121 / 393);
           return Stack(
             children: [
               Positioned.fill(
@@ -992,7 +992,7 @@ class _GomokuGameScreen extends StatelessWidget {
                 w,
                 h,
                 cx: 0.763,
-                cy: 0.225,
+                cy: 0.222,
                 width: plateW,
                 child: _GomokuNamePlate(
                   name: agentName,
@@ -1004,7 +1004,7 @@ class _GomokuGameScreen extends StatelessWidget {
                 w,
                 h,
                 cx: 0.237,
-                cy: 0.225,
+                cy: 0.222,
                 width: plateW,
                 child: _GomokuNamePlate(
                   name: userName,
@@ -1361,8 +1361,9 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
   @override
   Widget build(BuildContext context) {
     final d = widget.diameter;
-    final ring = d * (3 / 86);
-    final inner = d - ring * 2;
+    final goldBand = d * 0.1;
+    final creamRim = d * 0.035;
+    final inner = d - (goldBand + creamRim) * 2;
     return AnimatedBuilder(
       animation: Listenable.merge([_pulse, _countdown]),
       builder: (context, _) {
@@ -1376,12 +1377,15 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
           height: d,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: const Color(0xFFFBF3E4),
+            // Golden coin-style frame (Figma), not a flat cream border.
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFEAC372), Color(0xFFCE9A44), Color(0xFFAE7A2C)],
+            ),
             border: Border.all(
-              color: widget.active
-                  ? _cyan
-                  : const Color(0xFF7A2E2E).withValues(alpha: 0.45),
-              width: widget.active ? ring * 0.6 : 1.4,
+              color: const Color(0xFF6E4A22),
+              width: math.max(1.0, d * 0.02),
             ),
             boxShadow: widget.active
                 ? [
@@ -1404,10 +1408,16 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
                     ),
                   ],
           ),
-          padding: EdgeInsets.all(ring),
-          child: ClipOval(
-            child: Stack(
-              fit: StackFit.expand,
+          padding: EdgeInsets.all(goldBand),
+          child: Container(
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFFF5ECD8),
+            ),
+            padding: EdgeInsets.all(creamRim),
+            child: ClipOval(
+              child: Stack(
+                fit: StackFit.expand,
               children: [
                 _Avatar(
                   size: inner,
@@ -1448,6 +1458,7 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
                 ],
               ],
             ),
+          ),
           ),
         );
       },
