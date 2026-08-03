@@ -284,6 +284,20 @@ class ChessFamilyEngine {
     return result;
   }
 
+  /// Square of the general/king that is currently under attack, if any. The
+  /// board draws a warning on it: without one, the rule that every move must
+  /// answer the check looks like the pieces have simply stopped responding.
+  int? get checkedRoyalSquare {
+    if (!_game.inCheck) return null;
+    for (var square = 0; square < _game.size.numIndices; square += 1) {
+      if (!_game.size.onBoard(square)) continue;
+      final piece = _game.board[square];
+      if (piece.isEmpty || piece.colour != _game.turn) continue;
+      if (_game.variant.pieces[piece.type].type.royal) return square;
+    }
+    return null;
+  }
+
   List<int> legalDestinations(int from) => [
     for (final move in _game.generateLegalMoves())
       if (move.from == from) move.to,

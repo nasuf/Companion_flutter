@@ -170,10 +170,16 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
     }
     final targets = engine.legalDestinations(square).toSet();
     setState(() {
-      _selectedSquare = targets.isEmpty ? null : square;
+      // Still select a piece that has nowhere to go. Silently ignoring the tap
+      // reads as the board being frozen rather than the piece being stuck.
+      _selectedSquare = square;
       _legalTargets = targets;
     });
-    _NativeGameHaptics.selection();
+    if (targets.isEmpty) {
+      _NativeGameHaptics.rejected();
+    } else {
+      _NativeGameHaptics.selection();
+    }
   }
 
   Future<void> _playAgentTurn() async {
@@ -779,6 +785,9 @@ class _ChessFamilyBoardState extends State<_ChessFamilyBoard>
   Widget build(BuildContext context) {
     final engine = widget.engine;
     final current = engine.pieces;
+    // Resolved once per build rather than inside the AnimatedBuilder, which
+    // runs on every frame of the slide.
+    final checkedSquare = engine.checkedRoyalSquare;
     _lastRender = current;
     return LayoutBuilder(
       builder: (context, constraints) => GestureDetector(
@@ -810,6 +819,7 @@ class _ChessFamilyBoardState extends State<_ChessFamilyBoard>
                           ],
                     lastMove: engine.moves.isEmpty ? null : engine.moves.last,
                     motion: motion,
+                    checkedSquare: checkedSquare,
                     selectedSquare: widget.selectedSquare,
                     legalTargets: widget.legalTargets,
                     xiangqiArtwork: widget.xiangqiArtworkAsset != null,
@@ -986,6 +996,7 @@ class _ChessFamilyBoardPainter extends CustomPainter {
     required this.selectedSquare,
     required this.legalTargets,
     this.motion,
+    this.checkedSquare,
     this.xiangqiArtwork = false,
   });
 
@@ -997,6 +1008,9 @@ class _ChessFamilyBoardPainter extends CustomPainter {
   final int? selectedSquare;
   final Set<int> legalTargets;
   final _BoardPieceMotion? motion;
+
+  /// General currently in check, drawn with a warning ring.
+  final int? checkedSquare;
   final bool xiangqiArtwork;
 
   int _fileOf(int square) => square % (files * 2);
@@ -1028,6 +1042,7 @@ class _ChessFamilyBoardPainter extends CustomPainter {
     final geometry = _XiangqiBoardGeometry(size, artwork: true);
     final step = geometry.step;
     _paintXiangqiLastMove(canvas, geometry, step);
+    _paintXiangqiCheck(canvas, geometry, step);
     for (final piece in pieces) {
       _paintXiangqiPiece(
         canvas,
@@ -1109,6 +1124,36 @@ class _ChessFamilyBoardPainter extends CustomPainter {
       step * 0.2,
       trail,
       math.max(2.2, step * 0.07),
+    );
+  }
+
+  /// Ring on the general that is under attack. Every legal move has to answer
+  /// the check, so most pieces stop offering moves; without this the board just
+  /// looks unresponsive.
+  void _paintXiangqiCheck(
+    Canvas canvas,
+    _XiangqiBoardGeometry geometry,
+    double step,
+  ) {
+    final square = checkedSquare;
+    if (square == null) return;
+    final center = geometry.point(_fileOf(square), 9 - _rankOf(square));
+    const alarm = Color(0xFFD32F1E);
+    final radius = step * 0.41;
+    canvas.drawCircle(
+      center,
+      radius * 1.5,
+      Paint()
+        ..color = alarm.withValues(alpha: 0.3)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, radius * 0.42),
+    );
+    canvas.drawCircle(
+      center,
+      radius * 1.24,
+      Paint()
+        ..color = alarm.withValues(alpha: 0.9)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(2.0, step * 0.062),
     );
   }
 
@@ -1490,6 +1535,7 @@ class _ChessFamilyBoardPainter extends CustomPainter {
       const Color(0xA65C2C1B),
     );
     _paintXiangqiLastMove(canvas, geometry, step);
+    _paintXiangqiCheck(canvas, geometry, step);
     for (final piece in pieces) {
       _paintXiangqiPiece(
         canvas,
@@ -1822,5 +1868,6 @@ class _ChessFamilyBoardPainter extends CustomPainter {
       oldDelegate.selectedSquare != selectedSquare ||
       oldDelegate.legalTargets != legalTargets ||
       oldDelegate.motion?.progress != motion?.progress ||
-      oldDelegate.motion?.fromSquare != motion?.fromSquare;
+      oldDelegate.motion?.fromSquare != motion?.fromSquare ||
+      oldDelegate.checkedSquare != checkedSquare;
 }
