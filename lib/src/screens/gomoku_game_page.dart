@@ -375,7 +375,7 @@ class _GomokuBoardGeometry {
   double get bottom => size.height * (1041 / 1113);
   double get cellWidth => (right - left) / (GomokuEngine.boardSize - 1);
   double get cellHeight => (bottom - top) / (GomokuEngine.boardSize - 1);
-  double get stoneSize => math.min(cellWidth, cellHeight) * 1.04;
+  double get stoneSize => math.min(cellWidth, cellHeight) * 0.9;
 
   Offset offset(GomokuPoint point) =>
       Offset(left + point.col * cellWidth, top + point.row * cellHeight);
@@ -1032,8 +1032,8 @@ class _GomokuGameScreen extends StatelessWidget {
               Positioned(
                 left: 0,
                 right: 0,
-                top: h * 0.52 - (w * 0.17) / 2,
-                height: w * 0.17,
+                top: h * 0.64 - (w * 0.15) / 2,
+                height: w * 0.15,
                 child: _GomokuTurnBanner(userTurn: userTurn),
               ),
 
@@ -1430,7 +1430,7 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
                       '$remainingSeconds',
                       style: TextStyle(
                         color: _cyan,
-                        fontSize: inner * 0.42,
+                        fontSize: inner * 0.32,
                         fontWeight: FontWeight.w900,
                         height: 1,
                         letterSpacing: 0,
@@ -1466,35 +1466,40 @@ class _GomokuTurnTimerPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
     final radius = size.shortestSide / 2;
-    final ringRadius = radius * 0.80;
-    final stroke = radius * 0.16;
 
+    // Dim the portrait so the dial reads clearly.
     canvas.drawCircle(
       center,
       radius,
-      Paint()..color = Colors.white.withValues(alpha: 0.52),
+      Paint()..color = Colors.white.withValues(alpha: 0.5),
     );
+    // Faint dial edge.
     canvas.drawCircle(
       center,
-      ringRadius,
+      radius * 0.9,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke
-        ..color = Colors.white.withValues(alpha: 0.65),
+        ..strokeWidth = radius * 0.05
+        ..color = Colors.white.withValues(alpha: 0.6),
     );
-    if (remainingFraction > 0) {
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: ringRadius),
-        -math.pi / 2,
-        2 * math.pi * remainingFraction,
-        false,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = stroke
-          ..strokeCap = StrokeCap.round
-          ..color = const Color(0xFFFF5A4D),
-      );
-    }
+
+    // A red second-hand that sweeps one full clockwise turn over the timer,
+    // like a stopwatch — no depleting ring.
+    final elapsed = (1 - remainingFraction).clamp(0.0, 1.0);
+    final angle = -math.pi / 2 + elapsed * 2 * math.pi;
+    final dir = Offset(math.cos(angle), math.sin(angle));
+    const red = Color(0xFFF5333A);
+    canvas.drawLine(
+      center - dir * (radius * 0.16),
+      center + dir * (radius * 0.86),
+      Paint()
+        ..color = red
+        ..strokeWidth = radius * 0.09
+        ..strokeCap = StrokeCap.round,
+    );
+    // Pivot cap.
+    canvas.drawCircle(center, radius * 0.1, Paint()..color = red);
+    canvas.drawCircle(center, radius * 0.045, Paint()..color = Colors.white);
   }
 
   @override
@@ -1517,43 +1522,46 @@ class _GomokuNamePlate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final stoneChip = SvgPicture.asset(
-      stone == GomokuStone.black
-          ? '${_gomokuHomeAsset}game_stone_black.svg'
-          : '${_gomokuHomeAsset}game_stone_white.svg',
-      width: 22,
-      height: 22,
-      fit: BoxFit.contain,
-    );
     return AspectRatio(
       aspectRatio: 450 / 138,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Positioned.fill(
-            child: Image.asset(_gomokuNamePlate, fit: BoxFit.fill),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: stoneOnRight
-                    ? [
-                        Text(name, maxLines: 1, style: _kNamePlateStyle),
-                        const SizedBox(width: 6),
-                        stoneChip,
-                      ]
-                    : [
-                        stoneChip,
-                        const SizedBox(width: 6),
-                        Text(name, maxLines: 1, style: _kNamePlateStyle),
-                      ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final h = constraints.maxHeight;
+          final stoneWidget = SvgPicture.asset(
+            stone == GomokuStone.black
+                ? '${_gomokuHomeAsset}game_stone_black.svg'
+                : '${_gomokuHomeAsset}game_stone_white.svg',
+            width: h * 0.5,
+            height: h * 0.5,
+            fit: BoxFit.contain,
+          );
+          final nameWidget = Expanded(
+            child: Center(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(name, maxLines: 1, style: _kNamePlateStyle),
               ),
             ),
-          ),
-        ],
+          );
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              Positioned.fill(
+                child: Image.asset(_gomokuNamePlate, fit: BoxFit.fill),
+              ),
+              // The stone sits hard against the outer end of the pill; the name
+              // centres in the remaining space (matches Figma 2:3).
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: h * 0.3),
+                child: Row(
+                  children: stoneOnRight
+                      ? [nameWidget, SizedBox(width: h * 0.12), stoneWidget]
+                      : [stoneWidget, SizedBox(width: h * 0.12), nameWidget],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1892,8 +1900,8 @@ class _GomokuTurnBannerState extends State<_GomokuTurnBanner>
                         end: Alignment.centerRight,
                         colors: [
                           Color(0x00000000),
-                          Color(0xCC000000),
-                          Color(0xCC000000),
+                          Color(0x6E000000),
+                          Color(0x6E000000),
                           Color(0x00000000),
                         ],
                         stops: [0.0, 0.30, 0.70, 1.0],
@@ -1955,49 +1963,47 @@ class _GomokuHelpButtonState extends State<_GomokuHelpButton> {
         scale: _pressed ? 0.92 : 1,
         duration: const Duration(milliseconds: 110),
         curve: Curves.easeOut,
-        child: AspectRatio(
-          aspectRatio: 1,
-          child: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFFFDF3E0), Color(0xFFF2DFBB)],
-              ),
-              border: Border.all(color: const Color(0xFF8A5A2B), width: 3),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF5A3418).withValues(alpha: 0.35),
-                  blurRadius: 6,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                child: Text(
-                  '?',
-                  style: TextStyle(
-                    color: const Color(0xFF7A4020),
-                    fontSize: 40,
-                    fontWeight: FontWeight.w900,
-                    height: 1,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
-                    shadows: [
-                      Shadow(
-                        color: Colors.white.withValues(alpha: 0.6),
-                        offset: const Offset(0, 1),
-                        blurRadius: 0,
-                      ),
-                    ],
-                  ),
+        // A bare game-art "?" glyph (cream fill + brown outline + soft shadow),
+        // matching Figma — no circular button plate.
+        child: FittedBox(
+          fit: BoxFit.contain,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Text(
+                '?',
+                style: TextStyle(
+                  fontSize: 46,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                  letterSpacing: 0,
+                  decoration: TextDecoration.none,
+                  foreground: Paint()
+                    ..style = PaintingStyle.stroke
+                    ..strokeWidth = 6
+                    ..strokeJoin = StrokeJoin.round
+                    ..color = const Color(0xFF7A3D1E),
+                  shadows: [
+                    Shadow(
+                      color: const Color(0xFF3E2110).withValues(alpha: 0.45),
+                      offset: const Offset(0, 2),
+                      blurRadius: 3,
+                    ),
+                  ],
                 ),
               ),
-            ),
+              const Text(
+                '?',
+                style: TextStyle(
+                  fontSize: 46,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                  letterSpacing: 0,
+                  decoration: TextDecoration.none,
+                  color: Color(0xFFF6E7C6),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -2012,29 +2018,25 @@ void _showGomokuRulesDialog(BuildContext context) {
     context: context,
     barrierDismissible: true,
     barrierLabel: '关闭',
-    barrierColor: Colors.black.withValues(alpha: 0.25),
-    transitionDuration: const Duration(milliseconds: 240),
-    pageBuilder: (dialogContext, _, __) {
-      return Stack(
-        children: [
-          Positioned.fill(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: const SizedBox.expand(),
-            ),
-          ),
-          Center(
-            child: _GomokuRulesCard(
-              onClose: () => Navigator.of(dialogContext).pop(),
-            ),
-          ),
-        ],
-      );
-    },
+    barrierColor: Colors.black.withValues(alpha: 0.2),
+    transitionDuration: const Duration(milliseconds: 260),
+    pageBuilder: (dialogContext, _, __) => Center(
+      child: _GomokuRulesCard(
+        onClose: () => Navigator.of(dialogContext).pop(),
+      ),
+    ),
     transitionBuilder: (_, animation, __, child) {
-      final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
-      return FadeTransition(
-        opacity: curved,
+      // Ramp the gaussian blur in with the entrance and back out on close, in
+      // step with the card's fade, rather than snapping to the final blur.
+      return AnimatedBuilder(
+        animation: animation,
+        builder: (context, inner) {
+          final t = animation.value.clamp(0.0, 1.0);
+          return BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10 * t, sigmaY: 10 * t),
+            child: Opacity(opacity: t, child: inner),
+          );
+        },
         child: child,
       );
     },
