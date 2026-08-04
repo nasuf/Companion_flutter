@@ -715,8 +715,8 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
               // from the design proportions — nudge if slightly off.
               Positioned(
                 left: width * (4 / 393),
-                top: height * (133 / 852),
-                width: width * (58 / 393),
+                top: height * (129 / 852),
+                width: width * (62 / 393),
                 child: _ReversiAvatar(
                   frameAsset: '${_reversiAsset}game_avatar_frame_user.png',
                   imageUrl: userAvatarUrl,
@@ -728,9 +728,9 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                 ),
               ),
               Positioned(
-                left: width * (331 / 393),
-                top: height * (133 / 852),
-                width: width * (58 / 393),
+                left: width * (327 / 393),
+                top: height * (129 / 852),
+                width: width * (62 / 393),
                 child: _ReversiAvatar(
                   frameAsset: '${_reversiAsset}game_avatar_frame_agent.png',
                   imageUrl: agentAvatarUrl,
@@ -740,10 +740,11 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                   paused: widget.timerPaused,
                 ),
               ),
+              // Name plates tucked right up against the avatars (design 38:322).
               Positioned(
-                left: width * (72 / 393),
-                top: height * (139 / 852),
-                width: width * (108 / 393),
+                left: width * (54 / 393),
+                top: height * (138 / 852),
+                width: width * (110 / 393),
                 child: _ReversiNamePlate(
                   asset: '${_reversiAsset}game_name_user.png',
                   name: userName,
@@ -751,9 +752,9 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                 ),
               ),
               Positioned(
-                left: width * (213 / 393),
-                top: height * (139 / 852),
-                width: width * (108 / 393),
+                left: width * (229 / 393),
+                top: height * (138 / 852),
+                width: width * (110 / 393),
                 child: _ReversiNamePlate(
                   asset: '${_reversiAsset}game_name_agent.png',
                   name: agentName,
@@ -1125,14 +1126,20 @@ class _ReversiNamePlate extends StatelessWidget {
                   fit: BoxFit.fill,
                 ),
               ),
-              Positioned(
-                left: -width * 0.15,
-                top: height * 0.20,
-                width: width * 1.30,
-                height: height * 0.72,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: _ReversiOutlinedText(text: name, fontSize: 15),
+              // Name centered in the plate's inner panel (the art has a raised
+              // bottom lip, so the panel sits slightly above the box centre).
+              Positioned.fill(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    width * 0.12,
+                    height * 0.12,
+                    width * 0.12,
+                    height * 0.24,
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: _ReversiOutlinedText(text: name, fontSize: 15),
+                  ),
                 ),
               ),
             ],
@@ -1210,21 +1217,31 @@ class _ReversiGearButtonState extends State<_ReversiGearButton> {
         scale: _pressed ? 0.9 : 1,
         duration: const Duration(milliseconds: 110),
         curve: Curves.easeOut,
-        child: const AspectRatio(
+        child: AspectRatio(
           aspectRatio: 1,
-          child: FittedBox(
-            fit: BoxFit.contain,
-            child: Icon(
-              Icons.settings,
-              color: Color(0xFFE8A23C),
-              size: 44,
-              shadows: [
-                Shadow(
-                  color: Color(0x73000000),
-                  offset: Offset(0, 2),
-                  blurRadius: 3,
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFF6C765), Color(0xFFE39A34)],
+              ),
+              border: Border.all(color: const Color(0xFF8A5220), width: 2.5),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF5A3212).withValues(alpha: 0.4),
+                  blurRadius: 6,
+                  offset: const Offset(0, 3),
                 ),
               ],
+            ),
+            child: const FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Padding(
+                padding: EdgeInsets.all(7),
+                child: Icon(Icons.settings, color: Colors.white, size: 30),
+              ),
             ),
           ),
         ),
