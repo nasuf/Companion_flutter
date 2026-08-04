@@ -1811,12 +1811,12 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
 
   List<Widget> _winPieces(double w, double h) => [
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.28, wFrac: 0.58,
+      screenW: w, screenH: h, cx: 0.5, cy: 0.275, wFrac: 0.68,
       aspect: 987 / 927, begin: 0.12, end: 0.5, drop: true,
       child: _img('result_win_emblem.png'),
     ),
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.375, wFrac: 0.58,
+      screenW: w, screenH: h, cx: 0.5, cy: 0.455, wFrac: 0.6,
       aspect: 306 / 963, begin: 0.4, end: 0.64, drop: false,
       child: Stack(
         alignment: Alignment.center,
@@ -1824,7 +1824,7 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
           Positioned.fill(child: _img('result_win_ribbon.png')),
           FractionallySizedBox(
             widthFactor: 0.42,
-            heightFactor: 0.62,
+            heightFactor: 0.6,
             child: Image.asset(
               '${_reversiAsset}result_win_title.png',
               fit: BoxFit.contain,
@@ -1834,7 +1834,7 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
       ),
     ),
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.5, wFrac: 0.46,
+      screenW: w, screenH: h, cx: 0.5, cy: 0.56, wFrac: 0.4,
       aspect: 165 / 300, begin: 0.52, end: 0.76, drop: false,
       child: Stack(
         alignment: Alignment.center,
@@ -1845,7 +1845,7 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
       ),
     ),
     _piece(
-      screenW: w, screenH: h, cx: 0.3, cy: 0.72, wFrac: 0.33,
+      screenW: w, screenH: h, cx: 0.28, cy: 0.72, wFrac: 0.31,
       aspect: 162 / 408, begin: 0.68, end: 0.92, drop: false,
       child: _button(
         base: 'result_win_btn.png',
@@ -1855,7 +1855,7 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
       ),
     ),
     _piece(
-      screenW: w, screenH: h, cx: 0.7, cy: 0.72, wFrac: 0.33,
+      screenW: w, screenH: h, cx: 0.72, cy: 0.72, wFrac: 0.31,
       aspect: 162 / 408, begin: 0.74, end: 0.98, drop: false,
       child: _button(
         base: 'result_win_btn.png',
