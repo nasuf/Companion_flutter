@@ -128,17 +128,6 @@ class _NativeGameInteractionLayerState
               onPrimary: widget.onPlayAgain,
               onClose: widget.onCloseGame,
             ),
-          )
-        else if (runtime.turnTimeoutVisible)
-          Positioned.fill(
-            child: _NativeGameOverlay(
-              gameKey: widget.game.nativeGameKey,
-              gameTitle: widget.game.title,
-              agentName: runtime.agentName,
-              timeout: widget.turnTimeout,
-              onPrimary: () async => runtime.continueAfterTurnTimeout(),
-              onClose: widget.onCloseGame,
-            ),
           ),
       ],
     );
@@ -365,7 +354,6 @@ class _NativeGameOverlay extends StatefulWidget {
     required this.onClose,
     this.payload,
     this.presentedAt,
-    this.timeout,
   });
 
   final String gameKey;
@@ -373,11 +361,8 @@ class _NativeGameOverlay extends StatefulWidget {
   final String agentName;
   final Map<String, dynamic>? payload;
   final DateTime? presentedAt;
-  final Duration? timeout;
   final Future<void> Function() onPrimary;
   final Future<void> Function() onClose;
-
-  bool get isTimeout => timeout != null;
 
   @override
   State<_NativeGameOverlay> createState() => _NativeGameOverlayState();
@@ -391,10 +376,8 @@ class _NativeGameOverlayState extends State<_NativeGameOverlay> {
   @override
   void initState() {
     super.initState();
-    if (!widget.isTimeout) {
-      _tick();
-      _countdown = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
-    }
+    _tick();
+    _countdown = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
   }
 
   @override
@@ -426,9 +409,7 @@ class _NativeGameOverlayState extends State<_NativeGameOverlay> {
     final visual = _NativeFullscreenVisual.forGame(widget.gameKey);
     final outcome = widget.payload?['user_outcome'] as String? ?? 'draw';
     final isCooperative = _nativeCooperativeGameKeys.contains(widget.gameKey);
-    final title = widget.isTimeout
-        ? '先别让这一回合停住'
-        : isCooperative
+    final title = isCooperative
         // 合作过关类游戏没有对手，胜负只看共同目标，绝不能出现
         // 「你赢了 / 对方拿下」这类对抗措辞。
         ? (outcome == 'win' ? '这一关，你们一起过了' : '这一关，差一点就过了')
@@ -437,12 +418,8 @@ class _NativeGameOverlayState extends State<_NativeGameOverlay> {
             'lose' => '${widget.agentName} 拿下了这一局',
             _ => '这一局打成平手',
           };
-    final subtitle = widget.isTimeout
-        ? '你已经有 ${widget.timeout!.inSeconds} 秒没有行动。可以继续想，也可以把这一局留在这里。'
-        : _resultSubtitle(widget.gameKey, outcome, widget.agentName);
-    final icon = widget.isTimeout
-        ? Icons.hourglass_bottom_rounded
-        : outcome == 'win'
+    final subtitle = _resultSubtitle(widget.gameKey, outcome, widget.agentName);
+    final icon = outcome == 'win'
         ? Icons.emoji_events_rounded
         : outcome == 'lose'
         ? Icons.handshake_outlined
@@ -533,20 +510,16 @@ class _NativeGameOverlayState extends State<_NativeGameOverlay> {
                   ),
                   const SizedBox(height: 20),
                   _NativeGameOverlayButton(
-                    label: widget.isTimeout ? '继续这一回合' : '再来一局',
-                    icon: widget.isTimeout
-                        ? Icons.play_arrow_rounded
-                        : Icons.refresh_rounded,
+                    label: '再来一局',
+                    icon: Icons.refresh_rounded,
                     background: visual.accent,
                     foreground: _contrastColor(visual.accent),
                     onPressed: widget.onPrimary,
                   ),
                   const SizedBox(height: 9),
                   _NativeGameOverlayButton(
-                    label: widget.isTimeout ? '结束本局' : '收起游戏 $_seconds s',
-                    icon: widget.isTimeout
-                        ? Icons.stop_circle_outlined
-                        : Icons.keyboard_arrow_down_rounded,
+                    label: '收起游戏 $_seconds s',
+                    icon: Icons.keyboard_arrow_down_rounded,
                     background: visual.chromeForeground.withValues(alpha: 0.08),
                     foreground: visual.chromeForeground,
                     border: visual.chromeBorder,

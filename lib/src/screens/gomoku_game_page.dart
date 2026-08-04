@@ -1070,6 +1070,7 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
                   diameter: avatarD,
                   active: userTurn,
                   paused: _paused,
+                  onTimeout: _handleUserIdleTimeout,
                 ),
               ),
               // Name plates sit directly under each avatar, overlapping its
@@ -1232,6 +1233,13 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
     if (mounted) setState(() => _paused = false);
   }
 
+  // The turn countdown ran out while the user hadn't moved — surface the pause
+  // menu automatically (replaces the old idle-timeout prompt).
+  void _handleUserIdleTimeout() {
+    if (!mounted || _paused || widget.engine.isFinished) return;
+    unawaited(_showPauseMenu(context));
+  }
+
   Future<void> _showPauseMenu(BuildContext context) async {
     setState(() => _paused = true);
     await _showGomokuModal(
@@ -1392,6 +1400,7 @@ class _GomokuAvatar extends StatefulWidget {
     required this.diameter,
     required this.active,
     required this.paused,
+    this.onTimeout,
   });
 
   final String? imageUrl;
@@ -1399,6 +1408,8 @@ class _GomokuAvatar extends StatefulWidget {
   final double diameter;
   final bool active;
   final bool paused;
+  // Fired when the turn countdown runs out while still this player's turn.
+  final VoidCallback? onTimeout;
 
   @override
   State<_GomokuAvatar> createState() => _GomokuAvatarState();
@@ -1418,8 +1429,17 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
     _countdown = AnimationController(
       vsync: this,
       duration: const Duration(seconds: _turnSeconds),
-    );
+    )..addStatusListener(_onCountdownStatus);
     _sync();
+  }
+
+  void _onCountdownStatus(AnimationStatus status) {
+    // Turn ran out while it is still this player's turn (and no modal open).
+    if (status == AnimationStatus.completed &&
+        widget.active &&
+        !widget.paused) {
+      widget.onTimeout?.call();
+    }
   }
 
   @override
@@ -1432,6 +1452,10 @@ class _GomokuAvatarState extends State<_GomokuAvatar>
       // keeping the current remaining time instead of restarting or ticking.
       if (widget.paused) {
         _countdown.stop();
+      } else if (_countdown.value >= 1.0) {
+        // The dial had already run out (e.g. the modal was the auto-timeout
+        // pause) — give a fresh turn on resume rather than staying at 0.
+        _countdown.forward(from: 0);
       } else {
         _countdown.forward();
       }

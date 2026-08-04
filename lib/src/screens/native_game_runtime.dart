@@ -513,20 +513,10 @@ class _NativeGameRuntime {
     required String token,
     required Duration duration,
   }) {
-    if (!active || completed || session == null) {
-      clearTurnTimeout();
-      return;
-    }
-    if (_turnToken == token &&
-        _turnDuration == duration &&
-        (_turnTimer?.isActive == true || turnTimeoutVisible)) {
-      return;
-    }
-    _turnTimer?.cancel();
-    _turnToken = token;
-    _turnDuration = duration;
-    turnTimeoutVisible = false;
-    _turnTimer = Timer(duration, () => _handleTurnTimeout(token, duration));
+    // The idle turn-timeout prompt was removed per product: it never schedules
+    // and never shows. (Gomoku's per-turn countdown now auto-opens the pause
+    // menu instead.) Kept as a no-op so every game page's call site is safe.
+    clearTurnTimeout();
   }
 
   void continueAfterTurnTimeout() {
