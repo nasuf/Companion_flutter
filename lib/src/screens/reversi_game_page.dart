@@ -657,11 +657,9 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
     final userName = widget.userName;
     final agentAvatarUrl = widget.agentAvatarUrl;
     final userAvatarUrl = widget.userAvatarUrl;
-    final startedAt = widget.startedAt;
     final aiThinking = widget.aiThinking;
     final resolving = widget.resolving;
     final starting = widget.starting;
-    final timerPaused = widget.timerPaused;
     final enabled = widget.enabled;
     final onTap = widget.onTap;
     final onRestart = widget.onRestart;
@@ -692,10 +690,13 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                   ),
                 ),
               ),
+              // Avatars sit on the outer edges with their name plates tucked
+              // inside, all in one row (design 37:200). Positions are measured
+              // from the design proportions — nudge if slightly off.
               Positioned(
-                left: width * (50 / 393),
-                top: height * (101 / 852),
-                width: width * (88 / 393),
+                left: width * (6 / 393),
+                top: height * (108 / 852),
+                width: width * (80 / 393),
                 child: _ReversiAvatar(
                   frameAsset: '${_reversiAsset}game_avatar_frame_user.png',
                   imageUrl: userAvatarUrl,
@@ -705,9 +706,9 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                 ),
               ),
               Positioned(
-                left: width * (283 / 393),
-                top: height * (101 / 852),
-                width: width * (88 / 393),
+                left: width * (307 / 393),
+                top: height * (108 / 852),
+                width: width * (80 / 393),
                 child: _ReversiAvatar(
                   frameAsset: '${_reversiAsset}game_avatar_frame_agent.png',
                   imageUrl: agentAvatarUrl,
@@ -717,45 +718,32 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                 ),
               ),
               Positioned(
-                left: width * (44 / 393),
-                top: height * (192 / 852),
-                width: width * (100 / 393),
+                left: width * (84 / 393),
+                top: height * (127 / 852),
+                width: width * (110 / 393),
                 child: _ReversiNamePlate(
                   asset: '${_reversiAsset}game_name_user.png',
                   name: userName,
                 ),
               ),
               Positioned(
-                left: width * (277 / 393),
-                top: height * (192 / 852),
-                width: width * (100 / 393),
+                left: width * (199 / 393),
+                top: height * (127 / 852),
+                width: width * (110 / 393),
                 child: _ReversiNamePlate(
                   asset: '${_reversiAsset}game_name_agent.png',
                   name: agentName,
                 ),
               ),
+              // Live disc score "user VS agent" — replaces the old standalone
+              // countdown + hourglass.
               Positioned(
-                left: width * (177 / 393),
-                top: height * (129 / 852),
-                width: width * (74 / 393),
-                child: _GomokuBreathingMotion(
-                  duration: const Duration(milliseconds: 3600),
-                  scaleAmount: 0.012,
-                  translateY: 1.5,
-                  phase: 0.25,
-                  child: Image.asset(
-                    '${_reversiAsset}game_hourglass.png',
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              ),
-              Positioned(
-                left: width * (176 / 393),
-                top: height * (214 / 852),
-                width: width * (70 / 393),
-                child: _ReversiRoundTimer(
-                  startedAt: startedAt,
-                  paused: timerPaused || engine.isFinished,
+                left: width * (137 / 393),
+                top: height * (190 / 852),
+                width: width * (119 / 393),
+                child: _ReversiScorePlate(
+                  userCount: engine.userCount,
+                  agentCount: engine.agentCount,
                 ),
               ),
               Positioned(
@@ -988,65 +976,19 @@ class _ReversiNamePlate extends StatelessWidget {
   }
 }
 
-class _ReversiRoundTimer extends StatefulWidget {
-  const _ReversiRoundTimer({required this.startedAt, required this.paused});
+/// Live disc score "user VS agent" on the wooden plate (design 37:200),
+/// replacing the old elapsed-time timer + hourglass.
+class _ReversiScorePlate extends StatelessWidget {
+  const _ReversiScorePlate({
+    required this.userCount,
+    required this.agentCount,
+  });
 
-  final DateTime? startedAt;
-  final bool paused;
-
-  @override
-  State<_ReversiRoundTimer> createState() => _ReversiRoundTimerState();
-}
-
-class _ReversiRoundTimerState extends State<_ReversiRoundTimer> {
-  Timer? _timer;
-  late DateTime _fallbackStart;
-  DateTime? _pausedAt;
-  Duration _pausedDuration = Duration.zero;
-
-  @override
-  void initState() {
-    super.initState();
-    _fallbackStart = DateTime.now();
-    if (widget.paused) _pausedAt = DateTime.now();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted && !widget.paused) setState(() {});
-    });
-  }
-
-  @override
-  void didUpdateWidget(covariant _ReversiRoundTimer oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.startedAt != widget.startedAt) {
-      _fallbackStart = DateTime.now();
-      _pausedDuration = Duration.zero;
-      _pausedAt = widget.paused ? DateTime.now() : null;
-      return;
-    }
-    if (!oldWidget.paused && widget.paused) {
-      _pausedAt = DateTime.now();
-    } else if (oldWidget.paused && !widget.paused && _pausedAt != null) {
-      _pausedDuration += DateTime.now().difference(_pausedAt!);
-      _pausedAt = null;
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
+  final int userCount;
+  final int agentCount;
 
   @override
   Widget build(BuildContext context) {
-    final start = widget.startedAt ?? _fallbackStart;
-    final now = _pausedAt ?? DateTime.now();
-    final elapsed = (now.difference(start) - _pausedDuration).inSeconds.clamp(
-      0,
-      5999,
-    );
-    final minutes = elapsed ~/ 60;
-    final seconds = elapsed % 60;
     return AspectRatio(
       aspectRatio: 210 / 75,
       child: Stack(
@@ -1058,9 +1000,15 @@ class _ReversiRoundTimerState extends State<_ReversiRoundTimer> {
               fit: BoxFit.fill,
             ),
           ),
-          _ReversiOutlinedText(
-            text: '$minutes:${seconds.toString().padLeft(2, '0')}',
-            fontSize: 15,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: _ReversiOutlinedText(
+                text: '$userCount  VS  $agentCount',
+                fontSize: 20,
+              ),
+            ),
           ),
         ],
       ),
