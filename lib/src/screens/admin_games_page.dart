@@ -260,6 +260,9 @@ class _AdminGameConfig {
     required this.algorithmOverrides,
     required this.minResponseMs,
     required this.maxResponseMs,
+    required this.bannerInMs,
+    required this.bannerHoldMs,
+    required this.bannerOutMs,
     required this.enabled,
     required this.version,
     required this.previewEngineConfig,
@@ -280,6 +283,9 @@ class _AdminGameConfig {
   final Map<String, dynamic> algorithmOverrides;
   final int minResponseMs;
   final int maxResponseMs;
+  final int bannerInMs;
+  final int bannerHoldMs;
+  final int bannerOutMs;
   final bool enabled;
   final int version;
   final Map<String, dynamic> previewEngineConfig;
@@ -303,6 +309,9 @@ class _AdminGameConfig {
           : <String, dynamic>{},
       minResponseMs: _adminInt(json['min_response_ms'], 900),
       maxResponseMs: _adminInt(json['max_response_ms'], 1600),
+      bannerInMs: _adminInt(json['banner_in_ms'], 200),
+      bannerHoldMs: _adminInt(json['banner_hold_ms'], 600),
+      bannerOutMs: _adminInt(json['banner_out_ms'], 200),
       enabled: json['enabled'] is bool ? json['enabled'] as bool : true,
       version: _adminInt(json['version'], 1),
       previewEngineConfig: json['preview_engine_config'] is Map
@@ -889,6 +898,9 @@ class _GameConfigEditorPageState extends State<_GameConfigEditorPage> {
   late final TextEditingController _maxStepCtrl;
   late final TextEditingController _minResponseCtrl;
   late final TextEditingController _maxResponseCtrl;
+  late final TextEditingController _bannerInCtrl;
+  late final TextEditingController _bannerHoldCtrl;
+  late final TextEditingController _bannerOutCtrl;
   late final TextEditingController _overridesCtrl;
 
   bool _saving = false;
@@ -917,6 +929,9 @@ class _GameConfigEditorPageState extends State<_GameConfigEditorPage> {
     _maxStepCtrl = TextEditingController(text: '${c.maximumStep}');
     _minResponseCtrl = TextEditingController(text: '${c.minResponseMs}');
     _maxResponseCtrl = TextEditingController(text: '${c.maxResponseMs}');
+    _bannerInCtrl = TextEditingController(text: '${c.bannerInMs}');
+    _bannerHoldCtrl = TextEditingController(text: '${c.bannerHoldMs}');
+    _bannerOutCtrl = TextEditingController(text: '${c.bannerOutMs}');
     _overridesCtrl = TextEditingController(
       text: const JsonEncoder.withIndent('  ').convert(c.algorithmOverrides),
     );
@@ -934,6 +949,9 @@ class _GameConfigEditorPageState extends State<_GameConfigEditorPage> {
     _maxStepCtrl.dispose();
     _minResponseCtrl.dispose();
     _maxResponseCtrl.dispose();
+    _bannerInCtrl.dispose();
+    _bannerHoldCtrl.dispose();
+    _bannerOutCtrl.dispose();
     _overridesCtrl.dispose();
     super.dispose();
   }
@@ -966,6 +984,9 @@ class _GameConfigEditorPageState extends State<_GameConfigEditorPage> {
     final maxStep = int.tryParse(_maxStepCtrl.text.trim());
     final minResponse = int.tryParse(_minResponseCtrl.text.trim());
     final maxResponse = int.tryParse(_maxResponseCtrl.text.trim());
+    final bannerIn = int.tryParse(_bannerInCtrl.text.trim());
+    final bannerHold = int.tryParse(_bannerHoldCtrl.text.trim());
+    final bannerOut = int.tryParse(_bannerOutCtrl.text.trim());
     if (base == null ||
         min == null ||
         max == null ||
@@ -974,7 +995,10 @@ class _GameConfigEditorPageState extends State<_GameConfigEditorPage> {
         minGames == null ||
         maxStep == null ||
         minResponse == null ||
-        maxResponse == null) {
+        maxResponse == null ||
+        bannerIn == null ||
+        bannerHold == null ||
+        bannerOut == null) {
       setState(() => _error = '请填写有效的数字');
       return null;
     }
@@ -991,6 +1015,15 @@ class _GameConfigEditorPageState extends State<_GameConfigEditorPage> {
     }
     if (maxResponse < minResponse) {
       setState(() => _error = 'AI 最大反应时长不能小于最小值');
+      return null;
+    }
+    if (bannerIn < 0 ||
+        bannerIn > 3000 ||
+        bannerOut < 0 ||
+        bannerOut > 3000 ||
+        bannerHold < 0 ||
+        bannerHold > 10000) {
+      setState(() => _error = '“你的回合”弹出/消失需在 0–3000、停留需在 0–10000 毫秒之间');
       return null;
     }
     Map<String, dynamic> overrides;
@@ -1021,6 +1054,9 @@ class _GameConfigEditorPageState extends State<_GameConfigEditorPage> {
       'maximum_step': maxStep,
       'min_response_ms': minResponse,
       'max_response_ms': maxResponse,
+      'banner_in_ms': bannerIn,
+      'banner_hold_ms': bannerHold,
+      'banner_out_ms': bannerOut,
       'algorithm_overrides': overrides,
     };
   }
@@ -1189,6 +1225,52 @@ class _GameConfigEditorPageState extends State<_GameConfigEditorPage> {
                 const SizedBox(height: 8),
                 Text(
                   'AI 每步在“最小~最大”之间随机取一个反应时长才落子（引擎已思考更久则不再额外等待），随机让 AI 更像真人。范围 0–8000 毫秒，最大值不能小于最小值；双人方块不受此项影响，按其自身节奏出手。',
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 11.5,
+                    height: 1.5,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _AdminCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _AdminGamesSectionHeader('“你的回合”提示动画'),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _AdminGamesNumberField(
+                        label: '弹出时长 (毫秒)',
+                        controller: _bannerInCtrl,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _AdminGamesNumberField(
+                        label: '停留时长 (毫秒)',
+                        controller: _bannerHoldCtrl,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _AdminGamesNumberField(
+                        label: '消失时长 (毫秒)',
+                        controller: _bannerOutCtrl,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '轮到用户时屏幕中下方“你的回合”飘带的节奏：弹出 → 停留 → 消失三段时长，每次进入对局前读取。默认 200 / 600 / 200 毫秒；弹出/消失 0–3000、停留 0–10000 毫秒；仅对有回合提示的棋类生效。',
                   style: TextStyle(
                     color: AppColors.muted,
                     fontSize: 11.5,

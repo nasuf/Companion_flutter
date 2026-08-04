@@ -323,6 +323,9 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
           onRestart: _start,
           onExit: _closeGame,
           onTimerPauseChanged: _setTimerPaused,
+          bannerInMs: _runtime.bannerInMs,
+          bannerHoldMs: _runtime.bannerHoldMs,
+          bannerOutMs: _runtime.bannerOutMs,
           // Quitting or restarting mid-game counts as a loss (design note).
           onShowLose: () {
             if (mounted && _result == null) {
@@ -646,6 +649,9 @@ class _ReversiGameScreen extends StatefulWidget {
     required this.onExit,
     required this.onTimerPauseChanged,
     required this.onShowLose,
+    required this.bannerInMs,
+    required this.bannerHoldMs,
+    required this.bannerOutMs,
   });
 
   final ReversiEngine engine;
@@ -666,6 +672,10 @@ class _ReversiGameScreen extends StatefulWidget {
   final ValueChanged<bool> onTimerPauseChanged;
   // Quit / restart mid-game → show the loss result instead of exiting directly.
   final VoidCallback onShowLose;
+  // "你的回合" banner timing (ms), from the per-game admin config.
+  final int bannerInMs;
+  final int bannerHoldMs;
+  final int bannerOutMs;
 
   @override
   State<_ReversiGameScreen> createState() => _ReversiGameScreenState();
@@ -840,7 +850,12 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                 right: 0,
                 top: height * 0.63 - (width * 0.13) / 2,
                 height: width * 0.13,
-                child: _TurnBanner(userTurn: userTurn),
+                child: _TurnBanner(
+                  userTurn: userTurn,
+                  inMs: widget.bannerInMs,
+                  holdMs: widget.bannerHoldMs,
+                  outMs: widget.bannerOutMs,
+                ),
               ),
             ],
           );
@@ -1631,6 +1646,65 @@ class _ReversiLegalHint extends StatelessWidget {
 
 enum _ReversiResultKind { win, lose }
 
+/// Result-screen button (再来一局 / 确认) with a subtle press-in scale so a tap
+/// reads as physical instead of a flat hit target.
+class _ReversiResultButton extends StatefulWidget {
+  const _ReversiResultButton({
+    required this.base,
+    required this.text,
+    required this.textWidthFactor,
+    required this.onTap,
+  });
+
+  final String base;
+  final String text;
+  final double textWidthFactor;
+  final Future<void> Function() onTap;
+
+  @override
+  State<_ReversiResultButton> createState() => _ReversiResultButtonState();
+}
+
+class _ReversiResultButtonState extends State<_ReversiResultButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        unawaited(widget.onTap());
+      },
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOut,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Positioned.fill(
+              child: Image.asset(
+                '$_reversiAsset${widget.base}',
+                fit: BoxFit.fill,
+              ),
+            ),
+            FractionallySizedBox(
+              widthFactor: widget.textWidthFactor,
+              child: Image.asset(
+                '$_reversiAsset${widget.text}',
+                fit: BoxFit.contain,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Full-screen win / lose result scene composed from individual art pieces so
 /// each element flies in with its own stagger (bg → frame/emblem → title →
 /// score → buttons) instead of one flat, lifeless image.
@@ -1659,7 +1733,11 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
     super.initState();
     _c = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      // Lose runs longer so the "失败" pendant can drop, swing and settle
+      // gradually; win keeps its original snappier staggered entrance.
+      duration: Duration(
+        milliseconds: widget.kind == _ReversiResultKind.lose ? 2000 : 1400,
+      ),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -1724,23 +1802,15 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
     required double textWidthFactor,
     required Future<void> Function() onTap,
   }) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => unawaited(onTap()),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Positioned.fill(child: _img(base)),
-          FractionallySizedBox(
-            widthFactor: textWidthFactor,
-            child: Image.asset('$_reversiAsset$text', fit: BoxFit.contain),
-          ),
-        ],
-      ),
+    return _ReversiResultButton(
+      base: base,
+      text: text,
+      textWidthFactor: textWidthFactor,
+      onTap: onTap,
     );
   }
 
-  Widget _scoreContent(String numAsset) {
+  Widget _scoreContent(String labelAsset, String numAsset) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       child: FittedBox(
@@ -1748,10 +1818,59 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset('${_reversiAsset}result_txt_score.png', height: 30),
+            Image.asset('$_reversiAsset$labelAsset', height: 30),
             const SizedBox(width: 8),
             Image.asset('$_reversiAsset$numAsset', height: 34),
           ],
+        ),
+      ),
+    );
+  }
+
+  // ── "失败" hanging pendant (ropes + plate) — drop from above, get caught,
+  // swing, then settle (design note). Shared timeline so the ropes and plate
+  // move together as one pendant, pivoting about the top (the rope anchors).
+  double get _hangDy {
+    final q = ((_c.value - 0.35) / (0.60 - 0.35)).clamp(0.0, 1.0);
+    // Fraction of screen height; starts high above, eases down to 0.
+    return -0.55 * (1 - Curves.easeOutCubic.transform(q));
+  }
+
+  double get _hangAngle {
+    final q = ((_c.value - 0.50) / 0.50).clamp(0.0, 1.0);
+    if (q <= 0) return 0.0;
+    // Damped pendulum: sin() starts at 0 (continuous with the drop) then swings
+    // ~1.5 times, the exp envelope settling it back to level.
+    return 0.11 * math.exp(-3.0 * q) * math.sin(3.0 * math.pi * q);
+  }
+
+  double get _hangOpacity => ((_c.value - 0.33) / 0.12).clamp(0.0, 1.0);
+
+  Widget _hang({
+    required double screenW,
+    required double screenH,
+    required double cx,
+    required double cy,
+    required double wFrac,
+    required double aspect,
+    required Widget child,
+  }) {
+    final width = screenW * wFrac;
+    final height = width * aspect;
+    return Positioned(
+      left: screenW * cx - width / 2,
+      top: screenH * cy - height / 2,
+      width: width,
+      height: height,
+      child: Opacity(
+        opacity: _hangOpacity,
+        child: Transform.translate(
+          offset: Offset(0, _hangDy * screenH),
+          child: Transform.rotate(
+            angle: _hangAngle,
+            alignment: Alignment.topCenter,
+            child: child,
+          ),
         ),
       ),
     );
@@ -1821,7 +1940,9 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
         alignment: Alignment.center,
         children: [
           Positioned.fill(child: _img('result_win_scroll.png')),
-          Positioned.fill(child: _scoreContent('result_win_num.png')),
+          Positioned.fill(
+            child: _scoreContent('result_txt_score.png', 'result_win_num.png'),
+          ),
         ],
       ),
     ),
@@ -1848,44 +1969,58 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
   ];
 
   List<Widget> _losePieces(double w, double h) => [
+    // Outer stone frame drops in first as the backdrop.
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.4, wFrac: 0.66,
-      aspect: 1062 / 804, begin: 0.12, end: 0.5, drop: true,
+      screenW: w, screenH: h, cx: 0.5, cy: 0.45, wFrac: 0.665,
+      aspect: 1062 / 804, begin: 0.1, end: 0.42, drop: true,
       child: _img('result_lose_frame.png'),
     ),
+    // Crossed swords crown atop the frame.
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.2, wFrac: 0.24,
-      aspect: 309 / 327, begin: 0.32, end: 0.56, drop: false,
+      screenW: w, screenH: h, cx: 0.5, cy: 0.265, wFrac: 0.225,
+      aspect: 327 / 309, begin: 0.3, end: 0.54, drop: false,
       child: _img('result_lose_swords.png'),
     ),
-    // Two rope pendants hanging the "失败" plate from the frame's top corners.
+    // Crossed bones tied into the two bottom corners of the frame. Seated with
+    // a slight tilt so they lie into the corner like the design.
     _piece(
-      screenW: w, screenH: h, cx: 0.345, cy: 0.315, wFrac: 0.075,
-      aspect: 249 / 84, begin: 0.4, end: 0.62, drop: false,
-      child: _img('result_lose_rope.png'),
-    ),
-    _piece(
-      screenW: w, screenH: h, cx: 0.655, cy: 0.315, wFrac: 0.075,
-      aspect: 249 / 84, begin: 0.4, end: 0.62, drop: false,
-      child: Transform.flip(flipX: true, child: _img('result_lose_rope.png')),
-    ),
-    // Crossed bones tied to the two bottom corners of the frame.
-    _piece(
-      screenW: w, screenH: h, cx: 0.205, cy: 0.565, wFrac: 0.15,
-      aspect: 1.0, begin: 0.5, end: 0.72, drop: false,
-      child: _img('result_lose_bones.png'),
-    ),
-    _piece(
-      screenW: w, screenH: h, cx: 0.795, cy: 0.565, wFrac: 0.15,
-      aspect: 1.0, begin: 0.5, end: 0.72, drop: false,
-      child: Transform.flip(
-        flipX: true,
+      screenW: w, screenH: h, cx: 0.242, cy: 0.62, wFrac: 0.15,
+      aspect: 250 / 258, begin: 0.5, end: 0.72, drop: false,
+      child: Transform.rotate(
+        angle: 0.18,
         child: _img('result_lose_bones.png'),
       ),
     ),
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.375, wFrac: 0.42,
-      aspect: 282 / 492, begin: 0.42, end: 0.66, drop: false,
+      screenW: w, screenH: h, cx: 0.758, cy: 0.62, wFrac: 0.15,
+      aspect: 250 / 258, begin: 0.5, end: 0.72, drop: false,
+      child: Transform.rotate(
+        angle: -0.18,
+        child: Transform.flip(
+          flipX: true,
+          child: _img('result_lose_bones.png'),
+        ),
+      ),
+    ),
+    // Hanging pendant: the two ropes and the "失败" plate drop from above as a
+    // group and swing on the ropes before settling. The ropes are drawn BEFORE
+    // the plate so the plate hides the ropes' stone-tablet tails — only the
+    // coil peeks out above the plate (design note: 只漏出绳子).
+    _hang(
+      screenW: w, screenH: h, cx: 0.349, cy: 0.372, wFrac: 0.072,
+      aspect: 249 / 84,
+      child: _img('result_lose_rope.png'),
+    ),
+    _hang(
+      screenW: w, screenH: h, cx: 0.655, cy: 0.372, wFrac: 0.072,
+      aspect: 249 / 84,
+      child: Transform.flip(flipX: true, child: _img('result_lose_rope.png')),
+    ),
+    // "失败" title plate — slightly right of centre to sit under the ropes
+    // (design note: 靠右居中一些).
+    _hang(
+      screenW: w, screenH: h, cx: 0.515, cy: 0.41, wFrac: 0.405,
+      aspect: 282 / 492,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -1902,19 +2037,24 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
       ),
     ),
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.495, wFrac: 0.36,
-      aspect: 153 / 402, begin: 0.54, end: 0.78, drop: false,
+      screenW: w, screenH: h, cx: 0.505, cy: 0.518, wFrac: 0.32,
+      aspect: 153 / 402, begin: 0.72, end: 0.88, drop: false,
       child: Stack(
         alignment: Alignment.center,
         children: [
           Positioned.fill(child: _img('result_lose_score_plate.png')),
-          Positioned.fill(child: _scoreContent('result_lose_num.png')),
+          Positioned.fill(
+            child: _scoreContent(
+              'result_lose_score_label.png',
+              'result_lose_num.png',
+            ),
+          ),
         ],
       ),
     ),
     _piece(
       screenW: w, screenH: h, cx: 0.29, cy: 0.74, wFrac: 0.34,
-      aspect: 258 / 405, begin: 0.68, end: 0.92, drop: false,
+      aspect: 258 / 405, begin: 0.82, end: 0.94, drop: false,
       child: _button(
         base: 'result_lose_btn_again.png',
         text: 'result_txt_again.png',
@@ -1924,7 +2064,7 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
     ),
     _piece(
       screenW: w, screenH: h, cx: 0.71, cy: 0.74, wFrac: 0.34,
-      aspect: 255 / 399, begin: 0.74, end: 0.98, drop: false,
+      aspect: 255 / 399, begin: 0.88, end: 1.0, drop: false,
       child: _button(
         base: 'result_lose_btn_ok.png',
         text: 'result_txt_ok.png',

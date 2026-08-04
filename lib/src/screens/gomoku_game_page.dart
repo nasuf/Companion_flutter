@@ -218,6 +218,9 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
         onPointTap: _handleBoardTap,
         onRestart: _startGame,
         onExit: _closeGame,
+        bannerInMs: _runtime.bannerInMs,
+        bannerHoldMs: _runtime.bannerHoldMs,
+        bannerOutMs: _runtime.bannerOutMs,
       ),
     );
   }
@@ -939,6 +942,9 @@ class _GomokuGameScreen extends StatefulWidget {
     required this.onPointTap,
     required this.onRestart,
     required this.onExit,
+    required this.bannerInMs,
+    required this.bannerHoldMs,
+    required this.bannerOutMs,
   });
 
   final GomokuEngine engine;
@@ -952,6 +958,10 @@ class _GomokuGameScreen extends StatefulWidget {
   final ValueChanged<GomokuPoint> onPointTap;
   final Future<void> Function() onRestart;
   final VoidCallback onExit;
+  // "你的回合" banner timing (ms), from the per-game admin config.
+  final int bannerInMs;
+  final int bannerHoldMs;
+  final int bannerOutMs;
 
   @override
   State<_GomokuGameScreen> createState() => _GomokuGameScreenState();
@@ -1121,7 +1131,12 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
                 right: 0,
                 top: h * 0.64 - (w * 0.13) / 2,
                 height: w * 0.13,
-                child: _TurnBanner(userTurn: userTurn),
+                child: _TurnBanner(
+                  userTurn: userTurn,
+                  inMs: widget.bannerInMs,
+                  holdMs: widget.bannerHoldMs,
+                  outMs: widget.bannerOutMs,
+                ),
               ),
 
               if (syncNotice != null)
@@ -1928,9 +1943,20 @@ class _StrokeText extends StatelessWidget {
 /// "你的回合" ribbon. Whenever the user's turn begins it flashes in from the
 /// right, holds for ~2s, then continues sliding out to the left.
 class _TurnBanner extends StatefulWidget {
-  const _TurnBanner({required this.userTurn});
+  const _TurnBanner({
+    required this.userTurn,
+    this.inMs = 200,
+    this.holdMs = 600,
+    this.outMs = 200,
+  });
 
   final bool userTurn;
+  // Pop-in / hold / fade-out phase durations (ms). Per-game, admin-tunable —
+  // the runtime reads them from engine_config and passes them in. Defaults
+  // match the original hard-coded cadence.
+  final int inMs;
+  final int holdMs;
+  final int outMs;
 
   @override
   State<_TurnBanner> createState() => _TurnBannerState();
@@ -1938,18 +1964,32 @@ class _TurnBanner extends StatefulWidget {
 
 class _TurnBannerState extends State<_TurnBanner>
     with SingleTickerProviderStateMixin {
-  // Snappy: flash in (~200ms), short hold (~600ms), flash out (~200ms).
-  static const double _inEnd = 0.2;
-  static const double _holdEnd = 0.8;
+  // Phase boundaries as a fraction of the total, derived from the configured
+  // in/hold/out durations. Total is guarded to be > 0 so the controller is
+  // always valid even if all three are set to zero.
+  late double _inEnd;
+  late double _holdEnd;
 
   late final AnimationController _controller;
+
+  int get _totalMs {
+    final total = widget.inMs + widget.holdMs + widget.outMs;
+    return total > 0 ? total : 1;
+  }
+
+  void _computePhases() {
+    final total = _totalMs;
+    _inEnd = (widget.inMs / total).clamp(0.0, 1.0);
+    _holdEnd = ((widget.inMs + widget.holdMs) / total).clamp(0.0, 1.0);
+  }
 
   @override
   void initState() {
     super.initState();
+    _computePhases();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1000),
+      duration: Duration(milliseconds: _totalMs),
       value: 1, // start finished (hidden) until a turn actually begins
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1960,6 +2000,12 @@ class _TurnBannerState extends State<_TurnBanner>
   @override
   void didUpdateWidget(covariant _TurnBanner oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.inMs != oldWidget.inMs ||
+        widget.holdMs != oldWidget.holdMs ||
+        widget.outMs != oldWidget.outMs) {
+      _computePhases();
+      _controller.duration = Duration(milliseconds: _totalMs);
+    }
     if (widget.userTurn && !oldWidget.userTurn) _play();
   }
 
@@ -1988,19 +2034,26 @@ class _TurnBannerState extends State<_TurnBanner>
           final v = _controller.value;
           double dx;
           double opacity;
-          if (v < _inEnd) {
+          // Guards: a zero-length phase makes its boundary coincide with the
+          // next, so `v < _inEnd` (0) / the out denominator (1 - _holdEnd = 0)
+          // are handled without dividing by zero.
+          if (_inEnd > 0 && v < _inEnd) {
             final p = Curves.easeOut.transform((v / _inEnd).clamp(0.0, 1.0));
             dx = 1.3 * (1 - p);
             opacity = p;
           } else if (v < _holdEnd) {
             dx = 0;
             opacity = 1;
-          } else {
+          } else if (_holdEnd < 1) {
             final p = Curves.easeIn.transform(
               ((v - _holdEnd) / (1 - _holdEnd)).clamp(0.0, 1.0),
             );
             dx = -1.3 * p;
             opacity = 1 - p;
+          } else {
+            // No fade-out phase: snap hidden once hold ends.
+            dx = 0;
+            opacity = v >= 1 ? 0 : 1;
           }
           if (opacity <= 0) return const SizedBox.shrink();
           return Opacity(

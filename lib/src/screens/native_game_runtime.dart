@@ -68,6 +68,20 @@ class _NativeGameRuntime {
     return aiMinResponseMs;
   }
 
+  // "你的回合" turn-banner timing (ms) from engine_config (per-game,
+  // admin-tunable). Read fresh each game from the session snapshot. Defaults
+  // match the previously hard-coded 200/600/200 cadence when a session predates
+  // the fields.
+  int _bannerMs(String key, int fallback) {
+    final raw = session?.engineConfig[key];
+    if (raw is num) return math.max(0, math.min(30000, raw.round()));
+    return fallback;
+  }
+
+  int get bannerInMs => _bannerMs('banner_in_ms', 200);
+  int get bannerHoldMs => _bannerMs('banner_hold_ms', 600);
+  int get bannerOutMs => _bannerMs('banner_out_ms', 200);
+
   final math.Random _pacingRng = math.Random();
 
   /// Pads the AI's turn so it takes a random wall-clock time in
