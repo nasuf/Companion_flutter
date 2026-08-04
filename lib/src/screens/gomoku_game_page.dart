@@ -1119,9 +1119,9 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
               Positioned(
                 left: 0,
                 right: 0,
-                top: h * 0.64 - (w * 0.15) / 2,
-                height: w * 0.15,
-                child: _GomokuTurnBanner(userTurn: userTurn),
+                top: h * 0.64 - (w * 0.13) / 2,
+                height: w * 0.13,
+                child: _TurnBanner(userTurn: userTurn),
               ),
 
               if (syncNotice != null)
@@ -1919,20 +1919,20 @@ class _StrokeText extends StatelessWidget {
 
 /// "你的回合" ribbon. Whenever the user's turn begins it flashes in from the
 /// right, holds for ~2s, then continues sliding out to the left.
-class _GomokuTurnBanner extends StatefulWidget {
-  const _GomokuTurnBanner({required this.userTurn});
+class _TurnBanner extends StatefulWidget {
+  const _TurnBanner({required this.userTurn});
 
   final bool userTurn;
 
   @override
-  State<_GomokuTurnBanner> createState() => _GomokuTurnBannerState();
+  State<_TurnBanner> createState() => _TurnBannerState();
 }
 
-class _GomokuTurnBannerState extends State<_GomokuTurnBanner>
+class _TurnBannerState extends State<_TurnBanner>
     with SingleTickerProviderStateMixin {
-  // 0.0–0.16 flash in (~450ms), hold to 0.85 (~2s), 0.85–1.0 slide out (~420ms).
-  static const double _inEnd = 0.16;
-  static const double _holdEnd = 0.85;
+  // Snappy: flash in (~200ms), short hold (~600ms), flash out (~200ms).
+  static const double _inEnd = 0.2;
+  static const double _holdEnd = 0.8;
 
   late final AnimationController _controller;
 
@@ -1941,7 +1941,7 @@ class _GomokuTurnBannerState extends State<_GomokuTurnBanner>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2800),
+      duration: const Duration(milliseconds: 1000),
       value: 1, // start finished (hidden) until a turn actually begins
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1950,7 +1950,7 @@ class _GomokuTurnBannerState extends State<_GomokuTurnBanner>
   }
 
   @override
-  void didUpdateWidget(covariant _GomokuTurnBanner oldWidget) {
+  void didUpdateWidget(covariant _TurnBanner oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.userTurn && !oldWidget.userTurn) _play();
   }
@@ -2002,39 +2002,63 @@ class _GomokuTurnBannerState extends State<_GomokuTurnBanner>
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final fontSize = constraints.maxHeight * 0.38;
-                  return Container(
+                  return Stack(
                     alignment: Alignment.center,
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [
-                          Color(0x00000000),
-                          Color(0x6E000000),
-                          Color(0x6E000000),
-                          Color(0x00000000),
-                        ],
-                        stops: [0.0, 0.30, 0.70, 1.0],
-                      ),
-                    ),
-                    child: Text(
-                      '你的回合',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: fontSize,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 3,
-                        height: 1,
-                        decoration: TextDecoration.none,
-                        shadows: const [
-                          Shadow(
-                            color: Color(0xB3000000),
-                            offset: Offset(0, 1),
-                            blurRadius: 6,
+                    children: [
+                      // Soft dark band: horizontal fade at the ends + a vertical
+                      // fade (via the mask) so the top/bottom edges blur out
+                      // instead of showing hard lines. The text stays crisp on
+                      // top, unaffected by the mask.
+                      Positioned.fill(
+                        child: ShaderMask(
+                          blendMode: BlendMode.dstIn,
+                          shaderCallback: (rect) => const LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Color(0x00000000),
+                              Color(0xFF000000),
+                              Color(0xFF000000),
+                              Color(0x00000000),
+                            ],
+                            stops: [0.0, 0.34, 0.66, 1.0],
+                          ).createShader(rect),
+                          child: const DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                                colors: [
+                                  Color(0x00000000),
+                                  Color(0x73000000),
+                                  Color(0x73000000),
+                                  Color(0x00000000),
+                                ],
+                                stops: [0.0, 0.28, 0.72, 1.0],
+                              ),
+                            ),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
+                      Text(
+                        '你的回合',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: fontSize,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 3,
+                          height: 1,
+                          decoration: TextDecoration.none,
+                          shadows: const [
+                            Shadow(
+                              color: Color(0xB3000000),
+                              offset: Offset(0, 1),
+                              blurRadius: 6,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   );
                 },
               ),

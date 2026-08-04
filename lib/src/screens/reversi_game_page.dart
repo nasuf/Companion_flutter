@@ -799,6 +799,15 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                   onTap: () => unawaited(_showPause(context)),
                 ),
               ),
+              // "你的回合" ribbon flashes in at the board's lower-middle on the
+              // user's turn (shared with gomoku).
+              Positioned(
+                left: 0,
+                right: 0,
+                top: height * 0.63 - (width * 0.13) / 2,
+                height: width * 0.13,
+                child: _TurnBanner(userTurn: userTurn),
+              ),
               // Held back ~1.4s after finish so the final board stays visible
               // before the overlay covers it.
               if (engine.isFinished && _resultReady)
