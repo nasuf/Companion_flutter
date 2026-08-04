@@ -21,6 +21,11 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
   ReversiMove? _lastMove;
   bool _resolving = false;
   bool _timerPaused = false;
+  // Full-screen win/lose result (null while playing). Shown a beat after the
+  // game ends, and also when the user quits / restarts mid-game (counts as a
+  // loss). The game screen fades out and this fades in.
+  _ReversiResultKind? _result;
+  Timer? _finishTimer;
 
   @override
   void initState() {
@@ -38,6 +43,7 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
 
   @override
   void dispose() {
+    _finishTimer?.cancel();
     _runtime.dispose();
     unawaited(
       _runtime.abort(
@@ -50,11 +56,14 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
   }
 
   void _clearActiveRound() {
+    _finishTimer?.cancel();
+    _finishTimer = null;
     setState(() {
       _engine = null;
       _lastMove = null;
       _resolving = false;
       _timerPaused = false;
+      _result = null;
     });
   }
 
@@ -87,6 +96,8 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
       'search':
           'iterative_deepening_pvs_alpha_beta_tt_mobility_stability_parity',
     });
+    _finishTimer?.cancel();
+    _finishTimer = null;
     if (session != null && mounted) {
       setState(() {
         _engine = ReversiEngine(
@@ -95,6 +106,7 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
         _lastMove = null;
         _resolving = false;
         _timerPaused = false;
+        _result = null;
       });
     }
   }
@@ -247,40 +259,84 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
   @override
   Widget build(BuildContext context) {
     final engine = _engine;
+    // When a round ends, hold the final board briefly, then reveal the
+    // full-screen result (win for the user, otherwise loss).
+    if (engine != null &&
+        engine.isFinished &&
+        _result == null &&
+        _finishTimer == null) {
+      final win = engine.status == ReversiStatus.userWon;
+      _finishTimer = Timer(const Duration(milliseconds: 1400), () {
+        if (!mounted || _result != null) return;
+        setState(
+          () => _result = win ? _ReversiResultKind.win : _ReversiResultKind.lose,
+        );
+      });
+    }
+
+    final Widget child;
     if (engine == null) {
-      return _ReversiHome(
+      child = _ReversiHome(
+        key: const ValueKey('reversi-home'),
         rounds: _runtime.rounds,
         starting: _runtime.starting,
         error: _runtime.error,
         onStart: _start,
         onExit: () => Navigator.of(context).maybePop(),
       );
+    } else if (_result != null) {
+      child = _ReversiResultScreen(
+        key: const ValueKey('reversi-result'),
+        kind: _result!,
+        onAgain: () async {
+          setState(() => _result = null);
+          await _start();
+        },
+        onConfirm: () async {
+          setState(() => _result = null);
+          await _closeGame();
+        },
+      );
+    } else {
+      child = PopScope(
+        key: const ValueKey('reversi-game'),
+        canPop: false,
+        child: _ReversiGameScreen(
+          engine: engine,
+          lastMove: _lastMove,
+          agentName: _runtime.agentName,
+          userName: widget.authSession.userFacingName,
+          agentAvatarUrl: widget.authSession.agentAvatarUrl,
+          userAvatarUrl: widget.authSession.userAvatarUrl,
+          startedAt: _runtime.session?.startedAt,
+          aiThinking: _runtime.aiThinking,
+          resolving: _resolving,
+          starting: _runtime.starting,
+          timerPaused: _timerPaused,
+          enabled:
+              engine.turn == ReversiActor.user &&
+              !_runtime.aiThinking &&
+              !_resolving &&
+              !_timerPaused &&
+              !engine.isFinished,
+          onTap: _userPlay,
+          onRestart: _start,
+          onExit: _closeGame,
+          onTimerPauseChanged: _setTimerPaused,
+          // Quitting or restarting mid-game counts as a loss (design note).
+          onShowLose: () {
+            if (mounted && _result == null) {
+              setState(() => _result = _ReversiResultKind.lose);
+            }
+          },
+        ),
+      );
     }
-    return PopScope(
-      canPop: false,
-      child: _ReversiGameScreen(
-        engine: engine,
-        lastMove: _lastMove,
-        agentName: _runtime.agentName,
-        userName: widget.authSession.userFacingName,
-        agentAvatarUrl: widget.authSession.agentAvatarUrl,
-        userAvatarUrl: widget.authSession.userAvatarUrl,
-        startedAt: _runtime.session?.startedAt,
-        aiThinking: _runtime.aiThinking,
-        resolving: _resolving,
-        starting: _runtime.starting,
-        timerPaused: _timerPaused,
-        enabled:
-            engine.turn == ReversiActor.user &&
-            !_runtime.aiThinking &&
-            !_resolving &&
-            !_timerPaused &&
-            !engine.isFinished,
-        onTap: _userPlay,
-        onRestart: _start,
-        onExit: _closeGame,
-        onTimerPauseChanged: _setTimerPaused,
-      ),
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 320),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: child,
     );
   }
 }
@@ -289,6 +345,7 @@ const String _reversiAsset = 'assets/prototype/games/reversi/';
 
 class _ReversiHome extends StatelessWidget {
   const _ReversiHome({
+    super.key,
     required this.rounds,
     required this.starting,
     required this.error,
@@ -588,6 +645,7 @@ class _ReversiGameScreen extends StatefulWidget {
     required this.onRestart,
     required this.onExit,
     required this.onTimerPauseChanged,
+    required this.onShowLose,
   });
 
   final ReversiEngine engine;
@@ -606,49 +664,14 @@ class _ReversiGameScreen extends StatefulWidget {
   final Future<void> Function() onRestart;
   final VoidCallback onExit;
   final ValueChanged<bool> onTimerPauseChanged;
+  // Quit / restart mid-game → show the loss result instead of exiting directly.
+  final VoidCallback onShowLose;
 
   @override
   State<_ReversiGameScreen> createState() => _ReversiGameScreenState();
 }
 
 class _ReversiGameScreenState extends State<_ReversiGameScreen> {
-  // Result overlay held back ~1.4s after finish so the final board is visible
-  // first. Kept in this stable state so a sibling rebuild can't reset it.
-  bool _resultReady = false;
-  Timer? _resultTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _syncResultDelay();
-  }
-
-  @override
-  void didUpdateWidget(covariant _ReversiGameScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _syncResultDelay();
-  }
-
-  void _syncResultDelay() {
-    if (widget.engine.isFinished) {
-      if (!_resultReady && _resultTimer == null) {
-        _resultTimer = Timer(const Duration(milliseconds: 1400), () {
-          if (mounted) setState(() => _resultReady = true);
-        });
-      }
-    } else if (_resultReady || _resultTimer != null) {
-      _resultTimer?.cancel();
-      _resultTimer = null;
-      _resultReady = false;
-    }
-  }
-
-  @override
-  void dispose() {
-    _resultTimer?.cancel();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final engine = widget.engine;
@@ -659,11 +682,8 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
     final userAvatarUrl = widget.userAvatarUrl;
     final aiThinking = widget.aiThinking;
     final resolving = widget.resolving;
-    final starting = widget.starting;
     final enabled = widget.enabled;
     final onTap = widget.onTap;
-    final onRestart = widget.onRestart;
-    final onExit = widget.onExit;
     final userTurn =
         !engine.isFinished &&
         engine.turn == ReversiActor.user &&
@@ -816,16 +836,6 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                 height: width * 0.13,
                 child: _TurnBanner(userTurn: userTurn),
               ),
-              // Held back ~1.4s after finish so the final board stays visible
-              // before the overlay covers it.
-              if (engine.isFinished && _resultReady)
-                _ReversiFinishOverlay(
-                  engine: engine,
-                  agentName: agentName,
-                  restarting: starting,
-                  onRestart: onRestart,
-                  onExit: onExit,
-                ),
             ],
           );
         },
@@ -861,7 +871,7 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
             label: '退出',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              widget.onExit();
+              widget.onShowLose();
             },
           ),
         ),
@@ -891,7 +901,7 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
             label: '重新开局',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              unawaited(widget.onRestart());
+              widget.onShowLose();
             },
           ),
         ),
@@ -1369,93 +1379,6 @@ Future<void> _showReversiModal(
   );
 }
 
-class _ReversiFinishOverlay extends StatelessWidget {
-  const _ReversiFinishOverlay({
-    required this.engine,
-    required this.agentName,
-    required this.restarting,
-    required this.onRestart,
-    required this.onExit,
-  });
-
-  final ReversiEngine engine;
-  final String agentName;
-  final bool restarting;
-  final Future<void> Function() onRestart;
-  final VoidCallback onExit;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: ColoredBox(
-        color: Colors.black.withValues(alpha: 0.45),
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 46),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFFFF5D8), Color(0xFFE9C695)],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: const Color(0xFF8A4B27), width: 3),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _reversiResultText(engine, agentName),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Color(0xFF502A2A),
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _ReversiModalButton(
-                          asset: '${_reversiAsset}game_btn_exit.png',
-                          label: '退出',
-                          onTap: onExit,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _ReversiModalButton(
-                          asset: '${_reversiAsset}game_btn_pause.png',
-                          label: restarting ? '...' : '再来一盘',
-                          onTap: () => unawaited(onRestart()),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-String _reversiResultText(ReversiEngine engine, String agentName) =>
-    switch (engine.status) {
-      ReversiStatus.userWon =>
-        '你以 ${engine.userCount}:${engine.agentCount} 拿下这一盘',
-      ReversiStatus.agentWon =>
-        '$agentName 以 ${engine.agentCount}:${engine.userCount} 赢了这一盘',
-      ReversiStatus.draw => '这一盘 ${engine.userCount}:${engine.agentCount} 平分秋色',
-      ReversiStatus.playing => '棋局进行中',
-    };
-
 class _ReversiBoard extends StatefulWidget {
   const _ReversiBoard({
     required this.engine,
@@ -1695,4 +1618,285 @@ class _ReversiLegalHint extends StatelessWidget {
       ),
     );
   }
+}
+
+enum _ReversiResultKind { win, lose }
+
+/// Full-screen win / lose result scene composed from individual art pieces so
+/// each element flies in with its own stagger (bg → frame/emblem → title →
+/// score → buttons) instead of one flat, lifeless image.
+class _ReversiResultScreen extends StatefulWidget {
+  const _ReversiResultScreen({
+    super.key,
+    required this.kind,
+    required this.onAgain,
+    required this.onConfirm,
+  });
+
+  final _ReversiResultKind kind;
+  final Future<void> Function() onAgain;
+  final Future<void> Function() onConfirm;
+
+  @override
+  State<_ReversiResultScreen> createState() => _ReversiResultScreenState();
+}
+
+class _ReversiResultScreenState extends State<_ReversiResultScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+        _c.value = 1;
+      } else {
+        _c.forward();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  double _fade(double a, double b) =>
+      ((_c.value - a) / (b - a)).clamp(0.0, 1.0);
+
+  Widget _img(String name) =>
+      Image.asset('$_reversiAsset$name', fit: BoxFit.fill);
+
+  // Positions a piece centered at (cx,cy) fractions with width [wFrac]; height
+  // follows the art's [aspect] (h/w). Drops in from above or pops (scale).
+  Widget _piece({
+    required double screenW,
+    required double screenH,
+    required double cx,
+    required double cy,
+    required double wFrac,
+    required double aspect,
+    required double begin,
+    required double end,
+    required bool drop,
+    required Widget child,
+  }) {
+    final p = ((_c.value - begin) / (end - begin)).clamp(0.0, 1.0);
+    final eased = Curves.easeOutBack.transform(p);
+    final opacity = (p * 2.2).clamp(0.0, 1.0);
+    final width = screenW * wFrac;
+    final height = width * aspect;
+    final dy = drop
+        ? -screenH * 0.12 * (1 - Curves.easeOutCubic.transform(p))
+        : 0.0;
+    final scale = drop ? 1.0 : (0.72 + 0.28 * eased);
+    return Positioned(
+      left: screenW * cx - width / 2,
+      top: screenH * cy - height / 2 + dy,
+      width: width,
+      height: height,
+      child: Opacity(
+        opacity: opacity,
+        child: Transform.scale(scale: scale, child: child),
+      ),
+    );
+  }
+
+  Widget _button({
+    required String base,
+    required String text,
+    required double textWidthFactor,
+    required Future<void> Function() onTap,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => unawaited(onTap()),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned.fill(child: _img(base)),
+          FractionallySizedBox(
+            widthFactor: textWidthFactor,
+            child: Image.asset('$_reversiAsset$text', fit: BoxFit.contain),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _scoreContent(String numAsset) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset('${_reversiAsset}result_txt_score.png', height: 30),
+            const SizedBox(width: 8),
+            Image.asset('$_reversiAsset$numAsset', height: 34),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final win = widget.kind == _ReversiResultKind.win;
+    return Scaffold(
+      backgroundColor: const Color(0xFF9AD0EE),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth;
+          final h = constraints.maxHeight;
+          return AnimatedBuilder(
+            animation: _c,
+            builder: (context, _) {
+              return Stack(
+                children: [
+                  Positioned.fill(
+                    child: Opacity(
+                      opacity: _fade(0.0, 0.28),
+                      child: Image.asset(
+                        '${_reversiAsset}result_bg.png',
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                  ...win ? _winPieces(w, h) : _losePieces(w, h),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  List<Widget> _winPieces(double w, double h) => [
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.28, wFrac: 0.58,
+      aspect: 987 / 927, begin: 0.12, end: 0.5, drop: true,
+      child: _img('result_win_emblem.png'),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.375, wFrac: 0.58,
+      aspect: 306 / 963, begin: 0.4, end: 0.64, drop: false,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned.fill(child: _img('result_win_ribbon.png')),
+          FractionallySizedBox(
+            widthFactor: 0.42,
+            heightFactor: 0.62,
+            child: Image.asset(
+              '${_reversiAsset}result_win_title.png',
+              fit: BoxFit.contain,
+            ),
+          ),
+        ],
+      ),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.5, wFrac: 0.46,
+      aspect: 165 / 300, begin: 0.52, end: 0.76, drop: false,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned.fill(child: _img('result_win_scroll.png')),
+          Positioned.fill(child: _scoreContent('result_win_num.png')),
+        ],
+      ),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.3, cy: 0.72, wFrac: 0.33,
+      aspect: 162 / 408, begin: 0.68, end: 0.92, drop: false,
+      child: _button(
+        base: 'result_win_btn.png',
+        text: 'result_txt_again.png',
+        textWidthFactor: 0.66,
+        onTap: widget.onAgain,
+      ),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.7, cy: 0.72, wFrac: 0.33,
+      aspect: 162 / 408, begin: 0.74, end: 0.98, drop: false,
+      child: _button(
+        base: 'result_win_btn.png',
+        text: 'result_txt_ok.png',
+        textWidthFactor: 0.34,
+        onTap: widget.onConfirm,
+      ),
+    ),
+  ];
+
+  List<Widget> _losePieces(double w, double h) => [
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.4, wFrac: 0.66,
+      aspect: 1062 / 804, begin: 0.12, end: 0.5, drop: true,
+      child: _img('result_lose_frame.png'),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.205, wFrac: 0.24,
+      aspect: 309 / 327, begin: 0.32, end: 0.56, drop: false,
+      child: _img('result_lose_swords.png'),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.4, wFrac: 0.48,
+      aspect: 282 / 492, begin: 0.42, end: 0.66, drop: false,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned.fill(child: _img('result_lose_title_plate.png')),
+          FractionallySizedBox(
+            widthFactor: 0.62,
+            heightFactor: 0.66,
+            child: Image.asset(
+              '${_reversiAsset}result_lose_title.png',
+              fit: BoxFit.contain,
+            ),
+          ),
+        ],
+      ),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.525, wFrac: 0.4,
+      aspect: 153 / 402, begin: 0.54, end: 0.78, drop: false,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned.fill(child: _img('result_lose_score_plate.png')),
+          Positioned.fill(child: _scoreContent('result_lose_num.png')),
+        ],
+      ),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.29, cy: 0.74, wFrac: 0.34,
+      aspect: 258 / 405, begin: 0.68, end: 0.92, drop: false,
+      child: _button(
+        base: 'result_lose_btn_again.png',
+        text: 'result_txt_again.png',
+        textWidthFactor: 0.6,
+        onTap: widget.onAgain,
+      ),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.71, cy: 0.74, wFrac: 0.34,
+      aspect: 255 / 399, begin: 0.74, end: 0.98, drop: false,
+      child: _button(
+        base: 'result_lose_btn_ok.png',
+        text: 'result_txt_ok.png',
+        textWidthFactor: 0.32,
+        onTap: widget.onConfirm,
+      ),
+    ),
+  ];
 }
