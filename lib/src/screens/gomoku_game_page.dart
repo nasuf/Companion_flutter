@@ -1593,7 +1593,13 @@ class _GomokuNamePlate extends StatelessWidget {
             child: Center(
               child: FittedBox(
                 fit: BoxFit.scaleDown,
-                child: Text(name, maxLines: 1, style: _kNamePlateStyle),
+                // Design 2:3: the name glyph is ~0.37x the plate height, so the
+                // font size is ~0.42x height (was a fixed 22 → too large).
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  style: _kNamePlateStyle.copyWith(fontSize: h * 0.42),
+                ),
               ),
             ),
           );
@@ -2017,48 +2023,11 @@ class _GomokuHelpButtonState extends State<_GomokuHelpButton> {
         scale: _pressed ? 0.92 : 1,
         duration: const Duration(milliseconds: 110),
         curve: Curves.easeOut,
-        // A bare game-art "?" glyph (cream fill + brown outline + soft shadow),
-        // matching Figma — no circular button plate.
-        child: FittedBox(
+        // The "?" is the exported game-art glyph asset (Figma jTiZSp), not a
+        // font render, so its slim 25x37 proportions match the design exactly.
+        child: Image.asset(
+          '${_gomokuHomeAsset}game_help.png',
           fit: BoxFit.contain,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Text(
-                '?',
-                style: TextStyle(
-                  fontSize: 46,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
-                  letterSpacing: 0,
-                  decoration: TextDecoration.none,
-                  foreground: Paint()
-                    ..style = PaintingStyle.stroke
-                    ..strokeWidth = 6
-                    ..strokeJoin = StrokeJoin.round
-                    ..color = const Color(0xFF7A3D1E),
-                  shadows: [
-                    Shadow(
-                      color: const Color(0xFF3E2110).withValues(alpha: 0.45),
-                      offset: const Offset(0, 2),
-                      blurRadius: 3,
-                    ),
-                  ],
-                ),
-              ),
-              const Text(
-                '?',
-                style: TextStyle(
-                  fontSize: 46,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
-                  letterSpacing: 0,
-                  decoration: TextDecoration.none,
-                  color: Color(0xFFF6E7C6),
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
