@@ -714,9 +714,9 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
               // inside, all in one row (design 37:200). Positions are measured
               // from the design proportions — nudge if slightly off.
               Positioned(
-                left: width * (6 / 393),
-                top: height * (108 / 852),
-                width: width * (80 / 393),
+                left: width * (4 / 393),
+                top: height * (133 / 852),
+                width: width * (58 / 393),
                 child: _ReversiAvatar(
                   frameAsset: '${_reversiAsset}game_avatar_frame_user.png',
                   imageUrl: userAvatarUrl,
@@ -728,9 +728,9 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                 ),
               ),
               Positioned(
-                left: width * (307 / 393),
-                top: height * (108 / 852),
-                width: width * (80 / 393),
+                left: width * (331 / 393),
+                top: height * (133 / 852),
+                width: width * (58 / 393),
                 child: _ReversiAvatar(
                   frameAsset: '${_reversiAsset}game_avatar_frame_agent.png',
                   imageUrl: agentAvatarUrl,
@@ -741,29 +741,33 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                 ),
               ),
               Positioned(
-                left: width * (84 / 393),
-                top: height * (127 / 852),
-                width: width * (110 / 393),
+                left: width * (72 / 393),
+                top: height * (139 / 852),
+                width: width * (108 / 393),
                 child: _ReversiNamePlate(
                   asset: '${_reversiAsset}game_name_user.png',
                   name: userName,
+                  active: userTurn,
+                  glowColor: const Color(0xFF49DFFF),
                 ),
               ),
               Positioned(
-                left: width * (199 / 393),
-                top: height * (127 / 852),
-                width: width * (110 / 393),
+                left: width * (213 / 393),
+                top: height * (139 / 852),
+                width: width * (108 / 393),
                 child: _ReversiNamePlate(
                   asset: '${_reversiAsset}game_name_agent.png',
                   name: agentName,
+                  active: agentTurn,
+                  glowColor: const Color(0xFFFFC94D),
                 ),
               ),
               // Live disc score "user VS agent" — replaces the old standalone
               // countdown + hourglass.
               Positioned(
-                left: width * (137 / 393),
-                top: height * (190 / 852),
-                width: width * (119 / 393),
+                left: width * (141 / 393),
+                top: height * (216 / 852),
+                width: width * (110 / 393),
                 child: _ReversiScorePlate(
                   userCount: engine.userCount,
                   agentCount: engine.agentCount,
@@ -1094,10 +1098,17 @@ class _ReversiAvatarState extends State<_ReversiAvatar>
 }
 
 class _ReversiNamePlate extends StatelessWidget {
-  const _ReversiNamePlate({required this.asset, required this.name});
+  const _ReversiNamePlate({
+    required this.asset,
+    required this.name,
+    this.active = false,
+    this.glowColor = const Color(0xFF49DFFF),
+  });
 
   final String asset;
   final String name;
+  final bool active;
+  final Color glowColor;
 
   @override
   Widget build(BuildContext context) {
@@ -1110,6 +1121,23 @@ class _ReversiNamePlate extends StatelessWidget {
           return Stack(
             clipBehavior: Clip.none,
             children: [
+              // Glow highlight while it is this player's turn.
+              if (active)
+                Positioned.fill(
+                  child: Container(
+                    margin: EdgeInsets.all(width * 0.04),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(height * 0.4),
+                      boxShadow: [
+                        BoxShadow(
+                          color: glowColor.withValues(alpha: 0.8),
+                          blurRadius: 14,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               Positioned.fill(child: Image.asset(asset, fit: BoxFit.fill)),
               Positioned(
                 left: -width * 0.15,
@@ -1845,20 +1873,34 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
       child: _img('result_lose_frame.png'),
     ),
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.205, wFrac: 0.24,
+      screenW: w, screenH: h, cx: 0.5, cy: 0.2, wFrac: 0.24,
       aspect: 309 / 327, begin: 0.32, end: 0.56, drop: false,
       child: _img('result_lose_swords.png'),
     ),
+    // Crossed bones tied to the two bottom corners of the frame.
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.4, wFrac: 0.48,
+      screenW: w, screenH: h, cx: 0.205, cy: 0.565, wFrac: 0.15,
+      aspect: 1.0, begin: 0.5, end: 0.72, drop: false,
+      child: _img('result_lose_bones.png'),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.795, cy: 0.565, wFrac: 0.15,
+      aspect: 1.0, begin: 0.5, end: 0.72, drop: false,
+      child: Transform.flip(
+        flipX: true,
+        child: _img('result_lose_bones.png'),
+      ),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.375, wFrac: 0.42,
       aspect: 282 / 492, begin: 0.42, end: 0.66, drop: false,
       child: Stack(
         alignment: Alignment.center,
         children: [
           Positioned.fill(child: _img('result_lose_title_plate.png')),
           FractionallySizedBox(
-            widthFactor: 0.62,
-            heightFactor: 0.66,
+            widthFactor: 0.58,
+            heightFactor: 0.6,
             child: Image.asset(
               '${_reversiAsset}result_lose_title.png',
               fit: BoxFit.contain,
@@ -1868,7 +1910,7 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
       ),
     ),
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.525, wFrac: 0.4,
+      screenW: w, screenH: h, cx: 0.5, cy: 0.495, wFrac: 0.36,
       aspect: 153 / 402, begin: 0.54, end: 0.78, drop: false,
       child: Stack(
         alignment: Alignment.center,
