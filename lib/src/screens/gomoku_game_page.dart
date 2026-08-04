@@ -428,23 +428,49 @@ class _GomokuBoardPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final geometry = _GomokuBoardGeometry(size);
-    final grid = Paint()
-      ..color = const Color(0xFF5A2D16).withValues(alpha: 0.9)
-      ..strokeWidth = math.max(0.9, size.width * (2.6 / 1050));
-    for (var i = 0; i < GomokuEngine.boardSize; i += 1) {
+    final gridRect = Rect.fromLTRB(
+      geometry.left,
+      geometry.top,
+      geometry.right,
+      geometry.bottom,
+    );
+
+    // Vignette: the board wood darkens toward the edges/corners (design 2:3).
+    canvas.drawRect(
+      gridRect,
+      Paint()
+        ..shader = const RadialGradient(
+          center: Alignment.center,
+          radius: 0.82,
+          colors: [
+            Color(0x00000000),
+            Color(0x00000000),
+            Color(0x3D4A240F),
+          ],
+          stops: [0.0, 0.5, 1.0],
+        ).createShader(gridRect),
+    );
+
+    // Thin interior grid lines (the outer edges are drawn by the bold border).
+    final line = Paint()
+      ..color = const Color(0xFF5A2D16).withValues(alpha: 0.85)
+      ..strokeWidth = math.max(0.8, size.width * (2.1 / 1050));
+    for (var i = 1; i < GomokuEngine.boardSize - 1; i += 1) {
       final x = geometry.left + i * geometry.cellWidth;
       final y = geometry.top + i * geometry.cellHeight;
-      canvas.drawLine(
-        Offset(geometry.left, y),
-        Offset(geometry.right, y),
-        grid,
-      );
-      canvas.drawLine(
-        Offset(x, geometry.top),
-        Offset(x, geometry.bottom),
-        grid,
-      );
+      canvas.drawLine(Offset(geometry.left, y), Offset(geometry.right, y), line);
+      canvas.drawLine(Offset(x, geometry.top), Offset(x, geometry.bottom), line);
     }
+
+    // Bold outer border framing the 15x15 grid.
+    canvas.drawRect(
+      gridRect,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(2.4, size.width * (6 / 1050))
+        ..strokeJoin = StrokeJoin.round
+        ..color = const Color(0xFF4A2410),
+    );
 
     if (previewPoint != null) {
       final center = geometry.offset(previewPoint!);
