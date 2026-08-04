@@ -703,6 +703,8 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                   fallback: userName,
                   active: userTurn,
                   glowColor: const Color(0xFF49DFFF),
+                  paused: widget.timerPaused,
+                  onTimeout: _handleUserIdleTimeout,
                 ),
               ),
               Positioned(
@@ -715,6 +717,7 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                   fallback: agentName,
                   active: agentTurn,
                   glowColor: const Color(0xFFFFC94D),
+                  paused: widget.timerPaused,
                 ),
               ),
               Positioned(
@@ -813,6 +816,13 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
     );
   }
 
+  // The 30s turn countdown ran out while the user hadn't moved — auto-open the
+  // pause menu (mirrors gomoku; replaces the old idle-timeout prompt).
+  void _handleUserIdleTimeout() {
+    if (!mounted || widget.timerPaused || widget.engine.isFinished) return;
+    unawaited(_showPause(context));
+  }
+
   Future<void> _confirmExit(BuildContext context) async {
     widget.onTimerPauseChanged(true);
     await _showReversiModal(
@@ -874,13 +884,15 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
   }
 }
 
-class _ReversiAvatar extends StatelessWidget {
+class _ReversiAvatar extends StatefulWidget {
   const _ReversiAvatar({
     required this.frameAsset,
     required this.imageUrl,
     required this.fallback,
     required this.active,
     required this.glowColor,
+    required this.paused,
+    this.onTimeout,
   });
 
   final String frameAsset;
@@ -888,6 +900,67 @@ class _ReversiAvatar extends StatelessWidget {
   final String fallback;
   final bool active;
   final Color glowColor;
+  final bool paused;
+  // Fired when the 30s turn countdown runs out while still this player's turn.
+  final VoidCallback? onTimeout;
+
+  @override
+  State<_ReversiAvatar> createState() => _ReversiAvatarState();
+}
+
+class _ReversiAvatarState extends State<_ReversiAvatar>
+    with SingleTickerProviderStateMixin {
+  static const int _turnSeconds = 30;
+  late final AnimationController _countdown;
+
+  @override
+  void initState() {
+    super.initState();
+    _countdown = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: _turnSeconds),
+    )..addStatusListener(_onStatus);
+    _sync();
+  }
+
+  void _onStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed &&
+        widget.active &&
+        !widget.paused) {
+      widget.onTimeout?.call();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReversiAvatar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active != oldWidget.active) {
+      _sync();
+    } else if (widget.paused != oldWidget.paused && widget.active) {
+      if (widget.paused) {
+        _countdown.stop();
+      } else if (_countdown.value >= 1.0) {
+        _countdown.forward(from: 0);
+      } else {
+        _countdown.forward();
+      }
+    }
+  }
+
+  void _sync() {
+    if (widget.active && !widget.paused) {
+      _countdown.forward(from: 0);
+    } else if (!widget.active) {
+      _countdown.stop();
+      _countdown.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _countdown.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -909,10 +982,10 @@ class _ReversiAvatar extends StatelessWidget {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    boxShadow: active
+                    boxShadow: widget.active
                         ? [
                             BoxShadow(
-                              color: glowColor.withValues(alpha: 0.75),
+                              color: widget.glowColor.withValues(alpha: 0.75),
                               blurRadius: 16,
                               spreadRadius: 3,
                             ),
@@ -920,18 +993,71 @@ class _ReversiAvatar extends StatelessWidget {
                         : const [],
                   ),
                   child: ClipOval(
-                    child: _Avatar(
-                      size: inner,
-                      label: fallback.trim().isEmpty
-                          ? '伴'
-                          : fallback.trim().characters.first,
-                      imageUrl: imageUrl,
-                      gradient: const [Color(0xFFE8F3FF), Color(0xFFD7E9FF)],
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _Avatar(
+                          size: inner,
+                          label: widget.fallback.trim().isEmpty
+                              ? '伴'
+                              : widget.fallback.trim().characters.first,
+                          imageUrl: widget.imageUrl,
+                          gradient: const [
+                            Color(0xFFE8F3FF),
+                            Color(0xFFD7E9FF),
+                          ],
+                        ),
+                        if (widget.active)
+                          AnimatedBuilder(
+                            animation: _countdown,
+                            builder: (context, _) {
+                              final remaining = (1 - _countdown.value).clamp(
+                                0.0,
+                                1.0,
+                              );
+                              final secs = (remaining * _turnSeconds)
+                                  .ceil()
+                                  .clamp(0, _turnSeconds);
+                              return Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  CustomPaint(
+                                    painter: _GomokuTurnTimerPainter(
+                                      remainingFraction: remaining,
+                                    ),
+                                  ),
+                                  Center(
+                                    child: Text(
+                                      '$secs',
+                                      style: TextStyle(
+                                        color: widget.glowColor,
+                                        fontSize: inner * 0.32,
+                                        fontWeight: FontWeight.w900,
+                                        height: 1,
+                                        letterSpacing: 0,
+                                        decoration: TextDecoration.none,
+                                        shadows: const [
+                                          Shadow(
+                                            color: Color(0x99000000),
+                                            offset: Offset(0, 1),
+                                            blurRadius: 2,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                      ],
                     ),
                   ),
                 ),
               ),
-              Positioned.fill(child: Image.asset(frameAsset, fit: BoxFit.fill)),
+              Positioned.fill(
+                child: Image.asset(widget.frameAsset, fit: BoxFit.fill),
+              ),
             ],
           );
         },
