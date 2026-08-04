@@ -714,9 +714,9 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
               // inside, all in one row (design 37:200). Positions are measured
               // from the design proportions — nudge if slightly off.
               Positioned(
-                left: width * (4 / 393),
-                top: height * (129 / 852),
-                width: width * (62 / 393),
+                left: width * (31 / 393),
+                top: height * (146 / 852),
+                width: width * (50 / 393),
                 child: _ReversiAvatar(
                   frameAsset: '${_reversiAsset}game_avatar_frame_user.png',
                   imageUrl: userAvatarUrl,
@@ -728,9 +728,9 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                 ),
               ),
               Positioned(
-                left: width * (327 / 393),
-                top: height * (129 / 852),
-                width: width * (62 / 393),
+                left: width * (312 / 393),
+                top: height * (146 / 852),
+                width: width * (50 / 393),
                 child: _ReversiAvatar(
                   frameAsset: '${_reversiAsset}game_avatar_frame_agent.png',
                   imageUrl: agentAvatarUrl,
@@ -740,11 +740,12 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                   paused: widget.timerPaused,
                 ),
               ),
-              // Name plates tucked right up against the avatars (design 38:322).
+              // Name plates sit right beside the avatars with a small gap
+              // (design 37:200, measured).
               Positioned(
-                left: width * (54 / 393),
-                top: height * (138 / 852),
-                width: width * (110 / 393),
+                left: width * (93 / 393),
+                top: height * (152 / 852),
+                width: width * (97 / 393),
                 child: _ReversiNamePlate(
                   asset: '${_reversiAsset}game_name_user.png',
                   name: userName,
@@ -752,9 +753,9 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                 ),
               ),
               Positioned(
-                left: width * (229 / 393),
-                top: height * (138 / 852),
-                width: width * (110 / 393),
+                left: width * (203 / 393),
+                top: height * (152 / 852),
+                width: width * (97 / 393),
                 child: _ReversiNamePlate(
                   asset: '${_reversiAsset}game_name_agent.png',
                   name: agentName,
@@ -764,9 +765,9 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
               // Live disc score "user VS agent" — replaces the old standalone
               // countdown + hourglass.
               Positioned(
-                left: width * (141 / 393),
-                top: height * (216 / 852),
-                width: width * (110 / 393),
+                left: width * (138 / 393),
+                top: height * (214 / 852),
+                width: width * (116 / 393),
                 child: _ReversiScorePlate(
                   userCount: engine.userCount,
                   agentCount: engine.agentCount,
@@ -815,9 +816,9 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
               ),
               // Gear (bottom-right) opens the reversi rules popup (design 198:1273).
               Positioned(
-                left: width * (330 / 393),
-                top: height * (672 / 852),
-                width: width * (46 / 393),
+                left: width * (325 / 393),
+                top: height * (676 / 852),
+                width: width * (49 / 393),
                 child: _ReversiGearButton(
                   onTap: () => _showGameRulesDialog(
                     context,
@@ -1126,19 +1127,18 @@ class _ReversiNamePlate extends StatelessWidget {
                   fit: BoxFit.fill,
                 ),
               ),
-              // Name centered in the plate's inner panel (the art has a raised
-              // bottom lip, so the panel sits slightly above the box centre).
+              // Name centered in the plate.
               Positioned.fill(
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    width * 0.12,
-                    height * 0.12,
-                    width * 0.12,
-                    height * 0.24,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: width * 0.14,
+                    vertical: height * 0.2,
                   ),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: _ReversiOutlinedText(text: name, fontSize: 15),
+                  child: Center(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: _ReversiOutlinedText(text: name, fontSize: 15),
+                    ),
                   ),
                 ),
               ),
@@ -1217,33 +1217,9 @@ class _ReversiGearButtonState extends State<_ReversiGearButton> {
         scale: _pressed ? 0.9 : 1,
         duration: const Duration(milliseconds: 110),
         curve: Curves.easeOut,
-        child: AspectRatio(
-          aspectRatio: 1,
-          child: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFFF6C765), Color(0xFFE39A34)],
-              ),
-              border: Border.all(color: const Color(0xFF8A5220), width: 2.5),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF5A3212).withValues(alpha: 0.4),
-                  blurRadius: 6,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: const FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Padding(
-                padding: EdgeInsets.all(7),
-                child: Icon(Icons.settings, color: Colors.white, size: 30),
-              ),
-            ),
-          ),
+        child: Image.asset(
+          '${_reversiAsset}game_gear.png',
+          fit: BoxFit.contain,
         ),
       ),
     );
