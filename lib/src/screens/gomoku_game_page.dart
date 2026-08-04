@@ -1161,7 +1161,15 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
                 cy: 0.829,
                 width: w * 0.064,
                 child: _GomokuHelpButton(
-                  onTap: () => _showGomokuRulesDialog(context),
+                  onTap: () => _showGameRulesDialog(
+                    context,
+                    gameName: '五子棋',
+                    rules: const [
+                      '1、黑白双方交替落子',
+                      '2、率先横向 / 竖向 / 斜向连成五子直接获胜',
+                      '3、棋盘布满无五子则平局',
+                    ],
+                  ),
                 ),
               ),
 
@@ -2110,7 +2118,13 @@ class _GomokuHelpButtonState extends State<_GomokuHelpButton> {
 
 /// Centered rules popup with a gaussian-blurred backdrop and a themed close (×)
 /// button in the top-right corner.
-void _showGomokuRulesDialog(BuildContext context) {
+// Shared game-art rules popup (cream card + blurred backdrop + themed close),
+// used by both five-in-a-row and reversi.
+void _showGameRulesDialog(
+  BuildContext context, {
+  required String gameName,
+  required List<String> rules,
+}) {
   showGeneralDialog<void>(
     context: context,
     barrierDismissible: true,
@@ -2118,7 +2132,9 @@ void _showGomokuRulesDialog(BuildContext context) {
     barrierColor: Colors.black.withValues(alpha: 0.2),
     transitionDuration: const Duration(milliseconds: 260),
     pageBuilder: (dialogContext, _, __) => Center(
-      child: _GomokuRulesCard(
+      child: _GameRulesCard(
+        gameName: gameName,
+        rules: rules,
         onClose: () => Navigator.of(dialogContext).pop(),
       ),
     ),
@@ -2140,16 +2156,16 @@ void _showGomokuRulesDialog(BuildContext context) {
   );
 }
 
-class _GomokuRulesCard extends StatelessWidget {
-  const _GomokuRulesCard({required this.onClose});
+class _GameRulesCard extends StatelessWidget {
+  const _GameRulesCard({
+    required this.gameName,
+    required this.rules,
+    required this.onClose,
+  });
 
+  final String gameName;
+  final List<String> rules;
   final VoidCallback onClose;
-
-  static const List<String> _rules = [
-    '1、黑白双方交替落子',
-    '2、率先横向 / 竖向 / 斜向连成五子直接获胜',
-    '3、棋盘布满无五子则平局',
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -2191,17 +2207,17 @@ class _GomokuRulesCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Center(
-                    child: _StrokeText(text: '五子棋', fontSize: cardW * 0.092),
+                    child: _StrokeText(text: gameName, fontSize: cardW * 0.092),
                   ),
                   const SizedBox(height: 2),
                   Center(
                     child: _StrokeText(text: '规则说明', fontSize: cardW * 0.082),
                   ),
                   const SizedBox(height: 20),
-                  for (var i = 0; i < _rules.length; i += 1) ...[
+                  for (var i = 0; i < rules.length; i += 1) ...[
                     if (i > 0) const SizedBox(height: 12),
                     Text(
-                      _rules[i],
+                      rules[i],
                       style: TextStyle(
                         color: const Color(0xFF7A4A22),
                         fontSize: cardW * 0.052,

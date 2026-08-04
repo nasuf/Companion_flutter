@@ -790,6 +790,23 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                   onTap: () => unawaited(_showPause(context)),
                 ),
               ),
+              // Gear (bottom-right) opens the reversi rules popup (design 198:1273).
+              Positioned(
+                left: width * (330 / 393),
+                top: height * (672 / 852),
+                width: width * (46 / 393),
+                child: _ReversiGearButton(
+                  onTap: () => _showGameRulesDialog(
+                    context,
+                    gameName: '黑白棋',
+                    rules: const [
+                      '1、落子需夹住对方棋子，将其翻转为己方颜色',
+                      '2、棋盘无子可落则跳过回合',
+                      '3、对局结束棋子数量多者获胜',
+                    ],
+                  ),
+                ),
+              ),
               // "你的回合" ribbon flashes in at the board's lower-middle on the
               // user's turn (shared with gomoku).
               Positioned(
@@ -1137,6 +1154,56 @@ class _ReversiScorePlate extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Bottom-right gear that opens the rules popup (design 198:1273).
+class _ReversiGearButton extends StatefulWidget {
+  const _ReversiGearButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_ReversiGearButton> createState() => _ReversiGearButtonState();
+}
+
+class _ReversiGearButtonState extends State<_ReversiGearButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap();
+      },
+      child: AnimatedScale(
+        scale: _pressed ? 0.9 : 1,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOut,
+        child: const AspectRatio(
+          aspectRatio: 1,
+          child: FittedBox(
+            fit: BoxFit.contain,
+            child: Icon(
+              Icons.settings,
+              color: Color(0xFFE8A23C),
+              size: 44,
+              shadows: [
+                Shadow(
+                  color: Color(0x73000000),
+                  offset: Offset(0, 2),
+                  blurRadius: 3,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
