@@ -815,10 +815,12 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                 ),
               ),
               // Gear (bottom-right) opens the reversi rules popup (design 198:1273).
+              // 40x41 in Figma; vertical centre aligned with the exit/pause
+              // buttons (their centre sits at 666 + 55/2 = 693.5).
               Positioned(
-                left: width * (325 / 393),
-                top: height * (676 / 852),
-                width: width * (49 / 393),
+                left: width * (330 / 393),
+                top: height * (673 / 852),
+                width: width * (40 / 393),
                 child: _ReversiGearButton(
                   onTap: () => _showGameRulesDialog(
                     context,
