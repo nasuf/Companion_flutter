@@ -748,7 +748,6 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                   asset: '${_reversiAsset}game_name_user.png',
                   name: userName,
                   active: userTurn,
-                  glowColor: const Color(0xFF49DFFF),
                 ),
               ),
               Positioned(
@@ -759,7 +758,6 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                   asset: '${_reversiAsset}game_name_agent.png',
                   name: agentName,
                   active: agentTurn,
-                  glowColor: const Color(0xFFFFC94D),
                 ),
               ),
               // Live disc score "user VS agent" — replaces the old standalone
@@ -1011,18 +1009,7 @@ class _ReversiAvatarState extends State<_ReversiAvatar>
                 width: inner,
                 height: inner,
                 child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: widget.active
-                        ? [
-                            BoxShadow(
-                              color: widget.glowColor.withValues(alpha: 0.75),
-                              blurRadius: 16,
-                              spreadRadius: 3,
-                            ),
-                          ]
-                        : const [],
-                  ),
+                  decoration: const BoxDecoration(shape: BoxShape.circle),
                   child: ClipOval(
                     child: Stack(
                       fit: StackFit.expand,
@@ -1089,6 +1076,17 @@ class _ReversiAvatarState extends State<_ReversiAvatar>
               Positioned.fill(
                 child: Image.asset(widget.frameAsset, fit: BoxFit.fill),
               ),
+              // Glowing ring swapped in while it is this player's turn.
+              if (widget.active)
+                Positioned.fill(
+                  child: Transform.scale(
+                    scale: 1.12,
+                    child: Image.asset(
+                      '${_reversiAsset}game_avatar_frame_active.png',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
             ],
           );
         },
@@ -1102,13 +1100,11 @@ class _ReversiNamePlate extends StatelessWidget {
     required this.asset,
     required this.name,
     this.active = false,
-    this.glowColor = const Color(0xFF49DFFF),
   });
 
   final String asset;
   final String name;
   final bool active;
-  final Color glowColor;
 
   @override
   Widget build(BuildContext context) {
@@ -1121,24 +1117,14 @@ class _ReversiNamePlate extends StatelessWidget {
           return Stack(
             clipBehavior: Clip.none,
             children: [
-              // Glow highlight while it is this player's turn.
-              if (active)
-                Positioned.fill(
-                  child: Container(
-                    margin: EdgeInsets.all(width * 0.04),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(height * 0.4),
-                      boxShadow: [
-                        BoxShadow(
-                          color: glowColor.withValues(alpha: 0.8),
-                          blurRadius: 14,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                  ),
+              // The plate swaps to the glowing active art while it is this
+              // player's turn (design "头像/名字方框变色").
+              Positioned.fill(
+                child: Image.asset(
+                  active ? '${_reversiAsset}game_name_active.png' : asset,
+                  fit: BoxFit.fill,
                 ),
-              Positioned.fill(child: Image.asset(asset, fit: BoxFit.fill)),
+              ),
               Positioned(
                 left: -width * 0.15,
                 top: height * 0.20,
@@ -1876,6 +1862,17 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
       screenW: w, screenH: h, cx: 0.5, cy: 0.2, wFrac: 0.24,
       aspect: 309 / 327, begin: 0.32, end: 0.56, drop: false,
       child: _img('result_lose_swords.png'),
+    ),
+    // Two rope pendants hanging the "失败" plate from the frame's top corners.
+    _piece(
+      screenW: w, screenH: h, cx: 0.345, cy: 0.315, wFrac: 0.075,
+      aspect: 249 / 84, begin: 0.4, end: 0.62, drop: false,
+      child: _img('result_lose_rope.png'),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.655, cy: 0.315, wFrac: 0.075,
+      aspect: 249 / 84, begin: 0.4, end: 0.62, drop: false,
+      child: Transform.flip(flipX: true, child: _img('result_lose_rope.png')),
     ),
     // Crossed bones tied to the two bottom corners of the frame.
     _piece(
