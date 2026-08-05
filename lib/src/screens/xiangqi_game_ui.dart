@@ -316,6 +316,9 @@ class _XiangqiGameScreen extends StatelessWidget {
     required this.onSquareTap,
     required this.onShowLose,
     required this.onTimerPauseChanged,
+    required this.bannerInMs,
+    required this.bannerHoldMs,
+    required this.bannerOutMs,
   });
 
   final ChessFamilyEngine engine;
@@ -338,6 +341,11 @@ class _XiangqiGameScreen extends StatelessWidget {
   // Quitting / restarting mid-game → settle as a loss and show the 失败 screen.
   final Future<void> Function() onShowLose;
   final ValueChanged<bool> onTimerPauseChanged;
+  // "你的回合" banner timing (ms), from the per-game admin config (read fresh
+  // each round from engine_config).
+  final int bannerInMs;
+  final int bannerHoldMs;
+  final int bannerOutMs;
 
   @override
   Widget build(BuildContext context) {
@@ -452,6 +460,20 @@ class _XiangqiGameScreen extends StatelessWidget {
                   legalTargets: legalTargets,
                   onSquareTap: onSquareTap,
                   xiangqiArtworkAsset: '${_xiangqiAsset}game_board.png',
+                ),
+              ),
+              // "你的回合" ribbon at the board's lower-middle, flashing in when
+              // the user's turn begins (timing from the per-game admin config).
+              Positioned(
+                left: 0,
+                right: 0,
+                top: height * 0.62 - (width * 0.13) / 2,
+                height: width * 0.13,
+                child: _TurnBanner(
+                  userTurn: userTurn,
+                  inMs: bannerInMs,
+                  holdMs: bannerHoldMs,
+                  outMs: bannerOutMs,
                 ),
               ),
               if (notice case final text?)
@@ -1063,7 +1085,7 @@ class _XiangqiResultScreenState extends State<_XiangqiResultScreen>
       Positioned.fill(child: _img(plateAsset)),
       Positioned.fill(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           child: FittedBox(
             fit: BoxFit.scaleDown,
             child: Row(
@@ -1071,10 +1093,10 @@ class _XiangqiResultScreenState extends State<_XiangqiResultScreen>
               children: [
                 Image.asset(
                   '${_xiangqiAsset}result_score_label.png',
-                  height: 26,
+                  height: 28,
                 ),
-                const SizedBox(width: 7),
-                Image.asset('$_xiangqiAsset$numAsset', height: 26),
+                const SizedBox(width: 2),
+                Image.asset('$_xiangqiAsset$numAsset', height: 28),
               ],
             ),
           ),
@@ -1121,21 +1143,22 @@ class _XiangqiResultScreenState extends State<_XiangqiResultScreen>
 
   // Positions from the 胜利弹窗 CSS export (frame 393x852).
   List<Widget> _winPieces(double w, double h) => [
-    // Blurred confetti/light burst behind the sun (same box as the emblem).
+    // Blurred confetti/light burst behind the sun.
     _piece(
-      screenW: w, screenH: h, cx: 0.538, cy: 0.30, wFrac: 1.0,
+      screenW: w, screenH: h, cx: 0.5, cy: 0.30, wFrac: 0.9,
       aspect: 1590 / 1179, begin: 0.06, end: 0.42,
       child: _img('result_win_glow.png'),
     ),
-    // Sun + red ribbon emblem (443x310 @ -10,129).
+    // Sun + red ribbon emblem, at (near) its CSS size, centred (the +15px
+    // right offset was what clipped the right tassel; size was fine).
     _piece(
-      screenW: w, screenH: h, cx: 0.538, cy: 0.333, wFrac: 1.127,
+      screenW: w, screenH: h, cx: 0.5, cy: 0.333, wFrac: 1.0,
       aspect: 930 / 1179, begin: 0.12, end: 0.46, drop: true,
       child: _img('result_win_emblem.png'),
     ),
-    // "胜利" on the ribbon (text box 121x61 @ 142,276; wFrac padded for shadow).
+    // "胜利" centred on the ribbon.
     _piece(
-      screenW: w, screenH: h, cx: 0.515, cy: 0.36, wFrac: 0.34,
+      screenW: w, screenH: h, cx: 0.5, cy: 0.365, wFrac: 0.34,
       aspect: 234 / 408, begin: 0.34, end: 0.6,
       child: _img('result_win_title.png'),
     ),
@@ -1180,9 +1203,10 @@ class _XiangqiResultScreenState extends State<_XiangqiResultScreen>
       aspect: 366 / 1146, begin: 0.3, end: 0.56,
       child: _img('result_lose_ribbon.png'),
     ),
-    // "失败" on the ribbon (text box 121x61 @ 136,275; wFrac padded for shadow).
+    // "失败" centred on the red band. The glyph fill sits at 0.433 of the PNG
+    // (shadow pads the bottom), so cy 0.363 lands it on the band centre (~0.357).
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.359, wFrac: 0.34,
+      screenW: w, screenH: h, cx: 0.5, cy: 0.363, wFrac: 0.34,
       aspect: 233 / 418, begin: 0.44, end: 0.66,
       child: _img('result_lose_title.png'),
     ),
@@ -1258,9 +1282,9 @@ class _XiangqiResultButtonState extends State<_XiangqiResultButton> {
             ),
             Positioned.fill(
               child: Align(
-                alignment: const Alignment(0, 0.08),
+                alignment: const Alignment(0, 0.06),
                 child: FractionallySizedBox(
-                  heightFactor: 0.44,
+                  heightFactor: 0.56,
                   child: Image.asset(
                     '$_xiangqiAsset${widget.text}',
                     fit: BoxFit.contain,

@@ -456,6 +456,9 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
               onSquareTap: _handleSquareTap,
               onShowLose: _forfeitXiangqi,
               onTimerPauseChanged: _setXiangqiTimerPaused,
+              bannerInMs: _runtime.bannerInMs,
+              bannerHoldMs: _runtime.bannerHoldMs,
+              bannerOutMs: _runtime.bannerOutMs,
             ),
           ),
         );
