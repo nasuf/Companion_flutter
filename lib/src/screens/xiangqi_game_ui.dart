@@ -314,8 +314,7 @@ class _XiangqiGameScreen extends StatelessWidget {
     required this.enabled,
     required this.notice,
     required this.onSquareTap,
-    required this.onRestart,
-    required this.onExit,
+    required this.onShowLose,
     required this.onTimerPauseChanged,
   });
 
@@ -336,8 +335,8 @@ class _XiangqiGameScreen extends StatelessWidget {
   /// stopped responding.
   final String? notice;
   final ValueChanged<int> onSquareTap;
-  final Future<void> Function() onRestart;
-  final Future<void> Function() onExit;
+  // Quitting / restarting mid-game → settle as a loss and show the 失败 screen.
+  final Future<void> Function() onShowLose;
   final ValueChanged<bool> onTimerPauseChanged;
 
   @override
@@ -506,7 +505,7 @@ class _XiangqiGameScreen extends StatelessWidget {
             label: '退出',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              unawaited(onExit());
+              unawaited(onShowLose());
             },
           ),
         ),
@@ -535,7 +534,7 @@ class _XiangqiGameScreen extends StatelessWidget {
             enabled: !starting,
             onTap: () {
               Navigator.of(dialogContext).pop();
-              unawaited(onRestart());
+              unawaited(onShowLose());
             },
           ),
         ),
@@ -970,4 +969,302 @@ Future<void> _showXiangqiModal(
       );
     },
   );
+}
+
+enum _XiangqiResultKind { win, lose }
+
+/// Full-screen xiangqi win / lose result scene (mountain theme), composed from
+/// the exported art with a staggered pop-in. Shown at the page level in place
+/// of the game so the board / avatars / countdown are torn down (no timer left
+/// running behind it). Positions are estimated from the design and easy to
+/// nudge — one (cx,cy,wFrac) per piece.
+class _XiangqiResultScreen extends StatefulWidget {
+  const _XiangqiResultScreen({
+    super.key,
+    required this.kind,
+    required this.onRestart,
+    required this.onExit,
+  });
+
+  final _XiangqiResultKind kind;
+  final Future<void> Function() onRestart;
+  final Future<void> Function() onExit;
+
+  @override
+  State<_XiangqiResultScreen> createState() => _XiangqiResultScreenState();
+}
+
+class _XiangqiResultScreenState extends State<_XiangqiResultScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1300),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+        _c.value = 1;
+      } else {
+        _c.forward();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Widget _img(String name) =>
+      Image.asset('$_xiangqiAsset$name', fit: BoxFit.fill);
+
+  Widget _piece({
+    required double screenW,
+    required double screenH,
+    required double cx,
+    required double cy,
+    required double wFrac,
+    required double aspect,
+    required double begin,
+    required double end,
+    bool drop = false,
+    required Widget child,
+  }) {
+    final p = ((_c.value - begin) / (end - begin)).clamp(0.0, 1.0);
+    final eased = Curves.easeOutBack.transform(p);
+    final opacity = (p * 2.4).clamp(0.0, 1.0);
+    final width = screenW * wFrac;
+    final height = width * aspect;
+    final dy = drop
+        ? -screenH * 0.10 * (1 - Curves.easeOutCubic.transform(p))
+        : 0.0;
+    final scale = drop ? 1.0 : (0.7 + 0.3 * eased);
+    return Positioned(
+      left: screenW * cx - width / 2,
+      top: screenH * cy - height / 2 + dy,
+      width: width,
+      height: height,
+      child: Opacity(
+        opacity: opacity,
+        child: Transform.scale(scale: scale, child: child),
+      ),
+    );
+  }
+
+  Widget _scorePlate(String plateAsset, String numAsset) => Stack(
+    alignment: Alignment.center,
+    children: [
+      Positioned.fill(child: _img(plateAsset)),
+      Positioned.fill(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 8),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset(
+                  '${_xiangqiAsset}result_score_label.png',
+                  height: 26,
+                ),
+                const SizedBox(width: 7),
+                Image.asset('$_xiangqiAsset$numAsset', height: 26),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+
+  Widget _button({
+    required String base,
+    required String text,
+    required VoidCallback onTap,
+  }) => _XiangqiResultButton(base: base, text: text, onTap: onTap);
+
+  @override
+  Widget build(BuildContext context) {
+    final win = widget.kind == _XiangqiResultKind.win;
+    return Scaffold(
+      backgroundColor: const Color(0xFFCADCEB),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth;
+          final h = constraints.maxHeight;
+          return AnimatedBuilder(
+            animation: _c,
+            builder: (context, _) {
+              return Stack(
+                children: [
+                  Positioned.fill(
+                    child: Image.asset(
+                      '${_xiangqiAsset}game_bg.png',
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  ...win ? _winPieces(w, h) : _losePieces(w, h),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  List<Widget> _winPieces(double w, double h) => [
+    // Confetti/light burst behind the sun.
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.31, wFrac: 1.05,
+      aspect: 1590 / 1179, begin: 0.06, end: 0.42,
+      child: _img('result_win_glow.png'),
+    ),
+    // Sun + red ribbon emblem (combined).
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.34, wFrac: 0.82,
+      aspect: 930 / 1179, begin: 0.12, end: 0.46, drop: true,
+      child: _img('result_win_emblem.png'),
+    ),
+    // "胜利" on the ribbon.
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.40, wFrac: 0.30,
+      aspect: 234 / 408, begin: 0.34, end: 0.6,
+      child: _img('result_win_title.png'),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.58, wFrac: 0.42,
+      aspect: 153 / 465, begin: 0.5, end: 0.72,
+      child: _scorePlate('result_score_plate_win.png', 'result_win_num.png'),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.28, cy: 0.80, wFrac: 0.38,
+      aspect: 147 / 453, begin: 0.62, end: 0.86,
+      child: _button(
+        base: 'result_btn_exit_win.png',
+        text: 'result_txt_exit.png',
+        onTap: () => unawaited(widget.onExit()),
+      ),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.72, cy: 0.80, wFrac: 0.38,
+      aspect: 147 / 459, begin: 0.68, end: 0.92,
+      child: _button(
+        base: 'result_btn_again_win.png',
+        text: 'result_txt_again.png',
+        onTap: () => unawaited(widget.onRestart()),
+      ),
+    ),
+  ];
+
+  List<Widget> _losePieces(double w, double h) => [
+    // Lotus mandala emblem.
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.29, wFrac: 0.52,
+      aspect: 543 / 639, begin: 0.12, end: 0.46, drop: true,
+      child: _img('result_lose_emblem.png'),
+    ),
+    // Red ribbon (drawn after the emblem so it crosses its lower half).
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.40, wFrac: 0.92,
+      aspect: 366 / 1146, begin: 0.3, end: 0.56,
+      child: _img('result_lose_ribbon.png'),
+    ),
+    // "失败" on the ribbon.
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.40, wFrac: 0.31,
+      aspect: 233 / 418, begin: 0.44, end: 0.66,
+      child: _img('result_lose_title.png'),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.55, wFrac: 0.42,
+      aspect: 153 / 465, begin: 0.56, end: 0.76,
+      child: _scorePlate('result_score_plate_lose.png', 'result_lose_num.png'),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.28, cy: 0.72, wFrac: 0.38,
+      aspect: 147 / 453, begin: 0.66, end: 0.88,
+      child: _button(
+        base: 'result_btn_exit_lose.png',
+        text: 'result_txt_exit.png',
+        onTap: () => unawaited(widget.onExit()),
+      ),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.72, cy: 0.72, wFrac: 0.38,
+      aspect: 147 / 459, begin: 0.72, end: 0.94,
+      child: _button(
+        base: 'result_btn_again_lose.png',
+        text: 'result_txt_again.png',
+        onTap: () => unawaited(widget.onRestart()),
+      ),
+    ),
+  ];
+}
+
+/// Result-screen button (退出 / 重开一局): textless base art + text overlay,
+/// sized by height so both share the same glyph size, with a press-in scale.
+class _XiangqiResultButton extends StatefulWidget {
+  const _XiangqiResultButton({
+    required this.base,
+    required this.text,
+    required this.onTap,
+  });
+
+  final String base;
+  final String text;
+  final VoidCallback onTap;
+
+  @override
+  State<_XiangqiResultButton> createState() => _XiangqiResultButtonState();
+}
+
+class _XiangqiResultButtonState extends State<_XiangqiResultButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap();
+      },
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOut,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Image.asset(
+                '$_xiangqiAsset${widget.base}',
+                fit: BoxFit.fill,
+              ),
+            ),
+            Positioned.fill(
+              child: Align(
+                alignment: const Alignment(0, -0.05),
+                child: FractionallySizedBox(
+                  heightFactor: 0.4,
+                  child: Image.asset(
+                    '$_xiangqiAsset${widget.text}',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

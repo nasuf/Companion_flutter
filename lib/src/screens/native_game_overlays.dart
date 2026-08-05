@@ -13,6 +13,7 @@ class _NativeGameInteractionLayer extends StatefulWidget {
     required this.turnLabel,
     required this.moveCount,
     this.showPlayers = true,
+    this.suppressResult = false,
   });
 
   final _NativeGameRuntime runtime;
@@ -26,6 +27,9 @@ class _NativeGameInteractionLayer extends StatefulWidget {
   final String turnLabel;
   final int moveCount;
   final bool showPlayers;
+  // When the page renders its own full-screen result (e.g. xiangqi), the shared
+  // terminal overlay is suppressed so the two don't both appear.
+  final bool suppressResult;
 
   @override
   State<_NativeGameInteractionLayer> createState() =>
@@ -114,7 +118,8 @@ class _NativeGameInteractionLayerState
         content,
         // Held back ~1.4s after the game settles so the finishing move stays
         // visible before the overlay covers the board.
-        if (runtime.terminalPayload case final payload? when _resultReady)
+        if (runtime.terminalPayload case final payload?
+            when _resultReady && !widget.suppressResult)
           Positioned.fill(
             child: _NativeGameOverlay(
               key: ValueKey(

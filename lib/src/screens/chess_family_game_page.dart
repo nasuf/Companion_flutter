@@ -26,6 +26,10 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
   bool _xiangqiTimerPaused = false;
   bool _chessTimerPaused = false;
   bool _chessAssetsPrecached = false;
+  // Xiangqi shows a full-screen win/lose result that replaces the game (board /
+  // avatars / countdown torn down). Non-null once the round ends or is forfeited.
+  _XiangqiResultKind? _xiangqiResult;
+  Timer? _xiangqiResultTimer;
 
   String get _gameKey => widget.kind == ChessFamilyKind.chess
       ? _nativeChessGameKey
@@ -60,6 +64,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
 
   @override
   void dispose() {
+    _xiangqiResultTimer?.cancel();
     _runtime.dispose();
     unawaited(
       _runtime.abort(
@@ -82,6 +87,8 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       'rules_engine': 'bishop_1_4_4',
       'search': 'iterative_deepening_pvs_alpha_beta',
     });
+    _xiangqiResultTimer?.cancel();
+    _xiangqiResultTimer = null;
     if (session == null || !mounted) return;
     setState(() {
       _engine = ChessFamilyEngine(
@@ -96,6 +103,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       _isFullscreen = false;
       _xiangqiTimerPaused = false;
       _chessTimerPaused = false;
+      _xiangqiResult = null;
     });
   }
 
@@ -108,6 +116,8 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       );
     }
     _runtime.clearPresentation();
+    _xiangqiResultTimer?.cancel();
+    _xiangqiResultTimer = null;
     if (!mounted) return;
     setState(() {
       _engine = null;
@@ -116,7 +126,17 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       _isFullscreen = false;
       _xiangqiTimerPaused = false;
       _chessTimerPaused = false;
+      _xiangqiResult = null;
     });
+  }
+
+  /// Xiangqi: quitting or restarting mid-game counts as a loss — settle so the
+  /// score is deducted, then show the 失败 result screen (whose buttons then do
+  /// the real exit / restart). Board & countdown are torn down with the game.
+  Future<void> _forfeitXiangqi() async {
+    if (_xiangqiResult != null || _engine == null || _runtime.completed) return;
+    setState(() => _xiangqiResult = _XiangqiResultKind.lose);
+    await _finish(ChessFamilyStatus.agentWon);
   }
 
   void _setXiangqiTimerPaused(bool paused) {
@@ -359,56 +379,92 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       );
     }
     if (widget.kind == ChessFamilyKind.xiangqi) {
+      // Hold the final board briefly, then reveal the full-screen result.
+      if (engine != null &&
+          engine.isFinished &&
+          _xiangqiResult == null &&
+          _xiangqiResultTimer == null) {
+        final win = engine.status == ChessFamilyStatus.userWon;
+        _xiangqiResultTimer = Timer(const Duration(milliseconds: 1400), () {
+          if (!mounted || _xiangqiResult != null) return;
+          setState(
+            () => _xiangqiResult = win
+                ? _XiangqiResultKind.win
+                : _XiangqiResultKind.lose,
+          );
+        });
+      }
+      final Widget xiangqiChild;
       if (engine == null) {
-        return _XiangqiHome(
-          rounds: _runtime.rounds,
-          starting: _runtime.starting,
-          error: _runtime.error,
-          onStart: _startGame,
-          onExit: () => Navigator.of(context).maybePop(),
+        xiangqiChild = KeyedSubtree(
+          key: const ValueKey('xiangqi-home'),
+          child: _XiangqiHome(
+            rounds: _runtime.rounds,
+            starting: _runtime.starting,
+            error: _runtime.error,
+            onStart: _startGame,
+            onExit: () => Navigator.of(context).maybePop(),
+          ),
+        );
+      } else if (_xiangqiResult != null) {
+        // Full-screen result replaces the game — board/avatars/countdown gone.
+        xiangqiChild = _XiangqiResultScreen(
+          key: const ValueKey('xiangqi-result'),
+          kind: _xiangqiResult!,
+          onRestart: _startGame,
+          onExit: _closeGame,
+        );
+      } else {
+        final userTurnActive =
+            !engine.isFinished &&
+            !engine.isAgentTurn &&
+            !_runtime.aiThinking &&
+            !_runtime.starting &&
+            !_xiangqiTimerPaused;
+        xiangqiChild = PopScope(
+          key: const ValueKey('xiangqi-game'),
+          canPop: false,
+          child: _NativeGameInteractionLayer(
+            runtime: _runtime,
+            game: widget.game,
+            onPlayAgain: _startGame,
+            onCloseGame: _closeGame,
+            userTurnActive: userTurnActive,
+            turnToken:
+                '${_runtime.session?.id}:${engine.moveCount}:${engine.isAgentTurn ? 'agent' : 'user'}',
+            turnTimeout: _nativeGameTurnTimeout(_gameKey),
+            turnLabel: _runtime.aiThinking
+                ? '${_runtime.agentName} 在走棋'
+                : '轮到你走棋',
+            moveCount: engine.moveCount,
+            showPlayers: false,
+            // The page renders its own mountain-themed result screen.
+            suppressResult: true,
+            child: _XiangqiGameScreen(
+              engine: engine,
+              selectedSquare: _selectedSquare,
+              legalTargets: _legalTargets,
+              agentName: _runtime.agentName,
+              userName: widget.authSession.userFacingName,
+              agentAvatarUrl: widget.authSession.agentAvatarUrl,
+              userAvatarUrl: widget.authSession.userAvatarUrl,
+              aiThinking: _runtime.aiThinking,
+              starting: _runtime.starting,
+              timerPaused: _xiangqiTimerPaused,
+              enabled: userTurnActive,
+              notice: _runtime.syncNotice,
+              onSquareTap: _handleSquareTap,
+              onShowLose: _forfeitXiangqi,
+              onTimerPauseChanged: _setXiangqiTimerPaused,
+            ),
+          ),
         );
       }
-      final userTurnActive =
-          !engine.isFinished &&
-          !engine.isAgentTurn &&
-          !_runtime.aiThinking &&
-          !_runtime.starting &&
-          !_xiangqiTimerPaused;
-      return PopScope(
-        canPop: false,
-        child: _NativeGameInteractionLayer(
-          runtime: _runtime,
-          game: widget.game,
-          onPlayAgain: _startGame,
-          onCloseGame: _closeGame,
-          userTurnActive: userTurnActive,
-          turnToken:
-              '${_runtime.session?.id}:${engine.moveCount}:${engine.isAgentTurn ? 'agent' : 'user'}',
-          turnTimeout: _nativeGameTurnTimeout(_gameKey),
-          turnLabel: _runtime.aiThinking
-              ? '${_runtime.agentName} 在走棋'
-              : '轮到你走棋',
-          moveCount: engine.moveCount,
-          showPlayers: false,
-          child: _XiangqiGameScreen(
-            engine: engine,
-            selectedSquare: _selectedSquare,
-            legalTargets: _legalTargets,
-            agentName: _runtime.agentName,
-            userName: widget.authSession.userFacingName,
-            agentAvatarUrl: widget.authSession.agentAvatarUrl,
-            userAvatarUrl: widget.authSession.userAvatarUrl,
-            aiThinking: _runtime.aiThinking,
-            starting: _runtime.starting,
-            timerPaused: _xiangqiTimerPaused,
-            enabled: userTurnActive,
-            notice: _runtime.syncNotice,
-            onSquareTap: _handleSquareTap,
-            onRestart: _startGame,
-            onExit: _closeGame,
-            onTimerPauseChanged: _setXiangqiTimerPaused,
-          ),
-        ),
+      return AnimatedSwitcher(
+        duration: const Duration(milliseconds: 320),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: xiangqiChild,
       );
     }
     final compact = Scaffold(
