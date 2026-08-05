@@ -427,6 +427,9 @@ class _XiangqiGameScreen extends StatelessWidget {
                       engine.isAgentTurn ||
                       engine.isFinished,
                   timeout: _nativeGameTurnTimeout(_nativeXiangqiGameKey),
+                  // Ran out of time on the user's turn → auto-open the pause
+                  // menu; tapping 继续 resumes with a fresh dial.
+                  onTimeout: () => unawaited(_showPause(context)),
                 ),
               ),
               Positioned(
@@ -744,11 +747,14 @@ class _XiangqiTurnTimer extends StatefulWidget {
     required this.token,
     required this.paused,
     required this.timeout,
+    this.onTimeout,
   });
 
   final String token;
   final bool paused;
   final Duration timeout;
+  // Fired once when the dial hits 0 while it is the user's turn.
+  final VoidCallback? onTimeout;
 
   @override
   State<_XiangqiTurnTimer> createState() => _XiangqiTurnTimerState();
@@ -757,6 +763,7 @@ class _XiangqiTurnTimer extends StatefulWidget {
 class _XiangqiTurnTimerState extends State<_XiangqiTurnTimer> {
   Timer? _timer;
   late int _remaining;
+  bool _timedOut = false;
 
   @override
   void initState() {
@@ -765,6 +772,10 @@ class _XiangqiTurnTimerState extends State<_XiangqiTurnTimer> {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || widget.paused || _remaining <= 0) return;
       setState(() => _remaining -= 1);
+      if (_remaining == 0 && !_timedOut) {
+        _timedOut = true;
+        widget.onTimeout?.call();
+      }
     });
   }
 
@@ -773,7 +784,14 @@ class _XiangqiTurnTimerState extends State<_XiangqiTurnTimer> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.token != widget.token ||
         oldWidget.timeout != widget.timeout) {
+      // New turn → fresh dial.
       _remaining = widget.timeout.inSeconds;
+      _timedOut = false;
+    } else if (oldWidget.paused && !widget.paused && _timedOut) {
+      // Resumed after a timeout (user tapped 继续 on the auto pause menu) →
+      // give a fresh turn instead of staying stuck at 0.
+      _remaining = widget.timeout.inSeconds;
+      _timedOut = false;
     }
   }
 
