@@ -2027,6 +2027,13 @@ class _GomokuResultScreenState extends State<_GomokuResultScreen>
   ];
 
   List<Widget> _losePieces(double w, double h) => [
+    // Radial glow burst behind the sad sun (Figma Group 62 — the dimmed
+    // dark-ray counterpart of the win glow). Drawn first, under the sun.
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.28, wFrac: 1.1,
+      aspect: 1339 / 1179, begin: 0.06, end: 0.42,
+      child: _img('result_lose_glow.png'),
+    ),
     // Sad sun drops in behind the ribbon.
     _piece(
       screenW: w, screenH: h, cx: 0.5, cy: 0.282, wFrac: 0.4606,
