@@ -18,10 +18,11 @@ class _NativeGomokuGamePage extends StatefulWidget {
 class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
   late final _NativeGameRuntime _runtime;
   GomokuEngine? _engine;
-  // True after the user quits / restarts mid-game: the round is settled as a
-  // loss (points deducted) and the 失败 result screen is shown, matching the
-  // reversi behaviour.
-  bool _forfeited = false;
+  // Non-null once the round ends (win/lose): the full-screen result replaces
+  // the game (like reversi), so the board / avatars / turn countdown are torn
+  // down rather than left running behind an overlay.
+  _GomokuResultKind? _result;
+  Timer? _resultTimer;
 
   String get _agentName => _runtime.agentName;
 
@@ -41,6 +42,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
 
   @override
   void dispose() {
+    _resultTimer?.cancel();
     _runtime.dispose();
     unawaited(
       _runtime.abort(
@@ -61,9 +63,11 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
       'board_size': GomokuEngine.boardSize,
       'first_actor': 'user',
     });
+    _resultTimer?.cancel();
+    _resultTimer = null;
     if (session == null || !mounted) return;
     setState(() {
-      _forfeited = false;
+      _result = null;
       _engine = GomokuEngine(
         aiConfig: GomokuAiConfig.fromJson(session.engineConfig),
       );
@@ -79,9 +83,11 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
       );
     }
     _runtime.clearPresentation();
+    _resultTimer?.cancel();
+    _resultTimer = null;
     if (!mounted) return;
     setState(() {
-      _forfeited = false;
+      _result = null;
       _engine = null;
     });
   }
@@ -90,8 +96,8 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
   /// score is deducted, then show the 失败 result screen (its buttons then do
   /// the real exit / restart). No-op if the round already ended or settled.
   Future<void> _forfeit() async {
-    if (_forfeited || _engine == null || _runtime.completed) return;
-    setState(() => _forfeited = true);
+    if (_result != null || _engine == null || _runtime.completed) return;
+    setState(() => _result = _GomokuResultKind.lose);
     await _finishGame(GomokuGameStatus.agentWon);
   }
 
@@ -206,39 +212,71 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
   @override
   Widget build(BuildContext context) {
     final engine = _engine;
-    // Before a round starts, show the illustrated Gomoku home (1:1 with the
-    // game-art design). Starting a game replaces it with the board surface.
+    // When a round ends naturally, hold the final board briefly, then reveal
+    // the full-screen result (win for the user, otherwise loss).
+    if (engine != null &&
+        engine.isFinished &&
+        _result == null &&
+        _resultTimer == null) {
+      final win = engine.status == GomokuGameStatus.userWon;
+      _resultTimer = Timer(const Duration(milliseconds: 1400), () {
+        if (!mounted || _result != null) return;
+        setState(
+          () => _result = win ? _GomokuResultKind.win : _GomokuResultKind.lose,
+        );
+      });
+    }
+
+    final Widget child;
     if (engine == null) {
-      return _GomokuHome(
+      // Before a round starts, show the illustrated Gomoku home (1:1 with the
+      // game-art design). Starting a game replaces it with the board surface.
+      child = _GomokuHome(
+        key: const ValueKey('gomoku-home'),
         rounds: _runtime.rounds,
         starting: _runtime.starting,
         error: _runtime.error,
         onStart: _startGame,
         onExit: () => Navigator.of(context).maybePop(),
       );
-    }
-    return PopScope(
-      // An active round can only be left through the in-game exit/pause UI.
-      // This also disables the iOS edge-swipe back gesture.
-      canPop: false,
-      child: _GomokuGameScreen(
-        engine: engine,
-        agentName: _agentName,
-        userName: widget.authSession.userFacingName,
-        agentAvatarUrl: widget.authSession.agentAvatarUrl,
-        userAvatarUrl: widget.authSession.userAvatarUrl,
-        aiThinking: _runtime.aiThinking,
-        starting: _runtime.starting,
-        syncNotice: _runtime.syncNotice,
-        onPointTap: _handleBoardTap,
+    } else if (_result != null) {
+      // Full-screen result replaces the game (board / avatars / countdown are
+      // torn down), so nothing keeps running behind it.
+      child = _GomokuResultScreen(
+        key: const ValueKey('gomoku-result'),
+        kind: _result!,
         onRestart: _startGame,
         onExit: _closeGame,
-        onForfeit: _forfeit,
-        forfeited: _forfeited,
-        bannerInMs: _runtime.bannerInMs,
-        bannerHoldMs: _runtime.bannerHoldMs,
-        bannerOutMs: _runtime.bannerOutMs,
-      ),
+      );
+    } else {
+      child = PopScope(
+        // An active round can only be left through the in-game exit/pause UI.
+        // This also disables the iOS edge-swipe back gesture.
+        key: const ValueKey('gomoku-game'),
+        canPop: false,
+        child: _GomokuGameScreen(
+          engine: engine,
+          agentName: _agentName,
+          userName: widget.authSession.userFacingName,
+          agentAvatarUrl: widget.authSession.agentAvatarUrl,
+          userAvatarUrl: widget.authSession.userAvatarUrl,
+          aiThinking: _runtime.aiThinking,
+          starting: _runtime.starting,
+          syncNotice: _runtime.syncNotice,
+          onPointTap: _handleBoardTap,
+          // Quitting / restarting mid-game counts as a loss (design note).
+          onShowLose: _forfeit,
+          bannerInMs: _runtime.bannerInMs,
+          bannerHoldMs: _runtime.bannerHoldMs,
+          bannerOutMs: _runtime.bannerOutMs,
+        ),
+      );
+    }
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 320),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: child,
     );
   }
 }
@@ -651,6 +689,7 @@ class _GomokuBreathingMotionState extends State<_GomokuBreathingMotion>
 
 class _GomokuHome extends StatelessWidget {
   const _GomokuHome({
+    super.key,
     required this.rounds,
     required this.starting,
     required this.error,
@@ -957,10 +996,7 @@ class _GomokuGameScreen extends StatefulWidget {
     required this.starting,
     required this.syncNotice,
     required this.onPointTap,
-    required this.onRestart,
-    required this.onExit,
-    required this.onForfeit,
-    required this.forfeited,
+    required this.onShowLose,
     required this.bannerInMs,
     required this.bannerHoldMs,
     required this.bannerOutMs,
@@ -975,11 +1011,8 @@ class _GomokuGameScreen extends StatefulWidget {
   final bool starting;
   final String? syncNotice;
   final ValueChanged<GomokuPoint> onPointTap;
-  final Future<void> Function() onRestart;
-  final VoidCallback onExit;
-  // Quitting / restarting mid-game: settle as a loss and show the 失败 screen.
-  final Future<void> Function() onForfeit;
-  final bool forfeited;
+  // Quitting / restarting mid-game → settle as a loss and show the 失败 screen.
+  final Future<void> Function() onShowLose;
   // "你的回合" banner timing (ms), from the per-game admin config.
   final int bannerInMs;
   final int bannerHoldMs;
@@ -994,44 +1027,6 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
   // freezes instead of ticking behind the dialog.
   bool _paused = false;
 
-  // The result overlay is held back briefly after the game finishes so the
-  // finishing move stays visible first. Kept in this stable state (not a child
-  // widget) so a sibling rebuild can't reset the delay and re-flash the popup.
-  bool _resultReady = false;
-  Timer? _resultTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _syncResultDelay();
-  }
-
-  @override
-  void didUpdateWidget(covariant _GomokuGameScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _syncResultDelay();
-  }
-
-  void _syncResultDelay() {
-    if (widget.engine.isFinished) {
-      if (!_resultReady && _resultTimer == null) {
-        _resultTimer = Timer(const Duration(milliseconds: 1400), () {
-          if (mounted) setState(() => _resultReady = true);
-        });
-      }
-    } else if (_resultReady || _resultTimer != null) {
-      _resultTimer?.cancel();
-      _resultTimer = null;
-      _resultReady = false;
-    }
-  }
-
-  @override
-  void dispose() {
-    _resultTimer?.cancel();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final engine = widget.engine;
@@ -1043,8 +1038,6 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
     final starting = widget.starting;
     final syncNotice = widget.syncNotice;
     final onPointTap = widget.onPointTap;
-    final onRestart = widget.onRestart;
-    final onExit = widget.onExit;
     final finished = engine.isFinished;
     final userTurn =
         !finished &&
@@ -1209,21 +1202,6 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
                   ),
                 ),
               ),
-
-              // Held back ~1.4s after finish so the winning line stays visible
-              // before the overlay covers the board.
-              // Shown on a natural finish (after the winning-line delay) or
-              // immediately on a forfeit (quit / restart mid-game).
-              if (widget.forfeited || (finished && _resultReady))
-                _GomokuResultScreen(
-                  kind:
-                      !widget.forfeited &&
-                          engine.status == GomokuGameStatus.userWon
-                      ? _GomokuResultKind.win
-                      : _GomokuResultKind.lose,
-                  onRestart: onRestart,
-                  onExit: onExit,
-                ),
             ],
           );
         },
@@ -1274,7 +1252,7 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
             onTap: () {
               Navigator.of(dialogContext).pop();
               // Quitting mid-game → 失败 + 扣分; the 失败 screen's 退出 then leaves.
-              unawaited(widget.onForfeit());
+              unawaited(widget.onShowLose());
             },
           ),
         ),
@@ -1313,7 +1291,7 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
               Navigator.of(dialogContext).pop();
               // Restarting mid-game → 失败 + 扣分; the 失败 screen's 重来一局 then
               // starts the new round.
-              unawaited(widget.onForfeit());
+              unawaited(widget.onShowLose());
             },
           ),
         ),
@@ -1854,6 +1832,7 @@ enum _GomokuResultKind { win, lose }
 /// nodes 248:89 / 248:113).
 class _GomokuResultScreen extends StatefulWidget {
   const _GomokuResultScreen({
+    super.key,
     required this.kind,
     required this.onRestart,
     required this.onExit,
@@ -1893,9 +1872,6 @@ class _GomokuResultScreenState extends State<_GomokuResultScreen>
     _c.dispose();
     super.dispose();
   }
-
-  double _fade(double a, double b) =>
-      ((_c.value - a) / (b - a)).clamp(0.0, 1.0);
 
   Widget _img(String name) =>
       Image.asset('$_gomokuHomeAsset$name', fit: BoxFit.fill);
@@ -1971,8 +1947,11 @@ class _GomokuResultScreenState extends State<_GomokuResultScreen>
   @override
   Widget build(BuildContext context) {
     final win = widget.kind == _GomokuResultKind.win;
-    return Positioned.fill(
-      child: LayoutBuilder(
+    return Scaffold(
+      // Sandy canyon tone behind the bg image, so the page-level cross-fade in
+      // never flashes white.
+      backgroundColor: const Color(0xFFEAD1A2),
+      body: LayoutBuilder(
         builder: (context, constraints) {
           final w = constraints.maxWidth;
           final h = constraints.maxHeight;
@@ -1981,13 +1960,12 @@ class _GomokuResultScreenState extends State<_GomokuResultScreen>
             builder: (context, _) {
               return Stack(
                 children: [
+                  // Opaque immediately (the page cross-fades the whole screen
+                  // in); only the emblem/ribbon/score/buttons stagger.
                   Positioned.fill(
-                    child: Opacity(
-                      opacity: _fade(0.0, 0.25),
-                      child: Image.asset(
-                        '${_gomokuHomeAsset}result_bg.png',
-                        fit: BoxFit.cover,
-                      ),
+                    child: Image.asset(
+                      '${_gomokuHomeAsset}result_bg.png',
+                      fit: BoxFit.cover,
                     ),
                   ),
                   ...win ? _winPieces(w, h) : _losePieces(w, h),
@@ -2001,6 +1979,14 @@ class _GomokuResultScreenState extends State<_GomokuResultScreen>
   }
 
   List<Widget> _winPieces(double w, double h) => [
+    // Radial light-ray burst behind the sun (Figma Group 59 — blurred sunburst
+    // glow). Drawn first so the emblem covers its bright centre and only the
+    // soft rays radiate out around the sun/ribbon.
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.29, wFrac: 1.1,
+      aspect: 1339 / 1179, begin: 0.06, end: 0.42,
+      child: _img('result_win_glow.png'),
+    ),
     // Sun + ribbon emblem (combined art) drops in.
     _piece(
       screenW: w, screenH: h, cx: 0.5, cy: 0.298, wFrac: 0.829,
