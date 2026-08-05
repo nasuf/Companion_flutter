@@ -326,6 +326,7 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
           bannerInMs: _runtime.bannerInMs,
           bannerHoldMs: _runtime.bannerHoldMs,
           bannerOutMs: _runtime.bannerOutMs,
+          gamePoints: _runtime.gamePoints,
           // Quitting or restarting mid-game counts as a loss (design note).
           onShowLose: () {
             if (mounted && _result == null) {
@@ -652,6 +653,7 @@ class _ReversiGameScreen extends StatefulWidget {
     required this.bannerInMs,
     required this.bannerHoldMs,
     required this.bannerOutMs,
+    required this.gamePoints,
   });
 
   final ReversiEngine engine;
@@ -676,6 +678,8 @@ class _ReversiGameScreen extends StatefulWidget {
   final int bannerInMs;
   final int bannerHoldMs;
   final int bannerOutMs;
+  // Current game points, shown in the top-right coin badge.
+  final int? gamePoints;
 
   @override
   State<_ReversiGameScreen> createState() => _ReversiGameScreenState();
@@ -857,6 +861,7 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                   outMs: widget.bannerOutMs,
                 ),
               ),
+              _NativeGamePointsBadge(points: widget.gamePoints),
             ],
           );
         },

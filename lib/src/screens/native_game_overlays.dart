@@ -676,3 +676,44 @@ Duration _nativeGameTurnTimeout(String gameKey) => switch (gameKey) {
   _nativeTetrisDuelGameKey => const Duration(seconds: 15),
   _ => const Duration(seconds: 45),
 };
+
+/// Coin/points badge shown in the top-right of every in-game screen (mirrors
+/// the games-hub badge). Deliberately NOT placed on the game home or the
+/// win/lose result screens — only while a round is being played. Drop it into a
+/// full-screen game Stack; it positions itself below the status bar.
+class _NativeGamePointsBadge extends StatelessWidget {
+  const _NativeGamePointsBadge({required this.points});
+
+  final int? points;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: MediaQuery.paddingOf(context).top + 8,
+      right: 14,
+      child: _HubCoinBar(
+        scale: 1,
+        balance: points,
+        onPlus: () => _showNativeGamePointsInfo(context),
+      ),
+    );
+  }
+}
+
+void _showNativeGamePointsInfo(BuildContext context) {
+  showCupertinoDialog<void>(
+    context: context,
+    builder: (dialogContext) => CupertinoAlertDialog(
+      title: const Text('游戏积分'),
+      content: const Text(
+        '每天会自动赠送一份游戏积分，玩过的对局也会累计成陪玩等级。',
+      ),
+      actions: [
+        CupertinoDialogAction(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('知道了'),
+        ),
+      ],
+    ),
+  );
+}

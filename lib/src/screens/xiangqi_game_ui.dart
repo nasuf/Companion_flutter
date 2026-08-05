@@ -319,6 +319,7 @@ class _XiangqiGameScreen extends StatelessWidget {
     required this.bannerInMs,
     required this.bannerHoldMs,
     required this.bannerOutMs,
+    required this.gamePoints,
   });
 
   final ChessFamilyEngine engine;
@@ -346,6 +347,8 @@ class _XiangqiGameScreen extends StatelessWidget {
   final int bannerInMs;
   final int bannerHoldMs;
   final int bannerOutMs;
+  // Current game points, shown in the top-right coin badge.
+  final int? gamePoints;
 
   @override
   Widget build(BuildContext context) {
@@ -504,6 +507,7 @@ class _XiangqiGameScreen extends StatelessWidget {
                   onTap: () => unawaited(_showPause(context)),
                 ),
               ),
+              _NativeGamePointsBadge(points: gamePoints),
             ],
           );
         },

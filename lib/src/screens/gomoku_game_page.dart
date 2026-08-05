@@ -269,6 +269,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
           bannerInMs: _runtime.bannerInMs,
           bannerHoldMs: _runtime.bannerHoldMs,
           bannerOutMs: _runtime.bannerOutMs,
+          gamePoints: _runtime.gamePoints,
         ),
       );
     }
@@ -1000,6 +1001,7 @@ class _GomokuGameScreen extends StatefulWidget {
     required this.bannerInMs,
     required this.bannerHoldMs,
     required this.bannerOutMs,
+    required this.gamePoints,
   });
 
   final GomokuEngine engine;
@@ -1017,6 +1019,8 @@ class _GomokuGameScreen extends StatefulWidget {
   final int bannerInMs;
   final int bannerHoldMs;
   final int bannerOutMs;
+  // Current game points, shown in the top-right coin badge.
+  final int? gamePoints;
 
   @override
   State<_GomokuGameScreen> createState() => _GomokuGameScreenState();
@@ -1202,6 +1206,7 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
                   ),
                 ),
               ),
+              _NativeGamePointsBadge(points: widget.gamePoints),
             ],
           );
         },
