@@ -1646,6 +1646,23 @@ class _ReversiLegalHint extends StatelessWidget {
 
 enum _ReversiResultKind { win, lose }
 
+/// Clips a child to the top [fraction] of its height. Used to show only the
+/// rope coil from the rope+tablet art, so the hanging stone tablet never peeks
+/// out below the coil (design note: 只显示吊绳).
+class _TopFractionClipper extends CustomClipper<Rect> {
+  const _TopFractionClipper(this.fraction);
+
+  final double fraction;
+
+  @override
+  Rect getClip(Size size) =>
+      Rect.fromLTWH(0, 0, size.width, size.height * fraction);
+
+  @override
+  bool shouldReclip(covariant _TopFractionClipper oldClipper) =>
+      oldClipper.fraction != fraction;
+}
+
 /// Result-screen button (再来一局 / 确认) with a subtle press-in scale so a tap
 /// reads as physical instead of a flat hit target.
 class _ReversiResultButton extends StatefulWidget {
@@ -1761,6 +1778,17 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
   Widget _img(String name) =>
       Image.asset('$_reversiAsset$name', fit: BoxFit.fill);
 
+  // Rope coil only (top slice of the rope+tablet art) so the stone tablet is
+  // never revealed below the coil.
+  Widget _ropeCoil({bool flip = false}) {
+    Widget coil = ClipRect(
+      clipper: const _TopFractionClipper(0.36),
+      child: _img('result_lose_rope.png'),
+    );
+    if (flip) coil = Transform.flip(flipX: true, child: coil);
+    return coil;
+  }
+
   // Positions a piece centered at (cx,cy) fractions with width [wFrac]; height
   // follows the art's [aspect] (h/w). Drops in from above or pops (scale).
   Widget _piece({
@@ -1810,18 +1838,25 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
     );
   }
 
-  Widget _scoreContent(String labelAsset, String numAsset) {
+  Widget _scoreContent(
+    String labelAsset,
+    String numAsset, {
+    Alignment align = Alignment.center,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Image.asset('$_reversiAsset$labelAsset', height: 30),
-            const SizedBox(width: 8),
-            Image.asset('$_reversiAsset$numAsset', height: 34),
-          ],
+      child: Align(
+        alignment: align,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset('$_reversiAsset$labelAsset', height: 30),
+              const SizedBox(width: 8),
+              Image.asset('$_reversiAsset$numAsset', height: 34),
+            ],
+          ),
         ),
       ),
     );
@@ -1909,46 +1944,66 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
     );
   }
 
+  // Positions measured from Figma 胜利弹窗 (frame 393x852, node 125:1136):
+  // emblem 42,193,309x329 · ribbon 36,349,321x102 · 积分 147,456,100x55 ·
+  // buttons 37/224,588,136x54 · 胜利 text 104,364,187x47.
   List<Widget> _winPieces(double w, double h) => [
+    // Sun emblem stone — sits lower than before so the ribbon can cross its
+    // lower third (design: centre y ~0.42, not near the top).
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.275, wFrac: 0.68,
-      aspect: 987 / 927, begin: 0.12, end: 0.5, drop: true,
+      screenW: w, screenH: h, cx: 0.5, cy: 0.4196, wFrac: 0.786,
+      aspect: 329 / 309, begin: 0.12, end: 0.5, drop: true,
       child: _img('result_win_emblem.png'),
     ),
+    // "胜利" ribbon over the emblem's lower third. The 胜利 art is centred on the
+    // red banner body (~0.38 of the ribbon box height), not the box centre.
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.455, wFrac: 0.6,
-      aspect: 306 / 963, begin: 0.4, end: 0.64, drop: false,
+      screenW: w, screenH: h, cx: 0.5, cy: 0.4695, wFrac: 0.8168,
+      aspect: 102 / 321, begin: 0.4, end: 0.64, drop: false,
       child: Stack(
         alignment: Alignment.center,
         children: [
           Positioned.fill(child: _img('result_win_ribbon.png')),
-          FractionallySizedBox(
-            widthFactor: 0.42,
-            heightFactor: 0.6,
-            child: Image.asset(
-              '${_reversiAsset}result_win_title.png',
-              fit: BoxFit.contain,
+          // Upper thicker part of the band (height OK per review). Nudged right
+          // because the title art's visible mass sits left of centre (its drop
+          // shadow pads the right edge), so a centred box reads slightly left.
+          Align(
+            alignment: const Alignment(0.09, -0.5),
+            child: FractionallySizedBox(
+              widthFactor: 0.52,
+              heightFactor: 0.4,
+              child: Image.asset(
+                '${_reversiAsset}result_win_title.png',
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+    // "积分" hanging sign, just below the ribbon.
+    _piece(
+      screenW: w, screenH: h, cx: 0.501, cy: 0.5675, wFrac: 0.2545,
+      aspect: 55 / 100, begin: 0.52, end: 0.76, drop: false,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned.fill(child: _img('result_win_scroll.png')),
+          // Biased down onto the lower body of the parchment panel (rope loops
+          // sit above it, so a centred score reads "high").
+          Positioned.fill(
+            child: _scoreContent(
+              'result_txt_score.png',
+              'result_win_num.png',
+              align: const Alignment(0, 0.85),
             ),
           ),
         ],
       ),
     ),
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.56, wFrac: 0.4,
-      aspect: 165 / 300, begin: 0.52, end: 0.76, drop: false,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Positioned.fill(child: _img('result_win_scroll.png')),
-          Positioned.fill(
-            child: _scoreContent('result_txt_score.png', 'result_win_num.png'),
-          ),
-        ],
-      ),
-    ),
-    _piece(
-      screenW: w, screenH: h, cx: 0.28, cy: 0.72, wFrac: 0.31,
-      aspect: 162 / 408, begin: 0.68, end: 0.92, drop: false,
+      screenW: w, screenH: h, cx: 0.267, cy: 0.722, wFrac: 0.346,
+      aspect: 54 / 136, begin: 0.68, end: 0.92, drop: false,
       child: _button(
         base: 'result_win_btn.png',
         text: 'result_txt_again.png',
@@ -1957,8 +2012,8 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
       ),
     ),
     _piece(
-      screenW: w, screenH: h, cx: 0.72, cy: 0.72, wFrac: 0.31,
-      aspect: 162 / 408, begin: 0.74, end: 0.98, drop: false,
+      screenW: w, screenH: h, cx: 0.743, cy: 0.722, wFrac: 0.346,
+      aspect: 54 / 136, begin: 0.74, end: 0.98, drop: false,
       child: _button(
         base: 'result_win_btn.png',
         text: 'result_txt_ok.png',
@@ -1981,13 +2036,15 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
       aspect: 327 / 309, begin: 0.3, end: 0.54, drop: false,
       child: _img('result_lose_swords.png'),
     ),
-    // Crossed bones tied into the two bottom corners of the frame. Seated with
-    // a slight tilt so they lie into the corner like the design.
+    // Crossed bones tied into the two bottom corners. The long bone reads as a
+    // "/" on the left and its mirror "\" on the right, matching the design
+    // (the asset's long bone sits near-horizontal, so it needs a counter-
+    // clockwise tilt on the left and the mirror on the right).
     _piece(
       screenW: w, screenH: h, cx: 0.242, cy: 0.62, wFrac: 0.15,
       aspect: 250 / 258, begin: 0.5, end: 0.72, drop: false,
       child: Transform.rotate(
-        angle: 0.18,
+        angle: -0.7,
         child: _img('result_lose_bones.png'),
       ),
     ),
@@ -1995,31 +2052,33 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
       screenW: w, screenH: h, cx: 0.758, cy: 0.62, wFrac: 0.15,
       aspect: 250 / 258, begin: 0.5, end: 0.72, drop: false,
       child: Transform.rotate(
-        angle: -0.18,
+        angle: 0.7,
         child: Transform.flip(
           flipX: true,
           child: _img('result_lose_bones.png'),
         ),
       ),
     ),
-    // Hanging pendant: the two ropes and the "失败" plate drop from above as a
-    // group and swing on the ropes before settling. The ropes are drawn BEFORE
-    // the plate so the plate hides the ropes' stone-tablet tails — only the
-    // coil peeks out above the plate (design note: 只漏出绳子).
+    // Hanging pendant: the two rope coils and the "失败" plate drop from above
+    // as a group and swing before settling. Only the coil is shown (tablet
+    // clipped away), and the plate rides just under the coils.
+    // Rope coils centred on the frame's two tiki blocks. The frame art leans
+    // slightly right, so the right tiki sits further right than a mirror of the
+    // left — tuned on-device to 0.360 / 0.662.
     _hang(
-      screenW: w, screenH: h, cx: 0.349, cy: 0.372, wFrac: 0.072,
+      screenW: w, screenH: h, cx: 0.360, cy: 0.365, wFrac: 0.072,
       aspect: 249 / 84,
-      child: _img('result_lose_rope.png'),
+      child: _ropeCoil(),
     ),
     _hang(
-      screenW: w, screenH: h, cx: 0.655, cy: 0.372, wFrac: 0.072,
+      screenW: w, screenH: h, cx: 0.662, cy: 0.365, wFrac: 0.072,
       aspect: 249 / 84,
-      child: Transform.flip(flipX: true, child: _img('result_lose_rope.png')),
+      child: _ropeCoil(flip: true),
     ),
-    // "失败" title plate — slightly right of centre to sit under the ropes
-    // (design note: 靠右居中一些).
+    // "失败" title plate — slightly right of centre, raised so its top meets the
+    // rope coils (design note: 靠右居中一些 + 板子上移).
     _hang(
-      screenW: w, screenH: h, cx: 0.515, cy: 0.41, wFrac: 0.405,
+      screenW: w, screenH: h, cx: 0.515, cy: 0.395, wFrac: 0.405,
       aspect: 282 / 492,
       child: Stack(
         alignment: Alignment.center,
