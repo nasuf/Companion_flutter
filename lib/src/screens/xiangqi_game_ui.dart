@@ -365,10 +365,13 @@ class _XiangqiGameScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              // Symmetric avatars / name plates at the same height, with the
+              // countdown holder centred between them (design 象棋-游戏,
+              // frame 393x852).
               Positioned(
-                left: width * (37 / 393),
-                top: height * (71 / 852),
-                width: width * (100 / 393),
+                left: width * (46 / 393),
+                top: height * (96 / 852),
+                width: width * (66 / 393),
                 child: _XiangqiAvatar(
                   frameAsset: '${_xiangqiAsset}game_avatar_frame_user.png',
                   imageUrl: userAvatarUrl,
@@ -378,9 +381,9 @@ class _XiangqiGameScreen extends StatelessWidget {
                 ),
               ),
               Positioned(
-                left: width * (262 / 393),
-                top: height * (132 / 852),
-                width: width * (100 / 393),
+                left: width * (281 / 393),
+                top: height * (95 / 852),
+                width: width * (65 / 393),
                 child: _XiangqiAvatar(
                   frameAsset: '${_xiangqiAsset}game_avatar_frame_agent.png',
                   imageUrl: agentAvatarUrl,
@@ -390,7 +393,7 @@ class _XiangqiGameScreen extends StatelessWidget {
                 ),
               ),
               Positioned(
-                left: width * (147 / 393),
+                left: width * (144 / 393),
                 top: height * (104 / 852),
                 width: width * (105 / 393),
                 child: _GomokuBreathingMotion(
@@ -405,8 +408,8 @@ class _XiangqiGameScreen extends StatelessWidget {
                 ),
               ),
               Positioned(
-                left: width * (135 / 393),
-                top: height * (132 / 852),
+                left: width * (132 / 393),
+                top: height * (130 / 852),
                 width: width * (130 / 393),
                 height: height * (33 / 852),
                 child: _XiangqiTurnTimer(
@@ -420,21 +423,23 @@ class _XiangqiGameScreen extends StatelessWidget {
                 ),
               ),
               Positioned(
-                left: width * (16 / 393),
-                top: height * (173 / 852),
+                left: width * (8 / 393),
+                top: height * (171 / 852),
                 width: width * (141 / 393),
                 child: _XiangqiNamePlate(
                   asset: '${_xiangqiAsset}game_name_user.png',
                   name: userName,
+                  active: userTurn,
                 ),
               ),
               Positioned(
-                left: width * (239 / 393),
-                top: height * (235 / 852),
+                left: width * (243 / 393),
+                top: height * (171 / 852),
                 width: width * (141 / 393),
                 child: _XiangqiNamePlate(
                   asset: '${_xiangqiAsset}game_name_agent.png',
                   name: agentName,
+                  active: agentTurn,
                 ),
               ),
               Positioned(
@@ -652,19 +657,48 @@ class _XiangqiAvatar extends StatelessWidget {
 }
 
 class _XiangqiNamePlate extends StatelessWidget {
-  const _XiangqiNamePlate({required this.asset, required this.name});
+  const _XiangqiNamePlate({
+    required this.asset,
+    required this.name,
+    this.active = false,
+  });
 
   final String asset;
   final String name;
+  // True while it is this player's turn — swaps to the lit plate and shows a
+  // soft glow halo behind it.
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
     return AspectRatio(
       aspectRatio: 141 / 40,
       child: Stack(
+        clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: [
-          Positioned.fill(child: Image.asset(asset, fit: BoxFit.fill)),
+          if (active)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: _GomokuBreathingMotion(
+                  duration: const Duration(milliseconds: 1800),
+                  scaleAmount: 0.04,
+                  child: Transform.scale(
+                    scale: 1.28,
+                    child: Image.asset(
+                      '${_xiangqiAsset}game_glow_halo.png',
+                      fit: BoxFit.fill,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          Positioned.fill(
+            child: Image.asset(
+              active ? '${_xiangqiAsset}game_name_glow.png' : asset,
+              fit: BoxFit.fill,
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: FittedBox(
