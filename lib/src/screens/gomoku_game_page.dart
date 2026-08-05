@@ -18,6 +18,10 @@ class _NativeGomokuGamePage extends StatefulWidget {
 class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
   late final _NativeGameRuntime _runtime;
   GomokuEngine? _engine;
+  // True after the user quits / restarts mid-game: the round is settled as a
+  // loss (points deducted) and the 失败 result screen is shown, matching the
+  // reversi behaviour.
+  bool _forfeited = false;
 
   String get _agentName => _runtime.agentName;
 
@@ -59,6 +63,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     });
     if (session == null || !mounted) return;
     setState(() {
+      _forfeited = false;
       _engine = GomokuEngine(
         aiConfig: GomokuAiConfig.fromJson(session.engineConfig),
       );
@@ -76,8 +81,18 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     _runtime.clearPresentation();
     if (!mounted) return;
     setState(() {
+      _forfeited = false;
       _engine = null;
     });
+  }
+
+  /// Quitting or restarting mid-game counts as a loss: settle the round so the
+  /// score is deducted, then show the 失败 result screen (its buttons then do
+  /// the real exit / restart). No-op if the round already ended or settled.
+  Future<void> _forfeit() async {
+    if (_forfeited || _engine == null || _runtime.completed) return;
+    setState(() => _forfeited = true);
+    await _finishGame(GomokuGameStatus.agentWon);
   }
 
   Future<void> _handleBoardTap(GomokuPoint point) async {
@@ -218,6 +233,8 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
         onPointTap: _handleBoardTap,
         onRestart: _startGame,
         onExit: _closeGame,
+        onForfeit: _forfeit,
+        forfeited: _forfeited,
         bannerInMs: _runtime.bannerInMs,
         bannerHoldMs: _runtime.bannerHoldMs,
         bannerOutMs: _runtime.bannerOutMs,
@@ -942,6 +959,8 @@ class _GomokuGameScreen extends StatefulWidget {
     required this.onPointTap,
     required this.onRestart,
     required this.onExit,
+    required this.onForfeit,
+    required this.forfeited,
     required this.bannerInMs,
     required this.bannerHoldMs,
     required this.bannerOutMs,
@@ -958,6 +977,9 @@ class _GomokuGameScreen extends StatefulWidget {
   final ValueChanged<GomokuPoint> onPointTap;
   final Future<void> Function() onRestart;
   final VoidCallback onExit;
+  // Quitting / restarting mid-game: settle as a loss and show the 失败 screen.
+  final Future<void> Function() onForfeit;
+  final bool forfeited;
   // "你的回合" banner timing (ms), from the per-game admin config.
   final int bannerInMs;
   final int bannerHoldMs;
@@ -1190,11 +1212,15 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
 
               // Held back ~1.4s after finish so the winning line stays visible
               // before the overlay covers the board.
-              if (finished && _resultReady)
-                _GomokuFinishOverlay(
-                  status: engine.status,
-                  agentName: agentName,
-                  restarting: starting,
+              // Shown on a natural finish (after the winning-line delay) or
+              // immediately on a forfeit (quit / restart mid-game).
+              if (widget.forfeited || (finished && _resultReady))
+                _GomokuResultScreen(
+                  kind:
+                      !widget.forfeited &&
+                          engine.status == GomokuGameStatus.userWon
+                      ? _GomokuResultKind.win
+                      : _GomokuResultKind.lose,
                   onRestart: onRestart,
                   onExit: onExit,
                 ),
@@ -1247,7 +1273,8 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
             label: '退出',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              widget.onExit();
+              // Quitting mid-game → 失败 + 扣分; the 失败 screen's 退出 then leaves.
+              unawaited(widget.onForfeit());
             },
           ),
         ),
@@ -1284,7 +1311,9 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
             label: '重新开局',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              unawaited(widget.onRestart());
+              // Restarting mid-game → 失败 + 扣分; the 失败 screen's 重来一局 then
+              // starts the new round.
+              unawaited(widget.onForfeit());
             },
           ),
         ),
@@ -1817,81 +1846,306 @@ class _GomokuGameButtonState extends State<_GomokuGameButton> {
 }
 
 /// Simple result overlay shown when a round ends.
-class _GomokuFinishOverlay extends StatelessWidget {
-  const _GomokuFinishOverlay({
-    required this.status,
-    required this.agentName,
-    required this.restarting,
+enum _GomokuResultKind { win, lose }
+
+/// Full-screen 五子棋 win / lose result scene, composed from the exported art
+/// pieces (bg → sun/emblem → ribbon/title → 积分 → buttons) with a staggered
+/// pop-in. Positions measured from Figma 五子棋-胜利/失败 (frame 393x852,
+/// nodes 248:89 / 248:113).
+class _GomokuResultScreen extends StatefulWidget {
+  const _GomokuResultScreen({
+    required this.kind,
     required this.onRestart,
     required this.onExit,
   });
 
-  final GomokuGameStatus status;
-  final String agentName;
-  final bool restarting;
+  final _GomokuResultKind kind;
   final Future<void> Function() onRestart;
   final VoidCallback onExit;
 
   @override
+  State<_GomokuResultScreen> createState() => _GomokuResultScreenState();
+}
+
+class _GomokuResultScreenState extends State<_GomokuResultScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1300),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+        _c.value = 1;
+      } else {
+        _c.forward();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  double _fade(double a, double b) =>
+      ((_c.value - a) / (b - a)).clamp(0.0, 1.0);
+
+  Widget _img(String name) =>
+      Image.asset('$_gomokuHomeAsset$name', fit: BoxFit.fill);
+
+  // Positions a piece centered at (cx,cy) fractions with width [wFrac]; height
+  // follows the art's [aspect] (h/w). Pops (scale) or drops in from above.
+  Widget _piece({
+    required double screenW,
+    required double screenH,
+    required double cx,
+    required double cy,
+    required double wFrac,
+    required double aspect,
+    required double begin,
+    required double end,
+    bool drop = false,
+    required Widget child,
+  }) {
+    final p = ((_c.value - begin) / (end - begin)).clamp(0.0, 1.0);
+    final eased = Curves.easeOutBack.transform(p);
+    final opacity = (p * 2.4).clamp(0.0, 1.0);
+    final width = screenW * wFrac;
+    final height = width * aspect;
+    final dy = drop
+        ? -screenH * 0.10 * (1 - Curves.easeOutCubic.transform(p))
+        : 0.0;
+    final scale = drop ? 1.0 : (0.7 + 0.3 * eased);
+    return Positioned(
+      left: screenW * cx - width / 2,
+      top: screenH * cy - height / 2 + dy,
+      width: width,
+      height: height,
+      child: Opacity(
+        opacity: opacity,
+        child: Transform.scale(scale: scale, child: child),
+      ),
+    );
+  }
+
+  Widget _scoreContent(String numAsset) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset('${_gomokuHomeAsset}result_score_label.png', height: 28),
+            const SizedBox(width: 7),
+            Image.asset('$_gomokuHomeAsset$numAsset', height: 28),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _button({
+    required String base,
+    required String text,
+    required VoidCallback onTap,
+  }) {
+    return _GomokuResultButton(base: base, text: text, onTap: onTap);
+  }
+
+  Widget _scorePlate(String numAsset) => Stack(
+    alignment: Alignment.center,
+    children: [
+      Positioned.fill(child: _img('result_score_plate.png')),
+      Positioned.fill(child: _scoreContent(numAsset)),
+    ],
+  );
+
+  @override
   Widget build(BuildContext context) {
-    final title = switch (status) {
-      GomokuGameStatus.userWon => '你赢了！',
-      GomokuGameStatus.agentWon => '$agentName 赢了',
-      GomokuGameStatus.draw => '平局',
-      GomokuGameStatus.playing => '',
-    };
+    final win = widget.kind == _GomokuResultKind.win;
     return Positioned.fill(
-      child: Container(
-        color: Colors.black.withValues(alpha: 0.42),
-        alignment: Alignment.center,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final w = constraints.maxWidth;
-            return Container(
-              width: w * 0.74,
-              padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFBF3E4),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: const Color(0xFFE0B072), width: 2),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth;
+          final h = constraints.maxHeight;
+          return AnimatedBuilder(
+            animation: _c,
+            builder: (context, _) {
+              return Stack(
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Color(0xFF5C3E22),
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0,
-                      decoration: TextDecoration.none,
+                  Positioned.fill(
+                    child: Opacity(
+                      opacity: _fade(0.0, 0.25),
+                      child: Image.asset(
+                        '${_gomokuHomeAsset}result_bg.png',
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _GomokuGameButton(
-                          base: '${_gomokuHomeAsset}home_btn_exit.png',
-                          label: '退出',
-                          onTap: onExit,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _GomokuGameButton(
-                          base: '${_gomokuHomeAsset}home_btn_start.png',
-                          label: restarting ? '...' : '再来',
-                          onTap: () => unawaited(onRestart()),
-                        ),
-                      ),
-                    ],
-                  ),
+                  ...win ? _winPieces(w, h) : _losePieces(w, h),
                 ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  List<Widget> _winPieces(double w, double h) => [
+    // Sun + ribbon emblem (combined art) drops in.
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.298, wFrac: 0.829,
+      aspect: 555 / 978, begin: 0.12, end: 0.46, drop: true,
+      child: _img('result_win_emblem.png'),
+    ),
+    // "胜利" centred on the ribbon band. Width/height come from the actual
+    // glyph size measured in the composed design (~0.30 of the frame); the art
+    // is tight glyphs, so a bigger wFrac over-sizes it.
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.31, wFrac: 0.30,
+      aspect: 197 / 367, begin: 0.34, end: 0.6,
+      child: _img('result_win_title.png'),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.492, cy: 0.585, wFrac: 0.497,
+      aspect: 177 / 586, begin: 0.5, end: 0.72,
+      child: _scorePlate('result_win_num.png'),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.262, cy: 0.725, wFrac: 0.3817,
+      aspect: 207 / 450, begin: 0.62, end: 0.86,
+      child: _button(
+        base: 'result_win_btn_exit.png',
+        text: 'result_txt_exit.png',
+        onTap: widget.onExit,
+      ),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.738, cy: 0.724, wFrac: 0.3817,
+      aspect: 210 / 450, begin: 0.68, end: 0.92,
+      child: _button(
+        base: 'result_win_btn_again.png',
+        text: 'result_txt_again.png',
+        onTap: () => unawaited(widget.onRestart()),
+      ),
+    ),
+  ];
+
+  List<Widget> _losePieces(double w, double h) => [
+    // Sad sun drops in behind the ribbon.
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.282, wFrac: 0.4606,
+      aspect: 549 / 543, begin: 0.12, end: 0.46, drop: true,
+      child: _img('result_lose_sun.png'),
+    ),
+    // Ribbon (drawn after the sun so it crosses the sun's lower half).
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.344, wFrac: 0.8702,
+      aspect: 312 / 1026, begin: 0.32, end: 0.56,
+      child: _img('result_lose_ribbon.png'),
+    ),
+    // "失败" centred on the ribbon band (measured glyph width ~0.30, centre
+    // 0.356 — the CSS text-box centre 0.372 sits below the glyphs, which made
+    // it read too big and too low before).
+    _piece(
+      screenW: w, screenH: h, cx: 0.5, cy: 0.356, wFrac: 0.30,
+      aspect: 193 / 387, begin: 0.44, end: 0.66,
+      child: _img('result_lose_title.png'),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.485, cy: 0.5675, wFrac: 0.497,
+      aspect: 177 / 586, begin: 0.56, end: 0.76,
+      child: _scorePlate('result_lose_num.png'),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.2545, cy: 0.707, wFrac: 0.3817,
+      aspect: 207 / 450, begin: 0.66, end: 0.88,
+      child: _button(
+        base: 'result_lose_btn_exit.png',
+        text: 'result_txt_exit.png',
+        onTap: widget.onExit,
+      ),
+    ),
+    _piece(
+      screenW: w, screenH: h, cx: 0.7303, cy: 0.706, wFrac: 0.3817,
+      aspect: 210 / 450, begin: 0.72, end: 0.94,
+      child: _button(
+        base: 'result_lose_btn_again.png',
+        text: 'result_txt_again.png',
+        onTap: () => unawaited(widget.onRestart()),
+      ),
+    ),
+  ];
+}
+
+/// Result-screen button (退出 / 重来一局): textless base art + text overlay,
+/// with a subtle press-in scale.
+class _GomokuResultButton extends StatefulWidget {
+  const _GomokuResultButton({
+    required this.base,
+    required this.text,
+    required this.onTap,
+  });
+
+  final String base;
+  final String text;
+  final VoidCallback onTap;
+
+  @override
+  State<_GomokuResultButton> createState() => _GomokuResultButtonState();
+}
+
+class _GomokuResultButtonState extends State<_GomokuResultButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap();
+      },
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOut,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Image.asset(
+                '$_gomokuHomeAsset${widget.base}',
+                fit: BoxFit.fill,
               ),
-            );
-          },
+            ),
+            // Sized by HEIGHT so 退出 (2 chars) and 重来一局 (4 chars) share the
+            // same glyph size, and lifted onto the raised button face (its
+            // centre sits at ~0.46, above the geometric centre because of the
+            // bottom bevel).
+            Positioned.fill(
+              child: Align(
+                alignment: const Alignment(0, -0.085),
+                child: FractionallySizedBox(
+                  heightFactor: 0.42,
+                  child: Image.asset(
+                    '$_gomokuHomeAsset${widget.text}',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
