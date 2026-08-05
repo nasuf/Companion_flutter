@@ -689,7 +689,7 @@ class _NativeGamePointsBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Positioned(
-      top: MediaQuery.paddingOf(context).top + 8,
+      top: MediaQuery.paddingOf(context).top + 2,
       right: 14,
       child: _HubCoinBar(
         scale: 1,

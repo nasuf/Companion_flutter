@@ -459,7 +459,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
               bannerInMs: _runtime.bannerInMs,
               bannerHoldMs: _runtime.bannerHoldMs,
               bannerOutMs: _runtime.bannerOutMs,
-              gamePoints: _runtime.gamePoints,
+              gamePoints: _runtime.pointsBalance,
             ),
           ),
         );

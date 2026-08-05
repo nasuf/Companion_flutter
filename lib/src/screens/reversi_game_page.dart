@@ -326,7 +326,7 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
           bannerInMs: _runtime.bannerInMs,
           bannerHoldMs: _runtime.bannerHoldMs,
           bannerOutMs: _runtime.bannerOutMs,
-          gamePoints: _runtime.gamePoints,
+          gamePoints: _runtime.pointsBalance,
           // Quitting or restarting mid-game counts as a loss (design note).
           onShowLose: () {
             if (mounted && _result == null) {

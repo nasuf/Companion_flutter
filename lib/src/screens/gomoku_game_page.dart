@@ -269,7 +269,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
           bannerInMs: _runtime.bannerInMs,
           bannerHoldMs: _runtime.bannerHoldMs,
           bannerOutMs: _runtime.bannerOutMs,
-          gamePoints: _runtime.gamePoints,
+          gamePoints: _runtime.pointsBalance,
         ),
       );
     }
@@ -1077,7 +1077,7 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
                 w,
                 h,
                 cx: 0.763,
-                cy: 0.149,
+                cy: 0.18,
                 width: avatarD,
                 child: _GomokuAvatar(
                   imageUrl: agentAvatarUrl,
@@ -1091,7 +1091,7 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
                 w,
                 h,
                 cx: 0.237,
-                cy: 0.149,
+                cy: 0.18,
                 width: avatarD,
                 child: _GomokuAvatar(
                   imageUrl: userAvatarUrl,
@@ -1108,7 +1108,7 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
                 w,
                 h,
                 cx: 0.763,
-                cy: 0.222,
+                cy: 0.252,
                 width: plateW,
                 child: _GomokuNamePlate(
                   name: agentName,
@@ -1120,7 +1120,7 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
                 w,
                 h,
                 cx: 0.237,
-                cy: 0.222,
+                cy: 0.252,
                 width: plateW,
                 child: _GomokuNamePlate(
                   name: userName,

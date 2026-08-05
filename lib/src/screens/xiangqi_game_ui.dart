@@ -380,7 +380,7 @@ class _XiangqiGameScreen extends StatelessWidget {
               // frame 393x852).
               Positioned(
                 left: width * (46 / 393),
-                top: height * (96 / 852),
+                top: height * (124 / 852),
                 width: width * (66 / 393),
                 child: _XiangqiAvatar(
                   frameAsset: '${_xiangqiAsset}game_avatar_frame_user.png',
@@ -392,7 +392,7 @@ class _XiangqiGameScreen extends StatelessWidget {
               ),
               Positioned(
                 left: width * (281 / 393),
-                top: height * (95 / 852),
+                top: height * (123 / 852),
                 width: width * (65 / 393),
                 child: _XiangqiAvatar(
                   frameAsset: '${_xiangqiAsset}game_avatar_frame_agent.png',
@@ -404,7 +404,7 @@ class _XiangqiGameScreen extends StatelessWidget {
               ),
               Positioned(
                 left: width * (144 / 393),
-                top: height * (104 / 852),
+                top: height * (132 / 852),
                 width: width * (105 / 393),
                 child: _GomokuBreathingMotion(
                   duration: const Duration(milliseconds: 4200),
@@ -419,7 +419,7 @@ class _XiangqiGameScreen extends StatelessWidget {
               ),
               Positioned(
                 left: width * (132 / 393),
-                top: height * (130 / 852),
+                top: height * (158 / 852),
                 width: width * (130 / 393),
                 height: height * (33 / 852),
                 child: _XiangqiTurnTimer(
@@ -437,7 +437,7 @@ class _XiangqiGameScreen extends StatelessWidget {
               ),
               Positioned(
                 left: width * (8 / 393),
-                top: height * (171 / 852),
+                top: height * (199 / 852),
                 width: width * (141 / 393),
                 child: _XiangqiNamePlate(
                   asset: '${_xiangqiAsset}game_name_user.png',
@@ -447,7 +447,7 @@ class _XiangqiGameScreen extends StatelessWidget {
               ),
               Positioned(
                 left: width * (243 / 393),
-                top: height * (171 / 852),
+                top: height * (199 / 852),
                 width: width * (141 / 393),
                 child: _XiangqiNamePlate(
                   asset: '${_xiangqiAsset}game_name_agent.png',

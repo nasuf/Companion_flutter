@@ -23,8 +23,11 @@ class _NativeGameRuntime {
   bool aiThinking = false;
   bool roundsLoading = true;
   bool completed = false;
-  // Current game-point balance shown at the bottom of every game screen.
+  // This game's own accumulated points (bottom-of-screen display).
   int? gamePoints;
+  // Global coin balance, shown in the in-game top-right badge — the same total
+  // as the games hub (NOT the per-game score).
+  int? pointsBalance;
   Map<String, dynamic>? terminalPayload;
   DateTime? terminalPresentedAt;
   bool turnTimeoutVisible = false;
@@ -146,6 +149,7 @@ class _NativeGameRuntime {
     try {
       final wallet = await api.getGameWallet(gameKey: gameKey);
       gamePoints = wallet.gamePointsForGame ?? wallet.balance;
+      pointsBalance = wallet.balance;
       _notify();
     } catch (_) {
       // Keep whatever value we last had; never block the game screen.
