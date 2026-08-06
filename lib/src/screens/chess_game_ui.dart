@@ -790,7 +790,7 @@ class _ChessTurnAvatarState extends State<_ChessTurnAvatar>
   }
 }
 
-class _ChessArtworkBoard extends StatelessWidget {
+class _ChessArtworkBoard extends StatefulWidget {
   const _ChessArtworkBoard({
     required this.engine,
     required this.selectedSquare,
@@ -806,20 +806,121 @@ class _ChessArtworkBoard extends StatelessWidget {
   final ValueChanged<int> onTap;
 
   @override
+  State<_ChessArtworkBoard> createState() => _ChessArtworkBoardState();
+}
+
+class _ChessArtworkBoardState extends State<_ChessArtworkBoard>
+    with SingleTickerProviderStateMixin {
+  // The moving piece slides between squares (like 象棋 / 跳棋) instead of
+  // snapping; long enough to read, short enough not to delay the reply.
+  static const _slide = Duration(milliseconds: 260);
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: _slide,
+  );
+
+  // Pieces the previous build drew — the engine mutates in place, so this is
+  // the only record of where the last move started from.
+  List<ChessBoardPiece>? _lastRender;
+  ChessFamilyMove? _sliding;
+  int _slideFromFile = 0;
+  int _slideFromRank = 0;
+  // The piece being captured stays put until the mover lands on it.
+  ChessBoardPiece? _captured;
+  int _seenMoveCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _seenMoveCount = widget.engine.moveCount;
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        setState(() {
+          _sliding = null;
+          _captured = null;
+        });
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChessArtworkBoard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final engine = widget.engine;
+    // A restart hands over a fresh engine; drop any slide still in flight.
+    if (!identical(oldWidget.engine, engine) ||
+        engine.moveCount < _seenMoveCount) {
+      _controller.stop();
+      _sliding = null;
+      _captured = null;
+      _lastRender = null;
+      _seenMoveCount = engine.moveCount;
+      return;
+    }
+    if (engine.moveCount == _seenMoveCount) return;
+    // Only the newest single move is worth animating; if several landed at
+    // once (a replay / restored session) just show the result.
+    final jumped = engine.moveCount - _seenMoveCount > 1;
+    _seenMoveCount = engine.moveCount;
+    final before = _lastRender;
+    if (jumped || before == null) {
+      _sliding = null;
+      _captured = null;
+      return;
+    }
+    final move = engine.moves.last;
+    final fromPiece = before.firstWhereOrNull(
+      (piece) => piece.square == move.fromSquare,
+    );
+    final mover = engine.pieces.firstWhereOrNull(
+      (piece) => piece.square == move.toSquare,
+    );
+    if (fromPiece == null || mover == null) {
+      _sliding = null;
+      _captured = null;
+      return;
+    }
+    _sliding = move;
+    _slideFromFile = fromPiece.file;
+    _slideFromRank = fromPiece.rank;
+    _captured = before.firstWhereOrNull(
+      (piece) => piece.square == move.toSquare && piece.actor != mover.actor,
+    );
+    _controller.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Widget _pieceImage(ChessBoardPiece piece) => IgnorePointer(
+    child: Image.asset(
+      _chessPieceAssetForArtwork(piece),
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+    ),
+  );
+
+  @override
   Widget build(BuildContext context) {
+    final engine = widget.engine;
+    final current = engine.pieces;
+    _lastRender = current;
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = constraints.biggest;
         final geometry = _ChessArtworkGeometry(size);
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTapUp: enabled
+          onTapUp: widget.enabled
               ? (details) {
                   final square = geometry.squareAt(
                     details.localPosition,
                     engine,
                   );
-                  if (square != null) onTap(square);
+                  if (square != null) widget.onTap(square);
                 }
               : null,
           child: Stack(
@@ -835,22 +936,48 @@ class _ChessArtworkBoard extends StatelessWidget {
                   painter: _ChessArtworkOverlayPainter(
                     engine: engine,
                     geometry: geometry,
-                    selectedSquare: selectedSquare,
-                    legalTargets: legalTargets,
+                    selectedSquare: widget.selectedSquare,
+                    legalTargets: widget.legalTargets,
                   ),
                 ),
               ),
-              for (final piece in engine.pieces)
-                Positioned.fromRect(
-                  rect: geometry.pieceRect(piece),
-                  child: IgnorePointer(
-                    child: Image.asset(
-                      _chessPieceAssetForArtwork(piece),
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                    ),
-                  ),
-                ),
+              AnimatedBuilder(
+                animation: _controller,
+                builder: (context, _) {
+                  final move = _sliding;
+                  final animating = move != null && _controller.isAnimating;
+                  final moverSquare = move?.toSquare;
+                  final mover = animating
+                      ? current.firstWhereOrNull((p) => p.square == moverSquare)
+                      : null;
+                  final t = Curves.easeInOut.transform(_controller.value);
+                  return Stack(
+                    children: [
+                      // Captured piece lingers beneath the incoming mover.
+                      if (animating && _captured != null)
+                        Positioned.fromRect(
+                          rect: geometry.pieceRect(_captured!),
+                          child: _pieceImage(_captured!),
+                        ),
+                      for (final piece in current)
+                        if (!(animating && piece.square == moverSquare))
+                          Positioned.fromRect(
+                            rect: geometry.pieceRect(piece),
+                            child: _pieceImage(piece),
+                          ),
+                      if (mover != null)
+                        Positioned.fromRect(
+                          rect: Rect.lerp(
+                            geometry.pieceRectAt(_slideFromFile, _slideFromRank),
+                            geometry.pieceRect(mover),
+                            t,
+                          )!,
+                          child: _pieceImage(mover),
+                        ),
+                    ],
+                  );
+                },
+              ),
             ],
           ),
         );
@@ -890,8 +1017,10 @@ class _ChessArtworkGeometry {
     cellHeight,
   );
 
-  Rect pieceRect(ChessBoardPiece piece) {
-    final cell = cellRect(piece.file, piece.rank);
+  Rect pieceRect(ChessBoardPiece piece) => pieceRectAt(piece.file, piece.rank);
+
+  Rect pieceRectAt(int file, int rank) {
+    final cell = cellRect(file, rank);
     final side = math.min(cellWidth, cellHeight) * 1.08;
     return Rect.fromCenter(
       center: cell.center + Offset(0, -cellHeight * 0.03),
