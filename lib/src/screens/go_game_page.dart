@@ -20,7 +20,11 @@ class _GoGamePageState extends State<_GoGamePage> {
   GoEngine? _engine;
   GoMove? _lastMove;
   bool _resolving = false;
-  bool _timerPaused = false;
+  // Non-null once the round ends (win/lose): the full-screen result replaces
+  // the game (like 五子棋), so the board / avatars / turn dial are torn down
+  // rather than left running behind an overlay.
+  _GoResultKind? _result;
+  Timer? _resultTimer;
 
   @override
   void initState() {
@@ -38,6 +42,7 @@ class _GoGamePageState extends State<_GoGamePage> {
 
   @override
   void dispose() {
+    _resultTimer?.cancel();
     _runtime.dispose();
     unawaited(
       _runtime.abort(
@@ -49,15 +54,6 @@ class _GoGamePageState extends State<_GoGamePage> {
     super.dispose();
   }
 
-  void _clearActiveRound() {
-    setState(() {
-      _engine = null;
-      _lastMove = null;
-      _resolving = false;
-      _timerPaused = false;
-    });
-  }
-
   Future<void> _closeGame() async {
     final engine = _engine;
     if (_runtime.session != null && !_runtime.completed) {
@@ -67,13 +63,24 @@ class _GoGamePageState extends State<_GoGamePage> {
       );
     }
     _runtime.clearPresentation();
+    _resultTimer?.cancel();
+    _resultTimer = null;
     if (!mounted) return;
-    _clearActiveRound();
+    setState(() {
+      _result = null;
+      _engine = null;
+      _lastMove = null;
+      _resolving = false;
+    });
   }
 
-  void _setTimerPaused(bool paused) {
-    if (!mounted || _timerPaused == paused) return;
-    setState(() => _timerPaused = paused);
+  /// Quitting or restarting mid-game counts as a loss: settle the round so the
+  /// score is deducted, then show the 失败 result screen (its buttons then do
+  /// the real exit / restart). No-op if the round already ended or settled.
+  Future<void> _forfeit() async {
+    if (_result != null || _engine == null || _runtime.completed) return;
+    setState(() => _result = _GoResultKind.lose);
+    await _finish(GoStatus.agentWon);
   }
 
   Future<void> _start() async {
@@ -90,12 +97,14 @@ class _GoGamePageState extends State<_GoGamePage> {
       'rules': 'chinese_area_scoring_positional_superko',
       'search': 'uct_mcts_pattern_capture_rollout',
     });
+    _resultTimer?.cancel();
+    _resultTimer = null;
     if (session != null && mounted) {
       setState(() {
+        _result = null;
         _engine = GoEngine(aiConfig: GoAiConfig.fromJson(session.engineConfig));
         _lastMove = null;
         _resolving = false;
-        _timerPaused = false;
       });
     }
   }
@@ -220,52 +229,90 @@ class _GoGamePageState extends State<_GoGamePage> {
   @override
   Widget build(BuildContext context) {
     final engine = _engine;
+    // When a round ends naturally, hold the final board briefly, then reveal
+    // the full-screen result (win for the user, otherwise loss).
+    if (engine != null &&
+        engine.isFinished &&
+        _result == null &&
+        _resultTimer == null) {
+      final win = engine.status == GoStatus.userWon;
+      _resultTimer = Timer(const Duration(milliseconds: 1400), () {
+        if (!mounted || _result != null) return;
+        setState(
+          () => _result = win ? _GoResultKind.win : _GoResultKind.lose,
+        );
+      });
+    }
+
+    final Widget child;
     if (engine == null) {
-      return _GoHome(
+      child = _GoHome(
+        key: const ValueKey('go-home'),
         rounds: _runtime.rounds,
         starting: _runtime.starting,
         error: _runtime.error,
         onStart: _start,
         onExit: () => Navigator.of(context).maybePop(),
       );
-    }
-    final userTurnActive =
-        !engine.isFinished &&
-        engine.turn == GoActor.user &&
-        !_runtime.aiThinking &&
-        !_resolving &&
-        !_timerPaused;
-    return PopScope(
-      canPop: false,
-      child: _NativeGameInteractionLayer(
-        runtime: _runtime,
-        game: widget.game,
-        onPlayAgain: _start,
-        onCloseGame: _closeGame,
-        userTurnActive: userTurnActive,
-        turnToken: '${engine.moveCount}:${engine.turn.name}',
-        turnTimeout: _nativeGameTurnTimeout(_nativeGoGameKey),
-        turnLabel: _runtime.aiThinking ? '${_runtime.agentName} 在落子' : '轮到你落子',
-        moveCount: engine.moveCount,
-        showPlayers: false,
-        child: _GoGameScreen(
-          engine: engine,
-          lastMove: _lastMove,
-          agentName: _runtime.agentName,
-          userName: widget.authSession.userFacingName,
-          agentAvatarUrl: widget.authSession.agentAvatarUrl,
-          userAvatarUrl: widget.authSession.userAvatarUrl,
-          aiThinking: _runtime.aiThinking,
-          resolving: _resolving,
-          starting: _runtime.starting,
-          timerPaused: _timerPaused,
-          enabled: userTurnActive,
-          onTap: _userPlay,
-          onRestart: _start,
-          onExit: _closeGame,
-          onTimerPauseChanged: _setTimerPaused,
+    } else if (_result != null) {
+      // Full-screen result replaces the game (board / avatars / dial are torn
+      // down), so nothing keeps running behind it.
+      child = _GoResultScreen(
+        key: const ValueKey('go-result'),
+        kind: _result!,
+        onRestart: _start,
+        onExit: _closeGame,
+      );
+    } else {
+      final userTurnActive =
+          !engine.isFinished &&
+          engine.turn == GoActor.user &&
+          !_runtime.aiThinking &&
+          !_resolving;
+      child = PopScope(
+        key: const ValueKey('go-game'),
+        canPop: false,
+        child: _NativeGameInteractionLayer(
+          runtime: _runtime,
+          game: widget.game,
+          onPlayAgain: _start,
+          onCloseGame: _closeGame,
+          userTurnActive: userTurnActive,
+          turnToken: '${engine.moveCount}:${engine.turn.name}',
+          turnTimeout: _nativeGameTurnTimeout(_nativeGoGameKey),
+          turnLabel: _runtime.aiThinking
+              ? '${_runtime.agentName} 在落子'
+              : '轮到你落子',
+          moveCount: engine.moveCount,
+          showPlayers: false,
+          // The page renders its own full-screen 围棋 result, so the shared
+          // generic terminal overlay is suppressed.
+          suppressResult: true,
+          child: _GoGameScreen(
+            engine: engine,
+            lastMove: _lastMove,
+            agentName: _runtime.agentName,
+            userName: widget.authSession.userFacingName,
+            agentAvatarUrl: widget.authSession.agentAvatarUrl,
+            userAvatarUrl: widget.authSession.userAvatarUrl,
+            aiThinking: _runtime.aiThinking,
+            enabled: userTurnActive,
+            onTap: _userPlay,
+            // Quitting or restarting mid-game → 失败 + 扣分.
+            onShowLose: _forfeit,
+            bannerInMs: _runtime.bannerInMs,
+            bannerHoldMs: _runtime.bannerHoldMs,
+            bannerOutMs: _runtime.bannerOutMs,
+            gamePoints: _runtime.pointsBalance,
+          ),
         ),
-      ),
+      );
+    }
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 320),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: child,
     );
   }
 }
@@ -331,29 +378,82 @@ class _GoBoardState extends State<_GoBoard> with TickerProviderStateMixin {
       builder: (context, constraints) {
         final side = math.min(constraints.maxWidth, constraints.maxHeight);
         final size = widget.artwork ? constraints.biggest : Size.square(side);
+        final geometry = _GoBoardGeometry(size, artwork: widget.artwork);
+        // The stone body is a design sprite (glossy black / pearl white); the
+        // grid, star points and capture particles stay in the painter beneath.
+        final stoneSize = geometry.stoneRadius * 2 * 1.06;
+        final board = widget.engine.board;
+        final lastIndex = widget.lastMove?.index;
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTapUp: (details) => _handleTap(details, size),
           child: AnimatedBuilder(
             animation: _moveController,
-            builder: (context, _) => CustomPaint(
-              size: size,
-              painter: _GoBoardPainter(
-                board: widget.engine.board,
-                lastMove: widget.lastMove,
-                moveProgress: Curves.easeOutCubic.transform(
-                  _moveController.value,
-                ),
-                thinking: widget.thinking,
-                darkMode: AppColors.isDark(context),
-                artwork: widget.artwork,
-              ),
-            ),
+            builder: (context, _) {
+              final progress = Curves.easeOutCubic.transform(
+                _moveController.value,
+              );
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fill(
+                    child: CustomPaint(
+                      size: size,
+                      painter: _GoBoardPainter(
+                        board: board,
+                        lastMove: widget.lastMove,
+                        moveProgress: progress,
+                        thinking: widget.thinking,
+                        darkMode: AppColors.isDark(context),
+                        artwork: widget.artwork,
+                      ),
+                    ),
+                  ),
+                  for (var i = 0; i < board.length; i += 1)
+                    if (board[i] != 0)
+                      _stoneSprite(
+                        geometry,
+                        i,
+                        board[i] == 1,
+                        stoneSize,
+                        i == lastIndex ? progress : 1.0,
+                      ),
+                ],
+              );
+            },
           ),
         );
       },
     ),
   );
+
+  // A single stone sprite centred on its intersection; the last-placed stone
+  // pops in (scale) via [t] (0→1), others stay at full size (t = 1).
+  Widget _stoneSprite(
+    _GoBoardGeometry geometry,
+    int index,
+    bool black,
+    double size,
+    double t,
+  ) {
+    final center = geometry.point(index);
+    final scale = t < 1
+        ? 0.12 + Curves.easeOutBack.transform(t) * 0.88
+        : 1.0;
+    return Positioned(
+      left: center.dx - size / 2,
+      top: center.dy - size / 2,
+      width: size,
+      height: size,
+      child: Transform.scale(
+        scale: scale,
+        child: Image.asset(
+          black ? '${_goAsset}stone_black.png' : '${_goAsset}stone_white.png',
+          fit: BoxFit.contain,
+        ),
+      ),
+    );
+  }
 }
 
 class _GoBoardGeometry {
@@ -609,24 +709,9 @@ class _GoBoardPainter extends CustomPainter {
     }
   }
 
+  // Stone bodies are drawn as sprite widgets above the board; here we only add
+  // the capture particles that puff out when stones are removed.
   void _paintStonesAndCaptures(Canvas canvas, _GoBoardGeometry geometry) {
-    final lastIndex = lastMove?.index;
-    for (var index = 0; index < board.length; index += 1) {
-      final stone = board[index];
-      if (stone == 0) continue;
-      final isLast = lastIndex == index;
-      final scale = isLast
-          ? 0.12 + Curves.easeOutBack.transform(moveProgress) * 0.88
-          : 1.0;
-      _paintGoStone(
-        canvas,
-        geometry.point(index),
-        geometry.stoneRadius * scale,
-        black: stone == 1,
-        last: isLast,
-      );
-    }
-
     final captured = lastMove?.captured ?? const <int>[];
     if (captured.isNotEmpty && moveProgress < 1) {
       for (var i = 0; i < captured.length; i += 1) {
@@ -641,52 +726,6 @@ class _GoBoardPainter extends CustomPainter {
           Paint()..color = Colors.white.withValues(alpha: 1 - moveProgress),
         );
       }
-    }
-  }
-
-  void _paintGoStone(
-    Canvas canvas,
-    Offset center,
-    double radius, {
-    required bool black,
-    required bool last,
-  }) {
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: center + Offset(0, radius * 0.18),
-        width: radius * 1.75,
-        height: radius * 1.18,
-      ),
-      Paint()..color = Colors.black.withValues(alpha: 0.27),
-    );
-    final rect = Rect.fromCircle(center: center, radius: radius);
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()
-        ..shader = RadialGradient(
-          center: const Alignment(-0.42, -0.5),
-          radius: 1.12,
-          colors: black
-              ? const [Color(0xFF545B60), Color(0xFF171B1E), Color(0xFF050607)]
-              : const [Color(0xFFFFFFFF), Color(0xFFF1EEE7), Color(0xFFC8C3BA)],
-          stops: const [0, 0.58, 1],
-        ).createShader(rect),
-    );
-    canvas.drawCircle(
-      center - Offset(radius * 0.26, radius * 0.31),
-      radius * 0.19,
-      Paint()..color = Colors.white.withValues(alpha: black ? 0.2 : 0.62),
-    );
-    if (last) {
-      canvas.drawCircle(
-        center,
-        radius * 0.22,
-        Paint()
-          ..color = black ? const Color(0xFFE5B85C) : const Color(0xFF267160)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(1.4, radius * 0.12),
-      );
     }
   }
 
