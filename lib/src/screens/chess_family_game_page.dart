@@ -24,12 +24,14 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
   Set<int> _legalTargets = const {};
   bool _isFullscreen = false;
   bool _xiangqiTimerPaused = false;
-  bool _chessTimerPaused = false;
   bool _chessAssetsPrecached = false;
-  // Xiangqi shows a full-screen win/lose result that replaces the game (board /
-  // avatars / countdown torn down). Non-null once the round ends or is forfeited.
+  // Xiangqi / chess each show a full-screen win/lose result that replaces the
+  // game (board / avatars / countdown torn down). Non-null once the round ends
+  // or is forfeited.
   _XiangqiResultKind? _xiangqiResult;
   Timer? _xiangqiResultTimer;
+  _ChessResultKind? _chessResult;
+  Timer? _chessResultTimer;
 
   String get _gameKey => widget.kind == ChessFamilyKind.chess
       ? _nativeChessGameKey
@@ -65,6 +67,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
   @override
   void dispose() {
     _xiangqiResultTimer?.cancel();
+    _chessResultTimer?.cancel();
     _runtime.dispose();
     unawaited(
       _runtime.abort(
@@ -89,6 +92,8 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
     });
     _xiangqiResultTimer?.cancel();
     _xiangqiResultTimer = null;
+    _chessResultTimer?.cancel();
+    _chessResultTimer = null;
     if (session == null || !mounted) return;
     setState(() {
       _engine = ChessFamilyEngine(
@@ -102,8 +107,8 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       _legalTargets = const {};
       _isFullscreen = false;
       _xiangqiTimerPaused = false;
-      _chessTimerPaused = false;
       _xiangqiResult = null;
+      _chessResult = null;
     });
   }
 
@@ -118,6 +123,8 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
     _runtime.clearPresentation();
     _xiangqiResultTimer?.cancel();
     _xiangqiResultTimer = null;
+    _chessResultTimer?.cancel();
+    _chessResultTimer = null;
     if (!mounted) return;
     setState(() {
       _engine = null;
@@ -125,8 +132,8 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
       _legalTargets = const {};
       _isFullscreen = false;
       _xiangqiTimerPaused = false;
-      _chessTimerPaused = false;
       _xiangqiResult = null;
+      _chessResult = null;
     });
   }
 
@@ -144,9 +151,13 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
     setState(() => _xiangqiTimerPaused = paused);
   }
 
-  void _setChessTimerPaused(bool paused) {
-    if (!mounted || _chessTimerPaused == paused) return;
-    setState(() => _chessTimerPaused = paused);
+  /// Chess: quitting or restarting mid-game counts as a loss — settle so the
+  /// score is deducted, then show the 失败 result screen (whose buttons do the
+  /// real exit / restart). Board & countdown are torn down with the game.
+  Future<void> _forfeitChess() async {
+    if (_chessResult != null || _engine == null || _runtime.completed) return;
+    setState(() => _chessResult = _ChessResultKind.lose);
+    await _finish(ChessFamilyStatus.agentWon);
   }
 
   Future<void> _handleSquareTap(int square) async {
@@ -327,55 +338,92 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
   Widget build(BuildContext context) {
     final engine = _engine;
     if (widget.kind == ChessFamilyKind.chess) {
+      // Hold the final board briefly, then reveal the full-screen result.
+      if (engine != null &&
+          engine.isFinished &&
+          _chessResult == null &&
+          _chessResultTimer == null) {
+        final win = engine.status == ChessFamilyStatus.userWon;
+        _chessResultTimer = Timer(const Duration(milliseconds: 1400), () {
+          if (!mounted || _chessResult != null) return;
+          setState(
+            () => _chessResult = win
+                ? _ChessResultKind.win
+                : _ChessResultKind.lose,
+          );
+        });
+      }
+      final Widget chessChild;
       if (engine == null) {
-        return _ChessHome(
-          rounds: _runtime.rounds,
-          starting: _runtime.starting,
-          error: _runtime.error,
-          onStart: _startGame,
-          onExit: () => Navigator.of(context).maybePop(),
+        chessChild = KeyedSubtree(
+          key: const ValueKey('chess-home'),
+          child: _ChessHome(
+            rounds: _runtime.rounds,
+            starting: _runtime.starting,
+            error: _runtime.error,
+            onStart: _startGame,
+            onExit: () => Navigator.of(context).maybePop(),
+          ),
+        );
+      } else if (_chessResult != null) {
+        // Full-screen result replaces the game — board/avatars/countdown gone.
+        chessChild = _ChessResultScreen(
+          key: const ValueKey('chess-result'),
+          kind: _chessResult!,
+          onRestart: _startGame,
+          onExit: _closeGame,
+        );
+      } else {
+        final userTurnActive =
+            !engine.isFinished &&
+            !engine.isAgentTurn &&
+            !_runtime.aiThinking &&
+            !_runtime.starting;
+        chessChild = PopScope(
+          key: const ValueKey('chess-game'),
+          canPop: false,
+          child: _NativeGameInteractionLayer(
+            runtime: _runtime,
+            game: widget.game,
+            onPlayAgain: _startGame,
+            onCloseGame: _closeGame,
+            userTurnActive: userTurnActive,
+            turnToken:
+                '${_runtime.session?.id}:${engine.moveCount}:${engine.isAgentTurn ? 'agent' : 'user'}',
+            turnTimeout: _nativeGameTurnTimeout(_gameKey),
+            turnLabel: _runtime.aiThinking
+                ? '${_runtime.agentName} 在走棋'
+                : '轮到你走棋',
+            moveCount: engine.moveCount,
+            showPlayers: false,
+            // The page renders its own full-screen result screen.
+            suppressResult: true,
+            child: _ChessGameScreen(
+              engine: engine,
+              selectedSquare: _selectedSquare,
+              legalTargets: _legalTargets,
+              agentName: _runtime.agentName,
+              userName: widget.authSession.userFacingName,
+              agentAvatarUrl: widget.authSession.agentAvatarUrl,
+              userAvatarUrl: widget.authSession.userAvatarUrl,
+              aiThinking: _runtime.aiThinking,
+              enabled: userTurnActive,
+              onSquareTap: _handleSquareTap,
+              // Quitting or restarting mid-game → 失败 + 扣分.
+              onShowLose: _forfeitChess,
+              bannerInMs: _runtime.bannerInMs,
+              bannerHoldMs: _runtime.bannerHoldMs,
+              bannerOutMs: _runtime.bannerOutMs,
+              gamePoints: _runtime.pointsBalance,
+            ),
+          ),
         );
       }
-      final userTurnActive =
-          !engine.isFinished &&
-          !engine.isAgentTurn &&
-          !_runtime.aiThinking &&
-          !_runtime.starting &&
-          !_chessTimerPaused;
-      return PopScope(
-        canPop: false,
-        child: _NativeGameInteractionLayer(
-          runtime: _runtime,
-          game: widget.game,
-          onPlayAgain: _startGame,
-          onCloseGame: _closeGame,
-          userTurnActive: userTurnActive,
-          turnToken:
-              '${_runtime.session?.id}:${engine.moveCount}:${engine.isAgentTurn ? 'agent' : 'user'}',
-          turnTimeout: _nativeGameTurnTimeout(_gameKey),
-          turnLabel: _runtime.aiThinking
-              ? '${_runtime.agentName} 在走棋'
-              : '轮到你走棋',
-          moveCount: engine.moveCount,
-          showPlayers: false,
-          child: _ChessGameScreen(
-            engine: engine,
-            selectedSquare: _selectedSquare,
-            legalTargets: _legalTargets,
-            agentName: _runtime.agentName,
-            userName: widget.authSession.userFacingName,
-            agentAvatarUrl: widget.authSession.agentAvatarUrl,
-            userAvatarUrl: widget.authSession.userAvatarUrl,
-            aiThinking: _runtime.aiThinking,
-            starting: _runtime.starting,
-            timerPaused: _chessTimerPaused,
-            enabled: userTurnActive,
-            onSquareTap: _handleSquareTap,
-            onRestart: _startGame,
-            onExit: _closeGame,
-            onTimerPauseChanged: _setChessTimerPaused,
-          ),
-        ),
+      return AnimatedSwitcher(
+        duration: const Duration(milliseconds: 320),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: chessChild,
       );
     }
     if (widget.kind == ChessFamilyKind.xiangqi) {

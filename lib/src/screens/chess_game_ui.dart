@@ -309,7 +309,7 @@ class _ChessHomeStats extends StatelessWidget {
   }
 }
 
-class _ChessGameScreen extends StatelessWidget {
+class _ChessGameScreen extends StatefulWidget {
   const _ChessGameScreen({
     required this.engine,
     required this.selectedSquare,
@@ -319,13 +319,13 @@ class _ChessGameScreen extends StatelessWidget {
     required this.agentAvatarUrl,
     required this.userAvatarUrl,
     required this.aiThinking,
-    required this.starting,
-    required this.timerPaused,
     required this.enabled,
     required this.onSquareTap,
-    required this.onRestart,
-    required this.onExit,
-    required this.onTimerPauseChanged,
+    required this.onShowLose,
+    required this.bannerInMs,
+    required this.bannerHoldMs,
+    required this.bannerOutMs,
+    required this.gamePoints,
   });
 
   final ChessFamilyEngine engine;
@@ -336,18 +336,31 @@ class _ChessGameScreen extends StatelessWidget {
   final String? agentAvatarUrl;
   final String? userAvatarUrl;
   final bool aiThinking;
-  final bool starting;
-  final bool timerPaused;
   final bool enabled;
   final ValueChanged<int> onSquareTap;
-  final Future<void> Function() onRestart;
-  final Future<void> Function() onExit;
-  final ValueChanged<bool> onTimerPauseChanged;
+  // Quitting or restarting mid-game → 失败 + 扣分.
+  final Future<void> Function() onShowLose;
+  // "你的回合" banner timing (ms), from the per-game admin config.
+  final int bannerInMs;
+  final int bannerHoldMs;
+  final int bannerOutMs;
+  // Current game points, shown in the top-right coin badge.
+  final int? gamePoints;
+
+  @override
+  State<_ChessGameScreen> createState() => _ChessGameScreenState();
+}
+
+class _ChessGameScreenState extends State<_ChessGameScreen> {
+  // True while a modal (pause / exit) is open, so the per-turn dial freezes.
+  bool _paused = false;
 
   @override
   Widget build(BuildContext context) {
-    final userTurn = enabled && !engine.isFinished;
-    final agentTurn = !engine.isFinished && (engine.isAgentTurn || aiThinking);
+    final engine = widget.engine;
+    final userTurn = widget.enabled && !engine.isFinished;
+    final agentTurn =
+        !engine.isFinished && (engine.isAgentTurn || widget.aiThinking);
     final token =
         '${engine.moveCount}:${engine.isAgentTurn ? 'agent' : 'user'}';
     return Scaffold(
@@ -372,49 +385,33 @@ class _ChessGameScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              // Two wooden nameplates (design 国际象棋-游戏, frame 393x852). The
+              // coin avatar carries a per-turn 30s dial (like 五子棋). User card
+              // top-left, agent card lower-right (mirrored).
               Positioned(
-                left: width * (19 / 393),
+                left: width * (9 / 393),
                 top: height * (98 / 852),
-                width: width * (189 / 393),
-                height: height * (64 / 852),
-                child: _ChessPlayerPanel(
-                  name: userName,
-                  imageUrl: userAvatarUrl,
+                width: width * (173 / 393),
+                child: _ChessPlayerCard(
+                  name: widget.userName,
+                  imageUrl: widget.userAvatarUrl,
                   active: userTurn,
+                  paused: _paused,
+                  clockToken: token,
+                  onTimeout: _handleUserIdleTimeout,
                 ),
               ),
               Positioned(
-                left: width * (222 / 393),
-                top: height * (106 / 852),
-                width: width * (101 / 393),
-                height: height * (45 / 852),
-                child: _ChessClockPlate(
-                  token: token,
-                  active: userTurn,
-                  paused: timerPaused || !userTurn,
-                ),
-              ),
-              Positioned(
-                left: width * (197 / 393),
-                top: height * (188 / 852),
-                width: width * (185 / 393),
-                height: height * (63 / 852),
-                child: _ChessPlayerPanel(
-                  name: agentName,
-                  imageUrl: agentAvatarUrl,
+                left: width * (209 / 393),
+                top: height * (176 / 852),
+                width: width * (174 / 393),
+                child: _ChessPlayerCard(
+                  name: widget.agentName,
+                  imageUrl: widget.agentAvatarUrl,
                   active: agentTurn,
-                  mirroredContent: true,
-                ),
-              ),
-              Positioned(
-                left: width * (84 / 393),
-                top: height * (200 / 852),
-                width: width * (101 / 393),
-                height: height * (45 / 852),
-                child: _ChessClockPlate(
-                  token: token,
-                  active: agentTurn,
-                  paused: timerPaused || !agentTurn || aiThinking,
+                  paused: _paused || widget.aiThinking,
+                  clockToken: token,
+                  mirrored: true,
                 ),
               ),
               Positioned(
@@ -424,10 +421,24 @@ class _ChessGameScreen extends StatelessWidget {
                 height: height * (362 / 852),
                 child: _ChessArtworkBoard(
                   engine: engine,
-                  selectedSquare: selectedSquare,
-                  legalTargets: legalTargets,
-                  enabled: enabled,
-                  onTap: onSquareTap,
+                  selectedSquare: widget.selectedSquare,
+                  legalTargets: widget.legalTargets,
+                  enabled: widget.enabled,
+                  onTap: widget.onSquareTap,
+                ),
+              ),
+              // "你的回合" ribbon at the board's lower-middle, flashing in when
+              // the user's turn begins (timing from the per-game admin config).
+              Positioned(
+                left: 0,
+                right: 0,
+                top: height * 0.60 - (width * 0.13) / 2,
+                height: width * 0.13,
+                child: _TurnBanner(
+                  userTurn: userTurn,
+                  inMs: widget.bannerInMs,
+                  holdMs: widget.bannerHoldMs,
+                  outMs: widget.bannerOutMs,
                 ),
               ),
               // Both assets are cropped to the pill artwork, so identical
@@ -452,6 +463,7 @@ class _ChessGameScreen extends StatelessWidget {
                   onTap: () => unawaited(_showPause(context)),
                 ),
               ),
+              _NativeGamePointsBadge(points: widget.gamePoints),
             ],
           );
         },
@@ -460,7 +472,7 @@ class _ChessGameScreen extends StatelessWidget {
   }
 
   Future<void> _confirmExit(BuildContext context) async {
-    onTimerPauseChanged(true);
+    setState(() => _paused = true);
     await _showChessModal(
       context,
       title: '退出对局',
@@ -478,17 +490,25 @@ class _ChessGameScreen extends StatelessWidget {
             label: '退出',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              unawaited(onExit());
+              // Quitting mid-game → 失败 + 扣分; the 失败 screen's 退出 then leaves.
+              unawaited(widget.onShowLose());
             },
           ),
         ),
       ],
     );
-    onTimerPauseChanged(false);
+    if (mounted) setState(() => _paused = false);
+  }
+
+  // The per-turn dial ran out while the user hadn't moved → auto-open the pause
+  // menu (tapping 继续 resumes with a fresh dial).
+  void _handleUserIdleTimeout() {
+    if (!mounted || _paused || widget.engine.isFinished) return;
+    unawaited(_showPause(context));
   }
 
   Future<void> _showPause(BuildContext context) async {
-    onTimerPauseChanged(true);
+    setState(() => _paused = true);
     await _showChessModal(
       context,
       title: '游戏暂停',
@@ -503,228 +523,269 @@ class _ChessGameScreen extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: _ChessModalButton(
-            label: starting ? '载入中' : '重开',
-            enabled: !starting,
+            label: '重开',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              unawaited(onRestart());
+              // Restarting mid-game → 失败 + 扣分; the 失败 screen's 重来一局 then
+              // starts the new round.
+              unawaited(widget.onShowLose());
             },
           ),
         ),
       ],
     );
-    onTimerPauseChanged(false);
+    if (mounted) setState(() => _paused = false);
   }
 }
 
-class _ChessPlayerPanel extends StatelessWidget {
-  const _ChessPlayerPanel({
+/// Wooden nameplate: a coin avatar (with a per-turn 30s dial) on the outer end
+/// and the player's name on the cream plate. The card art is flipped for the
+/// agent (avatar on the right). Positions are card-relative (173x59).
+class _ChessPlayerCard extends StatelessWidget {
+  const _ChessPlayerCard({
     required this.name,
     required this.imageUrl,
     required this.active,
-    this.mirroredContent = false,
+    required this.paused,
+    required this.clockToken,
+    this.mirrored = false,
+    this.onTimeout,
   });
 
   final String name;
   final String? imageUrl;
   final bool active;
-  final bool mirroredContent;
+  final bool paused;
+  final String clockToken;
+  final bool mirrored;
+  final VoidCallback? onTimeout;
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final height = constraints.maxHeight;
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned.fill(
-              child: Transform.flip(
-                flipX: mirroredContent,
-                child: Image.asset(
-                  '${_chessFigmaAsset}game_player_panel.png',
-                  fit: BoxFit.fill,
-                ),
-              ),
-            ),
-            Positioned(
-              left: width * ((mirroredContent ? 108 : 5) / 189),
-              top: -height * (3 / 64),
-              width: width * (70 / 189),
-              height: width * (70 / 189),
-              child: _ChessAvatar(
-                name: name,
-                imageUrl: imageUrl,
-                active: active,
-              ),
-            ),
-            Positioned(
-              left: width * ((mirroredContent ? 5 : 65) / 189),
-              top: height * (20 / 64),
-              width: width * ((mirroredContent ? 110 : 115) / 189),
-              height: height * (26 / 64),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  name,
-                  style: const TextStyle(
-                    color: Color(0xFF71513C),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                    decoration: TextDecoration.none,
+    return AspectRatio(
+      aspectRatio: 173 / 59,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth;
+          final h = constraints.maxHeight;
+          final ringD = w * (58 / 173);
+          // Avatar coin on the outer end; name centred on the cream plate
+          // (user centre 109, agent centre 66 in 173-space).
+          final ringLeft = mirrored ? w * (105 / 173) : w * (10 / 173);
+          final nameCentre = mirrored ? 66.0 : 109.0;
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fill(
+                child: Transform.flip(
+                  flipX: mirrored,
+                  child: Image.asset(
+                    '${_chessFigmaAsset}game_card.png',
+                    fit: BoxFit.fill,
                   ),
                 ),
               ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _ChessAvatar extends StatelessWidget {
-  const _ChessAvatar({
-    required this.name,
-    required this.imageUrl,
-    required this.active,
-  });
-
-  final String name;
-  final String? imageUrl;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final size = constraints.maxWidth;
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 260),
-              width: size * 0.86,
-              height: size * 0.86,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: active
-                    ? const [
-                        BoxShadow(
-                          color: Color(0xCCFFD279),
-                          blurRadius: 18,
-                          spreadRadius: 3,
-                        ),
-                      ]
-                    : const [],
-              ),
-              child: ClipOval(
-                child: _Avatar(
-                  size: size * 0.86,
-                  label: name.trim().isEmpty
-                      ? '伴'
-                      : name.trim().characters.first,
+              Positioned(
+                left: ringLeft,
+                top: -h * (1 / 59),
+                width: ringD,
+                height: ringD,
+                child: _ChessTurnAvatar(
+                  token: clockToken,
                   imageUrl: imageUrl,
-                  gradient: const [Color(0xFFF4E4CA), Color(0xFFC49B6E)],
+                  fallback: name,
+                  diameter: ringD,
+                  active: active,
+                  paused: paused,
+                  onTimeout: onTimeout,
                 ),
               ),
-            ),
-            Positioned.fill(
-              child: Image.asset(
-                '${_chessFigmaAsset}game_avatar_frame.png',
-                fit: BoxFit.contain,
+              Positioned(
+                left: w * ((nameCentre - 52) / 173),
+                top: 0,
+                width: w * (104 / 173),
+                height: h,
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      name,
+                      style: const TextStyle(
+                        color: Color(0xFF71513C),
+                        fontSize: 15,
+                        height: 1,
+                        fontWeight: FontWeight.w900,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ],
-        );
-      },
+            ],
+          );
+        },
+      ),
     );
   }
 }
 
-class _ChessClockPlate extends StatelessWidget {
-  const _ChessClockPlate({
+/// Coin avatar with a per-turn countdown dial (reuses the 五子棋 painter). The
+/// frame art has a baked default portrait, so the real avatar is drawn on top
+/// to cover it, leaving only the gold ring; the dial + cyan seconds show while
+/// it is this player's turn.
+class _ChessTurnAvatar extends StatefulWidget {
+  const _ChessTurnAvatar({
     required this.token,
+    required this.imageUrl,
+    required this.fallback,
+    required this.diameter,
     required this.active,
     required this.paused,
+    this.onTimeout,
   });
 
   final String token;
+  final String? imageUrl;
+  final String fallback;
+  final double diameter;
   final bool active;
   final bool paused;
+  final VoidCallback? onTimeout;
 
   @override
-  Widget build(BuildContext context) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        Positioned.fill(
-          child: Image.asset(
-            '${_chessFigmaAsset}game_nameplate.png',
-            fit: BoxFit.fill,
-          ),
-        ),
-        _ChessTurnClock(token: token, active: active, paused: paused),
-      ],
-    );
-  }
+  State<_ChessTurnAvatar> createState() => _ChessTurnAvatarState();
 }
 
-class _ChessTurnClock extends StatefulWidget {
-  const _ChessTurnClock({
-    required this.token,
-    required this.active,
-    required this.paused,
-  });
+class _ChessTurnAvatarState extends State<_ChessTurnAvatar>
+    with SingleTickerProviderStateMixin {
+  static const int _turnSeconds = 30;
+  static const Color _cyan = Color(0xFF01FFFF);
 
-  final String token;
-  final bool active;
-  final bool paused;
-
-  @override
-  State<_ChessTurnClock> createState() => _ChessTurnClockState();
-}
-
-class _ChessTurnClockState extends State<_ChessTurnClock> {
-  Timer? _timer;
-  int _remaining = 90;
+  late final AnimationController _countdown;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted || !widget.active || widget.paused || _remaining <= 0) {
-        return;
-      }
-      setState(() => _remaining -= 1);
-    });
+    _countdown = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: _turnSeconds),
+    )..addStatusListener(_onCountdownStatus);
+    _sync();
+  }
+
+  void _onCountdownStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed &&
+        widget.active &&
+        !widget.paused) {
+      widget.onTimeout?.call();
+    }
   }
 
   @override
-  void didUpdateWidget(covariant _ChessTurnClock oldWidget) {
+  void didUpdateWidget(covariant _ChessTurnAvatar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.token != widget.token && widget.active) _remaining = 90;
+    if (widget.active != oldWidget.active || widget.token != oldWidget.token) {
+      _sync();
+    } else if (widget.paused != oldWidget.paused && widget.active) {
+      if (widget.paused) {
+        _countdown.stop();
+      } else if (_countdown.value >= 1.0) {
+        _countdown.forward(from: 0);
+      } else {
+        _countdown.forward();
+      }
+    }
+  }
+
+  void _sync() {
+    if (widget.active && !widget.paused) {
+      _countdown.forward(from: 0);
+    } else if (!widget.active) {
+      _countdown.stop();
+      _countdown.value = 0;
+    }
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _countdown.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final minutes = _remaining ~/ 60;
-    final seconds = (_remaining % 60).toString().padLeft(2, '0');
-    return Text(
-      '$minutes:$seconds',
-      style: const TextStyle(
-        color: Color(0xFFBC9B71),
-        fontSize: 20,
-        fontWeight: FontWeight.w900,
-        decoration: TextDecoration.none,
-      ),
+    final d = widget.diameter;
+    final inner = d * (51 / 58);
+    return AnimatedBuilder(
+      animation: _countdown,
+      builder: (context, _) {
+        final remainingFraction = (1 - _countdown.value).clamp(0.0, 1.0);
+        final remainingSeconds = (remainingFraction * _turnSeconds)
+            .ceil()
+            .clamp(0, _turnSeconds);
+        return SizedBox(
+          width: d,
+          height: d,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Gold ring frame (with a baked default portrait underneath).
+              Image.asset(
+                '${_chessFigmaAsset}game_avatar_ring.png',
+                width: d,
+                height: d,
+                fit: BoxFit.contain,
+              ),
+              // Real portrait covers the baked one; ring shows around it.
+              ClipOval(
+                child: SizedBox(
+                  width: inner,
+                  height: inner,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _Avatar(
+                        size: inner,
+                        label: widget.fallback.trim().isEmpty
+                            ? '伴'
+                            : widget.fallback.trim().characters.first,
+                        imageUrl: widget.imageUrl,
+                        gradient: const [Color(0xFFF4E4CA), Color(0xFFC49B6E)],
+                      ),
+                      if (widget.active) ...[
+                        CustomPaint(
+                          painter: _GomokuTurnTimerPainter(
+                            remainingFraction: remainingFraction,
+                          ),
+                        ),
+                        Center(
+                          child: Text(
+                            '$remainingSeconds',
+                            style: TextStyle(
+                              color: _cyan,
+                              fontSize: inner * 0.4,
+                              fontWeight: FontWeight.w900,
+                              height: 1,
+                              decoration: TextDecoration.none,
+                              shadows: const [
+                                Shadow(
+                                  color: Color(0x99000000),
+                                  offset: Offset(0, 1),
+                                  blurRadius: 2,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -941,22 +1002,17 @@ class _ChessArtButtonState extends State<_ChessArtButton> {
 }
 
 class _ChessModalButton extends StatelessWidget {
-  const _ChessModalButton({
-    required this.label,
-    required this.onTap,
-    this.enabled = true,
-  });
+  const _ChessModalButton({required this.label, required this.onTap});
 
   final String label;
   final VoidCallback onTap;
-  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: enabled ? onTap : null,
+      onTap: onTap,
       child: Opacity(
-        opacity: enabled ? 1 : 0.55,
+        opacity: 1,
         child: Container(
           height: 42,
           alignment: const Alignment(0, 0.12),
@@ -1056,4 +1112,329 @@ Future<void> _showChessModal(
       ),
     ),
   );
+}
+
+enum _ChessResultKind { win, lose }
+
+/// Full-screen 国际象棋 win / lose result scene, composed from the exported art
+/// (wooden shield → golden sun → banner → title → 积分 → buttons) with a
+/// staggered pop-in. Shown at the page level in place of the game so the board
+/// / avatars / dial are torn down. Both outcomes share the same layout; only
+/// the title text (胜利/失败) and score number differ. Positions letterboxed
+/// onto the 393x852 design canvas so overlaps hold on any aspect ratio.
+class _ChessResultScreen extends StatefulWidget {
+  const _ChessResultScreen({
+    super.key,
+    required this.kind,
+    required this.onRestart,
+    required this.onExit,
+  });
+
+  final _ChessResultKind kind;
+  final Future<void> Function() onRestart;
+  final Future<void> Function() onExit;
+
+  @override
+  State<_ChessResultScreen> createState() => _ChessResultScreenState();
+}
+
+class _ChessResultScreenState extends State<_ChessResultScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  static const double _designW = 393;
+  static const double _designH = 852;
+  double _canvasW = _designW;
+  double _canvasH = _designH;
+  double _originX = 0;
+  double _originY = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1300),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+        _c.value = 1;
+      } else {
+        _c.forward();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Widget _img(String name) =>
+      Image.asset('$_chessFigmaAsset$name', fit: BoxFit.fill);
+
+  Widget _piece({
+    required double cx,
+    required double cy,
+    required double wFrac,
+    required double aspect,
+    required double begin,
+    required double end,
+    bool drop = false,
+    required Widget child,
+  }) {
+    final p = ((_c.value - begin) / (end - begin)).clamp(0.0, 1.0);
+    final eased = Curves.easeOutBack.transform(p);
+    final opacity = (p * 2.4).clamp(0.0, 1.0);
+    final width = _canvasW * wFrac;
+    final height = width * aspect;
+    final dy = drop
+        ? -_canvasH * 0.10 * (1 - Curves.easeOutCubic.transform(p))
+        : 0.0;
+    final scale = drop ? 1.0 : (0.7 + 0.3 * eased);
+    return Positioned(
+      left: _originX + _canvasW * cx - width / 2,
+      top: _originY + _canvasH * cy - height / 2 + dy,
+      width: width,
+      height: height,
+      child: Opacity(
+        opacity: opacity,
+        child: Transform.scale(scale: scale, child: child),
+      ),
+    );
+  }
+
+  // Gold gradient title (胜利 / 失败) with a soft drop shadow, matching the CSS.
+  Widget _scorePlate(String numAsset) => Stack(
+    alignment: Alignment.center,
+    children: [
+      Positioned.fill(child: _img('result_score_plate.png')),
+      Positioned.fill(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset('${_chessFigmaAsset}result_score_label.png', height: 26),
+                const SizedBox(width: 6),
+                Image.asset('$_chessFigmaAsset$numAsset', height: 26),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final win = widget.kind == _ChessResultKind.win;
+    return Scaffold(
+      backgroundColor: const Color(0xFF7D4B2C),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth;
+          final h = constraints.maxHeight;
+          final s = math.min(w / _designW, h / _designH);
+          _canvasW = _designW * s;
+          _canvasH = _designH * s;
+          _originX = (w - _canvasW) / 2;
+          _originY = (h - _canvasH) / 2;
+          return AnimatedBuilder(
+            animation: _c,
+            builder: (context, _) {
+              return Stack(
+                children: [
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    width: w,
+                    height: h * 1.034,
+                    child: Image.asset(
+                      '${_chessFigmaAsset}game_bg.png',
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  ...(win ? _winPieces() : _losePieces()),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _exitButton() => _ChessResultButton(
+    base: 'result_btn_exit.png',
+    text: 'result_txt_exit.png',
+    onTap: () => unawaited(widget.onExit()),
+  );
+
+  Widget _againButton() => _ChessResultButton(
+    base: 'result_btn_again.png',
+    text: 'result_txt_again.png',
+    onTap: () => unawaited(widget.onRestart()),
+  );
+
+  // 胜利 layout (国际象棋-胜利 CSS, frame 393x852). z-order: shield → sun glow →
+  // sun → banner glow → banner → 胜利 title (centred on the ribbon band) →
+  // 积分 → buttons. The glow layers behind the sun and banner are the 光晕.
+  List<Widget> _winPieces() => [
+    _piece(
+      cx: 0.5, cy: 0.359, wFrac: 0.695,
+      aspect: 837 / 819, begin: 0.1, end: 0.44, drop: true,
+      child: _img('result_shield.png'),
+    ),
+    // Soft halo behind the sun (pre-blurred).
+    _piece(
+      cx: 0.5, cy: 0.229, wFrac: 0.90,
+      aspect: 1062 / 1065, begin: 0.06, end: 0.42,
+      child: _img('result_sun_glow.png'),
+    ),
+    // Compass rose emblem (win-specific, distinct from the lose golden sun).
+    _piece(
+      cx: 0.5, cy: 0.229, wFrac: 0.496,
+      aspect: 582 / 585, begin: 0.16, end: 0.5,
+      child: _img('result_win_sun.png'),
+    ),
+    // Soft halo behind the banner (pre-blurred).
+    _piece(
+      cx: 0.5, cy: 0.3975, wFrac: 1.0,
+      aspect: 729 / 1179, begin: 0.28, end: 0.56,
+      child: _img('result_win_banner_glow.png'),
+    ),
+    _piece(
+      cx: 0.5, cy: 0.3975, wFrac: 0.812,
+      aspect: 369 / 957, begin: 0.32, end: 0.58,
+      child: _img('result_win_banner.png'),
+    ),
+    // 胜利 title centred on the ribbon band, sized to sit within its edges.
+    _piece(
+      cx: 0.5, cy: 0.3678, wFrac: 0.24,
+      aspect: 161 / 291, begin: 0.44, end: 0.68,
+      child: _img('result_win_title.png'),
+    ),
+    _piece(
+      cx: 0.5, cy: 0.641, wFrac: 0.361,
+      aspect: 153 / 426, begin: 0.56, end: 0.76,
+      child: _scorePlate('result_win_num.png'),
+    ),
+    _piece(
+      cx: 0.277, cy: 0.796, wFrac: 0.412,
+      aspect: 177 / 486, begin: 0.66, end: 0.88,
+      child: _exitButton(),
+    ),
+    _piece(
+      cx: 0.725, cy: 0.796, wFrac: 0.412,
+      aspect: 180 / 486, begin: 0.72, end: 0.94,
+      child: _againButton(),
+    ),
+  ];
+
+  // 失败 layout (国际象棋-失败 CSS). z-order: shield → sun → banner → 失败 title
+  // (centred on the ribbon band) → 积分 → buttons. No glow on the lose screen.
+  List<Widget> _losePieces() => [
+    _piece(
+      cx: 0.5, cy: 0.361, wFrac: 0.695,
+      aspect: 837 / 819, begin: 0.1, end: 0.44, drop: true,
+      child: _img('result_shield.png'),
+    ),
+    _piece(
+      cx: 0.5, cy: 0.208, wFrac: 0.57,
+      aspect: 669 / 672, begin: 0.16, end: 0.5,
+      child: _img('result_sun.png'),
+    ),
+    _piece(
+      cx: 0.5, cy: 0.37, wFrac: 0.84,
+      aspect: 240 / 990, begin: 0.32, end: 0.58,
+      child: _img('result_banner.png'),
+    ),
+    // 失败 title centred on the ribbon band, sized to sit within its edges.
+    _piece(
+      cx: 0.5, cy: 0.3575, wFrac: 0.21,
+      aspect: 160 / 300, begin: 0.44, end: 0.68,
+      child: _img('result_lose_title.png'),
+    ),
+    _piece(
+      cx: 0.5, cy: 0.641, wFrac: 0.361,
+      aspect: 153 / 426, begin: 0.56, end: 0.76,
+      child: _scorePlate('result_lose_num.png'),
+    ),
+    _piece(
+      cx: 0.277, cy: 0.796, wFrac: 0.412,
+      aspect: 177 / 486, begin: 0.66, end: 0.88,
+      child: _exitButton(),
+    ),
+    _piece(
+      cx: 0.725, cy: 0.796, wFrac: 0.412,
+      aspect: 180 / 486, begin: 0.72, end: 0.94,
+      child: _againButton(),
+    ),
+  ];
+}
+
+/// Result-screen button (退出 / 重来一局): textless base art + text overlay,
+/// sized by height so both share the same glyph size, with a press-in scale.
+class _ChessResultButton extends StatefulWidget {
+  const _ChessResultButton({
+    required this.base,
+    required this.text,
+    required this.onTap,
+  });
+
+  final String base;
+  final String text;
+  final VoidCallback onTap;
+
+  @override
+  State<_ChessResultButton> createState() => _ChessResultButtonState();
+}
+
+class _ChessResultButtonState extends State<_ChessResultButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap();
+      },
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOut,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Image.asset(
+                '$_chessFigmaAsset${widget.base}',
+                fit: BoxFit.fill,
+              ),
+            ),
+            Positioned.fill(
+              child: Align(
+                alignment: const Alignment(0, -0.02),
+                child: FractionallySizedBox(
+                  heightFactor: 0.4,
+                  child: Image.asset(
+                    '$_chessFigmaAsset${widget.text}',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

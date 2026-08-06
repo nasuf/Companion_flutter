@@ -667,7 +667,7 @@ class _NativeGameOverlayButtonState extends State<_NativeGameOverlayButton> {
 Duration _nativeGameTurnTimeout(String gameKey) => switch (gameKey) {
   _nativeGoGameKey => const Duration(seconds: 90),
   _nativeXiangqiGameKey => const Duration(seconds: 30),
-  _nativeChessGameKey => const Duration(seconds: 90),
+  _nativeChessGameKey => const Duration(seconds: 30),
   _nativeChineseCheckersGameKey => const Duration(seconds: 60),
   _nativeGomokuGameKey || _nativeReversiGameKey => const Duration(seconds: 45),
   _nativeMinesweeperGameKey => const Duration(seconds: 45),
