@@ -836,15 +836,7 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                 top: height * (673 / 852),
                 width: width * (40 / 393),
                 child: _ReversiGearButton(
-                  onTap: () => _showGameRulesDialog(
-                    context,
-                    gameName: '黑白棋',
-                    rules: const [
-                      '1、落子需夹住对方棋子，将其翻转为己方颜色',
-                      '2、棋盘无子可落则跳过回合',
-                      '3、对局结束棋子数量多者获胜',
-                    ],
-                  ),
+                  onTap: () => unawaited(_showRules(context)),
                 ),
               ),
               // "你的回合" ribbon flashes in at the board's lower-middle on the
@@ -931,6 +923,22 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
             },
           ),
         ),
+      ],
+    );
+    widget.onTimerPauseChanged(false);
+  }
+
+  // Rules popup — pauses the turn countdown while open (no pause dialog),
+  // resumes on close.
+  Future<void> _showRules(BuildContext context) async {
+    widget.onTimerPauseChanged(true);
+    await _showGameRulesDialog(
+      context,
+      gameName: '黑白棋',
+      rules: const [
+        '1、落子需夹住对方棋子，将其翻转为己方颜色',
+        '2、棋盘无子可落则跳过回合',
+        '3、对局结束棋子数量多者获胜',
       ],
     );
     widget.onTimerPauseChanged(false);

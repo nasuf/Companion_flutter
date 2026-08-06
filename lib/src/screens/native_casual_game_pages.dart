@@ -22,7 +22,10 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
   int? _selected;
   Map<int, List<int>> _targets = const {};
   bool _moveAnimating = false;
-  bool _checkersTimerPaused = false;
+  // Non-null once the round ends (win/lose): the full-screen result replaces
+  // the game (board / avatars / dial torn down), like the other board games.
+  _CheckersResultKind? _checkersResult;
+  Timer? _checkersResultTimer;
 
   @override
   void initState() {
@@ -40,6 +43,7 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
 
   @override
   void dispose() {
+    _checkersResultTimer?.cancel();
     _runtime.dispose();
     unawaited(
       _runtime.abort(
@@ -51,17 +55,6 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
     super.dispose();
   }
 
-  void _clearActiveRound() {
-    setState(() {
-      _engine = null;
-      _lastMove = null;
-      _selected = null;
-      _targets = const {};
-      _moveAnimating = false;
-      _checkersTimerPaused = false;
-    });
-  }
-
   Future<void> _closeCheckersGame() async {
     final engine = _engine;
     if (_runtime.session != null && !_runtime.completed) {
@@ -71,13 +64,27 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
       );
     }
     _runtime.clearPresentation();
+    _checkersResultTimer?.cancel();
+    _checkersResultTimer = null;
     if (!mounted) return;
-    _clearActiveRound();
+    setState(() {
+      _checkersResult = null;
+      _engine = null;
+      _lastMove = null;
+      _selected = null;
+      _targets = const {};
+      _moveAnimating = false;
+    });
   }
 
-  void _setCheckersTimerPaused(bool paused) {
-    if (!mounted || _checkersTimerPaused == paused) return;
-    setState(() => _checkersTimerPaused = paused);
+  /// Quitting or restarting mid-game counts as a loss: settle so the score is
+  /// deducted, then show the 失败 result screen (its buttons do exit / restart).
+  Future<void> _forfeit() async {
+    if (_checkersResult != null || _engine == null || _runtime.completed) {
+      return;
+    }
+    setState(() => _checkersResult = _CheckersResultKind.lose);
+    await _finish(ChineseCheckersStatus.agentWon);
   }
 
   Future<void> _start() async {
@@ -91,8 +98,11 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
       'first_actor': 'user',
       'search': 'iterative_deepening_alpha_beta_beam_tt',
     });
+    _checkersResultTimer?.cancel();
+    _checkersResultTimer = null;
     if (session != null && mounted) {
       setState(() {
+        _checkersResult = null;
         _engine = ChineseCheckersEngine(
           aiConfig: ChineseCheckersAiConfig.fromJson(session.engineConfig),
         );
@@ -100,7 +110,6 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
         _selected = null;
         _targets = const {};
         _moveAnimating = false;
-        _checkersTimerPaused = false;
       });
     }
   }
@@ -242,53 +251,89 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
   @override
   Widget build(BuildContext context) {
     final engine = _engine;
+    // Hold the final board briefly, then reveal the full-screen result.
+    if (engine != null &&
+        engine.isFinished &&
+        _checkersResult == null &&
+        _checkersResultTimer == null) {
+      final win = engine.status == ChineseCheckersStatus.userWon;
+      _checkersResultTimer = Timer(const Duration(milliseconds: 1400), () {
+        if (!mounted || _checkersResult != null) return;
+        setState(
+          () => _checkersResult = win
+              ? _CheckersResultKind.win
+              : _CheckersResultKind.lose,
+        );
+      });
+    }
+
+    final Widget child;
     if (engine == null) {
-      return _CheckersHome(
-        rounds: _runtime.rounds,
-        starting: _runtime.starting,
-        error: _runtime.error,
-        onStart: _start,
-        onExit: () => Navigator.of(context).maybePop(),
+      child = KeyedSubtree(
+        key: const ValueKey('checkers-home'),
+        child: _CheckersHome(
+          rounds: _runtime.rounds,
+          starting: _runtime.starting,
+          error: _runtime.error,
+          onStart: _start,
+          onExit: () => Navigator.of(context).maybePop(),
+        ),
+      );
+    } else if (_checkersResult != null) {
+      // Full-screen result replaces the game — board/avatars/dial torn down.
+      child = _CheckersResultScreen(
+        key: const ValueKey('checkers-result'),
+        kind: _checkersResult!,
+        onRestart: _start,
+        onExit: _closeCheckersGame,
+      );
+    } else {
+      final userTurnActive =
+          !engine.isFinished && !_runtime.aiThinking && !_moveAnimating;
+      child = PopScope(
+        key: const ValueKey('checkers-game'),
+        canPop: false,
+        child: _NativeGameInteractionLayer(
+          runtime: _runtime,
+          game: widget.game,
+          onPlayAgain: _start,
+          onCloseGame: _closeCheckersGame,
+          userTurnActive: userTurnActive,
+          turnToken:
+              '${_runtime.session?.id}:${engine.moveCount}:${_runtime.aiThinking ? 'agent' : 'user'}',
+          turnTimeout: _nativeGameTurnTimeout(_nativeChineseCheckersGameKey),
+          turnLabel: _runtime.aiThinking ? '${_runtime.agentName} 在走' : '轮到你',
+          moveCount: engine.moveCount,
+          showPlayers: false,
+          // The page renders its own full-screen result screen.
+          suppressResult: true,
+          child: _CheckersGameScreen(
+            engine: engine,
+            lastMove: _lastMove,
+            selected: _selected,
+            targets: _targets,
+            agentName: _runtime.agentName,
+            userName: widget.authSession.userFacingName,
+            agentAvatarUrl: widget.authSession.agentAvatarUrl,
+            userAvatarUrl: widget.authSession.userAvatarUrl,
+            aiThinking: _runtime.aiThinking,
+            enabled: userTurnActive,
+            onTap: _tapCell,
+            // Quitting or restarting mid-game → 失败 + 扣分.
+            onShowLose: _forfeit,
+            bannerInMs: _runtime.bannerInMs,
+            bannerHoldMs: _runtime.bannerHoldMs,
+            bannerOutMs: _runtime.bannerOutMs,
+            gamePoints: _runtime.pointsBalance,
+          ),
+        ),
       );
     }
-    final userTurnActive =
-        !engine.isFinished &&
-        !_runtime.aiThinking &&
-        !_moveAnimating &&
-        !_checkersTimerPaused;
-    return PopScope(
-      canPop: false,
-      child: _NativeGameInteractionLayer(
-        runtime: _runtime,
-        game: widget.game,
-        onPlayAgain: _start,
-        onCloseGame: _closeCheckersGame,
-        userTurnActive: userTurnActive,
-        turnToken:
-            '${_runtime.session?.id}:${engine.moveCount}:${_runtime.aiThinking ? 'agent' : 'user'}',
-        turnTimeout: _nativeGameTurnTimeout(_nativeChineseCheckersGameKey),
-        turnLabel: _runtime.aiThinking ? '${_runtime.agentName} 在走' : '轮到你',
-        moveCount: engine.moveCount,
-        showPlayers: false,
-        child: _CheckersGameScreen(
-          engine: engine,
-          lastMove: _lastMove,
-          selected: _selected,
-          targets: _targets,
-          agentName: _runtime.agentName,
-          userName: widget.authSession.userFacingName,
-          agentAvatarUrl: widget.authSession.agentAvatarUrl,
-          userAvatarUrl: widget.authSession.userAvatarUrl,
-          aiThinking: _runtime.aiThinking,
-          starting: _runtime.starting,
-          timerPaused: _checkersTimerPaused,
-          enabled: userTurnActive,
-          onTap: _tapCell,
-          onRestart: _start,
-          onExit: _closeCheckersGame,
-          onTimerPauseChanged: _setCheckersTimerPaused,
-        ),
-      ),
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 320),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: child,
     );
   }
 }

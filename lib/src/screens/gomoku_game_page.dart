@@ -1194,17 +1194,7 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
                 cx: 0.910,
                 cy: 0.829,
                 width: w * 0.064,
-                child: _GomokuHelpButton(
-                  onTap: () => _showGameRulesDialog(
-                    context,
-                    gameName: '五子棋',
-                    rules: const [
-                      '1、黑白双方交替落子',
-                      '2、率先横向 / 竖向 / 斜向连成五子直接获胜',
-                      '3、棋盘布满无五子则平局',
-                    ],
-                  ),
-                ),
+                child: _GomokuHelpButton(onTap: () => _showRules(context)),
               ),
               _NativeGamePointsBadge(points: widget.gamePoints),
             ],
@@ -1300,6 +1290,22 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
             },
           ),
         ),
+      ],
+    );
+    if (mounted) setState(() => _paused = false);
+  }
+
+  // Rules popup — pauses the turn dial while open (no pause dialog), resumes on
+  // close.
+  Future<void> _showRules(BuildContext context) async {
+    setState(() => _paused = true);
+    await _showGameRulesDialog(
+      context,
+      gameName: '五子棋',
+      rules: const [
+        '1、黑白双方交替落子',
+        '2、率先横向 / 竖向 / 斜向连成五子直接获胜',
+        '3、棋盘布满无五子则平局',
       ],
     );
     if (mounted) setState(() => _paused = false);
@@ -2425,12 +2431,14 @@ class _GomokuHelpButtonState extends State<_GomokuHelpButton> {
 /// button in the top-right corner.
 // Shared game-art rules popup (cream card + blurred backdrop + themed close),
 // used by both five-in-a-row and reversi.
-void _showGameRulesDialog(
+// Returns the dialog's Future so callers can pause the turn countdown while
+// the popup is open and resume when it closes (reversi / gomoku / checkers).
+Future<void> _showGameRulesDialog(
   BuildContext context, {
   required String gameName,
   required List<String> rules,
 }) {
-  showGeneralDialog<void>(
+  return showGeneralDialog<void>(
     context: context,
     barrierDismissible: true,
     barrierLabel: '关闭',

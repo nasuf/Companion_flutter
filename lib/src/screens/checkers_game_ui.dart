@@ -219,7 +219,7 @@ class _CheckersHomeStats extends StatelessWidget {
   }
 }
 
-class _CheckersGameScreen extends StatelessWidget {
+class _CheckersGameScreen extends StatefulWidget {
   const _CheckersGameScreen({
     required this.engine,
     required this.lastMove,
@@ -230,13 +230,13 @@ class _CheckersGameScreen extends StatelessWidget {
     required this.agentAvatarUrl,
     required this.userAvatarUrl,
     required this.aiThinking,
-    required this.starting,
-    required this.timerPaused,
     required this.enabled,
     required this.onTap,
-    required this.onRestart,
-    required this.onExit,
-    required this.onTimerPauseChanged,
+    required this.onShowLose,
+    required this.bannerInMs,
+    required this.bannerHoldMs,
+    required this.bannerOutMs,
+    required this.gamePoints,
   });
 
   final ChineseCheckersEngine engine;
@@ -248,17 +248,32 @@ class _CheckersGameScreen extends StatelessWidget {
   final String? agentAvatarUrl;
   final String? userAvatarUrl;
   final bool aiThinking;
-  final bool starting;
-  final bool timerPaused;
   final bool enabled;
   final ValueChanged<int> onTap;
-  final Future<void> Function() onRestart;
-  final Future<void> Function() onExit;
-  final ValueChanged<bool> onTimerPauseChanged;
+  // Quitting or restarting mid-game → 失败 + 扣分.
+  final Future<void> Function() onShowLose;
+  // "你的回合" banner timing (ms), from the per-game admin config.
+  final int bannerInMs;
+  final int bannerHoldMs;
+  final int bannerOutMs;
+  // Current game points, shown in the top-right coin badge.
+  final int? gamePoints;
+
+  @override
+  State<_CheckersGameScreen> createState() => _CheckersGameScreenState();
+}
+
+class _CheckersGameScreenState extends State<_CheckersGameScreen> {
+  // Freezes the per-turn dial while a modal (pause / exit) or the rules popup
+  // is open — the rules popup pauses the countdown without a pause dialog.
+  bool _paused = false;
 
   @override
   Widget build(BuildContext context) {
-    final token = '${engine.moveCount}:${aiThinking ? 'agent' : 'user'}';
+    final engine = widget.engine;
+    final userTurn = widget.enabled && !engine.isFinished;
+    final agentTurn = !engine.isFinished && widget.aiThinking;
+    final token = '${engine.moveCount}:${widget.aiThinking ? 'agent' : 'user'}';
     return Scaffold(
       backgroundColor: const Color(0xFF6F321F),
       body: LayoutBuilder(
@@ -272,53 +287,69 @@ class _CheckersGameScreen extends StatelessWidget {
                   duration: const Duration(milliseconds: 11000),
                   scaleAmount: 0.004,
                   child: Image.asset(
-                    '${_checkersFigmaAsset}bg.png',
+                    '${_checkersFigmaAsset}game_bg2.png',
                     fit: BoxFit.cover,
                   ),
                 ),
               ),
+              // Two nameplates (design 跳棋-游戏, frame 393x852). The coin avatar
+              // carries a per-turn 30s dial (like 五子棋). User top-left, agent
+              // top-right.
+              // User card: pill dims when it is not the user's turn; the name
+              // is centred on the full pill (the coin overlaps its outer edge).
               Positioned(
-                left: width * (45 / 393),
-                top: height * (88 / 852),
-                width: width * (148 / 393),
-                height: height * (57 / 852),
-                child: _CheckersNamePlate(name: userName, avatarOnLeft: true),
+                left: width * (62 / 393),
+                top: height * (134 / 852),
+                width: width * (122 / 393),
+                height: height * (47 / 852),
+                child: _CheckersCard(active: userTurn),
               ),
               Positioned(
-                left: width * (14 / 393),
-                top: height * (71 / 852),
-                width: width * (91 / 393),
-                child: _CheckersAvatar(
-                  name: userName,
-                  imageUrl: userAvatarUrl,
-                  active: enabled,
-                ),
+                left: width * (95 / 393),
+                top: height * (134 / 852),
+                width: width * (89 / 393),
+                height: height * (47 / 852),
+                child: _CheckersName(name: widget.userName, active: userTurn),
               ),
               Positioned(
-                left: width * (200 / 393),
-                top: height * (88 / 852),
-                width: width * (148 / 393),
-                height: height * (57 / 852),
-                child: _CheckersNamePlate(name: agentName, avatarOnLeft: false),
-              ),
-              Positioned(
-                left: width * (290 / 393),
-                top: height * (68 / 852),
-                width: width * (90 / 393),
-                child: _CheckersAvatar(
-                  name: agentName,
-                  imageUrl: agentAvatarUrl,
-                  active: aiThinking,
-                ),
-              ),
-              Positioned(
-                left: width * (132 / 393),
-                top: height * (162 / 852),
-                width: width * (117 / 393),
-                height: height * (34 / 852),
-                child: _CheckersClockPlate(
+                left: width * (29 / 393),
+                top: height * (125 / 852),
+                width: width * (66 / 393),
+                height: width * (66 / 393),
+                child: _CheckersTurnAvatar(
                   token: token,
-                  paused: timerPaused || aiThinking,
+                  imageUrl: widget.userAvatarUrl,
+                  fallback: widget.userName,
+                  active: userTurn,
+                  paused: _paused,
+                  onTimeout: _handleUserIdleTimeout,
+                ),
+              ),
+              Positioned(
+                left: width * (208 / 393),
+                top: height * (134 / 852),
+                width: width * (122 / 393),
+                height: height * (47 / 852),
+                child: _CheckersCard(active: agentTurn),
+              ),
+              Positioned(
+                left: width * (208 / 393),
+                top: height * (134 / 852),
+                width: width * (89 / 393),
+                height: height * (47 / 852),
+                child: _CheckersName(name: widget.agentName, active: agentTurn),
+              ),
+              Positioned(
+                left: width * (297 / 393),
+                top: height * (122 / 852),
+                width: width * (66 / 393),
+                height: width * (66 / 393),
+                child: _CheckersTurnAvatar(
+                  token: token,
+                  imageUrl: widget.agentAvatarUrl,
+                  fallback: widget.agentName,
+                  active: agentTurn,
+                  paused: _paused || widget.aiThinking,
                 ),
               ),
               Positioned(
@@ -340,34 +371,60 @@ class _CheckersGameScreen extends StatelessWidget {
                 height: height * (404 / 852),
                 child: _ChineseCheckersBoard(
                   engine: engine,
-                  lastMove: lastMove,
-                  selected: selected,
-                  targets: targets,
+                  lastMove: widget.lastMove,
+                  selected: widget.selected,
+                  targets: widget.targets,
                   figmaStyle: true,
-                  onTap: onTap,
+                  onTap: widget.onTap,
+                ),
+              ),
+              // "你的回合" ribbon at the board's lower-middle, flashing in when
+              // the user's turn begins (timing from the per-game admin config).
+              Positioned(
+                left: 0,
+                right: 0,
+                top: height * 0.60 - (width * 0.13) / 2,
+                height: width * 0.13,
+                child: _TurnBanner(
+                  userTurn: userTurn,
+                  inMs: widget.bannerInMs,
+                  holdMs: widget.bannerHoldMs,
+                  outMs: widget.bannerOutMs,
                 ),
               ),
               Positioned(
-                left: width * (83 / 393),
-                top: height * (690 / 852),
+                left: width * (12 / 393),
+                top: height * (716 / 852),
                 width: width * (101 / 393),
                 height: height * (50 / 852),
-                child: _CheckersGameTextButton(
-                  label: '退出',
+                child: _CheckersArtButton(
+                  asset: '${_checkersFigmaAsset}game_btn_exit2.png',
                   onTap: () => unawaited(_confirmExit(context)),
                 ),
               ),
               Positioned(
-                left: width * (209 / 393),
-                top: height * (690 / 852),
+                left: width * (150 / 393),
+                top: height * (716 / 852),
                 width: width * (101 / 393),
                 height: height * (50 / 852),
-                child: _CheckersGameTextButton(
-                  label: '暂停',
-                  accent: true,
+                child: _CheckersArtButton(
+                  asset: '${_checkersFigmaAsset}game_btn_pause2.png',
                   onTap: () => unawaited(_showPause(context)),
                 ),
               ),
+              // Gear → rules popup (like 黑白棋). Opening it pauses the dial
+              // without a pause dialog; closing it resumes.
+              Positioned(
+                left: width * (333 / 393),
+                top: height * (716 / 852),
+                width: width * (44 / 393),
+                height: width * (44 / 393),
+                child: _CheckersArtButton(
+                  asset: '${_checkersFigmaAsset}game_gear.png',
+                  onTap: () => unawaited(_showRules(context)),
+                ),
+              ),
+              _NativeGamePointsBadge(points: widget.gamePoints),
             ],
           );
         },
@@ -376,7 +433,7 @@ class _CheckersGameScreen extends StatelessWidget {
   }
 
   Future<void> _confirmExit(BuildContext context) async {
-    onTimerPauseChanged(true);
+    setState(() => _paused = true);
     await _showCheckersModal(
       context,
       title: '退出对局',
@@ -391,16 +448,24 @@ class _CheckersGameScreen extends StatelessWidget {
           label: '退出',
           onTap: () {
             Navigator.of(dialogContext).pop();
-            unawaited(onExit());
+            // Quitting mid-game → 失败 + 扣分; the 失败 screen's 退出 then leaves.
+            unawaited(widget.onShowLose());
           },
         ),
       ],
     );
-    onTimerPauseChanged(false);
+    if (mounted) setState(() => _paused = false);
+  }
+
+  // The per-turn dial ran out while the user hadn't moved → auto-open the pause
+  // menu (tapping 继续 resumes with a fresh dial).
+  void _handleUserIdleTimeout() {
+    if (!mounted || _paused || widget.engine.isFinished) return;
+    unawaited(_showPause(context));
   }
 
   Future<void> _showPause(BuildContext context) async {
-    onTimerPauseChanged(true);
+    setState(() => _paused = true);
     await _showCheckersModal(
       context,
       title: '游戏暂停',
@@ -412,191 +477,242 @@ class _CheckersGameScreen extends StatelessWidget {
         ),
         const SizedBox(height: 9),
         _CheckersModalButton(
-          label: starting ? '载入中' : '重新开局',
-          enabled: !starting,
+          label: '重新开局',
           onTap: () {
             Navigator.of(dialogContext).pop();
-            unawaited(onRestart());
+            // Restarting mid-game → 失败 + 扣分; the 失败 screen's 重来一局 restarts.
+            unawaited(widget.onShowLose());
           },
         ),
       ],
     );
-    onTimerPauseChanged(false);
+    if (mounted) setState(() => _paused = false);
   }
-}
 
-class _CheckersNamePlate extends StatelessWidget {
-  const _CheckersNamePlate({required this.name, required this.avatarOnLeft});
-
-  final String name;
-  final bool avatarOnLeft;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        Positioned.fill(
-          child: Image.asset(
-            '${_checkersFigmaAsset}game_nameplate.png',
-            fit: BoxFit.fill,
-          ),
-        ),
-        Padding(
-          padding: EdgeInsets.only(
-            left: avatarOnLeft ? 58 : 10,
-            right: avatarOnLeft ? 10 : 58,
-          ),
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              name,
-              style: const TextStyle(
-                color: Color(0xFFFEE0B6),
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ),
-        ),
+  // Rules popup (shared card, like 黑白棋). The countdown pauses while it is
+  // open — but no pause dialog is shown — and resumes when it closes.
+  Future<void> _showRules(BuildContext context) async {
+    setState(() => _paused = true);
+    await _showGameRulesDialog(
+      context,
+      gameName: '跳棋',
+      rules: const [
+        '1、可直行移动一格，或隔着一颗棋子跳跃前进',
+        '2、率先将全部棋子移入对面大本营获胜',
       ],
     );
+    if (mounted) setState(() => _paused = false);
   }
 }
 
-class _CheckersAvatar extends StatelessWidget {
-  const _CheckersAvatar({
-    required this.name,
-    required this.imageUrl,
-    required this.active,
-  });
+/// Pill card art — the orange plate on this player's turn, the brown plate
+/// while waiting (separate design assets, not a dimmed copy).
+class _CheckersCard extends StatelessWidget {
+  const _CheckersCard({required this.active});
 
-  final String name;
-  final String? imageUrl;
   final bool active;
 
   @override
-  Widget build(BuildContext context) {
-    return AspectRatio(
-      aspectRatio: 1,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final size = constraints.maxWidth;
-          return Stack(
-            alignment: Alignment.center,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 260),
-                width: size * 0.82,
-                height: size * 0.82,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: active
-                      ? const [
-                          BoxShadow(
-                            color: Color(0xCCFFD064),
-                            blurRadius: 18,
-                            spreadRadius: 3,
-                          ),
-                        ]
-                      : const [],
-                ),
-                child: ClipOval(
-                  child: _Avatar(
-                    size: size * 0.82,
-                    label: name.trim().isEmpty
-                        ? '伴'
-                        : name.trim().characters.first,
-                    imageUrl: imageUrl,
-                    gradient: const [Color(0xFFFFE2B5), Color(0xFFE38B36)],
-                  ),
-                ),
-              ),
-              Positioned.fill(
-                child: Image.asset(
-                  '${_checkersFigmaAsset}game_avatar_frame.png',
-                  fit: BoxFit.contain,
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Image.asset(
+    active
+        ? '${_checkersFigmaAsset}game_card.png'
+        : '${_checkersFigmaAsset}game_card_inactive.png',
+    fit: BoxFit.fill,
+  );
 }
 
-class _CheckersClockPlate extends StatelessWidget {
-  const _CheckersClockPlate({required this.token, required this.paused});
+/// Nameplate text, centred in the pill's exposed area (the part not covered by
+/// the avatar coin). Bright gold on the active player's turn; muted brown while
+/// waiting.
+class _CheckersName extends StatelessWidget {
+  const _CheckersName({required this.name, required this.active});
 
-  final String token;
-  final bool paused;
+  final String name;
+  final bool active;
 
   @override
-  Widget build(BuildContext context) {
-    return Stack(
-      alignment: const Alignment(0.28, 0),
-      children: [
-        Positioned.fill(
-          child: Image.asset(
-            '${_checkersFigmaAsset}game_timer.png',
-            fit: BoxFit.fill,
-          ),
+  Widget build(BuildContext context) => Center(
+    child: FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Text(
+        name,
+        style: TextStyle(
+          color: active ? const Color(0xFFFEE0B6) : const Color(0xFFC9A876),
+          fontSize: 15,
+          height: 1,
+          fontWeight: FontWeight.w900,
+          decoration: TextDecoration.none,
         ),
-        _CheckersTurnClock(token: token, paused: paused),
-      ],
-    );
-  }
+      ),
+    ),
+  );
 }
 
-class _CheckersTurnClock extends StatefulWidget {
-  const _CheckersTurnClock({required this.token, required this.paused});
+/// Coin avatar with a per-turn countdown dial (reuses the 五子棋 painter): a
+/// translucent pie mask + sweeping red hand + cyan seconds, shown while it is
+/// this player's turn. The peach ring frame overlays the portrait.
+class _CheckersTurnAvatar extends StatefulWidget {
+  const _CheckersTurnAvatar({
+    required this.token,
+    required this.imageUrl,
+    required this.fallback,
+    required this.active,
+    required this.paused,
+    this.onTimeout,
+  });
 
   final String token;
+  final String? imageUrl;
+  final String fallback;
+  final bool active;
   final bool paused;
+  final VoidCallback? onTimeout;
 
   @override
-  State<_CheckersTurnClock> createState() => _CheckersTurnClockState();
+  State<_CheckersTurnAvatar> createState() => _CheckersTurnAvatarState();
 }
 
-class _CheckersTurnClockState extends State<_CheckersTurnClock> {
-  Timer? _timer;
-  int _remaining = 90;
+class _CheckersTurnAvatarState extends State<_CheckersTurnAvatar>
+    with SingleTickerProviderStateMixin {
+  static const int _turnSeconds = 30;
+  static const Color _cyan = Color(0xFF01FFFF);
+
+  late final AnimationController _countdown;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted || widget.paused || _remaining <= 0) return;
-      setState(() => _remaining -= 1);
-    });
+    _countdown = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: _turnSeconds),
+    )..addStatusListener(_onCountdownStatus);
+    _sync();
+  }
+
+  void _onCountdownStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed &&
+        widget.active &&
+        !widget.paused) {
+      widget.onTimeout?.call();
+    }
   }
 
   @override
-  void didUpdateWidget(covariant _CheckersTurnClock oldWidget) {
+  void didUpdateWidget(covariant _CheckersTurnAvatar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.token != widget.token) _remaining = 90;
+    if (widget.active != oldWidget.active || widget.token != oldWidget.token) {
+      _sync();
+    } else if (widget.paused != oldWidget.paused && widget.active) {
+      if (widget.paused) {
+        _countdown.stop();
+      } else if (_countdown.value >= 1.0) {
+        _countdown.forward(from: 0);
+      } else {
+        _countdown.forward();
+      }
+    }
+  }
+
+  void _sync() {
+    if (widget.active && !widget.paused) {
+      _countdown.forward(from: 0);
+    } else if (!widget.active) {
+      _countdown.stop();
+      _countdown.value = 0;
+    }
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _countdown.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final minutes = _remaining ~/ 60;
-    final seconds = (_remaining % 60).toString().padLeft(2, '0');
-    return Text(
-      '$minutes:$seconds',
-      style: const TextStyle(
-        color: Color(0xFFFEE0B6),
-        fontSize: 20,
-        fontWeight: FontWeight.w900,
-        decoration: TextDecoration.none,
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final d = constraints.maxWidth;
+        final inner = d * 0.79;
+        return AnimatedBuilder(
+          animation: _countdown,
+          builder: (context, _) {
+            final remainingFraction = (1 - _countdown.value).clamp(0.0, 1.0);
+            final remainingSeconds = (remainingFraction * _turnSeconds)
+                .ceil()
+                .clamp(0, _turnSeconds);
+            return SizedBox(
+              width: d,
+              height: d,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  ClipOval(
+                    child: SizedBox(
+                      width: inner,
+                      height: inner,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          _Avatar(
+                            size: inner,
+                            label: widget.fallback.trim().isEmpty
+                                ? '伴'
+                                : widget.fallback.trim().characters.first,
+                            imageUrl: widget.imageUrl,
+                            gradient: const [
+                              Color(0xFFFFE2B5),
+                              Color(0xFFE38B36),
+                            ],
+                          ),
+                          if (widget.active) ...[
+                            CustomPaint(
+                              painter: _GomokuTurnTimerPainter(
+                                remainingFraction: remainingFraction,
+                              ),
+                            ),
+                            Center(
+                              child: Text(
+                                '$remainingSeconds',
+                                style: TextStyle(
+                                  color: _cyan,
+                                  fontSize: inner * 0.4,
+                                  fontWeight: FontWeight.w900,
+                                  height: 1,
+                                  decoration: TextDecoration.none,
+                                  shadows: const [
+                                    Shadow(
+                                      color: Color(0x99000000),
+                                      offset: Offset(0, 1),
+                                      blurRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Ring frame on top (transparent centre): peach on this
+                  // player's turn, gold while waiting (separate design assets).
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Image.asset(
+                        widget.active
+                            ? '${_checkersFigmaAsset}game_avatar_ring.png'
+                            : '${_checkersFigmaAsset}game_avatar_ring_inactive.png',
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -616,81 +732,6 @@ class _CheckersArtButton extends StatefulWidget {
 
   @override
   State<_CheckersArtButton> createState() => _CheckersArtButtonState();
-}
-
-class _CheckersGameTextButton extends StatefulWidget {
-  const _CheckersGameTextButton({
-    required this.label,
-    required this.onTap,
-    this.accent = false,
-  });
-
-  final String label;
-  final VoidCallback onTap;
-  final bool accent;
-
-  @override
-  State<_CheckersGameTextButton> createState() =>
-      _CheckersGameTextButtonState();
-}
-
-class _CheckersGameTextButtonState extends State<_CheckersGameTextButton> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTapUp: (_) {
-        setState(() => _pressed = false);
-        widget.onTap();
-      },
-      child: AnimatedScale(
-        scale: _pressed ? 0.96 : 1,
-        duration: const Duration(milliseconds: 90),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: widget.accent
-                  ? const [Color(0xFFFFB857), Color(0xFFD86625)]
-                  : const [Color(0xFFC58A67), Color(0xFF86513C)],
-            ),
-            borderRadius: BorderRadius.circular(13),
-            border: Border.all(color: const Color(0xFFFFCB78), width: 2),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x66000000),
-                blurRadius: 8,
-                offset: Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Center(
-            child: Text(
-              widget.label,
-              style: const TextStyle(
-                color: Color(0xFFFFF0D0),
-                fontSize: 19,
-                fontWeight: FontWeight.w900,
-                decoration: TextDecoration.none,
-                shadows: [
-                  Shadow(
-                    color: Color(0x77000000),
-                    offset: Offset(1, 2),
-                    blurRadius: 1,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _CheckersArtButtonState extends State<_CheckersArtButton> {
@@ -731,22 +772,17 @@ class _CheckersArtButtonState extends State<_CheckersArtButton> {
 }
 
 class _CheckersModalButton extends StatelessWidget {
-  const _CheckersModalButton({
-    required this.label,
-    required this.onTap,
-    this.enabled = true,
-  });
+  const _CheckersModalButton({required this.label, required this.onTap});
 
   final String label;
   final VoidCallback onTap;
-  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: enabled ? onTap : null,
+      onTap: onTap,
       child: Opacity(
-        opacity: enabled ? 1 : 0.55,
+        opacity: 1,
         child: Container(
           height: 42,
           alignment: const Alignment(0, 0.12),
@@ -846,4 +882,307 @@ Future<void> _showCheckersModal(
       ),
     ),
   );
+}
+
+enum _CheckersResultKind { win, lose }
+
+/// Full-screen 跳棋 win / lose result scene, composed from the exported art
+/// (glow → sun/medal emblem → banner → title → 积分 → buttons) with a staggered
+/// pop-in. Shown at the page level in place of the game so the board / avatars
+/// / dial are torn down. Positions letterboxed onto the 393x852 design canvas
+/// so overlaps hold on any aspect ratio.
+class _CheckersResultScreen extends StatefulWidget {
+  const _CheckersResultScreen({
+    super.key,
+    required this.kind,
+    required this.onRestart,
+    required this.onExit,
+  });
+
+  final _CheckersResultKind kind;
+  final Future<void> Function() onRestart;
+  final Future<void> Function() onExit;
+
+  @override
+  State<_CheckersResultScreen> createState() => _CheckersResultScreenState();
+}
+
+class _CheckersResultScreenState extends State<_CheckersResultScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  static const double _designW = 393;
+  static const double _designH = 852;
+  double _canvasW = _designW;
+  double _canvasH = _designH;
+  double _originX = 0;
+  double _originY = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1300),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+        _c.value = 1;
+      } else {
+        _c.forward();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Widget _img(String name) =>
+      Image.asset('$_checkersFigmaAsset$name', fit: BoxFit.fill);
+
+  Widget _piece({
+    required double cx,
+    required double cy,
+    required double wFrac,
+    required double aspect,
+    required double begin,
+    required double end,
+    bool drop = false,
+    required Widget child,
+  }) {
+    final p = ((_c.value - begin) / (end - begin)).clamp(0.0, 1.0);
+    final eased = Curves.easeOutBack.transform(p);
+    final opacity = (p * 2.4).clamp(0.0, 1.0);
+    final width = _canvasW * wFrac;
+    final height = width * aspect;
+    final dy = drop
+        ? -_canvasH * 0.10 * (1 - Curves.easeOutCubic.transform(p))
+        : 0.0;
+    final scale = drop ? 1.0 : (0.7 + 0.3 * eased);
+    return Positioned(
+      left: _originX + _canvasW * cx - width / 2,
+      top: _originY + _canvasH * cy - height / 2 + dy,
+      width: width,
+      height: height,
+      child: Opacity(
+        opacity: opacity,
+        child: Transform.scale(scale: scale, child: child),
+      ),
+    );
+  }
+
+  Widget _scoreRow(String numAsset) => Center(
+    child: FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Image.asset('${_checkersFigmaAsset}result_score_label.png', height: 30),
+          const SizedBox(width: 6),
+          Image.asset('$_checkersFigmaAsset$numAsset', height: 30),
+        ],
+      ),
+    ),
+  );
+
+  Widget _exitButton() => _CheckersResultButton(
+    base: 'result_btn_exit.png',
+    text: 'result_txt_exit.png',
+    onTap: () => unawaited(widget.onExit()),
+  );
+
+  Widget _againButton() => _CheckersResultButton(
+    base: 'result_btn_again.png',
+    text: 'result_txt_again.png',
+    onTap: () => unawaited(widget.onRestart()),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final win = widget.kind == _CheckersResultKind.win;
+    return Scaffold(
+      backgroundColor: const Color(0xFF6F321F),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth;
+          final h = constraints.maxHeight;
+          final s = math.min(w / _designW, h / _designH);
+          _canvasW = _designW * s;
+          _canvasH = _designH * s;
+          _originX = (w - _canvasW) / 2;
+          _originY = (h - _canvasH) / 2;
+          return AnimatedBuilder(
+            animation: _c,
+            builder: (context, _) {
+              return Stack(
+                children: [
+                  Positioned.fill(
+                    child: Image.asset(
+                      '${_checkersFigmaAsset}game_bg2.png',
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  ...(win ? _winPieces() : _losePieces()),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  // 跳棋-胜利 layout (frame 393x852). z-order: emblem glow → sun emblem →
+  // banner glow → banner → 胜利 title → 积分 → buttons.
+  List<Widget> _winPieces() => [
+    _piece(
+      cx: 0.5, cy: 0.35, wFrac: 0.63,
+      aspect: 1068 / 924, begin: 0.04, end: 0.4,
+      child: _img('result_win_emblem_glow.png'),
+    ),
+    _piece(
+      cx: 0.501, cy: 0.350, wFrac: 0.529,
+      aspect: 768 / 624, begin: 0.12, end: 0.46, drop: true,
+      child: _img('result_win_emblem.png'),
+    ),
+    _piece(
+      cx: 0.5, cy: 0.372, wFrac: 0.96,
+      aspect: 666 / 1179, begin: 0.28, end: 0.56,
+      child: _img('result_win_banner_glow.png'),
+    ),
+    _piece(
+      cx: 0.5, cy: 0.372, wFrac: 0.878,
+      aspect: 366 / 1035, begin: 0.32, end: 0.58,
+      child: _img('result_win_banner.png'),
+    ),
+    _piece(
+      cx: 0.5, cy: 0.350, wFrac: 0.26,
+      aspect: 234 / 408, begin: 0.44, end: 0.68,
+      child: _img('result_win_title.png'),
+    ),
+    _piece(
+      cx: 0.5, cy: 0.634, wFrac: 0.42,
+      aspect: 0.14, begin: 0.56, end: 0.76,
+      child: _scoreRow('result_win_num.png'),
+    ),
+    _piece(
+      cx: 0.313, cy: 0.772, wFrac: 0.346,
+      aspect: 180 / 408, begin: 0.66, end: 0.88,
+      child: _exitButton(),
+    ),
+    _piece(
+      cx: 0.690, cy: 0.772, wFrac: 0.346,
+      aspect: 180 / 408, begin: 0.72, end: 0.94,
+      child: _againButton(),
+    ),
+  ];
+
+  // 跳棋-失败 layout.
+  List<Widget> _losePieces() => [
+    _piece(
+      cx: 0.5, cy: 0.355, wFrac: 0.66,
+      aspect: 1257 / 1179, begin: 0.04, end: 0.4,
+      child: _img('result_lose_emblem_glow.png'),
+    ),
+    _piece(
+      cx: 0.5, cy: 0.359, wFrac: 0.598,
+      aspect: 717 / 705, begin: 0.12, end: 0.46, drop: true,
+      child: _img('result_lose_emblem.png'),
+    ),
+    _piece(
+      cx: 0.5, cy: 0.383, wFrac: 0.96,
+      aspect: 942 / 1179, begin: 0.28, end: 0.56,
+      child: _img('result_lose_banner_glow.png'),
+    ),
+    _piece(
+      cx: 0.5, cy: 0.383, wFrac: 0.875,
+      aspect: 402 / 1032, begin: 0.32, end: 0.58,
+      child: _img('result_lose_banner.png'),
+    ),
+    _piece(
+      cx: 0.5, cy: 0.360, wFrac: 0.26,
+      aspect: 233 / 418, begin: 0.44, end: 0.68,
+      child: _img('result_lose_title.png'),
+    ),
+    _piece(
+      cx: 0.5, cy: 0.634, wFrac: 0.42,
+      aspect: 0.14, begin: 0.56, end: 0.76,
+      child: _scoreRow('result_lose_num.png'),
+    ),
+    _piece(
+      cx: 0.313, cy: 0.772, wFrac: 0.346,
+      aspect: 180 / 408, begin: 0.66, end: 0.88,
+      child: _exitButton(),
+    ),
+    _piece(
+      cx: 0.690, cy: 0.772, wFrac: 0.346,
+      aspect: 180 / 408, begin: 0.72, end: 0.94,
+      child: _againButton(),
+    ),
+  ];
+}
+
+/// Result-screen button (退出 / 重来一局): textless base art + text overlay,
+/// sized by height so both share the same glyph size, with a press-in scale.
+class _CheckersResultButton extends StatefulWidget {
+  const _CheckersResultButton({
+    required this.base,
+    required this.text,
+    required this.onTap,
+  });
+
+  final String base;
+  final String text;
+  final VoidCallback onTap;
+
+  @override
+  State<_CheckersResultButton> createState() => _CheckersResultButtonState();
+}
+
+class _CheckersResultButtonState extends State<_CheckersResultButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap();
+      },
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOut,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Image.asset(
+                '$_checkersFigmaAsset${widget.base}',
+                fit: BoxFit.fill,
+              ),
+            ),
+            Positioned.fill(
+              child: Align(
+                alignment: const Alignment(0, -0.04),
+                child: FractionallySizedBox(
+                  heightFactor: 0.42,
+                  child: Image.asset(
+                    '$_checkersFigmaAsset${widget.text}',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
