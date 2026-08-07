@@ -2,10 +2,11 @@ part of 'package:companion_flutter/main.dart';
 
 const String _tetrisFigmaAsset = 'assets/prototype/games/tetris-figma/';
 
-/// The round buttons are drawn as a 3D disc with a base beneath, so the lit
-/// face sits 4.6% of the artwork's height above its geometric centre. Labels
-/// are lifted by twice that as bottom padding to land on the face.
-const double _tetrisButtonFaceLift = 0.092;
+/// The buttons are drawn as a 3D disc/pill with a base beneath, so the lit
+/// face centre sits ~3.3% of the artwork's height above its geometric centre
+/// (measured off the art). Content is lifted by twice that as bottom padding
+/// to land centred on the face.
+const double _tetrisButtonFaceLift = 0.066;
 
 class _TetrisHome extends StatelessWidget {
   const _TetrisHome({
@@ -225,16 +226,18 @@ class _TetrisGameScreen extends StatelessWidget {
     required this.agentAvatarUrl,
     required this.userAvatarUrl,
     required this.canControl,
-    required this.starting,
+    required this.gamePoints,
     required this.onMove,
     required this.onRotate,
     required this.onHold,
+    required this.onSoftDropStart,
+    required this.onSoftDropEnd,
     required this.onHardDrop,
     required this.onPanStart,
     required this.onPanUpdate,
     required this.onPanEnd,
-    required this.onRestart,
-    required this.onExit,
+    required this.onShowLose,
+    required this.onShowWin,
     required this.onPauseChanged,
   });
 
@@ -244,26 +247,33 @@ class _TetrisGameScreen extends StatelessWidget {
   final String? agentAvatarUrl;
   final String? userAvatarUrl;
   final bool canControl;
-  final bool starting;
+  final int? gamePoints;
   final ValueChanged<int> onMove;
   final VoidCallback onRotate;
   final VoidCallback onHold;
+  final VoidCallback onSoftDropStart;
+  final VoidCallback onSoftDropEnd;
   final VoidCallback onHardDrop;
   final GestureDragStartCallback onPanStart;
   final GestureDragUpdateCallback onPanUpdate;
   final GestureDragEndCallback onPanEnd;
-  final Future<void> Function() onRestart;
-  final Future<void> Function() onExit;
+  final Future<void> Function() onShowLose;
+  final Future<void> Function() onShowWin;
   final ValueChanged<bool> onPauseChanged;
+
+  static const _userCyan = Color(0xFF28FDFE);
+  static const _agentPink = Color(0xFFFD9BED);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1B0B33),
+      backgroundColor: const Color(0xFF120726),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final width = constraints.maxWidth;
           final height = constraints.maxHeight;
+          double x(double v) => width * (v / 393);
+          double y(double v) => height * (v / 852);
           return Stack(
             children: [
               Positioned.fill(
@@ -271,82 +281,104 @@ class _TetrisGameScreen extends StatelessWidget {
                   duration: const Duration(milliseconds: 11000),
                   scaleAmount: 0.005,
                   child: Image.asset(
-                    '${_tetrisFigmaAsset}game_bg.jpg',
+                    '${_tetrisFigmaAsset}game_bg2.jpg',
                     fit: BoxFit.cover,
                   ),
                 ),
               ),
+              // Nameplates (avatar socket baked into the plate art).
               Positioned(
-                left: width * (10 / 393),
-                top: height * (122 / 852),
-                width: width * (170 / 393),
-                height: height * (62 / 852),
-                child: _TetrisNamePlate(name: userName, avatarOnLeft: true),
-              ),
-              Positioned(
-                left: width * (213 / 393),
-                top: height * (122 / 852),
-                width: width * (170 / 393),
-                height: height * (62 / 852),
-                child: _TetrisNamePlate(name: agentName, avatarOnLeft: false),
-              ),
-              Positioned(
-                left: width * (16 / 393),
-                top: height * (128 / 852),
-                width: width * (50 / 393),
-                child: _TetrisAvatar(
+                left: x(10),
+                top: y(122),
+                width: x(170),
+                height: y(62),
+                child: _TetrisNamePlate(
                   name: userName,
                   imageUrl: userAvatarUrl,
-                  active: canControl,
-                  accent: const Color(0xFF00FBFF),
+                  avatarOnLeft: true,
                 ),
               ),
               Positioned(
-                left: width * (326 / 393),
-                top: height * (128 / 852),
-                width: width * (50 / 393),
-                child: _TetrisAvatar(
+                left: x(213),
+                top: y(122),
+                width: x(170),
+                height: y(62),
+                child: _TetrisNamePlate(
                   name: agentName,
                   imageUrl: agentAvatarUrl,
-                  active: !engine.isFinished,
-                  accent: const Color(0xFFFF7FC5),
+                  avatarOnLeft: false,
                 ),
               ),
+              // Score badges + centre clock ring.
               Positioned(
-                left: width * (44 / 393),
-                top: height * (219 / 852),
-                width: width * (113 / 393),
-                height: height * (43 / 852),
-                child: _TetrisScorePlate(
-                  asset: '${_tetrisFigmaAsset}game_score_user.png',
+                left: x(41),
+                top: y(206),
+                width: x(120),
+                height: y(44),
+                child: _TetrisScoreBadge(
+                  labelAsset: '${_tetrisFigmaAsset}score_label_user.png',
                   score: engine.user.score,
+                  frameColor: const Color(0xFF25A8EE),
+                  borderColor: const Color(0xFF8BEBFF),
+                  innerColor: const Color(0xFF1F3767),
+                  numberColor: _userCyan,
                 ),
               ),
               Positioned(
-                left: width * (236 / 393),
-                top: height * (219 / 852),
-                width: width * (113 / 393),
-                height: height * (43 / 852),
-                child: _TetrisScorePlate(
-                  asset: '${_tetrisFigmaAsset}game_score_agent.png',
+                left: x(233),
+                top: y(206),
+                width: x(120),
+                height: y(44),
+                child: _TetrisScoreBadge(
+                  labelAsset: '${_tetrisFigmaAsset}score_label_agent.png',
                   score: engine.agent.score,
+                  frameColor: const Color(0xFFC84CF2),
+                  borderColor: const Color(0xFFDC95FD),
+                  innerColor: const Color(0xFF2C145B),
+                  numberColor: _agentPink,
                 ),
               ),
               Positioned(
-                left: width * (157 / 393),
-                top: height * (219 / 852),
-                width: width * (79 / 393),
-                height: height * (43 / 852),
-                child: _TetrisClock(engine: engine),
+                left: x(167),
+                top: y(200),
+                width: x(60),
+                height: x(60),
+                child: _TetrisClockRing(engine: engine),
+              ),
+              // NEXT previews above each board.
+              Positioned(
+                left: x(69),
+                top: y(266),
+                width: x(56),
+                height: x(52),
+                child: _TetrisNextPreview(
+                  type: engine.user.next.isEmpty
+                      ? null
+                      : engine.user.next.first,
+                  accent: _userCyan,
+                ),
               ),
               Positioned(
-                left: width * (14 / 393),
-                top: height * (273 / 852),
-                width: width * (173 / 393),
-                height: height * (333 / 852),
+                left: x(268),
+                top: y(266),
+                width: x(56),
+                height: x(52),
+                child: _TetrisNextPreview(
+                  type: engine.agent.next.isEmpty
+                      ? null
+                      : engine.agent.next.first,
+                  accent: _agentPink,
+                ),
+              ),
+              // Play fields.
+              Positioned(
+                left: x(14),
+                top: y(323),
+                width: x(170),
+                height: y(322),
                 child: _TetrisNeonPanel(
-                  border: const Color(0xFFFDF0F0),
-                  glow: const Color(0x9900FBFF),
+                  border: const Color(0xFF8BEBFF),
+                  glow: const Color(0x99FF7A2A),
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: canControl ? onRotate : null,
@@ -363,26 +395,27 @@ class _TetrisGameScreen extends StatelessWidget {
                 ),
               ),
               Positioned(
-                left: width * (206 / 393),
-                top: height * (273 / 852),
-                width: width * (173 / 393),
-                height: height * (333 / 852),
+                left: x(210),
+                top: y(323),
+                width: x(170),
+                height: y(322),
                 child: _TetrisNeonPanel(
-                  border: const Color(0xFFFFF476),
-                  glow: const Color(0x99FF3F0A),
+                  border: const Color(0xFFDC95FD),
+                  glow: const Color(0x9900FBFF),
                   child: CustomPaint(
                     painter: _TetrisBoardPainter(
                       board: engine.agent,
-                      accent: const Color(0xFFFFB347),
+                      accent: const Color(0xFFDC95FD),
                     ),
                   ),
                 ),
               ),
+              // Controls: ← → rotate 速降.
               Positioned(
-                left: width * (33 / 393),
-                top: height * (662 / 852),
-                width: width * (50 / 393),
-                height: width * (50 / 393),
+                left: x(33),
+                top: y(692),
+                width: x(59),
+                height: x(60),
                 child: _TetrisIconButton(
                   asset: '${_tetrisFigmaAsset}btn_left.png',
                   enabled: canControl,
@@ -390,10 +423,10 @@ class _TetrisGameScreen extends StatelessWidget {
                 ),
               ),
               Positioned(
-                left: width * (116 / 393),
-                top: height * (662 / 852),
-                width: width * (50 / 393),
-                height: width * (50 / 393),
+                left: x(119),
+                top: y(692),
+                width: x(59),
+                height: x(60),
                 child: _TetrisIconButton(
                   asset: '${_tetrisFigmaAsset}btn_right.png',
                   enabled: canControl,
@@ -401,51 +434,66 @@ class _TetrisGameScreen extends StatelessWidget {
                 ),
               ),
               Positioned(
-                left: width * (232 / 393),
-                top: height * (658 / 852),
-                width: width * (50 / 393),
-                height: width * (57 / 393),
+                left: x(244),
+                top: y(688),
+                width: x(60),
+                height: x(68),
                 child: _TetrisIconButton(
-                  asset: '${_tetrisFigmaAsset}btn_rotate.png',
-                  label: '旋转',
+                  asset: '${_tetrisFigmaAsset}btn_rotate_base.png',
+                  iconAsset: '${_tetrisFigmaAsset}icon_rotate.png',
                   enabled: canControl,
                   onTap: onRotate,
-                  // The 4-button layout has no dedicated hold slot.
+                  // No dedicated hold slot in the 4-button layout.
                   onLongPress: onHold,
                 ),
               ),
               Positioned(
-                left: width * (303 / 393),
-                top: height * (658 / 852),
-                width: width * (50 / 393),
-                height: width * (57 / 393),
+                left: x(318),
+                top: y(688),
+                width: x(60),
+                height: x(68),
                 child: _TetrisIconButton(
-                  asset: '${_tetrisFigmaAsset}btn_drop.png',
-                  label: '速降',
+                  asset: '${_tetrisFigmaAsset}btn_drop_base.png',
+                  iconAsset: '${_tetrisFigmaAsset}icon_drop.png',
                   enabled: canControl,
-                  onTap: onHardDrop,
+                  // 速降 accelerates the fall while held (spec 4).
+                  onPressStart: onSoftDropStart,
+                  onPressEnd: onSoftDropEnd,
                 ),
               ),
+              // Bottom bar: 退出 / 暂停 pills + gear (rules).
               Positioned(
-                left: width * (105 / 393),
-                top: height * (768 / 852),
-                width: width * (86 / 393),
-                height: height * (38 / 852),
-                child: _TetrisPlateButton(
+                left: x(123),
+                top: y(803),
+                width: x(74),
+                height: y(34),
+                child: _TetrisPillButton(
                   label: '退出',
                   onTap: () => unawaited(_confirmExit(context)),
                 ),
               ),
               Positioned(
-                left: width * (202 / 393),
-                top: height * (768 / 852),
-                width: width * (86 / 393),
-                height: height * (38 / 852),
-                child: _TetrisPlateButton(
+                left: x(202),
+                top: y(803),
+                width: x(74),
+                height: y(34),
+                child: _TetrisPillButton(
                   label: '暂停',
                   onTap: () => unawaited(_showPause(context)),
                 ),
               ),
+              Positioned(
+                left: x(328),
+                top: y(799),
+                width: x(40),
+                height: x(41),
+                child: _TetrisIconButton(
+                  asset: '${_tetrisFigmaAsset}btn_gear.png',
+                  enabled: true,
+                  onTap: () => unawaited(_showRules(context)),
+                ),
+              ),
+              _NativeGamePointsBadge(points: gamePoints),
             ],
           );
         },
@@ -453,14 +501,14 @@ class _TetrisGameScreen extends StatelessWidget {
     );
   }
 
-  /// Both sheets freeze the duel clock for as long as they are on screen.
+  /// The dialogs / rules sheet freeze the duel clock while they are up.
   Future<void> _confirmExit(BuildContext context) async {
     onPauseChanged(true);
     try {
       await _showTetrisModal(
         context,
         title: '退出对局',
-        message: '这局还没跑完，退出后本局进度会清空。',
+        message: '这局还没跑完，中途退出会判负。',
         actions: (dialogContext) => [
           _TetrisModalButton(
             label: '继续',
@@ -471,7 +519,8 @@ class _TetrisGameScreen extends StatelessWidget {
             label: '退出',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              unawaited(onExit());
+              // Quitting mid-duel → 失败; the 失败 page's 退出 then leaves.
+              unawaited(onShowLose());
             },
           ),
         ],
@@ -495,11 +544,12 @@ class _TetrisGameScreen extends StatelessWidget {
           ),
           const SizedBox(height: 9),
           _TetrisModalButton(
-            label: starting ? '载入中' : '重新开局',
-            enabled: !starting,
+            label: '重新开局',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              unawaited(onRestart());
+              // TEMP (spec 3): preview the 胜利 page. Restarting mid-duel would
+              // normally forfeit (onShowLose); swap back when done.
+              unawaited(onShowWin());
             },
           ),
         ],
@@ -508,11 +558,26 @@ class _TetrisGameScreen extends StatelessWidget {
       onPauseChanged(false);
     }
   }
+
+  Future<void> _showRules(BuildContext context) async {
+    onPauseChanged(true);
+    try {
+      // Shared 五子棋-style rules card (blurred backdrop), consistent with the
+      // other games.
+      await _showGameRulesDialog(
+        context,
+        gameName: '方块竞速',
+        rules: const ['1、左右移动、下移、旋转方块', '2、横向填满整行直接消除得分', '3、方块堆叠触顶游戏结束'],
+      );
+    } finally {
+      onPauseChanged(false);
+    }
+  }
 }
 
-/// Duel countdown; turns warm once the last ten seconds start.
-class _TetrisClock extends StatelessWidget {
-  const _TetrisClock({required this.engine});
+/// Duel countdown inside the neon ring; turns warm in the last ten seconds.
+class _TetrisClockRing extends StatelessWidget {
+  const _TetrisClockRing({required this.engine});
 
   final TetrisDuelEngine engine;
 
@@ -520,34 +585,151 @@ class _TetrisClock extends StatelessWidget {
   Widget build(BuildContext context) {
     final remaining = engine.remainingSeconds;
     final urgent = remaining <= 10 && !engine.isFinished;
-    final accent = urgent ? const Color(0xFFFF7FC5) : const Color(0xFF00FBFF);
-    return Center(
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          decoration: BoxDecoration(
-            color: const Color(0xFF0B1020).withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(13),
-            border: Border.all(color: accent.withValues(alpha: 0.7)),
-            boxShadow: [
-              BoxShadow(color: accent.withValues(alpha: 0.4), blurRadius: 12),
-            ],
-          ),
-          child: Text(
-            '${remaining ~/ 60}:${(remaining % 60).toString().padLeft(2, '0')}',
-            style: TextStyle(
-              color: accent,
-              fontSize: 18,
-              height: 1,
-              fontWeight: FontWeight.w900,
-              decoration: TextDecoration.none,
+    final accent = urgent ? const Color(0xFFFF7FC5) : const Color(0xFF28FDFE);
+    final text =
+        '${remaining ~/ 60}:${(remaining % 60).toString().padLeft(2, '0')}';
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            Positioned.fill(
+              child: Image.asset(
+                '${_tetrisFigmaAsset}clock_ring.png',
+                fit: BoxFit.contain,
+              ),
             ),
-          ),
-        ),
-      ),
+            // Digits sit in a 27x12 box at (17,22) of the 60x60 ring, i.e.
+            // just above the ring's centre rather than on it.
+            Positioned(
+              left: w * (17 / 60),
+              top: w * (22 / 60),
+              width: w * (27 / 60),
+              height: w * (12 / 60),
+              child: CustomPaint(
+                painter: _SevenSegClockPainter(text: text, color: accent),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
+}
+
+/// Seven-segment ("electronic number") renderer for the duel clock.
+class _SevenSegClockPainter extends CustomPainter {
+  _SevenSegClockPainter({required this.text, required this.color});
+
+  final String text;
+  final Color color;
+
+  // Segments per digit, order [a, b, c, d, e, f, g].
+  static const Map<String, List<int>> _segs = {
+    '0': [1, 1, 1, 1, 1, 1, 0],
+    '1': [0, 1, 1, 0, 0, 0, 0],
+    '2': [1, 1, 0, 1, 1, 0, 1],
+    '3': [1, 1, 1, 1, 0, 0, 1],
+    '4': [0, 1, 1, 0, 0, 1, 1],
+    '5': [1, 0, 1, 1, 0, 1, 1],
+    '6': [1, 0, 1, 1, 1, 1, 1],
+    '7': [1, 1, 1, 0, 0, 0, 0],
+    '8': [1, 1, 1, 1, 1, 1, 1],
+    '9': [1, 1, 1, 1, 0, 1, 1],
+  };
+
+  double _charWidth(String c, double dh) => c == ':' ? dh * 0.30 : dh * 0.56;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var dh = size.height;
+    const gapFactor = 0.16;
+    double total(double h) {
+      var w = 0.0;
+      for (var i = 0; i < text.length; i++) {
+        if (i > 0) w += h * gapFactor;
+        w += _charWidth(text[i], h);
+      }
+      return w;
+    }
+
+    if (total(dh) > size.width) dh = dh * size.width / total(dh);
+    var x = (size.width - total(dh)) / 2;
+    final y = (size.height - dh) / 2;
+
+    final fill = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    final glow = Paint()
+      ..color = color.withValues(alpha: 0.5)
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, dh * 0.05);
+
+    for (final ch in text.split('')) {
+      final w = _charWidth(ch, dh);
+      if (ch == ':') {
+        final r = dh * 0.06;
+        for (final cy in [y + dh * 0.34, y + dh * 0.66]) {
+          final c = Offset(x + w / 2, cy);
+          canvas.drawCircle(c, r, glow);
+          canvas.drawCircle(c, r, fill);
+        }
+      } else {
+        final segs = _segs[ch];
+        if (segs != null) _drawDigit(canvas, x, y, w, dh, segs, fill, glow);
+      }
+      x += w + dh * gapFactor;
+    }
+  }
+
+  void _drawDigit(
+    Canvas canvas,
+    double x,
+    double y,
+    double w,
+    double h,
+    List<int> segs,
+    Paint fill,
+    Paint glow,
+  ) {
+    final t = h * 0.13;
+    final pad = t * 0.7;
+    final left = x + pad;
+    final right = x + w - pad;
+    final top = y + pad;
+    final midY = y + h / 2;
+    final bot = y + h - pad;
+
+    void hseg(double cy) {
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(left + t * 0.4, cy - t / 2, (right - left) - t * 0.8, t),
+        Radius.circular(t / 2),
+      );
+      canvas.drawRRect(rect, glow);
+      canvas.drawRRect(rect, fill);
+    }
+
+    void vseg(double cx, double yTop, double yBot) {
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(cx - t / 2, yTop + t * 0.4, t, (yBot - yTop) - t * 0.8),
+        Radius.circular(t / 2),
+      );
+      canvas.drawRRect(rect, glow);
+      canvas.drawRRect(rect, fill);
+    }
+
+    if (segs[0] == 1) hseg(top);
+    if (segs[1] == 1) vseg(right, top, midY);
+    if (segs[2] == 1) vseg(right, midY, bot);
+    if (segs[3] == 1) hseg(bot);
+    if (segs[4] == 1) vseg(left, midY, bot);
+    if (segs[5] == 1) vseg(left, top, midY);
+    if (segs[6] == 1) hseg(midY);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SevenSegClockPainter oldDelegate) =>
+      oldDelegate.text != text || oldDelegate.color != color;
 }
 
 class _TetrisNeonPanel extends StatelessWidget {
@@ -576,132 +758,210 @@ class _TetrisNeonPanel extends StatelessWidget {
   }
 }
 
+/// Neon nameplate: the avatar ring is baked into the plate art, so the real
+/// portrait is dropped into the socket and the name fills the pill. No turn
+/// countdown — the duel is real-time, both sides always active (spec 5).
 class _TetrisNamePlate extends StatelessWidget {
-  const _TetrisNamePlate({required this.name, required this.avatarOnLeft});
+  const _TetrisNamePlate({
+    required this.name,
+    required this.imageUrl,
+    required this.avatarOnLeft,
+  });
 
   final String name;
+  final String? imageUrl;
   final bool avatarOnLeft;
 
   @override
   Widget build(BuildContext context) {
     final plate = Image.asset(
-      '${_tetrisFigmaAsset}game_nameplate.png',
+      '${_tetrisFigmaAsset}game_plate.png',
       fit: BoxFit.fill,
     );
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        Positioned.fill(
-          child: avatarOnLeft
-              ? plate
-              : Transform.flip(flipX: true, child: plate),
-        ),
-        Padding(
-          padding: EdgeInsets.only(
-            left: avatarOnLeft ? 58 : 12,
-            right: avatarOnLeft ? 12 : 58,
-          ),
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              name,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-                decoration: TextDecoration.none,
-              ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight;
+        final avD = h * 0.74;
+        final avCx = avatarOnLeft ? w * 0.182 : w * 0.818;
+        final nameCx = avatarOnLeft ? w * 0.62 : w * 0.38;
+        final nameW = w * 0.56;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: avatarOnLeft
+                  ? plate
+                  : Transform.flip(flipX: true, child: plate),
             ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TetrisAvatar extends StatelessWidget {
-  const _TetrisAvatar({
-    required this.name,
-    required this.imageUrl,
-    required this.active,
-    required this.accent,
-  });
-
-  final String name;
-  final String? imageUrl;
-  final bool active;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    return AspectRatio(
-      aspectRatio: 1,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final size = constraints.maxWidth;
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 260),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: accent, width: 2),
-              boxShadow: active
-                  ? [
-                      BoxShadow(
-                        color: accent.withValues(alpha: 0.75),
-                        blurRadius: 14,
-                        spreadRadius: 2,
+            Positioned(
+              left: avCx - avD / 2,
+              top: (h - avD) / 2,
+              width: avD,
+              height: avD,
+              child: ClipOval(
+                child: AgentAvatarImage(
+                  imageUrl: imageUrl,
+                  width: avD,
+                  height: avD,
+                  fit: BoxFit.cover,
+                  fallback: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF8E7BFF), Color(0xFF3B2A73)],
                       ),
-                    ]
-                  : const [],
-            ),
-            child: ClipOval(
-              child: _Avatar(
-                size: size,
-                label: name.trim().isEmpty ? '伴' : name.trim().characters.first,
-                imageUrl: imageUrl,
-                gradient: const [Color(0xFF8E7BFF), Color(0xFF3B2A73)],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _TetrisScorePlate extends StatelessWidget {
-  const _TetrisScorePlate({required this.asset, required this.score});
-
-  final String asset;
-  final int score;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Positioned.fill(child: Image.asset(asset, fit: BoxFit.fill)),
-        Positioned.fill(
-          child: Padding(
-            padding: const EdgeInsets.only(left: 42, right: 10, top: 8),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  '$score',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    height: 1,
-                    fontWeight: FontWeight.w900,
-                    decoration: TextDecoration.none,
+                    ),
+                    child: Center(
+                      child: Text(
+                        name.trim().isEmpty
+                            ? '伴'
+                            : name.trim().characters.first,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: avD * 0.4,
+                          fontWeight: FontWeight.w800,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ),
-      ],
+            Positioned(
+              left: nameCx - nameW / 2,
+              top: 0,
+              bottom: 0,
+              width: nameW,
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      height: 1,
+                      fontWeight: FontWeight.w900,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Neon score plate drawn per the design: a coloured frame around a dark inner
+/// panel, "SCORE" label image top-left, and a bold score number bottom-right.
+class _TetrisScoreBadge extends StatelessWidget {
+  const _TetrisScoreBadge({
+    required this.labelAsset,
+    required this.score,
+    required this.frameColor,
+    required this.borderColor,
+    required this.innerColor,
+    required this.numberColor,
+  });
+
+  final String labelAsset;
+  final int score;
+  final Color frameColor;
+  final Color borderColor;
+  final Color innerColor;
+  final Color numberColor;
+
+  /// The label art carries its own glow, so it is wider and taller than the
+  /// glyphs inside it. Sized by the art's own ratio and centred on the text
+  /// box from the design, the letters land exactly where they should and the
+  /// glow spills outside as intended.
+  static const _labelArtRatio = 122 / 34;
+
+  /// Width of the label art, matching the design's text box.
+  static const _labelWidth = 48.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Everything below is the design's 120x44 plate expressed as fractions.
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight;
+        double fx(double v) => w * (v / 120);
+        double fy(double v) => h * (v / 44);
+
+        // Label text box: 48x10 at (6,6). The art is 122x34, so its height
+        // follows from the width; centre that on the text box.
+        final labelWidth = fx(_labelWidth);
+        final labelHeight = labelWidth / _labelArtRatio;
+
+        return Stack(
+          children: [
+            // Frame 120x44 over an inner panel 116x38 at (2,3): a 2px rim down
+            // the sides and 3px top and bottom.
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: frameColor,
+                  borderRadius: BorderRadius.circular(fy(8)),
+                  border: Border.all(color: borderColor, width: fy(1)),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(fx(1), fy(2), fx(1), fy(2)),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: innerColor,
+                      borderRadius: BorderRadius.circular(fy(8)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: fx(6),
+              top: fy(6) - (labelHeight - fy(10)) / 2,
+              width: labelWidth,
+              height: labelHeight,
+              child: Image.asset(labelAsset, fit: BoxFit.fill),
+            ),
+            // Score number: 70x29 at (49,13), centred in its box. Nudged down
+            // to sit on the same baseline as the design's own artwork.
+            Positioned(
+              left: fx(49),
+              top: fy(14.2),
+              width: fx(70),
+              height: fy(29),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  '$score',
+                  style: TextStyle(
+                    color: numberColor,
+                    // Anton, as the design specifies — a narrow heavy face the
+                    // system fonts cannot approximate.
+                    fontFamily: 'Anton',
+                    // The design's stated 20px does not match its own artwork;
+                    // measured against the exported 90000 it renders 11% large.
+                    fontSize: fy(18),
+                    height: 1.2,
+                    decoration: TextDecoration.none,
+                    shadows: [
+                      Shadow(
+                        color: numberColor.withValues(alpha: 0.7),
+                        blurRadius: fy(4),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -710,16 +970,24 @@ class _TetrisIconButton extends StatefulWidget {
   const _TetrisIconButton({
     required this.asset,
     required this.enabled,
-    required this.onTap,
-    this.label,
+    this.onTap,
+    this.iconAsset,
     this.onLongPress,
+    this.onPressStart,
+    this.onPressEnd,
   });
 
   final String asset;
   final bool enabled;
-  final VoidCallback onTap;
-  final String? label;
+  final VoidCallback? onTap;
+
+  /// Optional glyph drawn on the button face (rotate / 速降 icons).
+  final String? iconAsset;
   final VoidCallback? onLongPress;
+
+  /// Press-and-hold hooks — used by 速降 to accelerate gravity while held.
+  final VoidCallback? onPressStart;
+  final VoidCallback? onPressEnd;
 
   @override
   State<_TetrisIconButton> createState() => _TetrisIconButtonState();
@@ -728,18 +996,27 @@ class _TetrisIconButton extends StatefulWidget {
 class _TetrisIconButtonState extends State<_TetrisIconButton> {
   bool _pressed = false;
 
+  void _release() {
+    if (!_pressed) return;
+    setState(() => _pressed = false);
+    widget.onPressEnd?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTapDown: widget.enabled ? (_) => setState(() => _pressed = true) : null,
-      onTapCancel: widget.enabled
-          ? () => setState(() => _pressed = false)
+      onTapDown: widget.enabled
+          ? (_) {
+              setState(() => _pressed = true);
+              widget.onPressStart?.call();
+            }
           : null,
+      onTapCancel: widget.enabled ? _release : null,
       onTapUp: widget.enabled
           ? (_) {
-              setState(() => _pressed = false);
-              widget.onTap();
+              _release();
+              widget.onTap?.call();
             }
           : null,
       onLongPress: widget.enabled ? widget.onLongPress : null,
@@ -754,30 +1031,20 @@ class _TetrisIconButtonState extends State<_TetrisIconButton> {
                 Positioned.fill(
                   child: Image.asset(widget.asset, fit: BoxFit.contain),
                 ),
-                if (widget.label != null)
+                if (widget.iconAsset != null)
                   Positioned.fill(
-                    // The art has a 3D base under the face, so its lit top sits
-                    // above the image centre; nudge the label onto it.
+                    // The 3D base lifts the lit face above the image centre.
                     child: Padding(
                       padding: EdgeInsets.only(
                         bottom: constraints.maxHeight * _tetrisButtonFaceLift,
                       ),
                       child: Center(
-                        child: Text(
-                          widget.label!,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            height: 1,
-                            fontWeight: FontWeight.w900,
-                            decoration: TextDecoration.none,
-                            shadows: [
-                              Shadow(
-                                color: Color(0xB3000000),
-                                offset: Offset(0, 1),
-                                blurRadius: 3,
-                              ),
-                            ],
+                        child: FractionallySizedBox(
+                          widthFactor: 0.46,
+                          heightFactor: 0.46,
+                          child: Image.asset(
+                            widget.iconAsset!,
+                            fit: BoxFit.contain,
                           ),
                         ),
                       ),
@@ -879,15 +1146,10 @@ class _TetrisArtButtonState extends State<_TetrisArtButton> {
 }
 
 class _TetrisPlateButton extends StatefulWidget {
-  const _TetrisPlateButton({
-    required this.label,
-    required this.onTap,
-    this.enabled = true,
-  });
+  const _TetrisPlateButton({required this.label, required this.onTap});
 
   final String label;
   final VoidCallback onTap;
-  final bool enabled;
 
   @override
   State<_TetrisPlateButton> createState() => _TetrisPlateButtonState();
@@ -900,21 +1162,17 @@ class _TetrisPlateButtonState extends State<_TetrisPlateButton> {
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTapDown: widget.enabled ? (_) => setState(() => _pressed = true) : null,
-      onTapCancel: widget.enabled
-          ? () => setState(() => _pressed = false)
-          : null,
-      onTapUp: widget.enabled
-          ? (_) {
-              setState(() => _pressed = false);
-              widget.onTap();
-            }
-          : null,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap();
+      },
       child: AnimatedScale(
         scale: _pressed ? 0.95 : 1,
         duration: const Duration(milliseconds: 90),
         child: Opacity(
-          opacity: widget.enabled ? 1 : 0.6,
+          opacity: 1,
           child: Stack(
             alignment: Alignment.center,
             children: [
@@ -946,22 +1204,17 @@ class _TetrisPlateButtonState extends State<_TetrisPlateButton> {
 }
 
 class _TetrisModalButton extends StatelessWidget {
-  const _TetrisModalButton({
-    required this.label,
-    required this.onTap,
-    this.enabled = true,
-  });
+  const _TetrisModalButton({required this.label, required this.onTap});
 
   final String label;
   final VoidCallback onTap;
-  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
       height: 44,
-      child: _TetrisPlateButton(label: label, enabled: enabled, onTap: onTap),
+      child: _TetrisPlateButton(label: label, onTap: onTap),
     );
   }
 }
@@ -1038,4 +1291,456 @@ Future<void> _showTetrisModal(
       ),
     ),
   );
+}
+
+/// Small neon NEXT box that renders the live next tetromino.
+class _TetrisNextPreview extends StatelessWidget {
+  const _TetrisNextPreview({required this.type, required this.accent});
+
+  final TetrisTetromino? type;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final h = constraints.maxHeight;
+        return Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF191233),
+            borderRadius: BorderRadius.circular(h * 0.2),
+            border: Border.all(color: accent.withValues(alpha: 0.9), width: 2),
+            boxShadow: [
+              BoxShadow(color: accent.withValues(alpha: 0.5), blurRadius: 8),
+            ],
+          ),
+          padding: EdgeInsets.all(h * 0.08),
+          child: Column(
+            children: [
+              SizedBox(
+                height: h * 0.26,
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'NEXT',
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 12,
+                        height: 1,
+                        letterSpacing: 1.5,
+                        fontWeight: FontWeight.w900,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: type == null
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        padding: EdgeInsets.only(top: h * 0.04),
+                        child: CustomPaint(
+                          painter: _TetrisNextPainter(type: type!),
+                          size: Size.infinite,
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _TetrisNextPainter extends CustomPainter {
+  _TetrisNextPainter({required this.type});
+
+  final TetrisTetromino type;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Spawn-orientation cells via the public piece API (the engine's private
+    // shape table lives in a separate library).
+    final cells = TetrisActivePiece(type: type, rotation: 0, x: 0, y: 0).cells;
+    var minX = 99, maxX = -99, minY = 99, maxY = -99;
+    for (final c in cells) {
+      minX = math.min(minX, c.x);
+      maxX = math.max(maxX, c.x);
+      minY = math.min(minY, c.y);
+      maxY = math.max(maxY, c.y);
+    }
+    final cols = maxX - minX + 1;
+    final rows = maxY - minY + 1;
+    final cs = math.min(size.width / cols, size.height / rows);
+    final ox = (size.width - cs * cols) / 2;
+    final oy = (size.height - cs * rows) / 2;
+    final palette = _tetrisPalette[type.index % _tetrisPalette.length];
+    for (final c in cells) {
+      final rect = Rect.fromLTWH(
+        ox + (c.x - minX) * cs + cs * 0.06,
+        oy + (c.y - minY) * cs + cs * 0.06,
+        cs * 0.88,
+        cs * 0.88,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, Radius.circular(cs * 0.18)),
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [palette.first, palette.last],
+          ).createShader(rect),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TetrisNextPainter oldDelegate) =>
+      oldDelegate.type != type;
+}
+
+/// Small neon pill (退出 / 暂停) at the bottom bar.
+class _TetrisPillButton extends StatefulWidget {
+  const _TetrisPillButton({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  State<_TetrisPillButton> createState() => _TetrisPillButtonState();
+}
+
+class _TetrisPillButtonState extends State<_TetrisPillButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap();
+      },
+      child: AnimatedScale(
+        scale: _pressed ? 0.94 : 1,
+        duration: const Duration(milliseconds: 90),
+        child: LayoutBuilder(
+          builder: (context, constraints) => Stack(
+            children: [
+              Positioned.fill(
+                child: Image.asset(
+                  '${_tetrisFigmaAsset}btn_pill.png',
+                  fit: BoxFit.fill,
+                ),
+              ),
+              Positioned.fill(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    bottom: constraints.maxHeight * _tetrisButtonFaceLift,
+                  ),
+                  child: Center(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        widget.label,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          height: 1,
+                          fontWeight: FontWeight.w900,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _TetrisResultKind { win, lose }
+
+/// Full-screen 方块竞速 win / lose page, shown in place of the board.
+class _TetrisResultScreen extends StatefulWidget {
+  const _TetrisResultScreen({
+    super.key,
+    required this.kind,
+    required this.onRestart,
+    required this.onExit,
+  });
+
+  final _TetrisResultKind kind;
+  final Future<void> Function() onRestart;
+  final Future<void> Function() onExit;
+
+  @override
+  State<_TetrisResultScreen> createState() => _TetrisResultScreenState();
+}
+
+class _TetrisResultScreenState extends State<_TetrisResultScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 850),
+    )..forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Widget _pop(Widget child) {
+    return FadeTransition(
+      opacity: _controller,
+      child: ScaleTransition(
+        scale: Tween(begin: 0.7, end: 1.0).animate(
+          CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+        ),
+        child: child,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final win = widget.kind == _TetrisResultKind.win;
+    return Scaffold(
+      backgroundColor: const Color(0xFF120726),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final height = constraints.maxHeight;
+          double x(double v) => width * (v / 393);
+          double y(double v) => height * (v / 852);
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: Image.asset(
+                  '${_tetrisFigmaAsset}game_bg2.jpg',
+                  fit: BoxFit.cover,
+                ),
+              ),
+              Positioned.fill(
+                child: ColoredBox(color: Colors.black.withValues(alpha: 0.28)),
+              ),
+              if (win)
+                Positioned(
+                  left: x(28),
+                  top: y(110),
+                  width: x(338),
+                  height: y(250),
+                  child: _pop(
+                    Stack(
+                      children: [
+                        Positioned.fill(
+                          child: Image.asset(
+                            '${_tetrisFigmaAsset}result_win_emblem.png',
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                        // Title sits within the ribbon band (measured red band
+                        // centre ≈ 0.638 of the emblem).
+                        Positioned(
+                          left: x(338) * 0.30,
+                          top: y(250) * 0.518,
+                          width: x(338) * 0.40,
+                          height: y(250) * 0.24,
+                          child: Image.asset(
+                            '${_tetrisFigmaAsset}result_win_title.png',
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else ...[
+                Positioned(
+                  left: x(79),
+                  top: y(117),
+                  width: x(235),
+                  height: y(235),
+                  child: _pop(
+                    Image.asset(
+                      '${_tetrisFigmaAsset}result_lose_sun.png',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: x(14),
+                  top: y(197),
+                  width: x(365),
+                  height: y(126),
+                  child: _pop(
+                    Stack(
+                      children: [
+                        Positioned.fill(
+                          child: Image.asset(
+                            '${_tetrisFigmaAsset}result_lose_banner.png',
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                        // Title within the ribbon band (measured centre ≈
+                        // 0.406 of the banner).
+                        Positioned(
+                          left: x(365) * 0.30,
+                          top: y(126) * 0.196,
+                          width: x(365) * 0.40,
+                          height: y(126) * 0.42,
+                          child: Image.asset(
+                            '${_tetrisFigmaAsset}result_lose_title.png',
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              Positioned(
+                left: 0,
+                right: 0,
+                top: y(486),
+                height: y(40),
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image.asset(
+                        '${_tetrisFigmaAsset}result_score_label.png',
+                        height: y(27),
+                        fit: BoxFit.contain,
+                      ),
+                      SizedBox(width: x(8)),
+                      Image.asset(
+                        win
+                            ? '${_tetrisFigmaAsset}result_win_num.png'
+                            : '${_tetrisFigmaAsset}result_lose_num.png',
+                        height: y(34),
+                        fit: BoxFit.contain,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: x(49),
+                top: y(602),
+                width: x(127),
+                height: y(58),
+                child: _TetrisResultButton(
+                  base: '${_tetrisFigmaAsset}result_btn_exit.png',
+                  label: '退出',
+                  onTap: () => unawaited(widget.onExit()),
+                ),
+              ),
+              Positioned(
+                left: x(216),
+                top: y(602),
+                width: x(130),
+                height: y(58),
+                child: _TetrisResultButton(
+                  base: '${_tetrisFigmaAsset}result_btn_again.png',
+                  label: '重来一局',
+                  onTap: () => unawaited(widget.onRestart()),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TetrisResultButton extends StatefulWidget {
+  const _TetrisResultButton({
+    required this.base,
+    required this.label,
+    required this.onTap,
+  });
+
+  final String base;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  State<_TetrisResultButton> createState() => _TetrisResultButtonState();
+}
+
+class _TetrisResultButtonState extends State<_TetrisResultButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap();
+      },
+      child: AnimatedScale(
+        scale: _pressed ? 0.95 : 1,
+        duration: const Duration(milliseconds: 90),
+        child: LayoutBuilder(
+          builder: (context, constraints) => Stack(
+            children: [
+              Positioned.fill(
+                child: Image.asset(widget.base, fit: BoxFit.fill),
+              ),
+              Positioned.fill(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    bottom: constraints.maxHeight * 0.072,
+                  ),
+                  child: Center(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        widget.label,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          height: 1,
+                          fontWeight: FontWeight.w900,
+                          decoration: TextDecoration.none,
+                          shadows: [
+                            Shadow(
+                              color: Color(0xB3000000),
+                              offset: Offset(0, 2),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

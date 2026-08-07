@@ -30,6 +30,13 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
   // The duel clock keeps running on a Timer, so the pause / exit sheets have to
   // freeze it explicitly or the match plays on behind the dialog.
   bool _paused = false;
+  // The soft-drop (速降) button accelerates gravity while held instead of
+  // slamming the piece to the floor (spec 4).
+  bool _softDropping = false;
+  // Non-null once the duel ends: the full-screen win/lose page replaces the
+  // board, like the other games.
+  _TetrisResultKind? _result;
+  Timer? _resultTimer;
   double _horizontalDrag = 0;
   double _verticalDrag = 0;
   Future<void> _eventChain = Future<void>.value();
@@ -51,6 +58,7 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
   @override
   void dispose() {
     _ticker?.cancel();
+    _resultTimer?.cancel();
     _runtime.dispose();
     unawaited(
       _eventChain.then(
@@ -63,10 +71,14 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
 
   void _clearActiveRound() {
     _ticker?.cancel();
+    _resultTimer?.cancel();
+    _resultTimer = null;
     setState(() {
       _engine = null;
       _finishing = false;
       _paused = false;
+      _softDropping = false;
+      _result = null;
       _userGravityElapsed = 0;
       _agentMoveElapsed = 0;
       _userActionSequence = 0;
@@ -105,12 +117,16 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
       },
     );
     if (session == null || !mounted) return;
+    _resultTimer?.cancel();
+    _resultTimer = null;
     setState(() {
       _engine = TetrisDuelEngine(
         seed: seed,
         config: gameConfig ?? TetrisDuelConfig.fromJson(session.engineConfig),
       );
       _finishing = false;
+      _result = null;
+      _softDropping = false;
       _userGravityElapsed = 0;
       _agentMoveElapsed = 0;
       _userActionSequence = 0;
@@ -138,7 +154,11 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
     _userGravityElapsed += delta;
     _agentMoveElapsed += delta;
 
-    if (_userGravityElapsed >= _userGravityInterval(engine.user.level)) {
+    // Holding 速降 accelerates gravity (spec 4) rather than hard-dropping.
+    final gravityInterval = _softDropping
+        ? 45
+        : _userGravityInterval(engine.user.level);
+    if (_userGravityElapsed >= gravityInterval) {
       _userGravityElapsed = 0;
       final result = engine.user.softDrop();
       if (result != null) _handleLock(result);
@@ -306,6 +326,7 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
 
   void _setPaused(bool value) {
     if (_paused == value || !mounted) return;
+    if (value) _stopSoftDrop();
     setState(() => _paused = value);
     // Drop the elapsed slice so the pause never counts against the clock.
     if (!value) _lastTickAt = DateTime.now();
@@ -363,6 +384,37 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
     setState(() {});
   }
 
+  // 速降 button held → accelerate gravity (spec 4). The tick reads _softDropping.
+  void _startSoftDrop() {
+    if (!_canControl || _softDropping) return;
+    _softDropping = true;
+    // Give an immediate first step so the tap feels responsive.
+    _userGravityElapsed = 1000;
+    _NativeGameHaptics.selection();
+  }
+
+  void _stopSoftDrop() {
+    if (!_softDropping) return;
+    _softDropping = false;
+  }
+
+  /// Quitting mid-duel → 失败 page; the page shows it in place of the board.
+  Future<void> _forfeit() async {
+    if (_result != null || _engine == null || _runtime.completed) return;
+    _stopSoftDrop();
+    setState(() => _result = _TetrisResultKind.lose);
+    await _finish();
+  }
+
+  /// TEMP (spec 3): the pause-menu 重新开局 previews the 胜利 page for testing.
+  /// Swap back to [_forfeit] once the win screen is signed off.
+  Future<void> _forfeitWin() async {
+    if (_result != null || _engine == null || _runtime.completed) return;
+    _stopSoftDrop();
+    setState(() => _result = _TetrisResultKind.win);
+    await _finish();
+  }
+
   void _onPanStart(DragStartDetails details) {
     _horizontalDrag = 0;
     _verticalDrag = 0;
@@ -406,54 +458,92 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
   @override
   Widget build(BuildContext context) {
     final engine = _engine;
+    // Hold the final board briefly, then reveal the full-screen result.
+    if (engine != null &&
+        engine.isFinished &&
+        _result == null &&
+        _resultTimer == null) {
+      final win = engine.status == TetrisDuelStatus.userWon;
+      _resultTimer = Timer(const Duration(milliseconds: 1200), () {
+        if (!mounted || _result != null) return;
+        setState(
+          () => _result = win ? _TetrisResultKind.win : _TetrisResultKind.lose,
+        );
+      });
+    }
+
+    final Widget child;
     if (engine == null) {
-      return _TetrisHome(
-        rounds: _runtime.rounds,
-        starting: _runtime.starting,
-        error: _runtime.error,
-        onStart: _start,
-        onExit: () => Navigator.of(context).maybePop(),
+      child = KeyedSubtree(
+        key: const ValueKey('tetris-home'),
+        child: _TetrisHome(
+          rounds: _runtime.rounds,
+          starting: _runtime.starting,
+          error: _runtime.error,
+          onStart: _start,
+          onExit: () => Navigator.of(context).maybePop(),
+        ),
+      );
+    } else if (_result != null) {
+      child = _TetrisResultScreen(
+        key: const ValueKey('tetris-result'),
+        kind: _result!,
+        onRestart: _start,
+        onExit: _closeGame,
+      );
+    } else {
+      child = PopScope(
+        key: const ValueKey('tetris-game'),
+        canPop: false,
+        child: _NativeGameInteractionLayer(
+          runtime: _runtime,
+          game: widget.game,
+          onPlayAgain: _start,
+          onCloseGame: _closeGame,
+          // `_paused` is set while the pause / exit sheet is up, which also
+          // stops the idle-nudge countdown.
+          userTurnActive:
+              !engine.isFinished &&
+              !_runtime.completed &&
+              !_finishing &&
+              !_paused,
+          turnToken: '${_runtime.session?.id}:input:$_userActionSequence',
+          turnTimeout: _nativeGameTurnTimeout(_nativeTetrisDuelGameKey),
+          turnLabel: '双方同时行动',
+          moveCount: engine.user.piecesPlaced + engine.agent.piecesPlaced,
+          showPlayers: false,
+          // The page renders its own full-screen win/lose page.
+          suppressResult: true,
+          child: _TetrisGameScreen(
+            engine: engine,
+            agentName: _runtime.agentName,
+            userName: widget.authSession.userFacingName,
+            agentAvatarUrl: widget.authSession.agentAvatarUrl,
+            userAvatarUrl: widget.authSession.userAvatarUrl,
+            canControl: _canControl,
+            gamePoints: _runtime.pointsBalance,
+            onMove: _move,
+            onRotate: _rotate,
+            onHold: _hold,
+            onSoftDropStart: _startSoftDrop,
+            onSoftDropEnd: _stopSoftDrop,
+            onHardDrop: _hardDrop,
+            onPanStart: _onPanStart,
+            onPanUpdate: _onPanUpdate,
+            onPanEnd: _onPanEnd,
+            // Exit mid-duel forfeits → 失败; pause 重新开局 → 胜利 preview (TEMP).
+            onShowLose: _forfeit,
+            onShowWin: _forfeitWin,
+            onPauseChanged: _setPaused,
+          ),
+        ),
       );
     }
-    return PopScope(
-      canPop: false,
-      child: _NativeGameInteractionLayer(
-        runtime: _runtime,
-        game: widget.game,
-        onPlayAgain: _start,
-        onCloseGame: _closeGame,
-        // `_paused` is set while the pause / exit sheet is up, which also stops
-        // the idle-nudge countdown.
-        userTurnActive:
-            !engine.isFinished &&
-            !_runtime.completed &&
-            !_finishing &&
-            !_paused,
-        turnToken: '${_runtime.session?.id}:input:$_userActionSequence',
-        turnTimeout: _nativeGameTurnTimeout(_nativeTetrisDuelGameKey),
-        turnLabel: '双方同时行动',
-        moveCount: engine.user.piecesPlaced + engine.agent.piecesPlaced,
-        showPlayers: false,
-        child: _TetrisGameScreen(
-          engine: engine,
-          agentName: _runtime.agentName,
-          userName: widget.authSession.userFacingName,
-          agentAvatarUrl: widget.authSession.agentAvatarUrl,
-          userAvatarUrl: widget.authSession.userAvatarUrl,
-          canControl: _canControl,
-          starting: _runtime.starting,
-          onMove: _move,
-          onRotate: _rotate,
-          onHold: _hold,
-          onHardDrop: _hardDrop,
-          onPanStart: _onPanStart,
-          onPanUpdate: _onPanUpdate,
-          onPanEnd: _onPanEnd,
-          onRestart: _start,
-          onExit: _closeGame,
-          onPauseChanged: _setPaused,
-        ),
-      ),
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 320),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: child,
     );
   }
 }

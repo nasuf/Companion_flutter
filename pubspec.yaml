@@ -126,6 +126,14 @@ flutter:
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
 
+  # Subset to the digits 0-9 (2KB instead of 170KB); it is only used for the
+  # score readouts in 方块竞速, which the design sets in Anton.
+  # SIL Open Font License 1.1 — see fonts/Anton-OFL.txt.
+  fonts:
+    - family: Anton
+      fonts:
+        - asset: fonts/Anton-Regular.ttf
+
   # To add custom fonts to your application, add a fonts section here,
   # in this "flutter" section. Each entry in this list should have a
   # "family" key with the font family name, and a "fonts" key with a
