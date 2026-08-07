@@ -24,8 +24,12 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
   final List<Map<String, dynamic>> _actionHistory = [];
   _MinesweeperTool _tool = _MinesweeperTool.reveal;
   bool _resolving = false;
-  // True while the pause / exit sheet is on screen.
+  // True while the pause / exit sheet or rules popup is on screen.
   bool _paused = false;
+  // Non-null once the round ends (win/lose): the full-screen result replaces
+  // the game, like the other games.
+  _MinesweeperResultKind? _result;
+  Timer? _resultTimer;
 
   @override
   void initState() {
@@ -43,6 +47,7 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
 
   @override
   void dispose() {
+    _resultTimer?.cancel();
     _runtime.dispose();
     unawaited(
       _runtime.abort('page_closed', _sessionSummary(), updateUi: false),
@@ -51,13 +56,24 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
   }
 
   void _clearActiveRound() {
+    _resultTimer?.cancel();
+    _resultTimer = null;
     setState(() {
+      _result = null;
       _engine = null;
       _lastAction = null;
       _actionHistory.clear();
       _tool = _MinesweeperTool.reveal;
       _resolving = false;
     });
+  }
+
+  /// Quitting or restarting mid-game → 失败; the 失败 screen's buttons do the real
+  /// exit/restart.
+  Future<void> _forfeit() async {
+    if (_result != null || _engine == null || _runtime.completed) return;
+    setState(() => _result = _MinesweeperResultKind.lose);
+    await _finish(MinesweeperStatus.failed);
   }
 
   Future<void> _start() async {
@@ -86,9 +102,12 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
         };
       },
     );
+    _resultTimer?.cancel();
+    _resultTimer = null;
     if (session != null && mounted) {
       final config = MinesweeperGameConfig.fromJson(session.engineConfig);
       setState(() {
+        _result = null;
         _engine = MinesweeperEngine(
           seed: session.id.hashCode,
           rows: config.rows,
@@ -302,67 +321,97 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
   @override
   Widget build(BuildContext context) {
     final engine = _engine;
+    // Hold the final board briefly, then reveal the full-screen result.
+    if (engine != null &&
+        engine.isFinished &&
+        _result == null &&
+        _resultTimer == null) {
+      final win = engine.status == MinesweeperStatus.completed;
+      _resultTimer = Timer(const Duration(milliseconds: 1400), () {
+        if (!mounted || _result != null) return;
+        setState(
+          () => _result = win
+              ? _MinesweeperResultKind.win
+              : _MinesweeperResultKind.lose,
+        );
+      });
+    }
+
+    final Widget child;
     if (engine == null) {
-      return _MinesweeperHome(
-        rounds: _runtime.rounds,
-        starting: _runtime.starting,
-        error: _runtime.error,
-        onStart: _start,
-        onExit: () => Navigator.of(context).maybePop(),
+      child = KeyedSubtree(
+        key: const ValueKey('mine-home'),
+        child: _MinesweeperHome(
+          rounds: _runtime.rounds,
+          starting: _runtime.starting,
+          error: _runtime.error,
+          onStart: _start,
+          onExit: () => Navigator.of(context).maybePop(),
+        ),
+      );
+    } else if (_result != null) {
+      // Full-screen result replaces the game.
+      child = _MinesweeperResultScreen(
+        key: const ValueKey('mine-result'),
+        kind: _result!,
+        onRestart: _start,
+        onExit: _closeGame,
+      );
+    } else {
+      final userTurnActive =
+          !engine.isFinished &&
+          engine.turn == MinesweeperActor.user &&
+          !_runtime.aiThinking &&
+          !_resolving &&
+          // The pause / exit sheet or rules popup is up: hold the idle nudge.
+          !_paused;
+      child = PopScope(
+        key: const ValueKey('mine-game'),
+        canPop: false,
+        child: _NativeGameInteractionLayer(
+          runtime: _runtime,
+          game: widget.game,
+          onPlayAgain: _start,
+          onCloseGame: _closeGame,
+          userTurnActive: userTurnActive,
+          turnToken:
+              '${_runtime.session?.id}:${engine.actions.length}:${engine.turn.name}',
+          turnTimeout: _nativeGameTurnTimeout(_nativeMinesweeperGameKey),
+          turnLabel: _runtime.aiThinking
+              ? '${_runtime.agentName} 在推理'
+              : _resolving
+              ? '线索展开中'
+              : '轮到你判断',
+          moveCount: engine.actions.length,
+          showPlayers: false,
+          // The page renders its own full-screen result screen.
+          suppressResult: true,
+          child: _MinesweeperGameScreen(
+            engine: engine,
+            lastAction: _lastAction,
+            agentName: _runtime.agentName,
+            userName: widget.authSession.userFacingName,
+            agentAvatarUrl: widget.authSession.agentAvatarUrl,
+            userAvatarUrl: widget.authSession.userAvatarUrl,
+            aiThinking: _runtime.aiThinking,
+            enabled: userTurnActive,
+            turnToken:
+                '${_runtime.session?.id}:${engine.actions.length}:${engine.turn.name}',
+            onReveal: (index) => unawaited(_userAct(index)),
+            onFlag: (index) => unawaited(_userAct(index, forceFlag: true)),
+            // Quitting or restarting mid-game → 失败.
+            onShowLose: _forfeit,
+            onPauseChanged: _setPaused,
+            gamePoints: _runtime.pointsBalance,
+          ),
+        ),
       );
     }
-    final userTurnActive =
-        !engine.isFinished &&
-        engine.turn == MinesweeperActor.user &&
-        !_runtime.aiThinking &&
-        !_resolving &&
-        // The pause / exit sheet is up: the player is right there, so the idle
-        // nudge shouldn't count down behind it.
-        !_paused;
-    return PopScope(
-      canPop: false,
-      child: _NativeGameInteractionLayer(
-        runtime: _runtime,
-        game: widget.game,
-        onPlayAgain: _start,
-        onCloseGame: _closeGame,
-        userTurnActive: userTurnActive,
-        turnToken:
-            '${_runtime.session?.id}:${engine.actions.length}:${engine.turn.name}',
-        turnTimeout: _nativeGameTurnTimeout(_nativeMinesweeperGameKey),
-        turnLabel: _runtime.aiThinking
-            ? '${_runtime.agentName} 在推理'
-            : _resolving
-            ? '线索展开中'
-            : '轮到你判断',
-        moveCount: engine.actions.length,
-        showPlayers: false,
-        child: _MinesweeperGameScreen(
-          engine: engine,
-          lastAction: _lastAction,
-          agentName: _runtime.agentName,
-          userName: widget.authSession.userFacingName,
-          agentAvatarUrl: widget.authSession.agentAvatarUrl,
-          userAvatarUrl: widget.authSession.userAvatarUrl,
-          aiThinking: _runtime.aiThinking,
-          starting: _runtime.starting,
-          flagMode: _tool == _MinesweeperTool.flag,
-          enabled: userTurnActive,
-          onReveal: (index) => unawaited(_userAct(index)),
-          onFlag: (index) => unawaited(_userAct(index, forceFlag: true)),
-          onFlagModeChanged: (flag) {
-            _NativeGameHaptics.selection();
-            setState(
-              () => _tool = flag
-                  ? _MinesweeperTool.flag
-                  : _MinesweeperTool.reveal,
-            );
-          },
-          onRestart: _start,
-          onExit: _closeGame,
-          onPauseChanged: _setPaused,
-        ),
-      ),
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 320),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: child,
     );
   }
 
