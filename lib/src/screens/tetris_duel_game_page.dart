@@ -24,8 +24,17 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
   Timer? _ticker;
   DateTime? _lastTickAt;
   int _userGravityElapsed = 0;
-  int _agentMoveElapsed = 0;
   int _userActionSequence = 0;
+
+  // The agent plays its piece down the board the way a person does: it picks a
+  // target, then nudges the piece across while gravity carries it down.
+  // Dropping it straight into place read as a bot and, because that path
+  // scored the whole drop distance at once, also handed it points the player
+  // had no way to match.
+  TetrisAiPlacement? _agentPlan;
+  int _agentActionElapsed = 0;
+  int _agentFallElapsed = 0;
+  bool _agentLinedUp = false;
   bool _finishing = false;
   // The duel clock keeps running on a Timer, so the pause / exit sheets have to
   // freeze it explicitly or the match plays on behind the dialog.
@@ -80,8 +89,8 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
       _softDropping = false;
       _result = null;
       _userGravityElapsed = 0;
-      _agentMoveElapsed = 0;
       _userActionSequence = 0;
+      _resetAgentPlan();
     });
   }
 
@@ -128,8 +137,8 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
       _result = null;
       _softDropping = false;
       _userGravityElapsed = 0;
-      _agentMoveElapsed = 0;
       _userActionSequence = 0;
+      _resetAgentPlan();
       _paused = false;
       _eventChain = Future<void>.value();
       _lastTickAt = DateTime.now();
@@ -152,7 +161,6 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
     _lastTickAt = now;
     engine.advanceClock(delta);
     _userGravityElapsed += delta;
-    _agentMoveElapsed += delta;
 
     // Holding 速降 accelerates gravity (spec 4) rather than hard-dropping.
     final gravityInterval = _softDropping
@@ -163,13 +171,7 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
       final result = engine.user.softDrop();
       if (result != null) _handleLock(result);
     }
-    if (!engine.isFinished &&
-        _agentMoveElapsed >= _agentMoveInterval(engine.agent.level)) {
-      _agentMoveElapsed = 0;
-      final decision = engine.agent.chooseAiPlacement(config: engine.config);
-      final result = engine.agent.playAiPlacement(decision);
-      _handleLock(result, decision: decision);
-    }
+    if (!engine.isFinished) _advanceAgent(delta);
     if (engine.isFinished) {
       unawaited(_finish());
     } else if (mounted) {
@@ -180,8 +182,76 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
   int _userGravityInterval(int level) =>
       math.max(170, _userGravityMilliseconds - (level - 1) * 48);
 
-  int _agentMoveInterval(int level) =>
-      math.max(260, (_engine?.config.agentMoveMs ?? 760) - (level - 1) * 32);
+  /// Budget for one whole piece, from spawn to lock.
+  int _agentPieceBudget(int level) =>
+      math.max(600, (_engine?.config.agentMoveMs ?? 760) - (level - 1) * 32);
+
+  /// Gap between the agent's individual nudges. Roughly how fast a person
+  /// taps, so the piece visibly slides across rather than teleporting.
+  static const _agentActionMs = 110;
+
+  /// Rows a piece falls through from spawn to the floor on an empty board.
+  /// Used to spread the piece's time budget across its descent.
+  static const _agentFallRows = 20;
+
+  /// The agent rides gravity all the way down instead of soft-dropping once it
+  /// is lined up. Slamming it home the moment it was in position made the
+  /// budget meaningless — every piece took the same ~1.1s no matter what
+  /// agent_move_ms said, because the descent was always at soft-drop speed.
+  int _agentFallInterval(int level) =>
+      math.max(60, (_agentPieceBudget(level) / _agentFallRows).round());
+
+  void _resetAgentPlan() {
+    _agentPlan = null;
+    _agentLinedUp = false;
+    _agentActionElapsed = 0;
+    _agentFallElapsed = 0;
+  }
+
+  /// One tick of the agent's hands: line the piece up, then bring it down.
+  void _advanceAgent(int delta) {
+    final engine = _engine;
+    if (engine == null) return;
+    final agent = engine.agent;
+    if (agent.topOut || agent.current == null) return;
+
+    if (_agentPlan == null) {
+      _resetAgentPlan();
+      _agentPlan = agent.chooseAiPlacement(config: engine.config);
+    }
+    final plan = _agentPlan!;
+    _agentActionElapsed += delta;
+    _agentFallElapsed += delta;
+
+    if (!_agentLinedUp && _agentActionElapsed >= _agentActionMs) {
+      _agentActionElapsed = 0;
+      _agentLinedUp = _stepAgentTowards(plan);
+    }
+
+    if (_agentFallElapsed >= _agentFallInterval(agent.level)) {
+      _agentFallElapsed = 0;
+      final result = agent.softDrop();
+      if (result != null) {
+        _agentPlan = null;
+        _handleLock(result, decision: plan);
+      }
+    }
+  }
+
+  /// Rotates or shifts the piece one notch towards [plan]. Returns true once
+  /// there is nothing left to do — either it is in position, or it is wedged
+  /// and should ride down where it stands rather than hover.
+  bool _stepAgentTowards(TetrisAiPlacement plan) {
+    final agent = _engine?.agent;
+    final piece = agent?.current;
+    if (agent == null || piece == null) return true;
+    // A blocked rotation should not stop it from still sliding sideways.
+    if (piece.rotation != plan.rotation && agent.rotate()) return false;
+    if (piece.x != plan.x) {
+      return !agent.moveHorizontal(plan.x > piece.x ? 1 : -1);
+    }
+    return true;
+  }
 
   void _handleLock(TetrisLockResult result, {TetrisAiPlacement? decision}) {
     final engine = _engine;
