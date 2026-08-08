@@ -875,14 +875,17 @@ class _TetrisScoreBadge extends StatelessWidget {
   final Color innerColor;
   final Color numberColor;
 
-  /// The label art carries its own glow, so it is wider and taller than the
-  /// glyphs inside it. Sized by the art's own ratio and centred on the text
-  /// box from the design, the letters land exactly where they should and the
-  /// glow spills outside as intended.
-  static const _labelArtRatio = 122 / 34;
+  /// The label is stretched to the design's text box rather than scaled by the
+  /// art's own 122x34 ratio — the design sets the lettering wider and flatter
+  /// than the exported bitmap. Keeping the art's ratio made it a third taller,
+  /// which is what pushed it up against the frame.
+  static const _labelWidth = 44.0;
+  static const _labelHeight = 9.2;
 
-  /// Width of the label art, matching the design's text box.
-  static const _labelWidth = 48.0;
+  /// Inset from the plate's corner. The design puts the box at (6,6), which
+  /// leaves only 4pt to the inner panel and reads as touching the frame.
+  static const _labelLeft = 8.0;
+  static const _labelTop = 7.0;
 
   @override
   Widget build(BuildContext context) {
@@ -893,11 +896,6 @@ class _TetrisScoreBadge extends StatelessWidget {
         final h = constraints.maxHeight;
         double fx(double v) => w * (v / 120);
         double fy(double v) => h * (v / 44);
-
-        // Label text box: 48x10 at (6,6). The art is 122x34, so its height
-        // follows from the width; centre that on the text box.
-        final labelWidth = fx(_labelWidth);
-        final labelHeight = labelWidth / _labelArtRatio;
 
         return Stack(
           children: [
@@ -922,10 +920,10 @@ class _TetrisScoreBadge extends StatelessWidget {
               ),
             ),
             Positioned(
-              left: fx(6),
-              top: fy(6) - (labelHeight - fy(10)) / 2,
-              width: labelWidth,
-              height: labelHeight,
+              left: fx(_labelLeft),
+              top: fy(_labelTop),
+              width: fx(_labelWidth),
+              height: fy(_labelHeight),
               child: Image.asset(labelAsset, fit: BoxFit.fill),
             ),
             // Score number: 70x29 at (49,13), centred in its box. Nudged down
