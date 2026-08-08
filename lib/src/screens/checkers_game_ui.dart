@@ -233,6 +233,7 @@ class _CheckersGameScreen extends StatefulWidget {
     required this.enabled,
     required this.onTap,
     required this.onShowLose,
+    required this.onPreviewWin,
     required this.bannerInMs,
     required this.bannerHoldMs,
     required this.bannerOutMs,
@@ -252,6 +253,11 @@ class _CheckersGameScreen extends StatefulWidget {
   final ValueChanged<int> onTap;
   // Quitting or restarting mid-game → 失败 + 扣分.
   final Future<void> Function() onShowLose;
+
+  // TODO(games): temporary test hook — 重新开局 jumps straight to the 胜利
+  // screen so its layout can be checked without actually winning a round.
+  // Restore the onShowLose call below once the result screens are signed off.
+  final VoidCallback onPreviewWin;
   // "你的回合" banner timing (ms), from the per-game admin config.
   final int bannerInMs;
   final int bannerHoldMs;
@@ -481,7 +487,7 @@ class _CheckersGameScreenState extends State<_CheckersGameScreen> {
           onTap: () {
             Navigator.of(dialogContext).pop();
             // Restarting mid-game → 失败 + 扣分; the 失败 screen's 重来一局 restarts.
-            unawaited(widget.onShowLose());
+            widget.onPreviewWin();
           },
         ),
       ],
@@ -895,11 +901,16 @@ class _CheckersResultScreen extends StatefulWidget {
   const _CheckersResultScreen({
     super.key,
     required this.kind,
+    required this.pointsDelta,
     required this.onRestart,
     required this.onExit,
   });
 
   final _CheckersResultKind kind;
+
+  /// What this round settled for; null while the wallet hasn't loaded, in
+  /// which case the number is left off rather than shown wrong.
+  final int? pointsDelta;
   final Future<void> Function() onRestart;
   final Future<void> Function() onExit;
 
@@ -975,7 +986,7 @@ class _CheckersResultScreenState extends State<_CheckersResultScreen>
     );
   }
 
-  Widget _scoreRow(String numAsset) => Center(
+  Widget _scoreRow() => Center(
     child: FittedBox(
       fit: BoxFit.scaleDown,
       child: Row(
@@ -983,7 +994,13 @@ class _CheckersResultScreenState extends State<_CheckersResultScreen>
         children: [
           Image.asset('${_checkersFigmaAsset}result_score_label.png', height: 30),
           const SizedBox(width: 6),
-          Image.asset('$_checkersFigmaAsset$numAsset', height: 30),
+          if (widget.pointsDelta != null)
+            _NativeGameScoreDelta(
+              delta: widget.pointsDelta!,
+              fill: const Color(0xFFFDEBC0),
+              stroke: const Color(0xFF77240A),
+              height: 30,
+            ),
         ],
       ),
     ),
@@ -1067,7 +1084,7 @@ class _CheckersResultScreenState extends State<_CheckersResultScreen>
     _piece(
       cx: 0.5, cy: 0.634, wFrac: 0.42,
       aspect: 0.14, begin: 0.56, end: 0.76,
-      child: _scoreRow('result_win_num.png'),
+      child: _scoreRow(),
     ),
     _piece(
       cx: 0.313, cy: 0.772, wFrac: 0.346,
@@ -1111,7 +1128,7 @@ class _CheckersResultScreenState extends State<_CheckersResultScreen>
     _piece(
       cx: 0.5, cy: 0.634, wFrac: 0.42,
       aspect: 0.14, begin: 0.56, end: 0.76,
-      child: _scoreRow('result_lose_num.png'),
+      child: _scoreRow(),
     ),
     _piece(
       cx: 0.313, cy: 0.772, wFrac: 0.346,

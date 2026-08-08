@@ -235,6 +235,7 @@ class _MergeGameScreen extends StatelessWidget {
     required this.onExit,
     required this.onPauseChanged,
     required this.onAbandon,
+    required this.onPreviewWin,
   });
 
   final NumberMergeEngine engine;
@@ -253,10 +254,15 @@ class _MergeGameScreen extends StatelessWidget {
   final Future<void> Function() onExit;
   final ValueChanged<bool> onPauseChanged;
 
-  /// Giving up mid-board — from either 重新开局 or 退出 — counts as a loss and
-  /// shows the lose screen, which is where the player then picks between
-  /// leaving and starting over.
+  /// Giving up mid-board — from 退出 — counts as a loss and shows the lose
+  /// screen, which is where the player then picks between leaving and starting
+  /// over.
   final VoidCallback onAbandon;
+
+  // TODO(games): temporary test hook — 重新开局 shows the 胜利 screen so its
+  // layout can be checked without actually reaching 2048. Restore the
+  // onAbandon call below once the result screens are signed off.
+  final VoidCallback onPreviewWin;
 
   @override
   Widget build(BuildContext context) {
@@ -478,7 +484,7 @@ class _MergeGameScreen extends StatelessWidget {
             enabled: !starting,
             onTap: () {
               Navigator.of(dialogContext).pop();
-              onAbandon();
+              onPreviewWin();
             },
           ),
         ],
@@ -860,11 +866,16 @@ enum _MergeResultKind { win, lose }
 class _MergeResultScreen extends StatefulWidget {
   const _MergeResultScreen({
     required this.kind,
+    required this.pointsDelta,
     required this.onRestart,
     required this.onExit,
   });
 
   final _MergeResultKind kind;
+
+  /// What this round settled for; null while the wallet hasn't loaded, in which
+  /// case the number is simply left off rather than shown wrong.
+  final int? pointsDelta;
   final Future<void> Function() onRestart;
   final Future<void> Function() onExit;
 
@@ -945,7 +956,6 @@ class _MergeResultScreenState extends State<_MergeResultScreen>
   /// The design's Group 66/67: a 176.91x40 band holding the 积分 plate with a
   /// short gradient tail bleeding out of each side.
   Widget _scoreGroup() {
-    final win = widget.kind == _MergeResultKind.win;
     // Fractions of the 176.91 wide group, taken straight from the CSS boxes
     // (tails at x 0 and x 150, plate at x 25.83; tails sit at y 19 of 40).
     const groupW = 176.91;
@@ -1005,11 +1015,13 @@ class _MergeResultScreenState extends State<_MergeResultScreen>
                               height: 22,
                             ),
                             const SizedBox(width: 6),
-                            Image.asset(
-                              '$_mergeFigmaAsset'
-                              '${win ? 'result_win_delta' : 'result_lose_delta'}.png',
-                              height: 22,
-                            ),
+                            if (widget.pointsDelta != null)
+                              _NativeGameScoreDelta(
+                                delta: widget.pointsDelta!,
+                                fill: const Color(0xFFFFFFFF),
+                                stroke: const Color(0xFF000000),
+                                height: 22,
+                              ),
                           ],
                         ),
                       ),

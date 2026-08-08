@@ -74,6 +74,14 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     });
   }
 
+  // TODO(games): temporary test hook — 重新开局 shows the 胜利 screen so its
+  // layout can be reviewed without winning a round for real. Deliberately only
+  // flips the UI: the round is left unsettled so no win is ever reported.
+  void _previewWin() {
+    if (!mounted || _result != null) return;
+    setState(() => _result = _GomokuResultKind.win);
+  }
+
   Future<void> _closeGame() async {
     final engine = _engine;
     if (_runtime.session != null && !_runtime.completed) {
@@ -245,6 +253,11 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
       child = _GomokuResultScreen(
         key: const ValueKey('gomoku-result'),
         kind: _result!,
+        pointsDelta: _runtime.pointRules?.deltaFor(
+          _result == _GomokuResultKind.win
+              ? GameOutcome.win
+              : GameOutcome.lose,
+        ),
         onRestart: _startGame,
         onExit: _closeGame,
       );
@@ -266,6 +279,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
           onPointTap: _handleBoardTap,
           // Quitting / restarting mid-game counts as a loss (design note).
           onShowLose: _forfeit,
+          onPreviewWin: _previewWin,
           bannerInMs: _runtime.bannerInMs,
           bannerHoldMs: _runtime.bannerHoldMs,
           bannerOutMs: _runtime.bannerOutMs,
@@ -998,6 +1012,7 @@ class _GomokuGameScreen extends StatefulWidget {
     required this.syncNotice,
     required this.onPointTap,
     required this.onShowLose,
+    required this.onPreviewWin,
     required this.bannerInMs,
     required this.bannerHoldMs,
     required this.bannerOutMs,
@@ -1015,6 +1030,11 @@ class _GomokuGameScreen extends StatefulWidget {
   final ValueChanged<GomokuPoint> onPointTap;
   // Quitting / restarting mid-game → settle as a loss and show the 失败 screen.
   final Future<void> Function() onShowLose;
+
+  // TODO(games): temporary test hook — 重新开局 jumps straight to the 胜利
+  // screen so its layout can be checked without actually winning a round.
+  // Restore the onShowLose call below once the result screens are signed off.
+  final VoidCallback onPreviewWin;
   // "你的回合" banner timing (ms), from the per-game admin config.
   final int bannerInMs;
   final int bannerHoldMs;
@@ -1286,7 +1306,7 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
               Navigator.of(dialogContext).pop();
               // Restarting mid-game → 失败 + 扣分; the 失败 screen's 重来一局 then
               // starts the new round.
-              unawaited(widget.onShowLose());
+              widget.onPreviewWin();
             },
           ),
         ),
@@ -1845,11 +1865,16 @@ class _GomokuResultScreen extends StatefulWidget {
   const _GomokuResultScreen({
     super.key,
     required this.kind,
+    required this.pointsDelta,
     required this.onRestart,
     required this.onExit,
   });
 
   final _GomokuResultKind kind;
+
+  /// What this round settled for; null while the wallet hasn't loaded, in
+  /// which case the number is left off rather than shown wrong.
+  final int? pointsDelta;
   final Future<void> Function() onRestart;
   final VoidCallback onExit;
 
@@ -1922,7 +1947,7 @@ class _GomokuResultScreenState extends State<_GomokuResultScreen>
     );
   }
 
-  Widget _scoreContent(String numAsset) {
+  Widget _scoreContent() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: FittedBox(
@@ -1932,7 +1957,13 @@ class _GomokuResultScreenState extends State<_GomokuResultScreen>
           children: [
             Image.asset('${_gomokuHomeAsset}result_score_label.png', height: 28),
             const SizedBox(width: 7),
-            Image.asset('$_gomokuHomeAsset$numAsset', height: 28),
+            if (widget.pointsDelta != null)
+              _NativeGameScoreDelta(
+                delta: widget.pointsDelta!,
+                fill: const Color(0xFFFFFFFF),
+                stroke: const Color(0xFF000000),
+                height: 28,
+              ),
           ],
         ),
       ),
@@ -1947,11 +1978,11 @@ class _GomokuResultScreenState extends State<_GomokuResultScreen>
     return _GomokuResultButton(base: base, text: text, onTap: onTap);
   }
 
-  Widget _scorePlate(String numAsset) => Stack(
+  Widget _scorePlate() => Stack(
     alignment: Alignment.center,
     children: [
       Positioned.fill(child: _img('result_score_plate.png')),
-      Positioned.fill(child: _scoreContent(numAsset)),
+      Positioned.fill(child: _scoreContent()),
     ],
   );
 
@@ -2015,7 +2046,7 @@ class _GomokuResultScreenState extends State<_GomokuResultScreen>
     _piece(
       screenW: w, screenH: h, cx: 0.492, cy: 0.585, wFrac: 0.497,
       aspect: 177 / 586, begin: 0.5, end: 0.72,
-      child: _scorePlate('result_win_num.png'),
+      child: _scorePlate(),
     ),
     _piece(
       screenW: w, screenH: h, cx: 0.262, cy: 0.725, wFrac: 0.3817,
@@ -2068,7 +2099,7 @@ class _GomokuResultScreenState extends State<_GomokuResultScreen>
     _piece(
       screenW: w, screenH: h, cx: 0.485, cy: 0.5675, wFrac: 0.497,
       aspect: 177 / 586, begin: 0.56, end: 0.76,
-      child: _scorePlate('result_lose_num.png'),
+      child: _scorePlate(),
     ),
     _piece(
       screenW: w, screenH: h, cx: 0.2545, cy: 0.707, wFrac: 0.3817,

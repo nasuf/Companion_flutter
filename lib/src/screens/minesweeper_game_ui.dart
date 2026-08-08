@@ -255,6 +255,7 @@ class _MinesweeperGameScreen extends StatefulWidget {
     required this.onReveal,
     required this.onFlag,
     required this.onShowLose,
+    required this.onPreviewWin,
     required this.onPauseChanged,
     required this.gamePoints,
   });
@@ -272,6 +273,11 @@ class _MinesweeperGameScreen extends StatefulWidget {
   final ValueChanged<int> onFlag;
   // Quitting or restarting mid-game → 失败.
   final Future<void> Function() onShowLose;
+
+  // TODO(games): temporary test hook — 重新开局 jumps straight to the 胜利
+  // screen so its layout can be checked without actually winning a round.
+  // Restore the onShowLose call below once the result screens are signed off.
+  final VoidCallback onPreviewWin;
   // Holds/releases the page-level idle gate while a sheet / rules popup is up.
   final ValueChanged<bool> onPauseChanged;
   final int? gamePoints;
@@ -589,9 +595,7 @@ class _MinesweeperGameScreenState extends State<_MinesweeperGameScreen> {
             label: '重新开局',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              // Restarting mid-game forfeits the round → 失败; the 失败 screen's
-              // 重来一局 then starts the new game.
-              unawaited(widget.onShowLose());
+              widget.onPreviewWin();
             },
           ),
         ],
@@ -1111,11 +1115,16 @@ class _MinesweeperResultScreen extends StatefulWidget {
   const _MinesweeperResultScreen({
     super.key,
     required this.kind,
+    required this.pointsDelta,
     required this.onRestart,
     required this.onExit,
   });
 
   final _MinesweeperResultKind kind;
+
+  /// What this round settled for; null while the wallet hasn't loaded, in
+  /// which case the number is left off rather than shown wrong.
+  final int? pointsDelta;
   final Future<void> Function() onRestart;
   final Future<void> Function() onExit;
 
@@ -1192,9 +1201,8 @@ class _MinesweeperResultScreenState extends State<_MinesweeperResultScreen>
     );
   }
 
-  // 积分 plate (积分 label + number over it): 胜利 gains +3, 失败 loses -3.
+  // 积分 plate: the 积分 label with this round's settled points beside it.
   Widget _scorePlate() {
-    final win = widget.kind == _MinesweeperResultKind.win;
     return Stack(
       alignment: Alignment.center,
       children: [
@@ -1212,10 +1220,13 @@ class _MinesweeperResultScreenState extends State<_MinesweeperResultScreen>
                     height: 24,
                   ),
                   const SizedBox(width: 5),
-                  Image.asset(
-                    '$_mineFigmaAsset${win ? 'result_num' : 'result_lose_num'}.png',
-                    height: 24,
-                  ),
+                  if (widget.pointsDelta != null)
+                    _NativeGameScoreDelta(
+                      delta: widget.pointsDelta!,
+                      fill: const Color(0xFFFDEBC0),
+                      stroke: const Color(0xFF77240A),
+                      height: 24,
+                    ),
                 ],
               ),
             ),

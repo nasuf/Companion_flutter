@@ -26,6 +26,8 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
   // Non-null once the win / lose scene has taken over from the board.
   _MergeResultKind? _result;
   Timer? _resultTimer;
+  // Points this round settles for, shown on the result screen.
+  int? _resultDelta;
 
   @override
   void initState() {
@@ -60,13 +62,19 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
       _actionHistory.clear();
       _resolving = false;
       _result = null;
+      _resultDelta = null;
     });
   }
 
   Future<void> _start() async {
     _resultTimer?.cancel();
     _resultTimer = null;
-    if (_result != null) setState(() => _result = null);
+    if (_result != null) {
+      setState(() {
+        _result = null;
+        _resultDelta = null;
+      });
+    }
     if (_runtime.session != null && !_runtime.completed) {
       await _runtime.abort('restarted', _sessionSummary());
     }
@@ -294,16 +302,23 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
         _result == null &&
         _resultTimer == null) {
       final win = engine.status == NumberMergeStatus.completed;
+      // A board played to the end scores by milestone, win or lose.
+      final delta = _runtime.pointRules?.deltaFor(
+        win ? GameOutcome.win : GameOutcome.lose,
+        maxTile: engine.maxTile,
+      );
       _resultTimer = Timer(const Duration(milliseconds: 1400), () {
         if (!mounted || _result != null) return;
-        setState(
-          () => _result = win ? _MergeResultKind.win : _MergeResultKind.lose,
-        );
+        setState(() {
+          _result = win ? _MergeResultKind.win : _MergeResultKind.lose;
+          _resultDelta = delta;
+        });
       });
     }
     if (engine != null && _result != null) {
       return _MergeResultScreen(
         kind: _result!,
+        pointsDelta: _resultDelta,
         onRestart: _start,
         onExit: _closeGame,
       );
@@ -358,21 +373,50 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
           onExit: _closeGame,
           onPauseChanged: _setPaused,
           onAbandon: _abandonRound,
+          onPreviewWin: _previewWin,
         ),
       ),
     );
   }
 
+  // TODO(games): temporary test hook — 重新开局 shows the 胜利 screen so its
+  // layout can be reviewed without reaching 2048 for real. Deliberately only
+  // flips the UI: the round is left unsettled so no win is ever reported.
+  void _previewWin() {
+    if (!mounted || _result != null) return;
+    _resultTimer?.cancel();
+    _resultTimer = null;
+    setState(() {
+      _result = _MergeResultKind.win;
+      _resultDelta = _runtime.pointRules?.deltaFor(
+        GameOutcome.win,
+        maxTile: _engine?.maxTile ?? 0,
+      );
+    });
+  }
+
   /// Quitting or restarting from the pause sheet gives up the board, so the
   /// lose screen takes over and the player chooses from there.
   ///
-  /// Note this only drives the UI: the round itself is still reported as an
-  /// abort by _start / _closeGame, so no loss is recorded and no points are
-  /// deducted despite the screen showing 积分 -3.
+  /// The round is settled by the follow-up _start / _closeGame as an abort,
+  /// which the server charges at this game's 中途退出 rate. Unlike the other
+  /// games this one is scored by milestone, so reporting a loss here would
+  /// *award* the highest-tile points instead of deducting any — the penalty
+  /// has to come from the abort path.
   void _abandonRound() {
     _resultTimer?.cancel();
     _resultTimer = null;
-    setState(() => _result = _MergeResultKind.lose);
+    final engine = _engine;
+    setState(() {
+      _result = _MergeResultKind.lose;
+      // Abandoning is charged the 中途退出 rate, not the milestone payout.
+      _resultDelta = engine == null
+          ? null
+          : _runtime.pointRules?.deltaFor(
+              GameOutcome.aborted,
+              maxTile: engine.maxTile,
+            );
+    });
   }
 
   void _setPaused(bool value) {

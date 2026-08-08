@@ -237,6 +237,7 @@ class _TetrisGameScreen extends StatelessWidget {
     required this.onPanUpdate,
     required this.onPanEnd,
     required this.onShowLose,
+    required this.onPreviewWin,
     required this.onPauseChanged,
   });
 
@@ -257,6 +258,11 @@ class _TetrisGameScreen extends StatelessWidget {
   final GestureDragUpdateCallback onPanUpdate;
   final GestureDragEndCallback onPanEnd;
   final Future<void> Function() onShowLose;
+
+  // TODO(games): temporary test hook — 重新开局 jumps straight to the 胜利
+  // screen so its layout can be checked without actually winning a round.
+  // Restore the onShowLose call below once the result screens are signed off.
+  final VoidCallback onPreviewWin;
   final ValueChanged<bool> onPauseChanged;
 
   static const _userCyan = Color(0xFF28FDFE);
@@ -541,7 +547,7 @@ class _TetrisGameScreen extends StatelessWidget {
               Navigator.of(dialogContext).pop();
               // Restarting mid-duel abandons the round, so it forfeits just
               // like quitting does.
-              unawaited(onShowLose());
+              onPreviewWin();
             },
           ),
         ],
@@ -1465,11 +1471,16 @@ class _TetrisResultScreen extends StatefulWidget {
   const _TetrisResultScreen({
     super.key,
     required this.kind,
+    required this.pointsDelta,
     required this.onRestart,
     required this.onExit,
   });
 
   final _TetrisResultKind kind;
+
+  /// What this round settled for; null while the wallet hasn't loaded, in
+  /// which case the number is left off rather than shown wrong.
+  final int? pointsDelta;
   final Future<void> Function() onRestart;
   final Future<void> Function() onExit;
 
@@ -1620,13 +1631,13 @@ class _TetrisResultScreenState extends State<_TetrisResultScreen>
                         fit: BoxFit.contain,
                       ),
                       SizedBox(width: x(8)),
-                      Image.asset(
-                        win
-                            ? '${_tetrisFigmaAsset}result_win_num.png'
-                            : '${_tetrisFigmaAsset}result_lose_num.png',
-                        height: y(34),
-                        fit: BoxFit.contain,
-                      ),
+                      if (widget.pointsDelta != null)
+                        _NativeGameScoreDelta(
+                          delta: widget.pointsDelta!,
+                          fill: const Color(0xFFFFFFFF),
+                          stroke: const Color(0xFF1DE1FE),
+                          height: y(34),
+                        ),
                     ],
                   ),
                 ),

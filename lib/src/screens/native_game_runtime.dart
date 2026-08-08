@@ -28,6 +28,9 @@ class _NativeGameRuntime {
   // Global coin balance, shown in the in-game top-right badge — the same total
   // as the games hub (NOT the per-game score).
   int? pointsBalance;
+  // This game's scoring rules, so result screens can show what the round was
+  // worth. Null until the wallet lands; screens fall back to hiding the number.
+  GamePointRules? pointRules;
   Map<String, dynamic>? terminalPayload;
   DateTime? terminalPresentedAt;
   bool turnTimeoutVisible = false;
@@ -150,6 +153,7 @@ class _NativeGameRuntime {
       final wallet = await api.getGameWallet(gameKey: gameKey);
       gamePoints = wallet.gamePointsForGame ?? wallet.balance;
       pointsBalance = wallet.balance;
+      pointRules = wallet.rules ?? pointRules;
       _notify();
     } catch (_) {
       // Keep whatever value we last had; never block the game screen.
@@ -413,10 +417,8 @@ class _NativeGameRuntime {
           clientEventId: clientEventId,
         );
         _queueNetworkTask(
-          () => _flushEventOutbox(
-            sessionId: active.id,
-            refreshRounds: terminal,
-          ),
+          () =>
+              _flushEventOutbox(sessionId: active.id, refreshRounds: terminal),
         );
         return;
       } catch (caught) {

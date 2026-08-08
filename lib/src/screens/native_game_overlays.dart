@@ -717,3 +717,57 @@ void _showNativeGamePointsInfo(BuildContext context) {
     ),
   );
 }
+
+/// The 积分 delta on a result screen, drawn as text rather than baked art.
+///
+/// Every game shipped the same "+3 / -3" pieces, but the actual settlement
+/// differs per game (win is +3…+5, a loss is -2…-4) and 数字合并 pays out its
+/// highest tile, anywhere from +2 to +25. Rendering the number keeps the screen
+/// honest; [fill] and [stroke] carry each game's own palette so it still reads
+/// like the original artwork.
+class _NativeGameScoreDelta extends StatelessWidget {
+  const _NativeGameScoreDelta({
+    required this.delta,
+    required this.fill,
+    required this.stroke,
+    this.height = 24,
+  });
+
+  final int delta;
+  final Color fill;
+  final Color stroke;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    // A leading sign for anything non-zero, matching the exported art.
+    final text = delta > 0 ? '+$delta' : '$delta';
+    final fontSize = height * 0.94;
+    final base = TextStyle(
+      fontSize: fontSize,
+      height: 1.05,
+      fontWeight: FontWeight.w900,
+      letterSpacing: fontSize * 0.02,
+      decoration: TextDecoration.none,
+    );
+    return SizedBox(
+      height: height,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Text(
+            text,
+            style: base.copyWith(
+              foreground: Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = fontSize * 0.20
+                ..strokeJoin = StrokeJoin.round
+                ..color = stroke,
+            ),
+          ),
+          Text(text, style: base.copyWith(color: fill)),
+        ],
+      ),
+    );
+  }
+}

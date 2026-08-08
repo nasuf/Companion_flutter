@@ -1121,6 +1121,7 @@ class GameWallet {
     this.level,
     this.nextTier,
     this.gamePointsForGame,
+    this.rules,
   });
 
   final int balance;
@@ -1134,6 +1135,10 @@ class GameWallet {
   // Net points settled for a specific game (only when the request scoped to a
   // game_key); null for the global wallet fetch.
   final int? gamePointsForGame;
+
+  /// This game's scoring rules, so a result screen can show what the round was
+  /// actually worth. Only populated alongside a game_key.
+  final GamePointRules? rules;
 
   factory GameWallet.fromJson(Map<String, dynamic> json) {
     GameLevel? parseLevel(Object? value) {
@@ -1153,9 +1158,97 @@ class GameWallet {
       level: parseLevel(json['level']),
       nextTier: parseLevel(json['next_tier']),
       gamePointsForGame: (json['game_points_for_game'] as num?)?.round(),
+      rules: json['rules'] is Map
+          ? GamePointRules.fromJson(
+              Map<String, dynamic>.from(json['rules'] as Map),
+            )
+          : null,
     );
   }
 }
+
+/// Per-game scoring rules, mirroring `game_point_rules.rules` on the server.
+///
+/// Two shapes: most games score by outcome (win / lose / draw / quit), while
+/// 数字合并 scores by the highest tile reached, with its own quit penalty. The
+/// deltas here must stay in step with `game_points.settle_session`; the client
+/// only uses them to label the result screen, the ledger is always the server's.
+class GamePointRules {
+  const GamePointRules({
+    required this.isMilestone,
+    required this.win,
+    required this.lose,
+    required this.draw,
+    required this.quit,
+    required this.milestones,
+    required this.quitThreshold,
+    required this.quitBelow,
+    required this.quitAtOrAbove,
+  });
+
+  final bool isMilestone;
+  final int win;
+  final int lose;
+  final int draw;
+  final int quit;
+
+  /// Tile → points, ascending.
+  final List<MapEntry<int, int>> milestones;
+  final int quitThreshold;
+  final int quitBelow;
+  final int quitAtOrAbove;
+
+  factory GamePointRules.fromJson(Map<String, dynamic> json) {
+    int asInt(Object? value) => (value as num?)?.round() ?? 0;
+    final quit = json['quit_below_threshold'];
+    final quitMap = quit is Map ? Map<String, dynamic>.from(quit) : const {};
+    final raw = json['milestones'];
+    final milestones = <MapEntry<int, int>>[
+      if (raw is List)
+        for (final entry in raw)
+          if (entry is Map)
+            MapEntry(asInt(entry['tile']), asInt(entry['points'])),
+    ]..sort((a, b) => a.key.compareTo(b.key));
+    return GamePointRules(
+      isMilestone: json['type']?.toString() == 'milestone',
+      win: asInt(json['win']),
+      lose: asInt(json['lose']),
+      draw: asInt(json['draw']),
+      quit: asInt(json['quit']),
+      milestones: milestones,
+      quitThreshold: asInt(quitMap['threshold']),
+      quitBelow: asInt(quitMap['below']),
+      quitAtOrAbove: asInt(quitMap['at_or_above']),
+    );
+  }
+
+  /// Points this round settles for. [maxTile] only matters for 数字合并.
+  ///
+  /// Mirrors `_outcome_delta` / `_milestone_delta` on the server: a milestone
+  /// game awards the highest tile reached whenever the board actually finished
+  /// (win or lose), and only charges the quit penalty when the round is
+  /// abandoned.
+  int deltaFor(GameOutcome outcome, {int maxTile = 0}) {
+    if (!isMilestone) {
+      return switch (outcome) {
+        GameOutcome.win => win,
+        GameOutcome.lose => lose,
+        GameOutcome.draw => draw,
+        GameOutcome.aborted => quit,
+      };
+    }
+    if (outcome == GameOutcome.aborted) {
+      return maxTile < quitThreshold ? quitBelow : quitAtOrAbove;
+    }
+    var points = 0;
+    for (final entry in milestones) {
+      if (maxTile >= entry.key) points = entry.value;
+    }
+    return points;
+  }
+}
+
+enum GameOutcome { win, lose, draw, aborted }
 
 class GamePointConvertResult {
   const GamePointConvertResult({

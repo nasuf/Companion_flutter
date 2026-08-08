@@ -315,6 +315,7 @@ class _XiangqiGameScreen extends StatelessWidget {
     required this.notice,
     required this.onSquareTap,
     required this.onShowLose,
+    required this.onPreviewWin,
     required this.onTimerPauseChanged,
     required this.bannerInMs,
     required this.bannerHoldMs,
@@ -341,6 +342,11 @@ class _XiangqiGameScreen extends StatelessWidget {
   final ValueChanged<int> onSquareTap;
   // Quitting / restarting mid-game → settle as a loss and show the 失败 screen.
   final Future<void> Function() onShowLose;
+
+  // TODO(games): temporary test hook — 重新开局 jumps straight to the 胜利
+  // screen so its layout can be checked without actually winning a round.
+  // Restore the onShowLose call below once the result screens are signed off.
+  final VoidCallback onPreviewWin;
   final ValueChanged<bool> onTimerPauseChanged;
   // "你的回合" banner timing (ms), from the per-game admin config (read fresh
   // each round from engine_config).
@@ -563,7 +569,7 @@ class _XiangqiGameScreen extends StatelessWidget {
             enabled: !starting,
             onTap: () {
               Navigator.of(dialogContext).pop();
-              unawaited(onShowLose());
+              onPreviewWin();
             },
           ),
         ),
@@ -1026,11 +1032,16 @@ class _XiangqiResultScreen extends StatefulWidget {
   const _XiangqiResultScreen({
     super.key,
     required this.kind,
+    required this.pointsDelta,
     required this.onRestart,
     required this.onExit,
   });
 
   final _XiangqiResultKind kind;
+
+  /// What this round settled for; null while the wallet hasn't loaded, in
+  /// which case the number is left off rather than shown wrong.
+  final int? pointsDelta;
   final Future<void> Function() onRestart;
   final Future<void> Function() onExit;
 
@@ -1101,7 +1112,7 @@ class _XiangqiResultScreenState extends State<_XiangqiResultScreen>
     );
   }
 
-  Widget _scorePlate(String plateAsset, String numAsset) => Stack(
+  Widget _scorePlate(String plateAsset) => Stack(
     alignment: Alignment.center,
     children: [
       Positioned.fill(child: _img(plateAsset)),
@@ -1118,7 +1129,13 @@ class _XiangqiResultScreenState extends State<_XiangqiResultScreen>
                   height: 28,
                 ),
                 const SizedBox(width: 2),
-                Image.asset('$_xiangqiAsset$numAsset', height: 28),
+                if (widget.pointsDelta != null)
+                  _NativeGameScoreDelta(
+                    delta: widget.pointsDelta!,
+                    fill: const Color(0xFFFDEBC0),
+                    stroke: const Color(0xFF77240A),
+                    height: 28,
+                  ),
               ],
             ),
           ),
@@ -1188,7 +1205,7 @@ class _XiangqiResultScreenState extends State<_XiangqiResultScreen>
     _piece(
       screenW: w, screenH: h, cx: 0.5, cy: 0.644, wFrac: 0.394,
       aspect: 153 / 465, begin: 0.5, end: 0.72,
-      child: _scorePlate('result_score_plate_win.png', 'result_win_num.png'),
+      child: _scorePlate('result_score_plate_win.png'),
     ),
     // 退出 (151x49 @ 28,659) / 重开一局 (153x49 @ 212,658).
     _piece(
@@ -1236,7 +1253,7 @@ class _XiangqiResultScreenState extends State<_XiangqiResultScreen>
     _piece(
       screenW: w, screenH: h, cx: 0.5, cy: 0.636, wFrac: 0.394,
       aspect: 153 / 465, begin: 0.56, end: 0.76,
-      child: _scorePlate('result_score_plate_lose.png', 'result_lose_num.png'),
+      child: _scorePlate('result_score_plate_lose.png'),
     ),
     // 退出 (151x49 @ 28,652) / 重开一局 (153x49 @ 212,651).
     _piece(

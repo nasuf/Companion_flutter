@@ -322,6 +322,7 @@ class _ChessGameScreen extends StatefulWidget {
     required this.enabled,
     required this.onSquareTap,
     required this.onShowLose,
+    required this.onPreviewWin,
     required this.bannerInMs,
     required this.bannerHoldMs,
     required this.bannerOutMs,
@@ -340,6 +341,11 @@ class _ChessGameScreen extends StatefulWidget {
   final ValueChanged<int> onSquareTap;
   // Quitting or restarting mid-game → 失败 + 扣分.
   final Future<void> Function() onShowLose;
+
+  // TODO(games): temporary test hook — 重新开局 jumps straight to the 胜利
+  // screen so its layout can be checked without actually winning a round.
+  // Restore the onShowLose call below once the result screens are signed off.
+  final VoidCallback onPreviewWin;
   // "你的回合" banner timing (ms), from the per-game admin config.
   final int bannerInMs;
   final int bannerHoldMs;
@@ -528,7 +534,7 @@ class _ChessGameScreenState extends State<_ChessGameScreen> {
               Navigator.of(dialogContext).pop();
               // Restarting mid-game → 失败 + 扣分; the 失败 screen's 重来一局 then
               // starts the new round.
-              unawaited(widget.onShowLose());
+              widget.onPreviewWin();
             },
           ),
         ),
@@ -1255,11 +1261,16 @@ class _ChessResultScreen extends StatefulWidget {
   const _ChessResultScreen({
     super.key,
     required this.kind,
+    required this.pointsDelta,
     required this.onRestart,
     required this.onExit,
   });
 
   final _ChessResultKind kind;
+
+  /// What this round settled for; null while the wallet hasn't loaded, in
+  /// which case the number is left off rather than shown wrong.
+  final int? pointsDelta;
   final Future<void> Function() onRestart;
   final Future<void> Function() onExit;
 
@@ -1336,7 +1347,7 @@ class _ChessResultScreenState extends State<_ChessResultScreen>
   }
 
   // Gold gradient title (胜利 / 失败) with a soft drop shadow, matching the CSS.
-  Widget _scorePlate(String numAsset) => Stack(
+  Widget _scorePlate() => Stack(
     alignment: Alignment.center,
     children: [
       Positioned.fill(child: _img('result_score_plate.png')),
@@ -1350,7 +1361,13 @@ class _ChessResultScreenState extends State<_ChessResultScreen>
               children: [
                 Image.asset('${_chessFigmaAsset}result_score_label.png', height: 26),
                 const SizedBox(width: 6),
-                Image.asset('$_chessFigmaAsset$numAsset', height: 26),
+                if (widget.pointsDelta != null)
+                  _NativeGameScoreDelta(
+                    delta: widget.pointsDelta!,
+                    fill: const Color(0xFFFDEBC0),
+                    stroke: const Color(0xFF77240A),
+                    height: 26,
+                  ),
               ],
             ),
           ),
@@ -1451,7 +1468,7 @@ class _ChessResultScreenState extends State<_ChessResultScreen>
     _piece(
       cx: 0.5, cy: 0.641, wFrac: 0.361,
       aspect: 153 / 426, begin: 0.56, end: 0.76,
-      child: _scorePlate('result_win_num.png'),
+      child: _scorePlate(),
     ),
     _piece(
       cx: 0.277, cy: 0.796, wFrac: 0.412,
@@ -1492,7 +1509,7 @@ class _ChessResultScreenState extends State<_ChessResultScreen>
     _piece(
       cx: 0.5, cy: 0.641, wFrac: 0.361,
       aspect: 153 / 426, begin: 0.56, end: 0.76,
-      child: _scorePlate('result_lose_num.png'),
+      child: _scorePlate(),
     ),
     _piece(
       cx: 0.277, cy: 0.796, wFrac: 0.412,

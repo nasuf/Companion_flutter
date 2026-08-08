@@ -240,6 +240,7 @@ class _GoGameScreen extends StatefulWidget {
     required this.enabled,
     required this.onTap,
     required this.onShowLose,
+    required this.onPreviewWin,
     required this.bannerInMs,
     required this.bannerHoldMs,
     required this.bannerOutMs,
@@ -257,6 +258,11 @@ class _GoGameScreen extends StatefulWidget {
   final ValueChanged<int> onTap;
   // Quitting or restarting mid-game → 失败 + 扣分.
   final Future<void> Function() onShowLose;
+
+  // TODO(games): temporary test hook — 重新开局 jumps straight to the 胜利
+  // screen so its layout can be checked without actually winning a round.
+  // Restore the onShowLose call below once the result screens are signed off.
+  final VoidCallback onPreviewWin;
   // "你的回合" banner timing (ms), from the per-game admin config.
   final int bannerInMs;
   final int bannerHoldMs;
@@ -472,7 +478,7 @@ class _GoGameScreenState extends State<_GoGameScreen> {
               Navigator.of(dialogContext).pop();
               // Restarting mid-game → 失败 + 扣分; the 失败 screen's 重来一局 then
               // starts the new round.
-              unawaited(widget.onShowLose());
+              widget.onPreviewWin();
             },
           ),
         ),
@@ -994,11 +1000,16 @@ class _GoResultScreen extends StatefulWidget {
   const _GoResultScreen({
     super.key,
     required this.kind,
+    required this.pointsDelta,
     required this.onRestart,
     required this.onExit,
   });
 
   final _GoResultKind kind;
+
+  /// What this round settled for; null while the wallet hasn't loaded, in
+  /// which case the number is left off rather than shown wrong.
+  final int? pointsDelta;
   final Future<void> Function() onRestart;
   final Future<void> Function() onExit;
 
@@ -1101,7 +1112,7 @@ class _GoResultScreenState extends State<_GoResultScreen>
     );
   }
 
-  Widget _scorePlate(String numAsset) => Stack(
+  Widget _scorePlate() => Stack(
     alignment: Alignment.center,
     children: [
       Positioned.fill(child: _img('result_score_plate.png')),
@@ -1115,7 +1126,13 @@ class _GoResultScreenState extends State<_GoResultScreen>
               children: [
                 Image.asset('${_goAsset}result_score_label.png', height: 26),
                 const SizedBox(width: 6),
-                Image.asset('$_goAsset$numAsset', height: 26),
+                if (widget.pointsDelta != null)
+                  _NativeGameScoreDelta(
+                    delta: widget.pointsDelta!,
+                    fill: const Color(0xFFE8C79B),
+                    stroke: const Color(0xFFAC9473),
+                    height: 26,
+                  ),
               ],
             ),
           ),
@@ -1207,7 +1224,7 @@ class _GoResultScreenState extends State<_GoResultScreen>
     _piece(
       cx: 0.501, cy: 0.687, wFrac: 0.366,
       aspect: 150 / 432, begin: 0.56, end: 0.76,
-      child: _scorePlate('result_win_num.png'),
+      child: _scorePlate(),
     ),
     // 退出 (170x51 @ 23,664) / 重来一局 (172x50 @ 198,665).
     _piece(
@@ -1258,7 +1275,7 @@ class _GoResultScreenState extends State<_GoResultScreen>
     _piece(
       cx: 0.501, cy: 0.689, wFrac: 0.366,
       aspect: 150 / 432, begin: 0.56, end: 0.76,
-      child: _scorePlate('result_lose_num.png'),
+      child: _scorePlate(),
     ),
     // 退出 (170x51 @ 23,666) / 重来一局 (172x50 @ 198,667).
     _piece(

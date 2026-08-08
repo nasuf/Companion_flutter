@@ -72,6 +72,14 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
     setState(() => _timerPaused = paused);
   }
 
+  // TODO(games): temporary test hook — 重新开局 shows the 胜利 screen so its
+  // layout can be reviewed without winning a round for real. Deliberately only
+  // flips the UI: the round is left unsettled so no win is ever reported.
+  void _previewWin() {
+    if (!mounted || _result != null) return;
+    setState(() => _result = _ReversiResultKind.win);
+  }
+
   Future<void> _closeGame() async {
     final engine = _engine;
     if (_runtime.session != null && !_runtime.completed) {
@@ -241,6 +249,16 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
     }
   }
 
+  /// Quitting or restarting mid-game counts as a loss: the lose screen takes
+  /// over and the round is settled as a defeat, so the points are actually
+  /// deducted rather than the session merely being aborted.
+  Future<void> _forfeit() async {
+    if (!mounted || _result != null || _engine == null) return;
+    if (_runtime.completed) return;
+    setState(() => _result = _ReversiResultKind.lose);
+    await _finish(ReversiStatus.agentWon);
+  }
+
   Future<void> _finish(ReversiStatus status) async {
     final engine = _engine!;
     await _runtime.finish({
@@ -288,6 +306,11 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
       child = _ReversiResultScreen(
         key: const ValueKey('reversi-result'),
         kind: _result!,
+        pointsDelta: _runtime.pointRules?.deltaFor(
+          _result == _ReversiResultKind.win
+              ? GameOutcome.win
+              : GameOutcome.lose,
+        ),
         onAgain: () async {
           setState(() => _result = null);
           await _start();
@@ -327,12 +350,8 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
           bannerHoldMs: _runtime.bannerHoldMs,
           bannerOutMs: _runtime.bannerOutMs,
           gamePoints: _runtime.pointsBalance,
-          // Quitting or restarting mid-game counts as a loss (design note).
-          onShowLose: () {
-            if (mounted && _result == null) {
-              setState(() => _result = _ReversiResultKind.lose);
-            }
-          },
+          onShowLose: _forfeit,
+          onPreviewWin: _previewWin,
         ),
       );
     }
@@ -650,6 +669,7 @@ class _ReversiGameScreen extends StatefulWidget {
     required this.onExit,
     required this.onTimerPauseChanged,
     required this.onShowLose,
+    required this.onPreviewWin,
     required this.bannerInMs,
     required this.bannerHoldMs,
     required this.bannerOutMs,
@@ -674,6 +694,11 @@ class _ReversiGameScreen extends StatefulWidget {
   final ValueChanged<bool> onTimerPauseChanged;
   // Quit / restart mid-game → show the loss result instead of exiting directly.
   final VoidCallback onShowLose;
+
+  // TODO(games): temporary test hook — 重新开局 jumps straight to the 胜利
+  // screen so its layout can be checked without actually winning a round.
+  // Restore the onShowLose call below once the result screens are signed off.
+  final VoidCallback onPreviewWin;
   // "你的回合" banner timing (ms), from the per-game admin config.
   final int bannerInMs;
   final int bannerHoldMs;
@@ -919,7 +944,7 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
             label: '重新开局',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              widget.onShowLose();
+              widget.onPreviewWin();
             },
           ),
         ),
@@ -1742,11 +1767,16 @@ class _ReversiResultScreen extends StatefulWidget {
   const _ReversiResultScreen({
     super.key,
     required this.kind,
+    required this.pointsDelta,
     required this.onAgain,
     required this.onConfirm,
   });
 
   final _ReversiResultKind kind;
+
+  /// What this round settled for; null while the wallet hasn't loaded, in
+  /// which case the number is left off rather than shown wrong.
+  final int? pointsDelta;
   final Future<void> Function() onAgain;
   final Future<void> Function() onConfirm;
 
@@ -1852,8 +1882,7 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
   }
 
   Widget _scoreContent(
-    String labelAsset,
-    String numAsset, {
+    String labelAsset, {
     Alignment align = Alignment.center,
   }) {
     return Padding(
@@ -1867,7 +1896,13 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
             children: [
               Image.asset('$_reversiAsset$labelAsset', height: 30),
               const SizedBox(width: 8),
-              Image.asset('$_reversiAsset$numAsset', height: 34),
+              if (widget.pointsDelta != null)
+                _NativeGameScoreDelta(
+                  delta: widget.pointsDelta!,
+                  fill: const Color(0xFFF1DFC5),
+                  stroke: const Color(0xFF4E1F0F),
+                  height: 34,
+                ),
             ],
           ),
         ),
@@ -2007,7 +2042,6 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
           Positioned.fill(
             child: _scoreContent(
               'result_txt_score.png',
-              'result_win_num.png',
               align: const Alignment(0, 0.85),
             ),
           ),
@@ -2118,7 +2152,6 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
           Positioned.fill(
             child: _scoreContent(
               'result_lose_score_label.png',
-              'result_lose_num.png',
             ),
           ),
         ],
