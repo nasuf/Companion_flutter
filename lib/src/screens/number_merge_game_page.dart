@@ -355,22 +355,24 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
           enabled: userTurnActive,
           gamePoints: _runtime.pointsBalance,
           onMove: (direction) => unawaited(_userMove(direction)),
-          onRestart: _start,
           onExit: _closeGame,
           onPauseChanged: _setPaused,
-          onPreviewWin: () => _previewResult(_MergeResultKind.win),
-          onPreviewLose: () => _previewResult(_MergeResultKind.lose),
+          onAbandon: _abandonRound,
         ),
       ),
     );
   }
 
-  // TODO(merge-ui): temporary — drives the result screens from the pause /
-  // exit sheet so both layouts can be reviewed without finishing a board.
-  void _previewResult(_MergeResultKind kind) {
+  /// Quitting or restarting from the pause sheet gives up the board, so the
+  /// lose screen takes over and the player chooses from there.
+  ///
+  /// Note this only drives the UI: the round itself is still reported as an
+  /// abort by _start / _closeGame, so no loss is recorded and no points are
+  /// deducted despite the screen showing 积分 -3.
+  void _abandonRound() {
     _resultTimer?.cancel();
     _resultTimer = null;
-    setState(() => _result = kind);
+    setState(() => _result = _MergeResultKind.lose);
   }
 
   void _setPaused(bool value) {

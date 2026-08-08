@@ -232,11 +232,9 @@ class _MergeGameScreen extends StatelessWidget {
     required this.enabled,
     required this.gamePoints,
     required this.onMove,
-    required this.onRestart,
     required this.onExit,
     required this.onPauseChanged,
-    required this.onPreviewWin,
-    required this.onPreviewLose,
+    required this.onAbandon,
   });
 
   final NumberMergeEngine engine;
@@ -252,16 +250,13 @@ class _MergeGameScreen extends StatelessWidget {
   /// Global coin balance for the top-right badge, same as the other games.
   final int? gamePoints;
   final ValueChanged<NumberMergeDirection> onMove;
-  final Future<void> Function() onRestart;
   final Future<void> Function() onExit;
   final ValueChanged<bool> onPauseChanged;
 
-  // TODO(merge-ui): temporary test hooks — 重新开局 jumps straight to the win
-  // scene and 退出 to the lose scene, so both result layouts can be checked
-  // without playing a board out. Swap back to onRestart / onExit once the
-  // result screens are signed off.
-  final VoidCallback onPreviewWin;
-  final VoidCallback onPreviewLose;
+  /// Giving up mid-board — from either 重新开局 or 退出 — counts as a loss and
+  /// shows the lose screen, which is where the player then picks between
+  /// leaving and starting over.
+  final VoidCallback onAbandon;
 
   @override
   Widget build(BuildContext context) {
@@ -438,7 +433,7 @@ class _MergeGameScreen extends StatelessWidget {
             label: '退出',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              onPreviewLose();
+              onAbandon();
             },
           ),
         ],
@@ -483,7 +478,7 @@ class _MergeGameScreen extends StatelessWidget {
             enabled: !starting,
             onTap: () {
               Navigator.of(dialogContext).pop();
-              onPreviewWin();
+              onAbandon();
             },
           ),
         ],
