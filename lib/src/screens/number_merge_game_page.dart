@@ -23,6 +23,9 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
   bool _resolving = false;
   // True while the pause / exit sheet is on screen.
   bool _paused = false;
+  // Non-null once the win / lose scene has taken over from the board.
+  _MergeResultKind? _result;
+  Timer? _resultTimer;
 
   @override
   void initState() {
@@ -40,6 +43,7 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
 
   @override
   void dispose() {
+    _resultTimer?.cancel();
     _runtime.dispose();
     unawaited(
       _runtime.abort('page_closed', _sessionSummary(), updateUi: false),
@@ -48,15 +52,21 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
   }
 
   void _clearActiveRound() {
+    _resultTimer?.cancel();
+    _resultTimer = null;
     setState(() {
       _engine = null;
       _lastMove = null;
       _actionHistory.clear();
       _resolving = false;
+      _result = null;
     });
   }
 
   Future<void> _start() async {
+    _resultTimer?.cancel();
+    _resultTimer = null;
+    if (_result != null) setState(() => _result = null);
     if (_runtime.session != null && !_runtime.completed) {
       await _runtime.abort('restarted', _sessionSummary());
     }
@@ -278,6 +288,26 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
   @override
   Widget build(BuildContext context) {
     final engine = _engine;
+    // Let the last merge animation land before the result scene takes over.
+    if (engine != null &&
+        engine.isFinished &&
+        _result == null &&
+        _resultTimer == null) {
+      final win = engine.status == NumberMergeStatus.completed;
+      _resultTimer = Timer(const Duration(milliseconds: 1400), () {
+        if (!mounted || _result != null) return;
+        setState(
+          () => _result = win ? _MergeResultKind.win : _MergeResultKind.lose,
+        );
+      });
+    }
+    if (engine != null && _result != null) {
+      return _MergeResultScreen(
+        kind: _result!,
+        onRestart: _start,
+        onExit: _closeGame,
+      );
+    }
     if (engine == null) {
       return _MergeHome(
         rounds: _runtime.rounds,
@@ -323,13 +353,24 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
           aiThinking: _runtime.aiThinking,
           starting: _runtime.starting,
           enabled: userTurnActive,
+          gamePoints: _runtime.pointsBalance,
           onMove: (direction) => unawaited(_userMove(direction)),
           onRestart: _start,
           onExit: _closeGame,
           onPauseChanged: _setPaused,
+          onPreviewWin: () => _previewResult(_MergeResultKind.win),
+          onPreviewLose: () => _previewResult(_MergeResultKind.lose),
         ),
       ),
     );
+  }
+
+  // TODO(merge-ui): temporary — drives the result screens from the pause /
+  // exit sheet so both layouts can be reviewed without finishing a board.
+  void _previewResult(_MergeResultKind kind) {
+    _resultTimer?.cancel();
+    _resultTimer = null;
+    setState(() => _result = kind);
   }
 
   void _setPaused(bool value) {
@@ -444,19 +485,30 @@ class _NumberMergeBoardState extends State<_NumberMergeBoard>
 }
 
 class _NumberMergeBoardPainter extends CustomPainter {
-  const _NumberMergeBoardPainter({
+  _NumberMergeBoardPainter({
     required this.engine,
     required this.lastMove,
     required this.moveProgress,
     required this.thinking,
     this.figmaStyle = false,
-  });
+  }) : boardSnapshot = List<int>.of(engine.board);
 
   final NumberMergeEngine engine;
   final NumberMergeMove? lastMove;
   final double moveProgress;
   final bool thinking;
   final bool figmaStyle;
+
+  // Snapshot of the board taken when this painter is built. `engine` is one
+  // long-lived mutable instance shared by every painter, so `oldDelegate.engine`
+  // and `engine` are the same object and `engine.stateHash` can never differ
+  // between the old and new delegate. That made the "board changed" branch of
+  // shouldRepaint dead code: when the board changed without a matching change to
+  // lastMove/moveProgress (e.g. after the slide animation settles), the painter
+  // reported "no repaint" and the RepaintBoundary kept compositing its cached
+  // layer — leaving a stale tile (the ghost "2") on a now-empty cell. Comparing
+  // an immutable per-build snapshot restores correct repaint detection.
+  final List<int> boardSnapshot;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -474,6 +526,17 @@ class _NumberMergeBoardPainter extends CustomPainter {
       side,
     );
     final outer = RRect.fromRectAndRadius(boardRect, const Radius.circular(26));
+    if (figmaStyle) {
+      // The design's frosted well. Deliberately a flat translucent fill rather
+      // than a BackdropFilter widget: sampling the backdrop pulled the previous
+      // frame's tiles into the pane, and since the pane also lightens whatever
+      // it covers, only the digits' dark drop shadow survived — a ghost "2" on
+      // cells that had already been cleared.
+      canvas.drawRRect(
+        outer,
+        Paint()..color = const Color(0xFFD9D9D9).withValues(alpha: 0.34),
+      );
+    }
     if (!figmaStyle) {
       canvas.drawShadow(Path()..addRRect(outer), Colors.black, 16, true);
       canvas.drawRRect(
@@ -492,27 +555,14 @@ class _NumberMergeBoardPainter extends CustomPainter {
     for (var index = 0; index < 16; index += 1) {
       final rect = _rectFor(index, inner, tileSize, gap);
       if (figmaStyle) {
-        // Empty slot from the board art: dark slate, faint lighter edge, and
-        // deliberately no placeholder digit.
-        final slot = RRect.fromRectAndRadius(
-          rect,
-          Radius.circular(tileSize * 0.22),
-        );
+        // The frosted pane behind the board already reads as the well, so an
+        // empty cell only needs the faintest outline to keep the 4x4 legible.
         canvas.drawRRect(
-          slot,
-          Paint()
-            ..shader = const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFF353540), Color(0xFF42444F)],
-            ).createShader(rect),
-        );
-        canvas.drawRRect(
-          slot.deflate(tileSize * 0.02),
+          RRect.fromRectAndRadius(rect, Radius.circular(tileSize * 0.22)),
           Paint()
             ..style = PaintingStyle.stroke
-            ..strokeWidth = tileSize * 0.028
-            ..color = const Color(0xFF626474).withValues(alpha: 0.75),
+            ..strokeWidth = tileSize * 0.022
+            ..color = Colors.white.withValues(alpha: 0.10),
         );
       } else {
         canvas.drawRRect(
@@ -688,6 +738,10 @@ class _NumberMergeBoardPainter extends CustomPainter {
           3 => 0.34,
           _ => 0.26,
         };
+    // Deliberately no TextStyle.shadows. On Impeller the shadow layer and the
+    // glyph itself can come apart, leaving just the dark blurred shadow on the
+    // tile — that was the stray dark digit on iOS. The tile body already gives
+    // the number enough contrast without one.
     final painter = TextPainter(
       text: TextSpan(
         text: '$value',
@@ -697,15 +751,6 @@ class _NumberMergeBoardPainter extends CustomPainter {
           height: 1,
           fontWeight: FontWeight.w900,
           letterSpacing: -fontSize * 0.02,
-          shadows: light
-              ? null
-              : [
-                  Shadow(
-                    color: const Color(0xFF3A2408).withValues(alpha: 0.55),
-                    blurRadius: fontSize * 0.14,
-                    offset: Offset(0, fontSize * 0.06),
-                  ),
-                ],
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -749,7 +794,7 @@ class _NumberMergeBoardPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _NumberMergeBoardPainter oldDelegate) =>
-      oldDelegate.engine.stateHash != engine.stateHash ||
+      !listEquals(oldDelegate.boardSnapshot, boardSnapshot) ||
       oldDelegate.lastMove?.number != lastMove?.number ||
       oldDelegate.moveProgress != moveProgress ||
       oldDelegate.thinking != thinking ||
