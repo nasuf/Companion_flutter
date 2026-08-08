@@ -1200,25 +1200,21 @@ class _WeatherMetricGrid extends StatelessWidget {
         title: '体感',
         value: '${snapshot.apparentTemperature.round()}℃',
         glyph: _WeatherGlyph.feelsLike,
-        tone: _WeatherMetricTone.amber,
       ),
       _WeatherMetricData(
         title: '降雨概率',
         value: '${day.maxRainProbability.round()}%',
         glyph: _WeatherGlyph.rain,
-        tone: _WeatherMetricTone.blue,
       ),
       _WeatherMetricData(
         title: '湿度',
         value: '${snapshot.humidity.round()}%',
         glyph: _WeatherGlyph.humidity,
-        tone: _WeatherMetricTone.teal,
       ),
       _WeatherMetricData(
         title: '风速',
         value: '${snapshot.windSpeed.round()}km/h',
         glyph: _WeatherGlyph.wind,
-        tone: _WeatherMetricTone.indigo,
       ),
     ];
 
@@ -1242,194 +1238,60 @@ class _WeatherMetricData {
     required this.title,
     required this.value,
     required this.glyph,
-    required this.tone,
   });
 
   final String title;
   final String value;
   final _WeatherGlyph glyph;
-  final _WeatherMetricTone tone;
 }
 
-/// Spec 2b 的图标是「纯色实心字形」，Cupertino 的线性图标混在一起会不齐整，
-/// 所以四个字形都用矢量实心图形画。
+/// 指标卡字形，直接用 design 稿导出的白色 PNG（72px = 24pt @3x）。
+enum _WeatherGlyph {
+  feelsLike('assets/weather/metric_feels.png'),
+  rain('assets/weather/metric_rain.png'),
+  humidity('assets/weather/metric_humidity.png'),
+  wind('assets/weather/metric_wind.png');
+
+  const _WeatherGlyph(this.asset);
+
+  final String asset;
+}
+
+/// design 稿的指标图标：48pt 纯蓝圆底 + 24pt 白色字形（四个指标同色）。
 ///
-/// [humidity] / [wind] 直接取自 design 稿（hum2b / win2b 的 path 原值）；
-/// design 稿本身只有 湿度/风速/空气/日照 四个字形，没有体感和降雨，
-/// 因此 [feelsLike] / [rain] 按同一套几何语言（圆角实心块 + .55 次级透明度
-/// + 白色高光）补齐。
-enum _WeatherGlyph { feelsLike, rain, humidity, wind }
-
-String _weatherGlyphSvg(_WeatherGlyph glyph, Color glyphStart, Color glyphEnd) {
-  final start = _svgHex(glyphStart);
-  final end = _svgHex(glyphEnd);
-  String wrap(String coords, String body) =>
-      '<svg width="19" height="19" viewBox="0 0 24 24" fill="none">'
-      '<defs><linearGradient id="g" $coords gradientUnits="userSpaceOnUse">'
-      '<stop stop-color="$start"/><stop offset="1" stop-color="$end"/>'
-      '</linearGradient></defs>$body</svg>';
-
-  switch (glyph) {
-    case _WeatherGlyph.humidity:
-      return wrap(
-        'x1="6" y1="3" x2="18" y2="21"',
-        '<path d="M12 2.2 6.4 8.1a7.8 7.8 0 1 0 11.2 0Z" fill="url(#g)"/>'
-            '<path d="M9.1 12.6c-.5 1.7 0 3.3 1.4 4.3-2.3-.3-3.6-2.2-3.1-4.3.3-1.2 1-2.2 1.9-3-.3.9-.4 2-.2 3Z" fill="#fff" opacity=".62"/>',
-      );
-    case _WeatherGlyph.wind:
-      return wrap(
-        'x1="3" y1="4" x2="20" y2="20"',
-        '<g fill="url(#g)">'
-            '<rect x="2.4" y="5" width="10.6" height="2.5" rx="1.25"/>'
-            '<path fill-rule="evenodd" d="M16.1 3.35a2.9 2.9 0 1 1 0 5.8 2.9 2.9 0 0 1 0-5.8Zm0 1.9a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/>'
-            '<rect x="2.4" y="10.75" width="14" height="2.5" rx="1.25"/>'
-            '<path fill-rule="evenodd" d="M19.3 9.1a2.9 2.9 0 1 1 0 5.8 2.9 2.9 0 0 1 0-5.8Zm0 1.9a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/>'
-            '<rect x="2.4" y="16.5" width="8" height="2.5" rx="1.25" opacity=".55"/>'
-            '<path fill-rule="evenodd" opacity=".55" d="M13.4 14.85a2.9 2.9 0 1 1 0 5.8 2.9 2.9 0 0 1 0-5.8Zm0 1.9a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/>'
-            '</g>',
-      );
-    case _WeatherGlyph.feelsLike:
-      // 实心温度计：柱体 + 球泡，右侧热浪沿用 design 的 .55 次级透明度。
-      return wrap(
-        'x1="5" y1="3" x2="19" y2="21"',
-        '<g fill="url(#g)">'
-            '<rect x="7.9" y="2.8" width="3.4" height="13.4" rx="1.7"/>'
-            '<circle cx="9.6" cy="17.9" r="4"/>'
-            '<rect x="15" y="6.1" width="6.2" height="2.3" rx="1.15" opacity=".55"/>'
-            '<rect x="15" y="10.5" width="4.3" height="2.3" rx="1.15" opacity=".55"/>'
-            '</g>'
-            '<rect x="9.05" y="5.1" width="1.1" height="5.4" rx=".55" fill="#fff" opacity=".55"/>',
-      );
-    case _WeatherGlyph.rain:
-      // 实心伞面沿用 design 半圆穹顶的画法（见 sun2b），加伞柄与白色高光。
-      return wrap(
-        'x1="4" y1="4" x2="20" y2="20"',
-        '<g fill="url(#g)">'
-            '<path d="M12 3.2a8.4 8.4 0 0 1 8.4 8.4H3.6A8.4 8.4 0 0 1 12 3.2Z"/>'
-            '<rect x="10.9" y="11.6" width="2.2" height="7.6" rx="1.1"/>'
-            '<rect x="6.6" y="17.9" width="6.5" height="2.2" rx="1.1" opacity=".55"/>'
-            '</g>'
-            '<path d="M9.5 5.3a8.4 8.4 0 0 0-4.2 6.3h2.2c0-2.5.7-4.7 2-6.3Z" fill="#fff" opacity=".5"/>',
-      );
-  }
-}
-
-String _svgHex(Color color) =>
-    '#${(color.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
-
-/// Spec 2b 图标语义色板：体感橙 / 降雨蓝 / 湿度青 / 风速靛。
-///
-/// 浅色：`linear-gradient(150deg,#FFFFFF,tintLight)` 圆底 + 彩色投影，
-///       字形走浅色双色实心渐变。
-/// 深色：`linear-gradient(150deg, tintDark@.30, tintDark@.08)` 半透明圆底 +
-///       内高光，字形走 design 稿的深色双色渐变（hum2bd/win2bd/…）。
-enum _WeatherMetricTone {
-  amber(
-    Color(0xFFFCEBCC),
-    Color(0xFFFFD97A),
-    Color(0xFFF59A15),
-    0.22,
-    Color(0xFFFFC766),
-    Color(0xFFFFE7A8),
-    Color(0xFFFBA92B),
-  ),
-  blue(
-    Color(0xFFE1EBFF),
-    Color(0xFF8FB6FF),
-    Color(0xFF2E6BE6),
-    0.20,
-    Color(0xFF7FA8FF),
-    Color(0xFFC3D8FF),
-    Color(0xFF4A83F0),
-  ),
-  teal(
-    Color(0xFFDFF5F4),
-    Color(0xFF4FE3DD),
-    Color(0xFF0FA49F),
-    0.22,
-    Color(0xFF2DD8D2),
-    Color(0xFF7DF2ED),
-    Color(0xFF17B8B2),
-  ),
-  indigo(
-    Color(0xFFE4E9FF),
-    Color(0xFF93B4FF),
-    Color(0xFF5C93FF),
-    0.20,
-    Color(0xFF93B4FF),
-    Color(0xFFBFD0FF),
-    Color(0xFF6E9BFF),
-  );
-
-  const _WeatherMetricTone(
-    this.tintLight,
-    this.glyphLightStart,
-    this.glyphLightEnd,
-    this.shadowOpacity,
-    this.tintDark,
-    this.glyphDarkStart,
-    this.glyphDarkEnd,
-  );
-
-  final Color tintLight;
-  final Color glyphLightStart;
-  final Color glyphLightEnd;
-  final double shadowOpacity;
-  final Color tintDark;
-  final Color glyphDarkStart;
-  final Color glyphDarkEnd;
-}
-
-/// Spec 2b：38px 渐变圆底 + 双色实心字形（浅/深两套）。
+/// 圆底在代码里画而不是用稿子里的 `Ellipse` 位图——四张导出图逐字节相同，
+/// 都是 #4C9BFF 实心圆加一层烘死的投影，画出来既省包体也能随尺寸保持锐利。
 class _WeatherMetricIcon extends StatelessWidget {
-  const _WeatherMetricIcon({required this.glyph, required this.tone});
+  const _WeatherMetricIcon({required this.glyph});
+
+  static const _diameter = 48.0;
+  static const _glyphSize = 24.0;
+  static const _fill = Color(0xFF4C9BFF);
 
   final _WeatherGlyph glyph;
-  final _WeatherMetricTone tone;
 
   @override
   Widget build(BuildContext context) {
     final dark = _W2b.of(context).isDark;
-    final glyphStart = dark ? tone.glyphDarkStart : tone.glyphLightStart;
-    final glyphEnd = dark ? tone.glyphDarkEnd : tone.glyphLightEnd;
     return Container(
-      width: 38,
-      height: 38,
+      width: _diameter,
+      height: _diameter,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        // CSS 150deg ≈ 从左上偏上流向右下偏下。
-        gradient: LinearGradient(
-          begin: const Alignment(-0.5, -1),
-          end: const Alignment(0.5, 1),
-          colors: dark
-              ? [
-                  tone.tintDark.withValues(alpha: 0.30),
-                  tone.tintDark.withValues(alpha: 0.08),
-                ]
-              : [Colors.white, tone.tintLight],
-        ),
-        border: dark
-            ? Border.all(color: Colors.white.withValues(alpha: 0.18))
-            : null,
+        color: _fill,
+        // 深色模式下蓝色辉光糊在暗背景上会脏，只在浅色保留稿子里的投影。
         boxShadow: dark
             ? null
             : [
                 BoxShadow(
-                  color: tone.glyphLightEnd.withValues(
-                    alpha: tone.shadowOpacity,
-                  ),
+                  color: _fill.withValues(alpha: 0.30),
                   blurRadius: 9,
                   offset: const Offset(0, 4),
                 ),
               ],
       ),
-      // 渐变写在 SVG 内部而不是用 ShaderMask：字形里的白色高光要保持白色。
-      child: SvgPicture.string(
-        _weatherGlyphSvg(glyph, glyphStart, glyphEnd),
-        width: 19,
-        height: 19,
-      ),
+      child: Image.asset(glyph.asset, width: _glyphSize, height: _glyphSize),
     );
   }
 }
@@ -1444,7 +1306,7 @@ class _WeatherMetricCard extends StatelessWidget {
     final w = _W2b.of(context);
     return Container(
       height: 88,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       decoration: BoxDecoration(
         color: w.glass,
         borderRadius: BorderRadius.circular(24),
@@ -1453,8 +1315,8 @@ class _WeatherMetricCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _WeatherMetricIcon(glyph: data.glyph, tone: data.tone),
-          const SizedBox(width: 18),
+          _WeatherMetricIcon(glyph: data.glyph),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
