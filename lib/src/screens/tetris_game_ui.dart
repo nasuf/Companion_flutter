@@ -237,7 +237,6 @@ class _TetrisGameScreen extends StatelessWidget {
     required this.onPanUpdate,
     required this.onPanEnd,
     required this.onShowLose,
-    required this.onShowWin,
     required this.onPauseChanged,
   });
 
@@ -258,7 +257,6 @@ class _TetrisGameScreen extends StatelessWidget {
   final GestureDragUpdateCallback onPanUpdate;
   final GestureDragEndCallback onPanEnd;
   final Future<void> Function() onShowLose;
-  final Future<void> Function() onShowWin;
   final ValueChanged<bool> onPauseChanged;
 
   static const _userCyan = Color(0xFF28FDFE);
@@ -541,9 +539,9 @@ class _TetrisGameScreen extends StatelessWidget {
             label: '重新开局',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              // TEMP (spec 3): preview the 胜利 page. Restarting mid-duel would
-              // normally forfeit (onShowLose); swap back when done.
-              unawaited(onShowWin());
+              // Restarting mid-duel abandons the round, so it forfeits just
+              // like quitting does.
+              unawaited(onShowLose());
             },
           ),
         ],

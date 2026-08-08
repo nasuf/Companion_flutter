@@ -476,15 +476,6 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
     await _finish();
   }
 
-  /// TEMP (spec 3): the pause-menu 重新开局 previews the 胜利 page for testing.
-  /// Swap back to [_forfeit] once the win screen is signed off.
-  Future<void> _forfeitWin() async {
-    if (_result != null || _engine == null || _runtime.completed) return;
-    _stopSoftDrop();
-    setState(() => _result = _TetrisResultKind.win);
-    await _finish();
-  }
-
   void _onPanStart(DragStartDetails details) {
     _horizontalDrag = 0;
     _verticalDrag = 0;
@@ -601,9 +592,8 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
             onPanStart: _onPanStart,
             onPanUpdate: _onPanUpdate,
             onPanEnd: _onPanEnd,
-            // Exit mid-duel forfeits → 失败; pause 重新开局 → 胜利 preview (TEMP).
+            // Both leaving and restarting mid-duel count as a forfeit → 失败.
             onShowLose: _forfeit,
-            onShowWin: _forfeitWin,
             onPauseChanged: _setPaused,
           ),
         ),
