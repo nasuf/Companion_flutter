@@ -1104,11 +1104,12 @@ class _MergeResultScreenState extends State<_MergeResultScreen>
       end: 0.58,
       child: _img('result_win_banner.png'),
     ),
-    // 胜利 wordmark on the ribbon. Sized against the design screenshot rather
-    // than the exported CSS box, which renders the glyphs ~27% too large.
+    // 胜利 wordmark on the ribbon, centred 9.5px below the ribbon per the CSS
+    // (ribbon 275.5, title 285). Only the width is taken from the design
+    // screenshot instead of the CSS box, which renders the glyphs ~27% large.
     _piece(
       cx: 0.5,
-      cy: 0.3430,
+      cy: 285 / 852,
       wFrac: 0.312,
       aspect: 221 / 391,
       begin: 0.44,
