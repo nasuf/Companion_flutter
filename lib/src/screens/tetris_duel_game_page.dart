@@ -619,11 +619,9 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
 }
 
 class _TetrisBoardPainter extends CustomPainter {
-  _TetrisBoardPainter({required this.board, required this.accent})
-    : stateHash = board.stateHash;
+  _TetrisBoardPainter({required this.board}) : stateHash = board.stateHash;
 
   final TetrisBoardEngine board;
-  final Color accent;
   final int stateHash;
 
   /// The panel clips its content to a rounded rectangle, so a grid drawn edge
@@ -642,16 +640,10 @@ class _TetrisBoardPainter extends CustomPainter {
       (size.width - cell * TetrisBoardEngine.width) / 2,
       (size.height - cell * TetrisBoardEngine.height) / 2,
     );
-    final rect = Offset.zero & size;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(rect, const Radius.circular(8)),
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF11172D), Color(0xFF070A14)],
-        ).createShader(rect),
-    );
+    // No panel fill or inner outline here: the design draws the well as a
+    // single #232130 plate inside one neon frame, and _TetrisNeonPanel already
+    // paints exactly that. Adding a darker gradient plus an accent stroke on
+    // top produced a second frame the design does not have.
     final grid = Paint()
       ..color = Colors.white.withValues(alpha: 0.045)
       ..strokeWidth = 0.7;
@@ -710,13 +702,6 @@ class _TetrisBoardPainter extends CustomPainter {
         }
       }
     }
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(rect.deflate(1), const Radius.circular(8)),
-      Paint()
-        ..color = accent.withValues(alpha: 0.42)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.4,
-    );
   }
 
   void _paintCell(
@@ -760,7 +745,7 @@ class _TetrisBoardPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _TetrisBoardPainter oldDelegate) =>
-      oldDelegate.stateHash != stateHash || oldDelegate.accent != accent;
+      oldDelegate.stateHash != stateHash;
 }
 
 const _tetrisPalette = <List<Color>>[

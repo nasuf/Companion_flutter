@@ -386,10 +386,7 @@ class _TetrisGameScreen extends StatelessWidget {
                     onPanUpdate: canControl ? onPanUpdate : null,
                     onPanEnd: canControl ? onPanEnd : null,
                     child: CustomPaint(
-                      painter: _TetrisBoardPainter(
-                        board: engine.user,
-                        accent: const Color(0xFF00FBFF),
-                      ),
+                      painter: _TetrisBoardPainter(board: engine.user),
                     ),
                   ),
                 ),
@@ -403,10 +400,7 @@ class _TetrisGameScreen extends StatelessWidget {
                   border: const Color(0xFFDC95FD),
                   glow: const Color(0x9900FBFF),
                   child: CustomPaint(
-                    painter: _TetrisBoardPainter(
-                      board: engine.agent,
-                      accent: const Color(0xFFDC95FD),
-                    ),
+                    painter: _TetrisBoardPainter(board: engine.agent),
                   ),
                 ),
               ),
