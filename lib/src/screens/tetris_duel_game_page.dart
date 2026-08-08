@@ -626,9 +626,22 @@ class _TetrisBoardPainter extends CustomPainter {
   final Color accent;
   final int stateHash;
 
+  /// The panel clips its content to a rounded rectangle, so a grid drawn edge
+  /// to edge loses its corner cells to the curve. A radius r cuts in by
+  /// r*(1 - 1/√2) on the diagonal — about 4.7pt for the 16pt clip — so the
+  /// playfield is inset past that and centred in what is left.
+  static const _cornerInset = 5.0;
+
   @override
   void paint(Canvas canvas, Size size) {
-    final cell = size.width / TetrisBoardEngine.width;
+    final cell = math.min(
+      (size.width - _cornerInset * 2) / TetrisBoardEngine.width,
+      (size.height - _cornerInset * 2) / TetrisBoardEngine.height,
+    );
+    final origin = Offset(
+      (size.width - cell * TetrisBoardEngine.width) / 2,
+      (size.height - cell * TetrisBoardEngine.height) / 2,
+    );
     final rect = Offset.zero & size;
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, const Radius.circular(8)),
@@ -642,30 +655,37 @@ class _TetrisBoardPainter extends CustomPainter {
     final grid = Paint()
       ..color = Colors.white.withValues(alpha: 0.045)
       ..strokeWidth = 0.7;
+    final boardWidth = cell * TetrisBoardEngine.width;
+    final boardHeight = cell * TetrisBoardEngine.height;
     for (var column = 0; column <= TetrisBoardEngine.width; column++) {
+      final x = origin.dx + column * cell;
       canvas.drawLine(
-        Offset(column * cell, 0),
-        Offset(column * cell, size.height),
+        Offset(x, origin.dy),
+        Offset(x, origin.dy + boardHeight),
         grid,
       );
     }
     for (var row = 0; row <= TetrisBoardEngine.height; row++) {
+      final y = origin.dy + row * cell;
       canvas.drawLine(
-        Offset(0, row * cell),
-        Offset(size.width, row * cell),
+        Offset(origin.dx, y),
+        Offset(origin.dx + boardWidth, y),
         grid,
       );
     }
     for (var row = 0; row < TetrisBoardEngine.height; row++) {
       for (var column = 0; column < TetrisBoardEngine.width; column++) {
         final value = board.board[row * TetrisBoardEngine.width + column];
-        if (value != 0) _paintCell(canvas, column, row, cell, value, 1);
+        if (value != 0) {
+          _paintCell(canvas, origin, column, row, cell, value, 1);
+        }
       }
     }
     for (final ghost in board.ghostCells()) {
       if (ghost.y >= 0) {
         _paintCell(
           canvas,
+          origin,
           ghost.x,
           ghost.y,
           cell,
@@ -680,6 +700,7 @@ class _TetrisBoardPainter extends CustomPainter {
         if (activeCell.y >= 0) {
           _paintCell(
             canvas,
+            origin,
             activeCell.x,
             activeCell.y,
             cell,
@@ -700,6 +721,7 @@ class _TetrisBoardPainter extends CustomPainter {
 
   void _paintCell(
     Canvas canvas,
+    Offset origin,
     int x,
     int y,
     double cell,
@@ -710,8 +732,8 @@ class _TetrisBoardPainter extends CustomPainter {
         ? const [Color(0xFF67708B), Color(0xFF353B50)]
         : _tetrisPalette[(value - 1).clamp(0, _tetrisPalette.length - 1)];
     final rect = Rect.fromLTWH(
-      x * cell + 1.1,
-      y * cell + 1.1,
+      origin.dx + x * cell + 1.1,
+      origin.dy + y * cell + 1.1,
       cell - 2.2,
       cell - 2.2,
     );
