@@ -102,14 +102,6 @@ DateTime _dateOnlyTime(DateTime value) =>
 
 DateTime _monthOnly(DateTime value) => DateTime(value.year, value.month);
 
-DateTime _earliestDate(List<DateTime> dates) {
-  return dates.reduce((a, b) => a.isBefore(b) ? a : b);
-}
-
-DateTime _latestDate(List<DateTime> dates) {
-  return dates.reduce((a, b) => a.isAfter(b) ? a : b);
-}
-
 DateTime _defaultReminderDateTime() {
   final now = DateTime.now();
   return DateTime(
@@ -150,14 +142,6 @@ DateTime _weekStart(DateTime value) {
   return date.subtract(Duration(days: date.weekday - 1));
 }
 
-DateTime _weekForMonth(DateTime month, DateTime selectedDate) {
-  final visibleMonth = _monthOnly(month);
-  if (_isSameMonth(visibleMonth, selectedDate)) {
-    return _weekStart(selectedDate);
-  }
-  return _weekStart(visibleMonth);
-}
-
 DateTime _monthForWeek(DateTime weekStart) =>
     _monthOnly(weekStart.add(const Duration(days: 3)));
 
@@ -166,9 +150,6 @@ bool _isSameDate(DateTime a, DateTime b) =>
 
 bool _isSameMonth(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month;
-
-int _monthDifference(DateTime from, DateTime to) =>
-    (to.year - from.year) * 12 + to.month - from.month;
 
 String _dateKey(DateTime value) =>
     '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';

@@ -1,10 +1,51 @@
 part of 'package:companion_flutter/main.dart';
 
+class _CheckinDeletedResult {
+  const _CheckinDeletedResult(this.item);
+
+  final ReminderItem item;
+}
+
+/// `2026年7月23日 09:00` — the reminder value as the design writes it.
+String _checkinDateTimeLabel(DateTime value) {
+  final local = value.toLocal();
+  return '${local.year}年${local.month}月${local.day}日 ${_timeLabel(local)}';
+}
+
+Future<Object?> _showCheckinEditor({
+  required BuildContext context,
+  required CompanionApi api,
+  required AuthSession session,
+  required DateTime initialDate,
+  ReminderItem? item,
+  bool readOnly = false,
+}) {
+  // showModalBottomSheet strips the top padding from the sheet's MediaQuery,
+  // so the safe area has to be read here or the sheet would grow under the
+  // status bar once the keyboard pushes it up.
+  final topInset = MediaQuery.paddingOf(context).top;
+  return showModalBottomSheet<Object?>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: _CheckinTokens.of(context).scrim,
+    builder: (_) => _CheckinEditorSheet(
+      api: api,
+      session: session,
+      initialDate: initialDate,
+      item: item,
+      readOnly: readOnly,
+      topInset: topInset,
+    ),
+  );
+}
+
 class _CheckinEditorSheet extends StatefulWidget {
   const _CheckinEditorSheet({
     required this.api,
     required this.session,
     required this.initialDate,
+    required this.topInset,
     this.item,
     this.readOnly = false,
   });
@@ -12,6 +53,7 @@ class _CheckinEditorSheet extends StatefulWidget {
   final CompanionApi api;
   final AuthSession session;
   final DateTime initialDate;
+  final double topInset;
   final ReminderItem? item;
   final bool readOnly;
 
@@ -19,24 +61,13 @@ class _CheckinEditorSheet extends StatefulWidget {
   State<_CheckinEditorSheet> createState() => _CheckinEditorSheetState();
 }
 
-class _CheckinDeletedResult {
-  const _CheckinDeletedResult(this.item);
-
-  final ReminderItem item;
-}
-
 class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
-  static const double _settingHeight = 112;
-  static const double _editableContentHeight = 444;
-  static const double _readOnlyContentHeight = 370;
-  static const double _timePickerContentHeight = 444;
+  final _nameController = TextEditingController();
+  final _noteController = TextEditingController();
 
-  final _controller = TextEditingController();
   late DateTime _dateTime;
-  late DateTime _draftDateTime;
   _CheckinEntryMode _mode = _CheckinEntryMode.once;
-  final Set<int> _habitWeekdays = {DateTime.now().weekday};
-  bool _editingTime = false;
+  final Set<int> _habitWeekdays = <int>{};
   bool _saving = false;
   bool _completing = false;
   bool _deleting = false;
@@ -49,390 +80,173 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
     _mode = item != null && item.isHabit
         ? _CheckinEntryMode.habit
         : _CheckinEntryMode.once;
-    if (item != null) {
-      _controller.text = item.summary;
-    }
+    _nameController.text = item?.summary ?? '';
+    _noteController.text = item?.note ?? '';
     _sentToAi = item?.sentToAi ?? false;
     _dateTime = item?.triggerTime.toLocal() ?? _defaultReminderDateTime();
-    _draftDateTime = _dateTime;
-    _habitWeekdays
-      ..clear()
-      ..addAll(
-        item != null && item.habitWeekdays.isNotEmpty
-            ? item.habitWeekdays
-            : <int>{DateTime.now().weekday},
-      );
+    _habitWeekdays.addAll(
+      item != null && item.habitWeekdays.isNotEmpty
+          ? item.habitWeekdays
+          : <int>{DateTime.now().weekday},
+    );
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _nameController.dispose();
+    _noteController.dispose();
     super.dispose();
   }
 
+  bool get _busy => _saving || _completing || _deleting;
+
+  bool get _canSave =>
+      _nameController.text.trim().isNotEmpty &&
+      (_mode == _CheckinEntryMode.once || _habitWeekdays.isNotEmpty);
+
   @override
   Widget build(BuildContext context) {
+    final tokens = _CheckinTokens.of(context);
     final media = MediaQuery.of(context);
-    final keyboardHeight = media.viewInsets.bottom;
-    final keyboardExpansion = _editingTime
-        ? 0.0
-        : math.min(keyboardHeight * 0.62, 220.0);
-    final maxContentHeight = media.size.height - media.padding.top - 78;
-    final baseContentHeight = _editingTime
-        ? _timePickerContentHeight
-        : widget.readOnly
-        ? _readOnlyContentHeight
-        : _editableContentHeight;
-    final contentHeight = math.min(
-      baseContentHeight + keyboardExpansion,
-      maxContentHeight,
+    final keyboard = media.viewInsets.bottom;
+    final safeBottom = media.padding.bottom;
+    // The sheet rides on top of the keyboard, so its own height has to give
+    // that space back or the top would slide under the status bar.
+    final available = media.size.height - widget.topInset - 24 - keyboard;
+    // The floor only bites on a screen too short to hold the button row; the
+    // sheet would rather overlap the status bar than overflow its own column.
+    final height = math.min<double>(
+      media.size.height * _kCheckinSheetRatio,
+      math.max<double>(available, 240),
     );
-    return Container(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
-      decoration: BoxDecoration(
-        color: AppColors.page,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-        border: Border(top: BorderSide(color: AppColors.glassBorder(context))),
-      ),
-      child: SafeArea(
-        top: false,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          height: contentHeight,
-          constraints: BoxConstraints(maxHeight: maxContentHeight),
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            layoutBuilder: (currentChild, previousChildren) {
-              return Stack(
-                alignment: Alignment.topCenter,
-                children: [
-                  ...previousChildren,
-                  if (currentChild != null) currentChild,
-                ],
-              );
-            },
-            transitionBuilder: (child, animation) {
-              final slide = Tween<Offset>(
-                begin: const Offset(0, 0.03),
-                end: Offset.zero,
-              ).animate(animation);
-              return FadeTransition(
-                opacity: animation,
-                child: SlideTransition(position: slide, child: child),
-              );
-            },
-            child: _editingTime
-                ? _EditorTimePickerView(
-                    key: const ValueKey('time-picker'),
-                    dateTime: _draftDateTime,
-                    title: _mode == _CheckinEntryMode.habit ? '打卡时间' : '提醒时间',
-                    timeOnly: _mode == _CheckinEntryMode.habit,
-                    minimumDate: _minimumReminderDateTime(),
-                    onChanged: (value) => _draftDateTime = value,
-                    onCancel: () => setState(() => _editingTime = false),
-                    onSave: _savePickedDateTime,
-                  )
-                : _buildEditorForm(),
+    return Padding(
+      padding: EdgeInsets.only(bottom: keyboard),
+      child: Container(
+        key: const Key('checkin-sheet'),
+        height: height,
+        decoration: BoxDecoration(
+          color: tokens.page,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(_kCheckinCardRadius),
           ),
+        ),
+        child: Column(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => FocusScope.of(context).unfocus(),
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.fromLTRB(
+                    _kCheckinMargin,
+                    _kCheckinSheetPadTop,
+                    _kCheckinMargin,
+                    8,
+                  ),
+                  child: _form(tokens),
+                ),
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                _kCheckinMargin,
+                12,
+                _kCheckinMargin,
+                keyboard > 0 ? 16 : _kCheckinSheetSaveGap + safeBottom,
+              ),
+              child: _CheckinPrimaryButton(
+                label: widget.readOnly ? '删除计划' : '保存计划',
+                busy: _saving || _deleting,
+                danger: widget.readOnly,
+                onPressed: widget.readOnly
+                    ? (_busy ? null : _delete)
+                    : (_busy || !_canSave ? null : _save),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildEditorForm() {
-    return SingleChildScrollView(
-      key: const ValueKey('editor-form'),
-      physics: const ClampingScrollPhysics(),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 42,
-              height: 5,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE1E3E8),
-                borderRadius: BorderRadius.circular(99),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '我的计划是...',
-                  style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: 23,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              _buildHeaderAction(),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Container(
-            decoration: BoxDecoration(
-              color: AppColors.elevatedSurface(context, light: 0.82),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.glassBorder(context)),
-            ),
-            child: TextField(
-              controller: _controller,
-              autofocus: widget.item == null && !widget.readOnly,
-              enabled: !widget.readOnly,
-              minLines: 1,
-              maxLines: 3,
-              onChanged: (_) => setState(() {}),
-              style: TextStyle(
-                color: AppColors.text,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-              decoration: InputDecoration(
-                hintText: '添加计划信息',
-                hintStyle: TextStyle(
-                  color: AppColors.muted,
-                  fontWeight: FontWeight.w600,
-                ),
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 18,
-                ),
-                border: InputBorder.none,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (widget.readOnly)
-            _ReadOnlyModePill(mode: _mode)
-          else
-            _PlanModeSwitch(
-              value: _mode,
-              onChanged: (value) => setState(() => _mode = value),
-            ),
-          const SizedBox(height: 16),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, animation) {
-              final slide = Tween<Offset>(
-                begin: const Offset(0, 0.04),
-                end: Offset.zero,
-              ).animate(animation);
-              return FadeTransition(
-                opacity: animation,
-                child: SlideTransition(position: slide, child: child),
-              );
-            },
-            child: SizedBox(
-              key: ValueKey('setting-${_mode.name}'),
-              height: _settingHeight,
-              child: _mode == _CheckinEntryMode.once
-                  ? _SingleReminderTimeRow(
-                      dateTime: _dateTime,
-                      onPick: widget.readOnly ? null : _pickDateTime,
-                    )
-                  : _HabitWeekdaySection(
-                      selected: _habitWeekdays,
-                      dateTime: _dateTime,
-                      onPickTime: widget.readOnly ? null : _pickDateTime,
-                      onToggle: widget.readOnly ? null : _toggleHabitWeekday,
-                    ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          if (!widget.readOnly) _buildActionRow(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionRow() {
-    final existing = widget.item;
-    final primaryLabel = existing == null ? '确认' : '更新';
-    return Row(
+  Widget _form(_CheckinTokens tokens) {
+    final habit = _mode == _CheckinEntryMode.habit;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (existing != null && !_sentToAi) ...[
-          SizedBox(
-            width: 124,
-            child: CupertinoButton(
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(124, 58),
-              borderRadius: BorderRadius.circular(20),
-              color: AppColors.subtleFill(context, light: 0.74),
-              disabledColor: AppColors.subtleFill(context, light: 0.58),
-              onPressed: _saving || _completing || _deleting || !_canSave
-                  ? null
-                  : _shareToChat,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    CupertinoIcons.paperplane_fill,
-                    color: _canSave
-                        ? const Color(0xFF4F5EA8)
-                        : AppColors.muted.withValues(alpha: 0.52),
-                    size: 18,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '发聊天',
-                    style: TextStyle(
-                      color: _canSave
-                          ? const Color(0xFF4F5EA8)
-                          : AppColors.muted.withValues(alpha: 0.52),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
+        // The design only draws the "create" flow. Editing needs a couple of
+        // extra verbs, so they sit in a compact row above the name field and
+        // the create layout stays exactly as drawn. A finished task has just
+        // one verb left and it is already the bottom button.
+        if (widget.item != null && !widget.readOnly) ...[
+          _actionRow(tokens),
+          const SizedBox(height: 12),
         ],
-        Expanded(
-          child: CupertinoButton(
-            color: const Color(0xFF101922),
-            disabledColor: const Color(0xFF101922).withValues(alpha: 0.38),
-            minimumSize: const Size.fromHeight(58),
-            borderRadius: BorderRadius.circular(20),
-            onPressed: _saving || _completing || _deleting || !_canSave
-                ? null
-                : _save,
-            child: Text(
-              _saving ? '保存中...' : primaryLabel,
-              style: TextStyle(
-                color: _saving || !_canSave
-                    ? Colors.white.withValues(alpha: 0.56)
-                    : Colors.white,
-                fontSize: 17,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
+        _CheckinNameField(
+          controller: _nameController,
+          enabled: !widget.readOnly,
+          autofocus: widget.item == null,
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: _kCheckinSheetFieldGap),
+        _CheckinModeSwitch(
+          value: _mode,
+          onChanged: widget.readOnly
+              ? null
+              : (value) => setState(() => _mode = value),
+        ),
+        const SizedBox(height: _kCheckinSheetFieldGap),
+        if (habit) ...[
+          _CheckinWeekdayCard(
+            selected: _habitWeekdays,
+            onToggle: widget.readOnly ? null : _toggleWeekday,
           ),
+          const SizedBox(height: _kCheckinSheetFieldGap),
+        ],
+        _CheckinReminderRow(
+          value: habit ? _timeLabel(_dateTime) : _checkinDateTimeLabel(_dateTime),
+          onPick: widget.readOnly ? null : _pickDateTime,
+        ),
+        const SizedBox(height: _kCheckinSheetFieldGap),
+        _CheckinNoteCard(
+          controller: _noteController,
+          enabled: !widget.readOnly,
         ),
       ],
     );
   }
 
-  bool get _canSave =>
-      _controller.text.trim().isNotEmpty &&
-      (_mode == _CheckinEntryMode.once || _habitWeekdays.isNotEmpty);
-
-  Widget _buildHeaderAction() {
-    if (widget.readOnly && widget.item != null) {
-      return CupertinoButton(
-        padding: EdgeInsets.zero,
-        minimumSize: const Size(42, 42),
-        borderRadius: BorderRadius.circular(14),
-        color: const Color(0xFFFFF1F1),
-        disabledColor: const Color(0xFFFFF1F1),
-        onPressed: _saving || _deleting ? null : _deleteFromSheet,
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 160),
-          child: _deleting
-              ? const CupertinoActivityIndicator(
-                  key: ValueKey('delete-loading'),
-                  radius: 9,
-                  color: Color(0xFFFF4D4F),
-                )
-              : const Icon(
-                  key: ValueKey('delete-icon'),
-                  CupertinoIcons.delete,
-                  color: Color(0xFFFF4D4F),
-                  size: 20,
-                ),
+  Widget _actionRow(_CheckinTokens tokens) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        _CheckinSheetAction(
+          icon: CupertinoIcons.paperplane_fill,
+          color: tokens.accent,
+          busy: false,
+          onPressed: !_sentToAi && _canSave && !_busy ? _shareToChat : null,
         ),
-      );
-    }
-    if (!widget.readOnly && widget.item != null) {
-      return CupertinoButton(
-        padding: EdgeInsets.zero,
-        minimumSize: const Size(42, 42),
-        borderRadius: BorderRadius.circular(14),
-        color: const Color(0xFF5BD1A6),
-        disabledColor: const Color(0xFF5BD1A6).withValues(alpha: 0.45),
-        onPressed: _saving || _completing || _deleting
-            ? null
-            : _completeFromSheet,
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 160),
-          child: _completing
-              ? const CupertinoActivityIndicator(
-                  key: ValueKey('complete-loading'),
-                  radius: 9,
-                  color: Colors.white,
-                )
-              : const Icon(
-                  key: ValueKey('complete-icon'),
-                  CupertinoIcons.check_mark,
-                  color: Colors.white,
-                  size: 22,
-                ),
+        const SizedBox(width: 10),
+        _CheckinSheetAction(
+          icon: CupertinoIcons.check_mark,
+          color: const Color(0xFF5DCFA8),
+          busy: _completing,
+          onPressed: _busy ? null : _complete,
         ),
-      );
-    }
-    return Container(
-      width: 42,
-      height: 42,
-      decoration: BoxDecoration(
-        color: AppColors.subtleFill(context, light: 0.74),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.glassBorder(context)),
-      ),
-      child: const Icon(
-        CupertinoIcons.sparkles,
-        color: Color(0xFF4F5EA8),
-        size: 20,
-      ),
+        const SizedBox(width: 10),
+        _CheckinSheetAction(
+          icon: CupertinoIcons.delete,
+          color: const Color(0xFFFF4C4C),
+          busy: _deleting,
+          onPressed: _busy ? null : _delete,
+        ),
+      ],
     );
   }
 
-  Future<void> _shareToChat() async {
-    final text = _controller.text.trim();
-    if (text.isEmpty || widget.item == null) return;
-    final isHabit = _mode == _CheckinEntryMode.habit;
-    final trigger = isHabit
-        ? _nextHabitTriggerTime(_habitWeekdays, _dateTime)
-        : _dateTime;
-    final weekdays = _habitWeekdays.toList()..sort();
-    setState(() => _saving = true);
-    try {
-      final updated = await widget.api.updateReminder(
-        widget.item!.id,
-        conversationId: widget.session.conversationId,
-        summary: text,
-        triggerTime: trigger,
-        recurrence: isHabit ? 'weekly' : 'once',
-        habitWeekdays: isHabit ? weekdays : null,
-        sentToAi: true,
-      );
-      await CheckinNotificationService.instance.scheduleReminder(updated);
-      if (!mounted) return;
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-    Navigator.of(context).pop(
-      _draftForCheckinData(
-        id: widget.item!.id,
-        summary: text,
-        triggerTime: trigger,
-        recurrence: isHabit ? 'weekly' : 'once',
-        habitWeekdays: isHabit ? weekdays : const <int>[],
-      ),
-    );
-  }
-
-  void _toggleHabitWeekday(int weekday) {
+  void _toggleWeekday(int weekday) {
     setState(() {
       if (_habitWeekdays.contains(weekday)) {
         if (_habitWeekdays.length > 1) _habitWeekdays.remove(weekday);
@@ -442,40 +256,58 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
     });
   }
 
-  void _pickDateTime() {
+  Future<void> _pickDateTime() async {
     FocusScope.of(context).unfocus();
+    final habit = _mode == _CheckinEntryMode.habit;
     final minimum = _minimumReminderDateTime();
-    final initialValue =
-        _mode == _CheckinEntryMode.habit || _dateTime.isAfter(minimum)
+    final initialValue = habit || _dateTime.isAfter(minimum)
         ? _dateTime
         : _defaultReminderDateTime();
-    setState(() {
-      _draftDateTime = initialValue;
-      _editingTime = true;
-    });
+    var value = initialValue;
+    final picked = await showCupertinoModalPopup<DateTime>(
+      context: context,
+      builder: (context) => Localizations.override(
+        context: context,
+        locale: const Locale('zh', 'CN'),
+        child: _PickerSheet(
+          title: habit ? '打卡时间' : '提醒时间',
+          onCancel: () => Navigator.of(context).pop(),
+          onSave: () {
+            if (!habit && !_isFutureReminderTime(value)) {
+              _showFutureTimeRequired(context);
+              return;
+            }
+            Navigator.of(context).pop(value);
+          },
+          child: CupertinoDatePicker(
+            mode: habit
+                ? CupertinoDatePickerMode.time
+                : CupertinoDatePickerMode.dateAndTime,
+            initialDateTime: initialValue,
+            minimumDate: habit ? null : minimum,
+            minuteInterval: 1,
+            use24hFormat: true,
+            onDateTimeChanged: (date) => value = date,
+          ),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _dateTime = picked);
   }
 
-  void _savePickedDateTime() {
-    if (_mode == _CheckinEntryMode.once &&
-        !_isFutureReminderTime(_draftDateTime)) {
-      _showFutureTimeRequired(context);
-      return;
-    }
-    setState(() {
-      _dateTime = _draftDateTime;
-      _editingTime = false;
-    });
-  }
+  /// Empty string clears the stored note; `null` would leave it untouched.
+  String get _notePayload => _noteController.text.trim();
 
   Future<void> _save() async {
-    final text = _controller.text.trim();
+    final text = _nameController.text.trim();
     final agentId = widget.session.agentId;
     if (text.isEmpty || agentId == null || agentId.isEmpty) return;
-    final isHabit = _mode == _CheckinEntryMode.habit;
-    final trigger = isHabit
+    final habit = _mode == _CheckinEntryMode.habit;
+    final trigger = habit
         ? _nextHabitTriggerTime(_habitWeekdays, _dateTime)
         : _dateTime;
-    if (!isHabit && !_isFutureReminderTime(trigger)) {
+    if (!habit && !_isFutureReminderTime(trigger)) {
       _showFutureTimeRequired(context);
       return;
     }
@@ -489,18 +321,20 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
               workspaceId: widget.session.workspaceId,
               conversationId: widget.session.conversationId,
               summary: text,
+              note: _notePayload,
               triggerTime: trigger,
-              recurrence: isHabit ? 'weekly' : 'once',
-              habitWeekdays: isHabit ? weekdays : null,
+              recurrence: habit ? 'weekly' : 'once',
+              habitWeekdays: habit ? weekdays : null,
               sentToAi: false,
             )
           : await widget.api.updateReminder(
               existing.id,
               conversationId: widget.session.conversationId,
               summary: text,
+              note: _notePayload,
               triggerTime: trigger,
-              recurrence: isHabit ? 'weekly' : 'once',
-              habitWeekdays: isHabit ? weekdays : null,
+              recurrence: habit ? 'weekly' : 'once',
+              habitWeekdays: habit ? weekdays : null,
               sentToAi: _sentToAi,
             );
       if (mounted) Navigator.of(context).pop(item);
@@ -509,9 +343,46 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
     }
   }
 
-  Future<void> _completeFromSheet() async {
+  Future<void> _shareToChat() async {
     final existing = widget.item;
-    if (existing == null || _saving || _completing || _deleting) return;
+    final text = _nameController.text.trim();
+    if (existing == null || text.isEmpty) return;
+    final habit = _mode == _CheckinEntryMode.habit;
+    final trigger = habit
+        ? _nextHabitTriggerTime(_habitWeekdays, _dateTime)
+        : _dateTime;
+    final weekdays = _habitWeekdays.toList()..sort();
+    setState(() => _saving = true);
+    try {
+      final updated = await widget.api.updateReminder(
+        existing.id,
+        conversationId: widget.session.conversationId,
+        summary: text,
+        note: _notePayload,
+        triggerTime: trigger,
+        recurrence: habit ? 'weekly' : 'once',
+        habitWeekdays: habit ? weekdays : null,
+        sentToAi: true,
+      );
+      await CheckinNotificationService.instance.scheduleReminder(updated);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+    if (!mounted) return;
+    Navigator.of(context).pop(
+      _draftForCheckinData(
+        id: existing.id,
+        summary: text,
+        triggerTime: trigger,
+        recurrence: habit ? 'weekly' : 'once',
+        habitWeekdays: habit ? weekdays : const <int>[],
+      ),
+    );
+  }
+
+  Future<void> _complete() async {
+    final existing = widget.item;
+    if (existing == null || _busy) return;
     setState(() => _completing = true);
     try {
       final completed = await widget.api.completeReminder(
@@ -530,9 +401,9 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
     }
   }
 
-  Future<void> _deleteFromSheet() async {
+  Future<void> _delete() async {
     final existing = widget.item;
-    if (existing == null || _saving || _deleting) return;
+    if (existing == null || _busy) return;
     setState(() => _deleting = true);
     try {
       await widget.api.deleteReminder(
@@ -544,92 +415,5 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
     } finally {
       if (mounted) setState(() => _deleting = false);
     }
-  }
-}
-
-class _EditorTimePickerView extends StatelessWidget {
-  const _EditorTimePickerView({
-    super.key,
-    required this.dateTime,
-    required this.title,
-    required this.timeOnly,
-    required this.minimumDate,
-    required this.onChanged,
-    required this.onCancel,
-    required this.onSave,
-  });
-
-  final DateTime dateTime;
-  final String title;
-  final bool timeOnly;
-  final DateTime minimumDate;
-  final ValueChanged<DateTime> onChanged;
-  final VoidCallback onCancel;
-  final VoidCallback onSave;
-
-  @override
-  Widget build(BuildContext context) {
-    return Localizations.override(
-      context: context,
-      locale: const Locale('zh', 'CN'),
-      child: SizedBox.expand(
-        key: const ValueKey('editor-time-picker-content'),
-        child: Column(
-          children: [
-            Center(
-              child: Container(
-                width: 42,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE1E3E8),
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-            ),
-            const SizedBox(height: 42),
-            Text(
-              title,
-              style: TextStyle(
-                color: AppColors.text,
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                decoration: TextDecoration.none,
-              ),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              height: 230,
-              child: CupertinoDatePicker(
-                mode: timeOnly
-                    ? CupertinoDatePickerMode.time
-                    : CupertinoDatePickerMode.dateAndTime,
-                initialDateTime: dateTime,
-                minimumDate: timeOnly ? null : minimumDate,
-                minuteInterval: 1,
-                use24hFormat: true,
-                onDateTimeChanged: onChanged,
-              ),
-            ),
-            const Spacer(),
-            Row(
-              children: [
-                Expanded(
-                  child: CupertinoButton(
-                    onPressed: onCancel,
-                    child: const Text('取消'),
-                  ),
-                ),
-                Expanded(
-                  child: CupertinoButton(
-                    onPressed: onSave,
-                    child: const Text('保存'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

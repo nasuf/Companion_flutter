@@ -1,416 +1,530 @@
 part of 'package:companion_flutter/main.dart';
 
-class _CalendarExpansionPanel extends StatefulWidget {
-  const _CalendarExpansionPanel({
-    required this.progress,
-    required this.dragging,
-    required this.week,
-    required this.month,
-    required this.onDragStart,
-    required this.onDragUpdate,
-    required this.onDragEnd,
-  });
+/// Monday of the ISO week that page 0 of the week strip shows.
+final DateTime _kCheckinEpochMonday = DateTime.utc(2000, 1, 3);
 
-  static const double collapsedHeight = 84;
-  static const double expandedHeight = 398;
-
-  final double progress;
-  final bool dragging;
-  final Widget week;
-  final Widget month;
-  final VoidCallback onDragStart;
-  final ValueChanged<double> onDragUpdate;
-  final ValueChanged<double> onDragEnd;
-
-  @override
-  State<_CalendarExpansionPanel> createState() =>
-      _CalendarExpansionPanelState();
+int _checkinWeekIndex(DateTime date) {
+  final monday = _weekStart(date);
+  return DateTime.utc(monday.year, monday.month, monday.day)
+          .difference(_kCheckinEpochMonday)
+          .inDays ~/
+      7;
 }
 
-class _CalendarExpansionPanelState extends State<_CalendarExpansionPanel> {
-  double _dragDy = 0;
-  double _dragDx = 0;
-  int? _dragPointer;
-  bool _verticalDragActive = false;
-  bool _horizontalDragIgnored = false;
-  VelocityTracker? _velocityTracker;
+DateTime _checkinWeekFromIndex(int index) {
+  final utc = _kCheckinEpochMonday.add(Duration(days: index * 7));
+  return DateTime(utc.year, utc.month, utc.day);
+}
 
-  double get _height {
-    final eased = Curves.easeOutCubic.transform(widget.progress);
-    return _CalendarExpansionPanel.collapsedHeight +
-        (_CalendarExpansionPanel.expandedHeight -
-                _CalendarExpansionPanel.collapsedHeight) *
-            eased;
+int _checkinMonthIndex(DateTime month) =>
+    (month.year - 2000) * 12 + month.month - 1;
+
+DateTime _checkinMonthFromIndex(int index) =>
+    DateTime(2000 + index ~/ 12, index % 12 + 1);
+
+/// Week rows a month needs. The design frame happens to be a 5-row month, but
+/// a 31-day month starting on a weekend spills into a sixth row.
+int _checkinMonthRows(DateTime month) {
+  final first = _monthOnly(month);
+  final leading = first.weekday - DateTime.monday;
+  final days = DateTime(first.year, first.month + 1, 0).day;
+  return ((leading + days) / 7).ceil();
+}
+
+double _checkinExpandedHeight(DateTime month) {
+  final rows = _checkinMonthRows(month);
+  // 50 header block + 20 weekday row + 16 gap + rows + 24 bottom padding.
+  return 50 + 20 + 16 + rows * _kCheckinDayHeight + (rows - 1) * 12 + 24;
+}
+
+/// The calendar card at the top of the check-in page.
+///
+/// Collapsed it is a one-week strip; expanded it is the whole month. Both
+/// states are the same card, so the height animates rather than swapping
+/// widgets, and the paging index is derived from the parent's state instead of
+/// being mirrored here — mirroring is what made the two views drift apart.
+class _CheckinCalendarCard extends StatefulWidget {
+  const _CheckinCalendarCard({
+    required this.selectedDate,
+    required this.visibleWeek,
+    required this.visibleMonth,
+    required this.expanded,
+    required this.markFor,
+    required this.onSelected,
+    required this.onVisibleWeekChanged,
+    required this.onVisibleMonthChanged,
+    required this.onExpandedChanged,
+  });
+
+  final DateTime selectedDate;
+  final DateTime visibleWeek;
+  final DateTime visibleMonth;
+  final bool expanded;
+  final _CheckinDayMark Function(DateTime date) markFor;
+  final ValueChanged<DateTime> onSelected;
+  final ValueChanged<DateTime> onVisibleWeekChanged;
+  final ValueChanged<DateTime> onVisibleMonthChanged;
+  final ValueChanged<bool> onExpandedChanged;
+
+  @override
+  State<_CheckinCalendarCard> createState() => _CheckinCalendarCardState();
+}
+
+class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
+    with SingleTickerProviderStateMixin {
+  static const _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  static const double _dragTravel =
+      _kCheckinCalendarExpanded - _kCheckinCalendarCollapsed;
+  static const Duration _heightSettle = Duration(milliseconds: 220);
+
+  late final AnimationController _expansion;
+  late final PageController _weekPages;
+  late final PageController _monthPages;
+
+  @override
+  void initState() {
+    super.initState();
+    _expansion = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+      value: widget.expanded ? 1 : 0,
+    );
+    _weekPages = PageController(
+      initialPage: _checkinWeekIndex(widget.visibleWeek),
+    );
+    _monthPages = PageController(
+      initialPage: _checkinMonthIndex(widget.visibleMonth),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _CheckinCalendarCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.expanded != oldWidget.expanded) {
+      if (widget.expanded) {
+        _expansion.animateTo(1, curve: Curves.easeOutCubic);
+      } else {
+        _expansion.animateBack(0, curve: Curves.easeOutCubic);
+      }
+    }
+    _syncPage(_weekPages, () => _checkinWeekIndex(widget.visibleWeek));
+    _syncPage(_monthPages, () => _checkinMonthIndex(widget.visibleMonth));
+  }
+
+  /// Pull a page controller onto the parent's page when it moved without us.
+  ///
+  /// [resolve] is re-read inside the callback so a second change landing in the
+  /// same frame does not get overwritten by the first one's stale target.
+  void _syncPage(PageController controller, int Function() resolve) {
+    if (!controller.hasClients) return;
+    if ((controller.page?.round() ?? controller.initialPage) == resolve()) {
+      return;
+    }
+    // Jump rather than animate: the controller may still be settling from a
+    // swipe, and stacking animations lands on a fractional page.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !controller.hasClients) return;
+      final target = resolve();
+      if (controller.page?.round() == target) return;
+      controller.jumpToPage(target);
+    });
+  }
+
+  @override
+  void dispose() {
+    _expansion.dispose();
+    _weekPages.dispose();
+    _monthPages.dispose();
+    super.dispose();
+  }
+
+  void _handleDragUpdate(DragUpdateDetails details) {
+    _expansion.value = (_expansion.value + details.delta.dy / _dragTravel)
+        .clamp(0.0, 1.0);
+  }
+
+  void _handleDragEnd(DragEndDetails details) {
+    final velocity = details.velocity.pixelsPerSecond.dy;
+    final expand = velocity > 320
+        ? true
+        : velocity < -320
+        ? false
+        : _expansion.value >= 0.45;
+    if (expand == widget.expanded) {
+      // The parent will not rebuild us, so settle the controller here.
+      if (expand) {
+        _expansion.animateTo(1, curve: Curves.easeOutCubic);
+      } else {
+        _expansion.animateBack(0, curve: Curves.easeOutCubic);
+      }
+      return;
+    }
+    widget.onExpandedChanged(expand);
   }
 
   @override
   Widget build(BuildContext context) {
-    final weekOpacity = (1 - widget.progress * 1.35).clamp(0.0, 1.0);
-    final monthOpacity = ((widget.progress - 0.10) / 0.90).clamp(0.0, 1.0);
-    final duration = widget.dragging
-        ? Duration.zero
-        : const Duration(milliseconds: 240);
+    final tokens = _CheckinTokens.of(context);
+    // A six-row month makes the open card taller; ease that change so paging
+    // into one does not snap the task list down the screen.
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: _checkinExpandedHeight(widget.visibleMonth)),
+      duration: _heightSettle,
+      curve: Curves.easeOutCubic,
+      builder: (context, expandedHeight, _) => _buildCard(tokens, expandedHeight),
+    );
+  }
 
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: _handlePointerDown,
-      onPointerMove: _handlePointerMove,
-      onPointerUp: _handlePointerUp,
-      onPointerCancel: _handlePointerCancel,
-      child: AnimatedContainer(
-        duration: duration,
-        curve: Curves.easeOutCubic,
-        height: _height,
-        child: ClipRect(
-          child: Stack(
-            alignment: Alignment.topCenter,
-            children: [
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: _CalendarExpansionPanel.collapsedHeight,
-                child: IgnorePointer(
-                  ignoring: widget.progress > 0.35,
-                  child: AnimatedOpacity(
-                    duration: duration,
-                    opacity: weekOpacity.toDouble(),
-                    child: widget.week,
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: _CalendarExpansionPanel.expandedHeight,
-                child: IgnorePointer(
-                  ignoring: widget.progress < 0.45,
-                  child: AnimatedOpacity(
-                    duration: duration,
-                    opacity: monthOpacity.toDouble(),
-                    child: widget.month,
-                  ),
-                ),
-              ),
-            ],
+  Widget _buildCard(_CheckinTokens tokens, double expandedHeight) {
+    return AnimatedBuilder(
+      animation: _expansion,
+      builder: (context, _) {
+        final t = Curves.easeOutCubic.transform(_expansion.value);
+        final height = lerpDouble(
+          _kCheckinCalendarCollapsed,
+          expandedHeight,
+          t,
+        )!;
+        final weekOpacity = (1 - t * 2.2).clamp(0.0, 1.0);
+        final monthOpacity = ((t - 0.45) / 0.55).clamp(0.0, 1.0);
+        return Container(
+          key: const Key('checkin-calendar'),
+          height: height,
+          decoration: BoxDecoration(
+            color: tokens.card,
+            borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+            boxShadow: tokens.cardShadow,
           ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+            child: Stack(
+              children: [
+                Positioned(
+                  left: _kCheckinMargin,
+                  right: _kCheckinMargin,
+                  top: 12,
+                  height: 22,
+                  child: _monthHeader(tokens, t),
+                ),
+                // Both views stay mounted even at zero opacity: a detached
+                // PageController forgets the page it was on, so collapsing
+                // after swiping would drop the calendar back to its start.
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 50,
+                  height: 79,
+                  child: IgnorePointer(
+                    ignoring: weekOpacity < 0.5,
+                    child: Opacity(
+                      opacity: weekOpacity,
+                      child: _weekStrip(tokens),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 50,
+                  bottom: 24,
+                  child: IgnorePointer(
+                    ignoring: monthOpacity < 0.5,
+                    child: Opacity(
+                      opacity: monthOpacity,
+                      child: _monthGrid(tokens),
+                    ),
+                  ),
+                ),
+                // Sized to the open card's bottom padding so it never covers
+                // the last row of dates.
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 24,
+                  child: _dragHandle(tokens, t),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _monthHeader(_CheckinTokens tokens, double t) {
+    final label = '${widget.visibleMonth.year}年${widget.visibleMonth.month}月';
+    return Row(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: tokens.title,
+            fontSize: 14,
+            height: 1.2,
+            fontWeight: FontWeight.w500,
+            decoration: TextDecoration.none,
+          ),
+        ),
+        const Spacer(),
+        // The chip and the collapse chevron occupy the same slot, so they
+        // cross-fade with the card instead of jumping between two rows.
+        Stack(
+          alignment: Alignment.centerRight,
+          children: [
+            if (t < 1)
+              Opacity(
+                opacity: (1 - t * 2.2).clamp(0.0, 1.0),
+                child: _weekRangeChip(tokens),
+              ),
+            if (t > 0)
+              Opacity(
+                opacity: ((t - 0.45) / 0.55).clamp(0.0, 1.0),
+                child: CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(32, 22),
+                  onPressed: t > 0.5
+                      ? () => widget.onExpandedChanged(false)
+                      : null,
+                  child: Icon(
+                    CupertinoIcons.chevron_up,
+                    size: 16,
+                    color: tokens.sectionTitle,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _weekRangeChip(_CheckinTokens tokens) {
+    final start = widget.visibleWeek;
+    final end = start.add(const Duration(days: 6));
+    String pad(int value) => value.toString().padLeft(2, '0');
+    return Container(
+      height: 22,
+      padding: const EdgeInsets.symmetric(horizontal: 11),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: tokens.accentSoft,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '${pad(start.month)}.${pad(start.day)} - ${pad(end.month)}.${pad(end.day)}',
+        style: TextStyle(
+          color: tokens.accentInk,
+          fontSize: 10,
+          height: 1.2,
+          fontWeight: FontWeight.w500,
+          decoration: TextDecoration.none,
         ),
       ),
     );
   }
 
-  void _handlePointerDown(PointerDownEvent event) {
-    if (_dragPointer != null) return;
-    _dragPointer = event.pointer;
-    _dragDx = 0;
-    _dragDy = 0;
-    _verticalDragActive = false;
-    _horizontalDragIgnored = false;
-    _velocityTracker = VelocityTracker.withKind(event.kind)
-      ..addPosition(event.timeStamp, event.position);
-  }
-
-  void _handlePointerMove(PointerMoveEvent event) {
-    if (_dragPointer != event.pointer || _horizontalDragIgnored) return;
-    _velocityTracker?.addPosition(event.timeStamp, event.position);
-    _dragDx += event.delta.dx;
-    _dragDy += event.delta.dy;
-    final absDx = _dragDx.abs();
-    final absDy = _dragDy.abs();
-
-    if (!_verticalDragActive) {
-      if (absDx < 7 && absDy < 7) return;
-      if (absDx > absDy * 1.12) {
-        _horizontalDragIgnored = true;
-        return;
-      }
-      if (absDy > absDx * 1.24) {
-        _verticalDragActive = true;
-        widget.onDragStart();
-      } else {
-        return;
-      }
-    }
-
-    widget.onDragUpdate(_dragDy);
-  }
-
-  void _handlePointerUp(PointerUpEvent event) {
-    if (_dragPointer != event.pointer) return;
-    if (_verticalDragActive) {
-      final velocity =
-          _velocityTracker?.getVelocity().pixelsPerSecond.dy ?? 0.0;
-      widget.onDragEnd(velocity);
-    }
-    _resetPointerDrag();
-  }
-
-  void _handlePointerCancel(PointerCancelEvent event) {
-    if (_dragPointer != event.pointer) return;
-    if (_verticalDragActive) {
-      widget.onDragEnd(0);
-    }
-    _resetPointerDrag();
-  }
-
-  void _resetPointerDrag() {
-    _dragPointer = null;
-    _dragDx = 0;
-    _dragDy = 0;
-    _verticalDragActive = false;
-    _horizontalDragIgnored = false;
-    _velocityTracker = null;
-  }
-}
-
-class _DateRail extends StatefulWidget {
-  const _DateRail({
-    required this.active,
-    required this.selectedDate,
-    required this.visibleMonth,
-    required this.datesWithTasks,
-    required this.onSelected,
-    required this.onVisibleMonthChanged,
-    required this.onExpand,
-  });
-
-  final bool active;
-  final DateTime selectedDate;
-  final DateTime visibleMonth;
-  final Set<String> datesWithTasks;
-  final ValueChanged<DateTime> onSelected;
-  final ValueChanged<DateTime> onVisibleMonthChanged;
-  final VoidCallback onExpand;
-
-  @override
-  State<_DateRail> createState() => _DateRailState();
-}
-
-class _DateRailState extends State<_DateRail> {
-  static const int _initialPage = 520;
-
-  late final PageController _pageController;
-  late DateTime _baseWeek;
-  late DateTime _visibleWeek;
-
-  @override
-  void initState() {
-    super.initState();
-    _baseWeek = _weekForMonth(widget.visibleMonth, widget.selectedDate);
-    _visibleWeek = _baseWeek;
-    _pageController = PageController(initialPage: _initialPage);
-  }
-
-  @override
-  void didUpdateWidget(covariant _DateRail oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!widget.active) return;
-    final targetWeek = _weekForMonth(widget.visibleMonth, widget.selectedDate);
-    final becameActive = !oldWidget.active && widget.active;
-    final monthChanged = !_isSameMonth(
-      oldWidget.visibleMonth,
-      widget.visibleMonth,
-    );
-    final selectedWeekChanged = !_isSameDate(
-      _weekStart(oldWidget.selectedDate),
-      _weekStart(widget.selectedDate),
-    );
-    if (!_isSameDate(targetWeek, _visibleWeek) &&
-        (becameActive || monthChanged || selectedWeekChanged)) {
-      final weekDelta = targetWeek.difference(_baseWeek).inDays ~/ 7;
-      _visibleWeek = targetWeek;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_pageController.hasClients) return;
-        _pageController.animateToPage(
-          _initialPage + weekDelta,
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOutCubic,
+  Widget _weekStrip(_CheckinTokens tokens) {
+    return PageView.builder(
+      controller: _weekPages,
+      onPageChanged: (index) {
+        final week = _checkinWeekFromIndex(index);
+        widget.onVisibleWeekChanged(week);
+        widget.onVisibleMonthChanged(_monthForWeek(week));
+      },
+      itemBuilder: (context, index) {
+        final weekStart = _checkinWeekFromIndex(index);
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: _kCheckinCardPadX),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              for (var offset = 0; offset < 7; offset += 1)
+                SizedBox(
+                  width: _kCheckinDayWidth,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _weekdayLabels[offset],
+                        style: TextStyle(
+                          color: tokens.sectionTitle,
+                          fontSize: 12,
+                          height: 1.4,
+                          fontWeight: FontWeight.w500,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      _dayPill(
+                        tokens,
+                        weekStart.add(Duration(days: offset)),
+                        keyPrefix: 'week',
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         );
-      });
-    }
+      },
+    );
   }
 
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _monthGrid(_CheckinTokens tokens) {
     return Column(
       children: [
-        Row(
-          children: _weekdayShortLabels
-              .map(
-                (label) => Expanded(
-                  child: Center(
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        color: AppColors.text,
-                        fontSize: 11,
-                        height: 1,
-                        fontWeight: FontWeight.w900,
-                      ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: _kCheckinCardPadX),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              for (final label in _weekdayLabels)
+                SizedBox(
+                  width: _kCheckinDayWidth,
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: tokens.sectionTitle,
+                      fontSize: 14,
+                      height: 1.4,
+                      fontWeight: FontWeight.w500,
+                      decoration: TextDecoration.none,
                     ),
                   ),
                 ),
-              )
-              .toList(),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 55,
-          child: PageView.builder(
-            controller: _pageController,
-            physics: const BouncingScrollPhysics(),
-            onPageChanged: (page) {
-              final week = _baseWeek.add(
-                Duration(days: (page - _initialPage) * 7),
-              );
-              setState(() => _visibleWeek = week);
-              if (widget.active) {
-                widget.onVisibleMonthChanged(_monthForWeek(week));
-              }
-            },
-            itemBuilder: (context, page) {
-              final week = _baseWeek.add(
-                Duration(days: (page - _initialPage) * 7),
-              );
-              return Row(
-                children: List.generate(7, (index) {
-                  final date = week.add(Duration(days: index));
-                  return Expanded(
-                    child: _WeekDayCell(
-                      date: date,
-                      selected: _isSameDate(date, widget.selectedDate),
-                      today: _isSameDate(date, DateTime.now()),
-                      hasTask: widget.datesWithTasks.contains(_dateKey(date)),
-                      onTap: () => widget.onSelected(date),
-                    ),
-                  );
-                }),
-              );
-            },
+            ],
           ),
         ),
-        const SizedBox(height: 2),
-        _WeekDragHandle(onExpand: widget.onExpand),
+        const SizedBox(height: 16),
+        Expanded(
+          child: PageView.builder(
+            controller: _monthPages,
+            onPageChanged: (index) =>
+                widget.onVisibleMonthChanged(_checkinMonthFromIndex(index)),
+            itemBuilder: (context, index) =>
+                _monthPage(tokens, _checkinMonthFromIndex(index)),
+          ),
+        ),
       ],
     );
   }
-}
 
-class _WeekDayCell extends StatelessWidget {
-  const _WeekDayCell({
-    required this.date,
-    required this.selected,
-    required this.today,
-    required this.hasTask,
-    required this.onTap,
-  });
-
-  final DateTime date;
-  final bool selected;
-  final bool today;
-  final bool hasTask;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final lunar = _SolarLunar.label(date);
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      minimumSize: Size.zero,
-      onPressed: onTap,
-      child: SizedBox(
-        height: 55,
-        child: Stack(
-          alignment: Alignment.topCenter,
+  Widget _monthPage(_CheckinTokens tokens, DateTime month) {
+    final gridStart = _weekStart(month);
+    final rowCount = _checkinMonthRows(month);
+    final rows = <Widget>[];
+    for (var row = 0; row < rowCount; row += 1) {
+      rows.add(
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  width: 31,
-                  height: 31,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: today ? const Color(0xFFFFC23A) : Colors.transparent,
-                    border: Border.all(
-                      color: selected && !today
-                          ? const Color(0xFFFFC23A).withValues(alpha: 0.60)
-                          : Colors.transparent,
-                      width: selected && !today ? 1.2 : 0,
-                    ),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text(
-                    '${date.day}',
-                    style: TextStyle(
-                      color: AppColors.text,
-                      fontSize: today || selected ? 18 : 17,
-                      height: 1,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                if (hasTask)
-                  Container(
-                    width: 4,
-                    height: 4,
-                    margin: const EdgeInsets.only(top: 4),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF6D45D9),
-                      shape: BoxShape.circle,
-                    ),
-                  )
-                else
-                  Text(
-                    lunar,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: today || selected
-                          ? AppColors.text
-                          : AppColors.muted,
-                      fontSize: 8,
-                      height: 1,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-              ],
+            for (var column = 0; column < 7; column += 1)
+              Builder(
+                builder: (context) {
+                  final date = gridStart.add(
+                    Duration(days: row * 7 + column),
+                  );
+                  return _dayPill(
+                    tokens,
+                    date,
+                    dimmed: !_isSameMonth(date, month),
+                    keyPrefix: 'month',
+                  );
+                },
+              ),
+          ],
+        ),
+      );
+    }
+    // The card height catches up to a six-row month one animation behind the
+    // page, so the grid has to tolerate being taller than its viewport.
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: _kCheckinCardPadX),
+      child: Column(
+        children: [
+          for (var index = 0; index < rows.length; index += 1) ...[
+            if (index > 0) const SizedBox(height: 12),
+            rows[index],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _dayPill(
+    _CheckinTokens tokens,
+    DateTime date, {
+    required String keyPrefix,
+    bool dimmed = false,
+  }) {
+    final selected = _isSameDate(date, widget.selectedDate);
+    final isToday = _isSameDate(date, DateTime.now());
+    final mark = widget.markFor(date);
+    return GestureDetector(
+      key: Key('checkin-$keyPrefix-day-${_dateKey(date)}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: () => widget.onSelected(_dateOnlyTime(date)),
+      child: Container(
+        width: _kCheckinDayWidth,
+        height: _kCheckinDayHeight,
+        decoration: BoxDecoration(
+          color: selected ? tokens.accent : tokens.dayPill,
+          borderRadius: BorderRadius.circular(999),
+          border: isToday && !selected
+              ? Border.all(color: tokens.accent)
+              : null,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '${date.day}',
+              style: TextStyle(
+                color: selected
+                    ? Colors.white
+                    : dimmed
+                    ? tokens.dayNumber.withValues(alpha: 0.35)
+                    : tokens.dayNumber,
+                fontSize: 12,
+                height: 1.16,
+                fontWeight: FontWeight.w400,
+                decoration: TextDecoration.none,
+              ),
             ),
+            // The selected pill is already solid blue; a marker on top of it
+            // would only add noise, so the design drops it there.
+            if (!selected) ...[
+              const SizedBox(height: 8),
+              Opacity(
+                opacity: dimmed ? 0.4 : 1,
+                child: _CheckinDayMarker(mark: mark, tokens: tokens),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
-}
 
-class _WeekDragHandle extends StatelessWidget {
-  const _WeekDragHandle({required this.onExpand});
-
-  final VoidCallback onExpand;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _dragHandle(_CheckinTokens tokens, double t) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: onExpand,
-      child: SizedBox(
-        height: 8,
-        width: double.infinity,
-        child: Center(
+      onVerticalDragUpdate: _handleDragUpdate,
+      onVerticalDragEnd: _handleDragEnd,
+      onTap: () => widget.onExpandedChanged(!widget.expanded),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Opacity(
+          opacity: (1 - t * 2.2).clamp(0.0, 1.0),
           child: Container(
-            width: 30,
-            height: 3,
+            width: 64,
+            height: 4,
+            margin: const EdgeInsets.only(bottom: 10),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFC8BE),
+              color: tokens.accent,
               borderRadius: BorderRadius.circular(999),
             ),
           ),
@@ -420,316 +534,49 @@ class _WeekDragHandle extends StatelessWidget {
   }
 }
 
-const _weekdayShortLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+/// The 12x12 dot under a day number.
+class _CheckinDayMarker extends StatelessWidget {
+  const _CheckinDayMarker({required this.mark, required this.tokens});
 
-class _MonthCalendar extends StatefulWidget {
-  const _MonthCalendar({
-    required this.allowExternalSync,
-    required this.selectedDate,
-    required this.visibleMonth,
-    required this.datesWithTasks,
-    required this.onSelected,
-    required this.onVisibleMonthChanged,
-    required this.onCollapse,
-  });
+  static const double _size = 12;
 
-  final bool allowExternalSync;
-  final DateTime selectedDate;
-  final DateTime visibleMonth;
-  final Set<String> datesWithTasks;
-  final ValueChanged<DateTime> onSelected;
-  final ValueChanged<DateTime> onVisibleMonthChanged;
-  final VoidCallback onCollapse;
+  final _CheckinDayMark mark;
+  final _CheckinTokens tokens;
 
   @override
-  State<_MonthCalendar> createState() => _MonthCalendarState();
-}
-
-class _MonthCalendarState extends State<_MonthCalendar> {
-  static const int _initialPage = 1200;
-
-  late final PageController _pageController;
-  late DateTime _baseMonth;
-  late DateTime _visibleMonth;
-
-  @override
-  void initState() {
-    super.initState();
-    _baseMonth = _monthOnly(widget.visibleMonth);
-    _visibleMonth = _baseMonth;
-    _pageController = PageController(initialPage: _initialPage);
-  }
-
-  @override
-  void didUpdateWidget(covariant _MonthCalendar oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!widget.allowExternalSync) return;
-    final nextMonth = _monthOnly(widget.visibleMonth);
-    if (!_isSameMonth(nextMonth, _visibleMonth) &&
-        !_isSameMonth(oldWidget.visibleMonth, widget.visibleMonth)) {
-      final monthDelta = _monthDifference(_baseMonth, nextMonth);
-      final targetPage = _initialPage + monthDelta;
-      _visibleMonth = nextMonth;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_pageController.hasClients) return;
-        _pageController.animateToPage(
-          targetPage,
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOutCubic,
+  Widget build(BuildContext context) {
+    switch (mark) {
+      case _CheckinDayMark.done:
+        return SizedBox(
+          width: _size,
+          height: _size,
+          child: Icon(Icons.check_rounded, size: _size, color: tokens.accent),
         );
-      });
+      case _CheckinDayMark.partial:
+        return _ring(tokens.accent);
+      case _CheckinDayMark.pending:
+        return _ring(tokens.markIdle);
+      case _CheckinDayMark.none:
+        return Center(
+          child: Container(
+            width: _size * 2 / 3,
+            height: _size * 2 / 3,
+            decoration: BoxDecoration(
+              color: tokens.markIdle,
+              shape: BoxShape.circle,
+            ),
+          ),
+        );
     }
   }
 
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0, 0.10),
-                    end: Offset.zero,
-                  ).animate(animation),
-                  child: child,
-                ),
-              ),
-              child: Text(
-                '${_visibleMonth.year}年${_visibleMonth.month}月',
-                key: ValueKey(_dateKey(_visibleMonth)),
-                style: TextStyle(
-                  color: AppColors.text,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-            const Spacer(),
-            CupertinoButton(
-              padding: EdgeInsets.zero,
-              minimumSize: Size.zero,
-              onPressed: widget.onCollapse,
-              child: Icon(
-                CupertinoIcons.chevron_up,
-                size: 18,
-                color: AppColors.muted,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Row(
-          children: ['一', '二', '三', '四', '五', '六', '日']
-              .map(
-                (day) => Expanded(
-                  child: Center(
-                    child: Text(
-                      day,
-                      style: TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ),
-              )
-              .toList(),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 318,
-          child: PageView.builder(
-            controller: _pageController,
-            physics: const BouncingScrollPhysics(),
-            onPageChanged: (page) {
-              setState(() {
-                _visibleMonth = DateTime(
-                  _baseMonth.year,
-                  _baseMonth.month + (page - _initialPage),
-                );
-              });
-              widget.onVisibleMonthChanged(_visibleMonth);
-            },
-            itemBuilder: (context, page) {
-              final month = DateTime(
-                _baseMonth.year,
-                _baseMonth.month + (page - _initialPage),
-              );
-              return _MonthGrid(
-                month: month,
-                selectedDate: widget.selectedDate,
-                datesWithTasks: widget.datesWithTasks,
-                onSelected: widget.onSelected,
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MonthGrid extends StatelessWidget {
-  const _MonthGrid({
-    required this.month,
-    required this.selectedDate,
-    required this.datesWithTasks,
-    required this.onSelected,
-  });
-
-  final DateTime month;
-  final DateTime selectedDate;
-  final Set<String> datesWithTasks;
-  final ValueChanged<DateTime> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final first = DateTime(month.year, month.month);
-    final start = first.subtract(Duration(days: first.weekday - 1));
-    final days = List.generate(42, (index) => start.add(Duration(days: index)));
-    return GridView.builder(
-      padding: EdgeInsets.zero,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: days.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 7,
-        mainAxisExtent: 52,
-      ),
-      itemBuilder: (context, index) {
-        final date = days[index];
-        final selected = _isSameDate(date, selectedDate);
-        final today = _isSameDate(date, DateTime.now());
-        final muted = date.month != month.month;
-        final hasTask = datesWithTasks.contains(_dateKey(date));
-        final label = _SolarLunar.label(date);
-        return _MonthDayCell(
-          date: date,
-          label: label,
-          selected: selected,
-          today: today,
-          muted: muted,
-          hasTask: hasTask,
-          onTap: () => onSelected(date),
-        );
-      },
-    );
-  }
-}
-
-class _MonthDayCell extends StatelessWidget {
-  const _MonthDayCell({
-    required this.date,
-    required this.label,
-    required this.selected,
-    required this.today,
-    required this.muted,
-    required this.hasTask,
-    required this.onTap,
-  });
-
-  final DateTime date;
-  final String label;
-  final bool selected;
-  final bool today;
-  final bool muted;
-  final bool hasTask;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      minimumSize: Size.zero,
-      onPressed: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
-        padding: const EdgeInsets.symmetric(vertical: 3),
-        decoration: const BoxDecoration(color: Colors.transparent),
-        child: Stack(
-          alignment: Alignment.topCenter,
-          children: [
-            Positioned(
-              top: 2,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                width: 28,
-                height: 28,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: today ? const Color(0xFFFFC23A) : Colors.transparent,
-                  border: Border.all(
-                    color: selected && !today
-                        ? const Color(0xFFFFC23A).withValues(alpha: 0.76)
-                        : Colors.transparent,
-                    width: selected && !today ? 1.4 : 0,
-                  ),
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  '${date.day}',
-                  style: TextStyle(
-                    color: muted && !today && !selected
-                        ? AppColors.muted.withValues(alpha: 0.54)
-                        : AppColors.text,
-                    fontSize: 15,
-                    height: 1,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ),
-            if (hasTask)
-              Positioned(
-                top: 35,
-                child: Container(
-                  width: 4,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: today
-                        ? const Color(0xFF6D45D9)
-                        : const Color(0xFF6374F6),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              )
-            else
-              Positioned(
-                top: 33,
-                left: 2,
-                right: 2,
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: muted && !selected
-                        ? const Color(0xFF4FBF9F).withValues(alpha: 0.58)
-                        : const Color(0xFF4FBF9F),
-                    fontSize: 8,
-                    height: 1,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-          ],
-        ),
+  Widget _ring(Color color) {
+    return Container(
+      width: _size,
+      height: _size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: color, width: 2),
       ),
     );
   }

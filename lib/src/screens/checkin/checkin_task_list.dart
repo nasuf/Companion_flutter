@@ -1,36 +1,13 @@
 part of 'package:companion_flutter/main.dart';
 
-class _SwipeTaskRow extends StatefulWidget {
-  const _SwipeTaskRow({
-    required this.item,
-    required this.completed,
-    required this.pinned,
-    required this.openItemId,
-    required this.onSwipeOpen,
-    required this.onTap,
-    required this.onComplete,
-    required this.onPin,
-    required this.onReschedule,
-    required this.onDelete,
-  });
-
-  final ReminderItem item;
-  final bool completed;
-  final bool pinned;
-  final String? openItemId;
-  final ValueChanged<String> onSwipeOpen;
-  final VoidCallback onTap;
-  final Future<void> Function() onComplete;
-  final Future<void> Function() onPin;
-  final Future<void> Function() onReschedule;
-  final Future<void> Function() onDelete;
-
-  @override
-  State<_SwipeTaskRow> createState() => _SwipeTaskRowState();
+/// Sub-label under a task title: the plan type, or the habit's weekdays.
+String _taskPlanLabel(ReminderItem item) {
+  if (!item.isHabit) return '单次计划';
+  return _recurrenceDetailLabel(item.recurrence, item.habitWeekdays);
 }
 
-class _AnimatedTaskList extends StatelessWidget {
-  const _AnimatedTaskList({
+class _CheckinTaskList extends StatelessWidget {
+  const _CheckinTaskList({
     required this.items,
     required this.isCompleted,
     required this.isPinned,
@@ -43,8 +20,7 @@ class _AnimatedTaskList extends StatelessWidget {
     required this.onDelete,
   });
 
-  static const double _rowExtent = 84;
-  static const double _rowGap = 10;
+  static const double _rowExtent = _kCheckinTaskRowHeight + _kCheckinTaskRowGap;
 
   final List<ReminderItem> items;
   final bool Function(ReminderItem item) isCompleted;
@@ -64,7 +40,9 @@ class _AnimatedTaskList extends StatelessWidget {
       curve: Curves.easeOutCubic,
       alignment: Alignment.topCenter,
       child: SizedBox(
-        height: items.length * _rowExtent,
+        height: items.isEmpty
+            ? 0
+            : items.length * _rowExtent - _kCheckinTaskRowGap,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
@@ -76,9 +54,13 @@ class _AnimatedTaskList extends StatelessWidget {
                 left: 0,
                 right: 0,
                 top: index * _rowExtent,
-                height: _rowExtent - _rowGap,
+                height: _kCheckinTaskRowHeight,
                 child: _SwipeTaskRow(
+                  // Keyed by id, not row index: the row owns swipe state that
+                  // has to follow its task when the list reorders.
+                  key: Key('checkin-task-${items[index].id}'),
                   item: items[index],
+                  index: index + 1,
                   completed: isCompleted(items[index]),
                   pinned: isPinned(items[index]),
                   openItemId: openItemId,
@@ -97,10 +79,48 @@ class _AnimatedTaskList extends StatelessWidget {
   }
 }
 
+/// A task row. The design only draws a tick circle; complete / pin / reschedule
+/// / delete stay reachable by swiping the row sideways.
+class _SwipeTaskRow extends StatefulWidget {
+  const _SwipeTaskRow({
+    super.key,
+    required this.item,
+    required this.index,
+    required this.completed,
+    required this.pinned,
+    required this.openItemId,
+    required this.onSwipeOpen,
+    required this.onTap,
+    required this.onComplete,
+    required this.onPin,
+    required this.onReschedule,
+    required this.onDelete,
+  });
+
+  final ReminderItem item;
+  final int index;
+  final bool completed;
+  final bool pinned;
+  final String? openItemId;
+  final ValueChanged<String> onSwipeOpen;
+  final VoidCallback onTap;
+  final Future<void> Function() onComplete;
+  final Future<void> Function() onPin;
+  final Future<void> Function() onReschedule;
+  final Future<void> Function() onDelete;
+
+  @override
+  State<_SwipeTaskRow> createState() => _SwipeTaskRowState();
+}
+
 class _SwipeTaskRowState extends State<_SwipeTaskRow>
     with SingleTickerProviderStateMixin {
-  static const double _leadingReveal = 112;
-  static const double _trailingReveal = 112;
+  static const double _reveal = 112;
+
+  late final AnimationController _sweepController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 300),
+  );
 
   double _offset = 0;
   bool _flashFromRight = false;
@@ -108,20 +128,6 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
   bool _sweeping = false;
   bool _optimisticCompleted = false;
   Color _flashColor = const Color(0xFF5DCFA8);
-  AnimationController? _sweepControllerInstance;
-
-  AnimationController get _sweepController {
-    return _sweepControllerInstance ??= AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _sweepController;
-  }
 
   @override
   void didUpdateWidget(covariant _SwipeTaskRow oldWidget) {
@@ -143,7 +149,7 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
 
   @override
   void dispose() {
-    _sweepControllerInstance?.dispose();
+    _sweepController.dispose();
     super.dispose();
   }
 
@@ -204,18 +210,12 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
 
   @override
   Widget build(BuildContext context) {
-    final item = widget.item;
+    final tokens = _CheckinTokens.of(context);
     final completed = widget.completed || _optimisticCompleted;
-    final isDark = AppColors.isDark(context);
-    final leadingLimit = completed ? _leadingReveal / 2 : _leadingReveal;
-    final trailingLimit = completed ? _trailingReveal / 2 : _trailingReveal;
+    final leadingLimit = completed ? _reveal / 2 : _reveal;
+    final trailingLimit = completed ? _reveal / 2 : _reveal;
     final leadingWidth = _offset > 0 ? _offset : 0.0;
     final trailingWidth = _offset < 0 ? -_offset : 0.0;
-    final leadingProgress = (leadingWidth / _leadingReveal).clamp(0.0, 1.0);
-    final foregroundRadius = BorderRadius.horizontal(
-      left: Radius.circular(_offset > 0 ? 0 : 22),
-      right: Radius.circular(_offset < 0 ? 0 : 22),
-    );
     return GestureDetector(
       onHorizontalDragUpdate: (details) {
         if (_sweeping || _collapsing) return;
@@ -246,293 +246,232 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
         }
         widget.onTap();
       },
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 170),
-        curve: Curves.easeOutCubic,
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 140),
-          opacity: _collapsing ? 0 : 1,
-          child: _collapsing
-              ? const SizedBox(width: double.infinity)
-              : ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: Stack(
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 140),
+        opacity: _collapsing ? 0 : 1,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+          child: Stack(
+            children: [
+              if (!_sweeping) ...[
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: leadingWidth,
+                  child: Row(
                     children: [
-                      if (!_sweeping) ...[
-                        Positioned(
-                          left: 0,
-                          top: 0,
-                          bottom: 0,
-                          width: leadingWidth,
-                          child: Row(
-                            children: [
-                              if (!completed)
-                                Expanded(
-                                  child: _TaskActionButton(
-                                    color: const Color(0xFF5DCFA8),
-                                    icon: CupertinoIcons.check_mark,
-                                    borderRadius: const BorderRadius.horizontal(
-                                      left: Radius.circular(22),
-                                    ),
-                                    onTap: _handleComplete,
-                                    reveal: leadingWidth / leadingLimit,
-                                  ),
-                                ),
-                              Expanded(
-                                child: _TaskActionButton(
-                                  color: const Color(0xFFFFB83F),
-                                  icon: widget.pinned
-                                      ? CupertinoIcons.pin_slash
-                                      : CupertinoIcons.pin,
-                                  borderRadius: completed
-                                      ? const BorderRadius.horizontal(
-                                          left: Radius.circular(22),
-                                        )
-                                      : BorderRadius.zero,
-                                  onTap: _handlePin,
-                                  reveal: leadingWidth / leadingLimit,
-                                ),
-                              ),
-                            ],
+                      if (!completed)
+                        Expanded(
+                          child: _TaskActionButton(
+                            color: const Color(0xFF5DCFA8),
+                            icon: CupertinoIcons.check_mark,
+                            onTap: _handleComplete,
+                            reveal: leadingWidth / leadingLimit,
                           ),
                         ),
-                        Positioned(
-                          right: 0,
-                          top: 0,
-                          bottom: 0,
-                          width: trailingWidth,
-                          child: Row(
-                            children: [
-                              if (!completed)
-                                Expanded(
-                                  child: _TaskActionButton(
-                                    color: const Color(0xFF4F6DF5),
-                                    icon: CupertinoIcons.calendar,
-                                    borderRadius: BorderRadius.zero,
-                                    onTap: _handleReschedule,
-                                    reveal: trailingWidth / trailingLimit,
-                                  ),
-                                ),
-                              Expanded(
-                                child: _TaskActionButton(
-                                  color: const Color(0xFFFF4C4C),
-                                  icon: CupertinoIcons.delete,
-                                  borderRadius: const BorderRadius.horizontal(
-                                    right: Radius.circular(22),
-                                  ),
-                                  onTap: _handleDelete,
-                                  reveal: trailingWidth / trailingLimit,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                      Transform.translate(
-                        offset: Offset(_offset, 0),
-                        child: Stack(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.fromLTRB(
-                                13,
-                                11,
-                                14,
-                                11,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.elevatedSurface(
-                                  context,
-                                  light: 0.96,
-                                ),
-                                borderRadius: foregroundRadius,
-                                border: Border.all(
-                                  color: AppColors.glassBorder(context),
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.shadow.withValues(
-                                      alpha: isDark ? 0.50 : 0.06,
-                                    ),
-                                    blurRadius: 16,
-                                    offset: const Offset(0, 8),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                children: [
-                                  if (completed)
-                                    Container(
-                                      width: 26,
-                                      height: 26,
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF5DCFA8),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Icon(
-                                        CupertinoIcons.check_mark,
-                                        color: Colors.white,
-                                        size: 18,
-                                      ),
-                                    )
-                                  else
-                                    AnimatedContainer(
-                                      duration: const Duration(
-                                        milliseconds: 120,
-                                      ),
-                                      curve: Curves.easeOutCubic,
-                                      width: 26 * (1 - leadingProgress),
-                                      child: IgnorePointer(
-                                        ignoring: leadingProgress > 0.12,
-                                        child: AnimatedOpacity(
-                                          duration: const Duration(
-                                            milliseconds: 100,
-                                          ),
-                                          opacity: 1 - leadingProgress,
-                                          child: CupertinoButton(
-                                            padding: EdgeInsets.zero,
-                                            minimumSize: Size.zero,
-                                            onPressed: _handleComplete,
-                                            child: Container(
-                                              width: 26,
-                                              height: 26,
-                                              decoration: BoxDecoration(
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                                border: Border.all(
-                                                  color: const Color(
-                                                    0xFF9EA4AA,
-                                                  ),
-                                                  width: 2,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  SizedBox(
-                                    width: completed
-                                        ? 11
-                                        : 11 * (1 - leadingProgress),
-                                  ),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          item.summary,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: completed
-                                                ? AppColors.text.withValues(
-                                                    alpha: 0.55,
-                                                  )
-                                                : AppColors.text,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w900,
-                                            decoration: completed
-                                                ? TextDecoration.lineThrough
-                                                : TextDecoration.none,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 5),
-                                        Text(
-                                          completed
-                                              ? '已完成'
-                                              : item.isHabit
-                                              ? '${_chatCardRecurrenceLabel(item.recurrence, item.habitWeekdays)} · ${_timeLabel(item.triggerTime)}'
-                                              : '${_timeLabel(item.triggerTime)} · ${_recurrenceLabel(item.recurrence)}',
-                                          style: TextStyle(
-                                            color: AppColors.muted,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  if (widget.pinned)
-                                    const Icon(
-                                      CupertinoIcons.pin_fill,
-                                      color: Color(0xFFFFB83F),
-                                      size: 16,
-                                    ),
-                                ],
-                              ),
-                            ),
-                            Positioned.fill(
-                              child: IgnorePointer(
-                                child: LayoutBuilder(
-                                  builder: (context, constraints) {
-                                    return AnimatedBuilder(
-                                      animation: _sweepController,
-                                      builder: (context, _) {
-                                        final progress = Curves.easeOutCubic
-                                            .transform(_sweepController.value);
-                                        final width =
-                                            constraints.maxWidth * progress;
-                                        final opacity =
-                                            (1 - _sweepController.value * 0.25)
-                                                .clamp(0.0, 1.0);
-                                        return Stack(
-                                          children: [
-                                            Positioned(
-                                              top: 0,
-                                              bottom: 0,
-                                              left: _flashFromRight ? null : 0,
-                                              right: _flashFromRight ? 0 : null,
-                                              width: width,
-                                              child: Opacity(
-                                                opacity: opacity,
-                                                child: DecoratedBox(
-                                                  decoration: BoxDecoration(
-                                                    borderRadius:
-                                                        foregroundRadius,
-                                                    gradient: LinearGradient(
-                                                      begin: _flashFromRight
-                                                          ? Alignment
-                                                                .centerRight
-                                                          : Alignment
-                                                                .centerLeft,
-                                                      end: _flashFromRight
-                                                          ? Alignment.centerLeft
-                                                          : Alignment
-                                                                .centerRight,
-                                                      colors: [
-                                                        _flashColor.withValues(
-                                                          alpha: 0.42,
-                                                        ),
-                                                        _flashColor.withValues(
-                                                          alpha: 0.24,
-                                                        ),
-                                                        _flashColor.withValues(
-                                                          alpha: 0.06,
-                                                        ),
-                                                      ],
-                                                      stops: const [0, 0.72, 1],
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        );
-                                      },
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                          ],
+                      Expanded(
+                        child: _TaskActionButton(
+                          color: const Color(0xFFFFB83F),
+                          icon: widget.pinned
+                              ? CupertinoIcons.pin_slash
+                              : CupertinoIcons.pin,
+                          onTap: _handlePin,
+                          reveal: leadingWidth / leadingLimit,
                         ),
                       ),
                     ],
                   ),
                 ),
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: trailingWidth,
+                  child: Row(
+                    children: [
+                      if (!completed)
+                        Expanded(
+                          child: _TaskActionButton(
+                            color: tokens.accent,
+                            icon: CupertinoIcons.calendar,
+                            onTap: _handleReschedule,
+                            reveal: trailingWidth / trailingLimit,
+                          ),
+                        ),
+                      Expanded(
+                        child: _TaskActionButton(
+                          color: const Color(0xFFFF4C4C),
+                          icon: CupertinoIcons.delete,
+                          onTap: _handleDelete,
+                          reveal: trailingWidth / trailingLimit,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              Transform.translate(
+                offset: Offset(_offset, 0),
+                child: Stack(
+                  children: [
+                    _card(tokens, completed),
+                    Positioned.fill(
+                      child: IgnorePointer(child: _sweepOverlay()),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _card(_CheckinTokens tokens, bool completed) {
+    final item = widget.item;
+    return Container(
+      height: _kCheckinTaskRowHeight,
+      padding: const EdgeInsets.symmetric(horizontal: _kCheckinMargin),
+      decoration: BoxDecoration(
+        color: tokens.card,
+        borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+        boxShadow: tokens.cardShadow,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: tokens.accentSoft,
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              '${widget.index}',
+              style: TextStyle(
+                color: tokens.accent,
+                fontSize: 15,
+                height: 1.2,
+                fontWeight: FontWeight.w600,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.summary,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.title,
+                    fontSize: 16,
+                    height: 1.375,
+                    fontWeight: FontWeight.w500,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _taskPlanLabel(item),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.subtitle,
+                    fontSize: 12,
+                    height: 1.4,
+                    fontWeight: FontWeight.w400,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (widget.pinned) ...[
+            const Icon(
+              CupertinoIcons.pin_fill,
+              color: Color(0xFFFFB83F),
+              size: 14,
+            ),
+            const SizedBox(width: 8),
+          ],
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            minimumSize: const Size(24, 24),
+            onPressed: completed ? null : _handleComplete,
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: completed
+                  ? Icon(Icons.check_rounded, size: 24, color: tokens.accent)
+                  : DecoratedBox(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: tokens.markIdle, width: 2),
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sweepOverlay() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return AnimatedBuilder(
+          animation: _sweepController,
+          builder: (context, _) {
+            final progress = Curves.easeOutCubic.transform(
+              _sweepController.value,
+            );
+            final opacity = (1 - _sweepController.value * 0.25).clamp(0.0, 1.0);
+            return Stack(
+              children: [
+                Positioned(
+                  top: 0,
+                  bottom: 0,
+                  left: _flashFromRight ? null : 0,
+                  right: _flashFromRight ? 0 : null,
+                  width: constraints.maxWidth * progress,
+                  child: Opacity(
+                    opacity: opacity,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(
+                          _kCheckinCardRadius,
+                        ),
+                        gradient: LinearGradient(
+                          begin: _flashFromRight
+                              ? Alignment.centerRight
+                              : Alignment.centerLeft,
+                          end: _flashFromRight
+                              ? Alignment.centerLeft
+                              : Alignment.centerRight,
+                          colors: [
+                            _flashColor.withValues(alpha: 0.42),
+                            _flashColor.withValues(alpha: 0.24),
+                            _flashColor.withValues(alpha: 0.06),
+                          ],
+                          stops: const [0, 0.72, 1],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -541,14 +480,12 @@ class _TaskActionButton extends StatelessWidget {
   const _TaskActionButton({
     required this.color,
     required this.icon,
-    required this.borderRadius,
     required this.onTap,
     required this.reveal,
   });
 
   final Color color;
   final IconData icon;
-  final BorderRadius borderRadius;
   final VoidCallback onTap;
   final double reveal;
 
@@ -559,10 +496,9 @@ class _TaskActionButton extends StatelessWidget {
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
       onPressed: onTap,
-      child: AnimatedContainer(
-        duration: Duration.zero,
+      child: Container(
         height: double.infinity,
-        decoration: BoxDecoration(color: color, borderRadius: borderRadius),
+        color: color,
         alignment: Alignment.center,
         child: Transform.scale(
           scale: 0.76 + progress * 0.24,

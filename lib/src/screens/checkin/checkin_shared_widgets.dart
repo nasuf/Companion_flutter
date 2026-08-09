@@ -1,5 +1,123 @@
 part of 'package:companion_flutter/main.dart';
 
+/// Round white back button in the check-in header.
+class _CheckinNavButton extends StatelessWidget {
+  const _CheckinNavButton({required this.onPressed});
+
+  static const double _size = 36;
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = _CheckinTokens.of(context);
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: const Size(_size, _size),
+      borderRadius: BorderRadius.circular(_size / 2),
+      onPressed: onPressed,
+      child: Container(
+        width: _size,
+        height: _size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: tokens.card,
+          shape: BoxShape.circle,
+          boxShadow: tokens.navShadow,
+        ),
+        child: Icon(
+          CupertinoIcons.chevron_back,
+          size: 18,
+          color: tokens.accent,
+        ),
+      ),
+    );
+  }
+}
+
+/// The blue "add plan" button floating over the bottom-right corner.
+class _CheckinFab extends StatelessWidget {
+  const _CheckinFab({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = _CheckinTokens.of(context);
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: const Size(_kCheckinFabSize, _kCheckinFabSize),
+      borderRadius: BorderRadius.circular(_kCheckinFabSize / 2),
+      onPressed: onPressed,
+      child: Container(
+        key: const Key('checkin-fab'),
+        width: _kCheckinFabSize,
+        height: _kCheckinFabSize,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: tokens.accent,
+          shape: BoxShape.circle,
+          boxShadow: tokens.fabShadow,
+        ),
+        child: const Icon(Icons.add_rounded, size: 32, color: Colors.white),
+      ),
+    );
+  }
+}
+
+class _CheckinLoadingCard extends StatelessWidget {
+  const _CheckinLoadingCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = _CheckinTokens.of(context);
+    return Container(
+      height: _kCheckinTaskRowHeight,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: tokens.card,
+        borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+        boxShadow: tokens.cardShadow,
+      ),
+      child: const CupertinoActivityIndicator(),
+    );
+  }
+}
+
+class _CheckinEmptyCard extends StatelessWidget {
+  const _CheckinEmptyCard({required this.onAdd});
+
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = _CheckinTokens.of(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onAdd,
+      child: Container(
+        height: _kCheckinTaskRowHeight,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: tokens.card,
+          borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+          boxShadow: tokens.cardShadow,
+        ),
+        child: Text(
+          '这一天没有打卡任务',
+          style: TextStyle(
+            color: tokens.placeholder,
+            fontSize: 16,
+            height: 1.375,
+            fontWeight: FontWeight.w500,
+            decoration: TextDecoration.none,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PickerSheet extends StatelessWidget {
   const _PickerSheet({
     required this.title,
@@ -15,11 +133,12 @@ class _PickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = _CheckinTokens.of(context);
     return Container(
       height: 360,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        color: tokens.page,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: SafeArea(
         top: false,
@@ -29,9 +148,9 @@ class _PickerSheet extends StatelessWidget {
             Text(
               title,
               style: TextStyle(
-                color: AppColors.text,
+                color: tokens.title,
                 fontSize: 20,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w500,
                 decoration: TextDecoration.none,
               ),
             ),
@@ -43,78 +162,6 @@ class _PickerSheet extends StatelessWidget {
                 CupertinoButton(onPressed: onSave, child: const Text('保存')),
               ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CheckinLoadingCard extends StatelessWidget {
-  const _CheckinLoadingCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 118,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: AppColors.elevatedSurface(context, light: 0.72),
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: AppColors.glassBorder(context)),
-      ),
-      child: const CupertinoActivityIndicator(),
-    );
-  }
-}
-
-class _CheckinEmptyCard extends StatelessWidget {
-  const _CheckinEmptyCard({required this.onAdd});
-
-  final VoidCallback onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      onPressed: onAdd,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          color: AppColors.elevatedSurface(context, light: 0.76),
-          borderRadius: BorderRadius.circular(26),
-          border: Border.all(color: AppColors.glassBorder(context)),
-        ),
-        child: Text(
-          '这一天还没有打卡任务',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: AppColors.muted,
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CheckinBackdrop extends StatelessWidget {
-  const _CheckinBackdrop();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            colors.page,
-            Color.lerp(colors.page, colors.surfaceMuted, 0.42)!,
-            colors.page,
           ],
         ),
       ),

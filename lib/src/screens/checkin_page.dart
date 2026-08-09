@@ -18,7 +18,8 @@ class CheckinPage extends StatefulWidget {
 
 class _CheckinPageState extends State<CheckinPage> {
   late DateTime _selectedDate;
-  DateTime? _calendarMonth;
+  late DateTime _visibleWeek;
+  late DateTime _visibleMonth;
   late Future<List<ReminderItem>> _future;
   final Set<String> _hiddenReminderIds = <String>{};
   final Set<String> _optimisticCompletedKeys = <String>{};
@@ -26,15 +27,13 @@ class _CheckinPageState extends State<CheckinPage> {
   String? _openSwipeItemId;
   bool _calendarExpanded = false;
   bool _initialReminderOpened = false;
-  double? _calendarExpansion;
-  double _calendarDragStart = 0;
-  bool _calendarDragging = false;
 
   @override
   void initState() {
     super.initState();
     _selectedDate = _dateOnlyTime(DateTime.now());
-    _calendarMonth = _monthOnly(_selectedDate);
+    _visibleWeek = _weekStart(_selectedDate);
+    _visibleMonth = _monthOnly(_selectedDate);
     _future = _load();
   }
 
@@ -49,106 +48,99 @@ class _CheckinPageState extends State<CheckinPage> {
   }
 
   void _reload() {
+    if (!mounted) return;
     setState(() {
       _future = _load();
     });
   }
 
-  double get _calendarProgress =>
-      _calendarExpansion ?? (_calendarExpanded ? 1.0 : 0.0);
-
-  void _beginCalendarDrag() {
+  void _selectDate(DateTime date) {
+    final day = _dateOnlyTime(date);
     setState(() {
-      _calendarDragStart = _calendarProgress;
-      _calendarDragging = true;
-    });
-  }
-
-  void _updateCalendarDrag(double dy) {
-    final next = (_calendarDragStart + dy / 260).clamp(0.0, 1.0);
-    if (next == _calendarExpansion) return;
-    setState(() => _calendarExpansion = next);
-  }
-
-  void _endCalendarDrag(double velocity) {
-    final progress = _calendarProgress;
-    final expand = velocity > 260
-        ? true
-        : velocity < -260
-        ? false
-        : progress >= 0.45;
-    setState(() {
-      _calendarDragging = false;
-      _calendarExpanded = expand;
-      _calendarExpansion = expand ? 1.0 : 0.0;
-    });
-  }
-
-  void _setCalendarExpanded(bool expanded) {
-    setState(() {
-      _calendarDragging = false;
-      _calendarExpanded = expanded;
-      _calendarExpansion = expanded ? 1.0 : 0.0;
+      _selectedDate = day;
+      _visibleWeek = _weekStart(day);
+      _visibleMonth = _monthOnly(day);
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final tokens = _CheckinTokens.of(context);
     final safeBottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
-      backgroundColor: AppColors.page,
-      floatingActionButton: FloatingActionButton(
-        elevation: 18,
-        backgroundColor: const Color(0xFF4F6DF5),
-        shape: const CircleBorder(),
-        onPressed: () => _openEditor(),
-        child: const Icon(CupertinoIcons.add, color: Colors.white, size: 31),
-      ),
+      backgroundColor: tokens.page,
       body: FutureBuilder<List<ReminderItem>>(
         future: _future,
         builder: (context, snapshot) {
-          final items = snapshot.data ?? const <ReminderItem>[];
-          final activeItems = items
+          final items = (snapshot.data ?? const <ReminderItem>[])
               .where((item) => !_hiddenReminderIds.contains(item.id))
               .toList();
-          _openInitialReminderIfNeeded(activeItems);
-          final visible = _tasksForDate(activeItems, _selectedDate);
+          _openInitialReminderIfNeeded(items);
+          final visible = _tasksForDate(items, _selectedDate);
+          final loading = snapshot.connectionState == ConnectionState.waiting;
           return Stack(
             children: [
-              const Positioned.fill(child: _CheckinBackdrop()),
               SafeArea(
                 bottom: false,
-                child: ListView(
-                  physics: _calendarDragging
-                      ? const NeverScrollableScrollPhysics()
-                      : const BouncingScrollPhysics(),
-                  padding: EdgeInsets.fromLTRB(18, 14, 18, 112 + safeBottom),
+                child: Column(
                   children: [
-                    _topBar(activeItems),
-                    const SizedBox(height: 26),
-                    _hero(activeItems),
-                    const SizedBox(height: 22),
-                    _sectionHeader(visible.length),
-                    const SizedBox(height: 12),
-                    if (snapshot.connectionState == ConnectionState.waiting)
-                      const _CheckinLoadingCard()
-                    else if (visible.isEmpty)
-                      _CheckinEmptyCard(onAdd: () => _openEditor())
-                    else
-                      _AnimatedTaskList(
-                        items: visible,
-                        isCompleted: _isCompleted,
-                        isPinned: _isPinned,
-                        openItemId: _openSwipeItemId,
-                        onSwipeOpen: _setOpenSwipeItem,
-                        onItemTap: _openTaskSheet,
-                        onComplete: _complete,
-                        onPin: _pin,
-                        onReschedule: _reschedule,
-                        onDelete: _delete,
+                    const SizedBox(height: 8),
+                    _header(tokens),
+                    const SizedBox(height: 24),
+                    Expanded(
+                      child: ListView(
+                        padding: EdgeInsets.fromLTRB(
+                          _kCheckinMargin,
+                          0,
+                          _kCheckinMargin,
+                          safeBottom + 96,
+                        ),
+                        physics: const BouncingScrollPhysics(),
+                        children: [
+                          _CheckinCalendarCard(
+                            selectedDate: _selectedDate,
+                            visibleWeek: _visibleWeek,
+                            visibleMonth: _visibleMonth,
+                            expanded: _calendarExpanded,
+                            markFor: (date) => _markFor(items, date),
+                            onSelected: _selectDate,
+                            onVisibleWeekChanged: (week) =>
+                                setState(() => _visibleWeek = week),
+                            onVisibleMonthChanged: (month) =>
+                                setState(() => _visibleMonth = month),
+                            onExpandedChanged: (expanded) =>
+                                setState(() => _calendarExpanded = expanded),
+                          ),
+                          const SizedBox(height: _kCheckinSectionGap),
+                          _sectionTitle(tokens),
+                          const SizedBox(height: _kCheckinSectionTitleGap),
+                          if (loading)
+                            const _CheckinLoadingCard()
+                          else if (visible.isEmpty)
+                            _CheckinEmptyCard(onAdd: _openEditor)
+                          else
+                            _CheckinTaskList(
+                              items: visible,
+                              isCompleted: _isCompleted,
+                              isPinned: _isPinned,
+                              openItemId: _openSwipeItemId,
+                              onSwipeOpen: _setOpenSwipeItem,
+                              onItemTap: _openTaskSheet,
+                              onComplete: _complete,
+                              onPin: _pin,
+                              onReschedule: _reschedule,
+                              onDelete: _delete,
+                            ),
+                        ],
                       ),
+                    ),
                   ],
                 ),
+              ),
+              Positioned(
+                right: _kCheckinMargin,
+                bottom: safeBottom + 24,
+                child: _CheckinFab(onPressed: _openEditor),
               ),
             ],
           );
@@ -157,120 +149,28 @@ class _CheckinPageState extends State<CheckinPage> {
     );
   }
 
-  Widget _topBar(List<ReminderItem> items) {
-    return Row(
-      children: [
-        _AppNavCircleButton(
-          icon: CupertinoIcons.chevron_back,
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        const Spacer(),
-      ],
-    );
-  }
-
-  Widget _hero(List<ReminderItem> items) {
-    final taskDates = _datesWithTasks(items);
-    final calendarMonth = _calendarMonth ?? _monthOnly(_selectedDate);
-    final calendarProgress = _calendarProgress;
-    final weekActive = calendarProgress < 0.35;
-    final isDark = AppColors.isDark(context);
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
-      decoration: BoxDecoration(
-        color: AppColors.elevatedSurface(context, light: 0.72),
-        borderRadius: BorderRadius.circular(34),
-        border: Border.all(color: AppColors.glassBorder(context)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(
-              0xFF7C3CFF,
-            ).withValues(alpha: isDark ? 0.24 : 0.12),
-            blurRadius: 36,
-            offset: const Offset(0, 22),
-          ),
-        ],
-        gradient: LinearGradient(
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-          colors: [
-            isDark
-                ? const Color(0xFF2A1F48).withValues(alpha: 0.82)
-                : const Color(0xFFE9DDFF).withValues(alpha: 0.78),
-            AppColors.elevatedSurface(context, light: 0.90),
-            isDark
-                ? const Color(0xFF352916).withValues(alpha: 0.48)
-                : const Color(0xFFFFF3D7).withValues(alpha: 0.62),
-          ],
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _header(_CheckinTokens tokens) {
+    return SizedBox(
+      height: 36,
+      child: Stack(
         children: [
-          const Text(
-            'HABIT RHYTHM',
-            style: TextStyle(
-              color: Color(0xFF6D45D9),
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
+          Positioned(
+            left: 24,
+            top: 0,
+            child: _CheckinNavButton(
+              onPressed: () => Navigator.of(context).pop(),
             ),
           ),
-          const SizedBox(height: 22),
-          Text(
-            '提醒不是催促，是有人陪你把一天收住',
-            style: TextStyle(
-              color: AppColors.text,
-              fontSize: 31,
-              height: 1.12,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            '${widget.session.agentName ?? '小芜'}会按你的状态选择语音、消息或轻提醒，不把打卡做成压力。',
-            style: TextStyle(
-              color: AppColors.muted,
-              fontSize: 15,
-              height: 1.55,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 22),
-          _CalendarExpansionPanel(
-            progress: calendarProgress,
-            dragging: _calendarDragging,
-            onDragStart: _beginCalendarDrag,
-            onDragUpdate: _updateCalendarDrag,
-            onDragEnd: _endCalendarDrag,
-            week: _DateRail(
-              active: weekActive,
-              selectedDate: _selectedDate,
-              visibleMonth: calendarMonth,
-              datesWithTasks: taskDates,
-              onVisibleMonthChanged: (month) =>
-                  setState(() => _calendarMonth = _monthOnly(month)),
-              onExpand: () => _setCalendarExpanded(true),
-              onSelected: (date) => setState(() {
-                _selectedDate = date;
-                _calendarMonth = _monthOnly(date);
-              }),
-            ),
-            month: _MonthCalendar(
-              allowExternalSync: weekActive,
-              selectedDate: _selectedDate,
-              visibleMonth: calendarMonth,
-              datesWithTasks: taskDates,
-              onVisibleMonthChanged: (month) =>
-                  setState(() => _calendarMonth = _monthOnly(month)),
-              onCollapse: () => _setCalendarExpanded(false),
-              onSelected: (date) => setState(() {
-                _selectedDate = date;
-                _calendarMonth = _monthOnly(date);
-              }),
+          Center(
+            child: Text(
+              '打卡',
+              style: TextStyle(
+                color: tokens.title,
+                fontSize: 24,
+                height: 1.2,
+                fontWeight: FontWeight.w700,
+                decoration: TextDecoration.none,
+              ),
             ),
           ),
         ],
@@ -278,63 +178,65 @@ class _CheckinPageState extends State<CheckinPage> {
     );
   }
 
-  Widget _sectionHeader(int count) {
-    return Row(
-      children: [
-        Text(
-          _isSameDate(_selectedDate, DateTime.now()) ? '今天的任务' : '当天任务',
-          style: const TextStyle(
-            color: Color(0xFF97A0A4),
-            fontSize: 15,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const Spacer(),
-        Text(
-          '$count 件',
-          style: TextStyle(
-            color: AppColors.muted,
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
+  Widget _sectionTitle(_CheckinTokens tokens) {
+    final today = _isSameDate(_selectedDate, DateTime.now());
+    return Text(
+      today ? '今日任务' : '打卡任务',
+      style: TextStyle(
+        color: tokens.sectionTitle,
+        fontSize: 20,
+        height: 1.2,
+        fontWeight: FontWeight.w700,
+        decoration: TextDecoration.none,
+      ),
     );
+  }
+
+  _CheckinDayMark _markFor(List<ReminderItem> items, DateTime date) {
+    var total = 0;
+    var done = 0;
+    for (final item in items) {
+      if (!_matchesDate(item, date)) continue;
+      total += 1;
+      if (_isCompletedOnDate(item, date)) done += 1;
+    }
+    if (total == 0) return _CheckinDayMark.none;
+    if (done == total) return _CheckinDayMark.done;
+    if (done > 0) return _CheckinDayMark.partial;
+    return _CheckinDayMark.pending;
   }
 
   Future<void> _openEditor() async {
-    final created = await showModalBottomSheet<ReminderItem>(
+    final created = await _showCheckinEditor(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _CheckinEditorSheet(
-        api: widget.api,
-        session: widget.session,
-        initialDate: _selectedDate,
-      ),
+      api: widget.api,
+      session: widget.session,
+      initialDate: _selectedDate,
     );
     if (created == null || !mounted) return;
-    await CheckinNotificationService.instance.scheduleReminder(created);
-    setState(() {
-      _selectedDate = _dateOnlyTime(created.triggerTime.toLocal());
-      _future = _load();
-    });
+    if (created is ReminderItem) {
+      await CheckinNotificationService.instance.scheduleReminder(created);
+      if (!mounted) return;
+      final day = _dateOnlyTime(created.triggerTime.toLocal());
+      setState(() {
+        _selectedDate = day;
+        _visibleWeek = _weekStart(day);
+        _visibleMonth = _monthOnly(day);
+        _future = _load();
+      });
+    }
   }
 
   Future<void> _openTaskSheet(ReminderItem item) async {
     setState(() => _openSwipeItemId = null);
     final completed = _isCompleted(item);
-    final result = await showModalBottomSheet<Object?>(
+    final result = await _showCheckinEditor(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _CheckinEditorSheet(
-        api: widget.api,
-        session: widget.session,
-        initialDate: _selectedDate,
-        item: item,
-        readOnly: completed,
-      ),
+      api: widget.api,
+      session: widget.session,
+      initialDate: _selectedDate,
+      item: item,
+      readOnly: completed,
     );
     if (!mounted || result == null) return;
     if (result is CapsuleChatDraft) {
@@ -343,6 +245,7 @@ class _CheckinPageState extends State<CheckinPage> {
     }
     if (result is _CheckinDeletedResult) {
       await CheckinNotificationService.instance.cancelReminderItem(result.item);
+      if (!mounted) return;
       setState(() {
         _openSwipeItemId = null;
         _hiddenReminderIds.add(result.item.id);
@@ -351,8 +254,11 @@ class _CheckinPageState extends State<CheckinPage> {
     }
     if (result is ReminderItem) {
       await CheckinNotificationService.instance.scheduleReminder(result);
+      if (!mounted) return;
       setState(() {
         _selectedDate = _dateOnlyTime(result.triggerTime.toLocal());
+        _visibleWeek = _weekStart(_selectedDate);
+        _visibleMonth = _monthOnly(_selectedDate);
         _future = _load();
       });
     }
@@ -483,10 +389,7 @@ class _CheckinPageState extends State<CheckinPage> {
       final focusDate = targetItem.isHabit && _matchesDate(targetItem, today)
           ? today
           : _dateOnlyTime(targetItem.triggerTime.toLocal());
-      setState(() {
-        _selectedDate = focusDate;
-        _calendarMonth = _monthOnly(_selectedDate);
-      });
+      _selectDate(focusDate);
       unawaited(_openTaskSheet(targetItem));
     });
   }
@@ -539,36 +442,6 @@ class _CheckinPageState extends State<CheckinPage> {
       if (aCompleted != bCompleted) return aCompleted ? 1 : -1;
       return a.triggerTime.toLocal().compareTo(b.triggerTime.toLocal());
     });
-    return result;
-  }
-
-  Set<String> _datesWithTasks(List<ReminderItem> items) {
-    final result = <String>{};
-    final today = _dateOnlyTime(DateTime.now());
-    final visibleMonth = _calendarMonth ?? _monthOnly(_selectedDate);
-    final visibleGridStart = _monthOnly(
-      visibleMonth,
-    ).subtract(Duration(days: visibleMonth.weekday - 1));
-    final visibleGridEnd = visibleGridStart.add(const Duration(days: 41));
-    final rangeStart = _earliestDate([
-      today,
-      _selectedDate,
-      visibleGridStart,
-    ]).subtract(const Duration(days: 7));
-    final rangeEnd = _latestDate([
-      today,
-      _selectedDate,
-      visibleGridEnd,
-    ]).add(const Duration(days: 7));
-    for (
-      var date = rangeStart;
-      !date.isAfter(rangeEnd);
-      date = date.add(const Duration(days: 1))
-    ) {
-      if (items.any((item) => _matchesDate(item, date))) {
-        result.add(_dateKey(date));
-      }
-    }
     return result;
   }
 }

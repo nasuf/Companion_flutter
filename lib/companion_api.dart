@@ -1346,6 +1346,7 @@ class CompanionApi {
     required String agentId,
     required String summary,
     required DateTime triggerTime,
+    String? note,
     String recurrence = 'once',
     List<int>? habitWeekdays,
     bool sentToAi = false,
@@ -1360,6 +1361,7 @@ class CompanionApi {
                 'agent_id': agentId,
                 'workspace_id': workspaceId,
                 'summary': summary,
+                if (note != null) 'note': note,
                 'trigger_time': triggerTime.toUtc().toIso8601String(),
                 'recurrence': recurrence,
                 if (habitWeekdays != null) 'habit_weekdays': habitWeekdays,
@@ -1375,6 +1377,7 @@ class CompanionApi {
   Future<ReminderItem> updateReminder(
     String triggerId, {
     String? summary,
+    String? note,
     DateTime? triggerTime,
     String? recurrence,
     List<int>? habitWeekdays,
@@ -1388,6 +1391,7 @@ class CompanionApi {
               '/reminders/$triggerId',
               body: {
                 if (summary != null) 'summary': summary,
+                if (note != null) 'note': note,
                 if (triggerTime != null)
                   'trigger_time': triggerTime.toUtc().toIso8601String(),
                 if (recurrence != null) 'recurrence': recurrence,

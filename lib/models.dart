@@ -1539,6 +1539,7 @@ class ReminderItem {
     required this.agentId,
     required this.createdAt,
     this.memoryId,
+    this.note,
     this.lastFired,
     this.completedAt,
     this.retryCount = 0,
@@ -1551,6 +1552,7 @@ class ReminderItem {
   final String id;
   final String? memoryId;
   final String summary;
+  final String? note;
   final DateTime triggerTime;
   final DateTime? lastFired;
   final DateTime? completedAt;
@@ -1571,6 +1573,9 @@ class ReminderItem {
       id: json['id'] as String? ?? '',
       memoryId: json['memory_id'] as String?,
       summary: json['summary'] as String? ?? '',
+      note: (json['note'] as String?)?.trim().isNotEmpty == true
+          ? (json['note'] as String).trim()
+          : null,
       triggerTime:
           DateTime.tryParse(json['trigger_time'] as String? ?? '') ??
           DateTime.now(),

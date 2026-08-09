@@ -1,68 +1,262 @@
 part of 'package:companion_flutter/main.dart';
 
-class _PlanModeSwitch extends StatelessWidget {
-  const _PlanModeSwitch({required this.value, required this.onChanged});
+const _kCheckinWeekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
-  final _CheckinEntryMode value;
-  final ValueChanged<_CheckinEntryMode> onChanged;
+/// Pill-shaped plan name field.
+class _CheckinNameField extends StatelessWidget {
+  const _CheckinNameField({
+    required this.controller,
+    required this.enabled,
+    required this.autofocus,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final bool enabled;
+  final bool autofocus;
+  final ValueChanged<String> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final onceSelected = value == _CheckinEntryMode.once;
-    final isDark = AppColors.isDark(context);
+    final tokens = _CheckinTokens.of(context);
     return Container(
-      padding: const EdgeInsets.all(4),
+      key: const Key('checkin-name'),
+      height: _kCheckinFieldHeight,
+      padding: const EdgeInsets.symmetric(horizontal: _kCheckinMargin),
+      alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: AppColors.subtleFill(context, light: 0.72),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.glassBorder(context)),
+        color: tokens.card,
+        border: Border.all(color: tokens.accent),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: tokens.cardShadow,
       ),
-      child: SizedBox(
-        height: 48,
-        child: Stack(
-          children: [
-            AnimatedAlign(
-              duration: const Duration(milliseconds: 240),
-              curve: Curves.easeOutCubic,
-              alignment: onceSelected
-                  ? Alignment.centerLeft
-                  : Alignment.centerRight,
-              child: FractionallySizedBox(
-                widthFactor: 0.5,
-                heightFactor: 1,
+      child: TextField(
+        controller: controller,
+        enabled: enabled,
+        autofocus: autofocus,
+        maxLines: 1,
+        textInputAction: TextInputAction.done,
+        onChanged: onChanged,
+        cursorColor: tokens.accent,
+        style: TextStyle(
+          color: tokens.title,
+          fontSize: 14,
+          height: 1.2,
+          fontWeight: FontWeight.w400,
+        ),
+        decoration: InputDecoration(
+          isDense: true,
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.zero,
+          hintText: '输入计划名称',
+          hintStyle: TextStyle(
+            color: tokens.placeholder,
+            fontSize: 14,
+            height: 1.2,
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Single plan / repeating habit switch. The blue thumb slides between halves.
+class _CheckinModeSwitch extends StatelessWidget {
+  const _CheckinModeSwitch({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final _CheckinEntryMode value;
+  final ValueChanged<_CheckinEntryMode>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = _CheckinTokens.of(context);
+    final habit = value == _CheckinEntryMode.habit;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final thumbWidth = constraints.maxWidth / 2;
+        return SizedBox(
+          key: const Key('checkin-mode'),
+          height: _kCheckinFieldHeight,
+          child: Stack(
+            children: [
+              Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: AppColors.elevatedSurface(context, light: 0.98),
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(
-                          0xFF4F5EA8,
-                        ).withValues(alpha: isDark ? 0.20 : 0.12),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
+                    color: tokens.accentSoft,
+                    borderRadius: BorderRadius.circular(999),
                   ),
                 ),
               ),
-            ),
-            Row(
-              children: [
-                _PlanModeButton(
-                  selected: onceSelected,
-                  label: '单次计划',
-                  icon: CupertinoIcons.clock,
-                  onTap: () => onChanged(_CheckinEntryMode.once),
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                left: habit ? thumbWidth : 0,
+                top: 0,
+                bottom: 0,
+                width: thumbWidth,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: tokens.accent,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                 ),
-                _PlanModeButton(
-                  selected: !onceSelected,
-                  label: '周期习惯',
-                  icon: CupertinoIcons.repeat,
-                  onTap: () => onChanged(_CheckinEntryMode.habit),
-                ),
-              ],
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: _segment(
+                      tokens,
+                      icon: Icons.schedule_rounded,
+                      label: '单次计划',
+                      active: !habit,
+                      onTap: onChanged == null
+                          ? null
+                          : () => onChanged!(_CheckinEntryMode.once),
+                    ),
+                  ),
+                  Expanded(
+                    child: _segment(
+                      tokens,
+                      icon: Icons.autorenew_rounded,
+                      label: '周期习惯',
+                      active: habit,
+                      onTap: onChanged == null
+                          ? null
+                          : () => onChanged!(_CheckinEntryMode.habit),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _segment(
+    _CheckinTokens tokens, {
+    required IconData icon,
+    required String label,
+    required bool active,
+    required VoidCallback? onTap,
+  }) {
+    // The design draws the inactive label heavier than the active one; the
+    // blue thumb already carries the selection, so the weight only has to keep
+    // the inactive side readable on the pale track.
+    final color = active ? Colors.white : tokens.title;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 22, color: color),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 16,
+              height: 1.2,
+              fontWeight: active ? FontWeight.w500 : FontWeight.w700,
+              decoration: TextDecoration.none,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// White card holding the label / value pair for the reminder time.
+class _CheckinReminderRow extends StatelessWidget {
+  const _CheckinReminderRow({
+    required this.value,
+    required this.onPick,
+  });
+
+  final String value;
+  final VoidCallback? onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = _CheckinTokens.of(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onPick,
+      child: Container(
+        key: const Key('checkin-reminder'),
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: 11),
+        decoration: BoxDecoration(
+          color: tokens.card,
+          borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+          boxShadow: tokens.cardShadow,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: tokens.accent,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: tokens.accent.withValues(alpha: 0.2),
+                    blurRadius: 4,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.alarm_rounded,
+                size: 26,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '提醒时间',
+                    style: TextStyle(
+                      color: tokens.sectionTitle,
+                      fontSize: 14,
+                      height: 1.4,
+                      fontWeight: FontWeight.w500,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    value,
+                    style: TextStyle(
+                      color: tokens.title,
+                      fontSize: 12,
+                      height: 1.4,
+                      fontWeight: FontWeight.w400,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (onPick != null)
+              Icon(
+                CupertinoIcons.chevron_forward,
+                size: 16,
+                color: tokens.title,
+              ),
           ],
         ),
       ),
@@ -70,83 +264,167 @@ class _PlanModeSwitch extends StatelessWidget {
   }
 }
 
-class _PlanModeButton extends StatelessWidget {
-  const _PlanModeButton({
+/// Weekday picker for a repeating habit.
+class _CheckinWeekdayCard extends StatelessWidget {
+  const _CheckinWeekdayCard({
     required this.selected,
-    required this.label,
-    required this.icon,
-    required this.onTap,
+    required this.onToggle,
   });
 
-  final bool selected;
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
+  final Set<int> selected;
+  final ValueChanged<int>? onToggle;
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? const Color(0xFF4F5EA8) : AppColors.muted;
-    return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: SizedBox.expand(
-          child: Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, color: color, size: 18),
-                const SizedBox(width: 7),
-                AnimatedDefaultTextStyle(
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOutCubic,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                  ),
-                  child: Text(label),
-                ),
-              ],
+    final tokens = _CheckinTokens.of(context);
+    return Container(
+      key: const Key('checkin-weekdays'),
+      height: 116,
+      padding: const EdgeInsets.fromLTRB(17, 12, 17, 0),
+      decoration: BoxDecoration(
+        color: tokens.card,
+        borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+        boxShadow: tokens.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '重复频率',
+            style: TextStyle(
+              color: tokens.sectionTitle,
+              fontSize: 14,
+              height: 1.4,
+              fontWeight: FontWeight.w500,
+              decoration: TextDecoration.none,
             ),
           ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              for (var weekday = 1; weekday <= 7; weekday += 1)
+                _weekdayPill(tokens, weekday),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _weekdayPill(_CheckinTokens tokens, int weekday) {
+    final active = selected.contains(weekday);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onToggle == null ? null : () => onToggle!(weekday),
+      child: Container(
+        width: _kCheckinDayWidth,
+        height: _kCheckinDayHeight,
+        padding: const EdgeInsets.only(top: 8),
+        decoration: BoxDecoration(
+          color: active ? tokens.accentSoft : tokens.dayPill,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Column(
+          children: [
+            Text(
+              _kCheckinWeekdayLabels[weekday - 1],
+              style: TextStyle(
+                color: tokens.dayNumber,
+                fontSize: 12,
+                height: 1.4,
+                fontWeight: FontWeight.w400,
+                decoration: TextDecoration.none,
+              ),
+            ),
+            const SizedBox(height: 8),
+            active
+                ? Icon(Icons.check_rounded, size: 12, color: tokens.accent)
+                : Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: tokens.markIdle, width: 2),
+                    ),
+                  ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _ReadOnlyModePill extends StatelessWidget {
-  const _ReadOnlyModePill({required this.mode});
+/// Optional free-text note.
+class _CheckinNoteCard extends StatelessWidget {
+  const _CheckinNoteCard({
+    required this.controller,
+    required this.enabled,
+  });
 
-  final _CheckinEntryMode mode;
+  final TextEditingController controller;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    final isHabit = mode == _CheckinEntryMode.habit;
+    final tokens = _CheckinTokens.of(context);
     return Container(
-      height: 52,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      key: const Key('checkin-note'),
+      height: 84,
+      padding: const EdgeInsets.fromLTRB(_kCheckinMargin, 12, _kCheckinMargin, 0),
       decoration: BoxDecoration(
-        color: AppColors.subtleFill(context, light: 0.72),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.glassBorder(context)),
+        color: tokens.card,
+        borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+        boxShadow: tokens.cardShadow,
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            isHabit ? CupertinoIcons.repeat : CupertinoIcons.clock,
-            color: const Color(0xFF4F5EA8),
-            size: 18,
-          ),
-          const SizedBox(width: 8),
           Text(
-            isHabit ? '周期习惯' : '单次计划',
-            style: const TextStyle(
-              color: Color(0xFF4F5EA8),
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
+            '备注（可选）',
+            style: TextStyle(
+              color: tokens.sectionTitle,
+              fontSize: 14,
+              height: 1.4,
+              fontWeight: FontWeight.w500,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            height: 32,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: tokens.noteField,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: TextField(
+              controller: controller,
+              enabled: enabled,
+              maxLines: 1,
+              maxLength: 500,
+              textInputAction: TextInputAction.done,
+              cursorColor: tokens.accent,
+              style: TextStyle(
+                color: tokens.title,
+                fontSize: 12,
+                height: 1.4,
+                fontWeight: FontWeight.w400,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                counterText: '',
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+                hintText: '请填写备注内容',
+                hintStyle: TextStyle(
+                  color: tokens.placeholder,
+                  fontSize: 12,
+                  height: 1.4,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
             ),
           ),
         ],
@@ -155,269 +433,97 @@ class _ReadOnlyModePill extends StatelessWidget {
   }
 }
 
-class _SettingCard extends StatelessWidget {
-  const _SettingCard({required this.child});
+/// Full-width pill button at the bottom of the editor sheet.
+class _CheckinPrimaryButton extends StatelessWidget {
+  const _CheckinPrimaryButton({
+    required this.label,
+    required this.onPressed,
+    required this.busy,
+    this.danger = false,
+  });
 
-  final Widget child;
+  final String label;
+  final VoidCallback? onPressed;
+  final bool busy;
+  final bool danger;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: AppColors.elevatedSurface(context, light: 0.88),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.glassBorder(context)),
+    final tokens = _CheckinTokens.of(context);
+    final base = danger ? const Color(0xFFFF4C4C) : tokens.accent;
+    final enabled = onPressed != null && !busy;
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: const Size.fromHeight(_kCheckinSaveHeight),
+      borderRadius: BorderRadius.circular(999),
+      onPressed: enabled ? onPressed : null,
+      child: Container(
+        key: const Key('checkin-save'),
+        height: _kCheckinSaveHeight,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: enabled ? base : base.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: enabled
+              ? [
+                  BoxShadow(
+                    color: base.withValues(alpha: 0.25),
+                    blurRadius: 16,
+                    offset: const Offset(2, 8),
+                  ),
+                ]
+              : null,
+        ),
+        child: busy
+            ? const CupertinoActivityIndicator(color: Colors.white)
+            : Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                  decoration: TextDecoration.none,
+                ),
+              ),
       ),
-      child: child,
     );
   }
 }
 
-class _SettingIconBox extends StatelessWidget {
-  const _SettingIconBox({required this.icon});
+/// Small round action in the editor's top row (only shown when editing).
+class _CheckinSheetAction extends StatelessWidget {
+  const _CheckinSheetAction({
+    required this.icon,
+    required this.color,
+    required this.onPressed,
+    required this.busy,
+  });
 
   final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 42,
-      height: 42,
-      decoration: BoxDecoration(
-        color: AppColors.subtleFill(context, light: 0.92),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: AppColors.glassBorder(context)),
-      ),
-      child: Icon(icon, color: AppColors.text, size: 23),
-    );
-  }
-}
-
-class _SettingLabel extends StatelessWidget {
-  const _SettingLabel(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: TextStyle(
-        color: AppColors.muted,
-        fontSize: 15,
-        fontWeight: FontWeight.w900,
-      ),
-    );
-  }
-}
-
-class _SettingTitle extends StatelessWidget {
-  const _SettingTitle(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        color: AppColors.text,
-        fontSize: 16,
-        fontWeight: FontWeight.w900,
-      ),
-    );
-  }
-}
-
-class _IconPillButton extends StatelessWidget {
-  const _IconPillButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
+  final Color color;
+  final VoidCallback? onPressed;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
     return CupertinoButton(
       padding: EdgeInsets.zero,
-      minimumSize: const Size(42, 42),
-      onPressed: onTap,
+      minimumSize: const Size(32, 32),
+      borderRadius: BorderRadius.circular(16),
+      onPressed: busy ? null : onPressed,
       child: Container(
-        width: 42,
-        height: 42,
+        width: 32,
+        height: 32,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: AppColors.subtleFill(context, light: 0.92),
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: AppColors.glassBorder(context)),
+          color: color.withValues(alpha: 0.14),
+          shape: BoxShape.circle,
         ),
-        child: Icon(icon, color: const Color(0xFF4F5EA8), size: 21),
+        child: busy
+            ? CupertinoActivityIndicator(radius: 8, color: color)
+            : Icon(icon, size: 17, color: color),
       ),
-    );
-  }
-}
-
-class _SingleReminderTimeRow extends StatelessWidget {
-  const _SingleReminderTimeRow({required this.dateTime, required this.onPick});
-
-  final DateTime dateTime;
-  final VoidCallback? onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SettingCard(
-      child: Row(
-        children: [
-          const _SettingIconBox(icon: CupertinoIcons.alarm),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const _SettingLabel('提醒时间'),
-                const SizedBox(height: 3),
-                _SettingTitle(_fullDateTimeLabel(dateTime)),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          if (onPick != null)
-            _IconPillButton(icon: CupertinoIcons.pencil, onTap: onPick!),
-        ],
-      ),
-    );
-  }
-}
-
-class _HabitWeekdaySection extends StatelessWidget {
-  const _HabitWeekdaySection({
-    required this.selected,
-    required this.dateTime,
-    required this.onPickTime,
-    required this.onToggle,
-  });
-
-  final Set<int> selected;
-  final DateTime dateTime;
-  final VoidCallback? onPickTime;
-  final ValueChanged<int>? onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    const labels = ['一', '二', '三', '四', '五', '六', '日'];
-    return _SettingCard(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const _SettingLabel('习惯周期'),
-              const Spacer(),
-              CupertinoButton(
-                padding: EdgeInsets.zero,
-                minimumSize: Size.zero,
-                onPressed: onPickTime,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.subtleFill(context, light: 0.92),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: AppColors.glassBorder(context)),
-                  ),
-                  child: Text(
-                    _timeLabel(dateTime),
-                    style: const TextStyle(
-                      color: Color(0xFF4F5EA8),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 9),
-          Row(
-            children: List.generate(7, (index) {
-              final weekday = index + 1;
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(left: index == 0 ? 0 : 6),
-                  child: _WeekdayDotButton(
-                    selected: selected.contains(weekday),
-                    label: labels[index],
-                    onTap: onToggle == null ? null : () => onToggle!(weekday),
-                  ),
-                ),
-              );
-            }),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WeekdayDotButton extends StatelessWidget {
-  const _WeekdayDotButton({
-    required this.selected,
-    required this.label,
-    required this.onTap,
-  });
-
-  final bool selected;
-  final String label;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final size = math.min(38.0, constraints.maxWidth);
-        final isDark = AppColors.isDark(context);
-        return Center(
-          child: CupertinoButton(
-            padding: EdgeInsets.zero,
-            minimumSize: Size.zero,
-            onPressed: onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 170),
-              curve: Curves.easeOutCubic,
-              width: size,
-              height: size,
-              decoration: BoxDecoration(
-                color: selected
-                    ? const Color(0xFFFFC338)
-                    : AppColors.subtleFill(context, light: 0.92),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: selected
-                      ? const Color(0xFFFFC338)
-                      : AppColors.glassBorder(context),
-                ),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: selected
-                      ? (isDark ? const Color(0xFF121A23) : AppColors.text)
-                      : AppColors.muted,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ),
-        );
-      },
     );
   }
 }
