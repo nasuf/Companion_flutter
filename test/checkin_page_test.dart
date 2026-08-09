@@ -66,6 +66,8 @@ class _FakeReminderApi extends CompanionApi {
   }
 
   final List<ReminderItem> items;
+  final List<String> deleted = <String>[];
+  final List<String> pinned = <String>[];
   String? createdSummary;
   String? createdNote;
   String? createdRecurrence;
@@ -78,6 +80,30 @@ class _FakeReminderApi extends CompanionApi {
     int limit = 200,
     int offset = 0,
   }) async => RemindersResponse(items: items, total: items.length, dlqCount: 0);
+
+  @override
+  Future<void> deleteReminder(
+    String reminderId, {
+    String? conversationId,
+  }) async {
+    deleted.add(reminderId);
+  }
+
+  @override
+  Future<ReminderItem> updateReminder(
+    String reminderId, {
+    String? summary,
+    String? note,
+    DateTime? triggerTime,
+    String? recurrence,
+    List<int>? habitWeekdays,
+    bool? pinned,
+    bool? sentToAi,
+    String? conversationId,
+  }) async {
+    if (pinned != null) this.pinned.add(reminderId);
+    return items.firstWhere((it) => it.id == reminderId);
+  }
 
   @override
   Future<ReminderItem> completeReminder(
@@ -273,6 +299,31 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('a closed row absorbs taps instead of the parked actions', (
+      tester,
+    ) async {
+      _useDesignCanvas(tester);
+      final api = _FakeReminderApi([_once('a', '短')]);
+
+      await tester.pumpWidget(_app(api));
+      await tester.pumpAndSettle();
+
+      // Pin and delete sit under the card at both ends even when the row is
+      // shut. Tapping over either one — or over blank card space — has to open
+      // the row, never fire the action underneath.
+      final row = tester.getRect(find.byKey(const Key('checkin-task-a')));
+      for (final x in [row.left + 44, row.center.dx + 40, row.right - 60]) {
+        await tester.tapAt(Offset(x, row.center.dy));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('checkin-sheet')), findsOneWidget);
+        Navigator.of(tester.element(find.byType(CheckinPage))).pop();
+        await tester.pumpAndSettle();
+      }
+      expect(api.pinned, isEmpty);
+      expect(api.deleted, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('empty day shows the placeholder card', (tester) async {
       _useDesignCanvas(tester);
 
@@ -449,6 +500,32 @@ void main() {
       expect(find.text('删除计划'), findsOneWidget);
       // Nothing editable is on screen.
       expect(find.byType(TextField), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('deleting a finished plan asks first', (tester) async {
+      _useDesignCanvas(tester);
+      final api = _FakeReminderApi([_once('a', '阅读30分钟', done: true)]);
+
+      await tester.pumpWidget(_app(api));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('阅读30分钟'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('删除计划'));
+      await tester.pumpAndSettle();
+      expect(find.text('删除这个计划？'), findsOneWidget);
+
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(api.deleted, isEmpty);
+      expect(find.byKey(const Key('checkin-detail')), findsOneWidget);
+
+      await tester.tap(find.text('删除计划'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('删除'));
+      await tester.pumpAndSettle();
+      expect(api.deleted, ['a']);
       expect(tester.takeException(), isNull);
     });
 

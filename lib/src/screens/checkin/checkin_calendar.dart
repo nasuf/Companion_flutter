@@ -179,6 +179,11 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
   }
 
   Widget _buildCard(_CheckinTokens tokens, double expandedHeight) {
+    // Built once per parent rebuild, not once per animation frame: passing the
+    // same widget instances back lets the two PageViews and their ~49 day
+    // pills sit out the expand animation instead of rebuilding at 60fps.
+    final week = _weekStrip(tokens);
+    final month = _monthGrid(tokens);
     return AnimatedBuilder(
       animation: _expansion,
       builder: (context, _) {
@@ -227,10 +232,7 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
                     height: 79,
                     child: IgnorePointer(
                       ignoring: weekOpacity < 0.5,
-                      child: Opacity(
-                        opacity: weekOpacity,
-                        child: _weekStrip(tokens),
-                      ),
+                      child: Opacity(opacity: weekOpacity, child: week),
                     ),
                   ),
                   Positioned(
@@ -240,10 +242,7 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
                     bottom: 24,
                     child: IgnorePointer(
                       ignoring: monthOpacity < 0.5,
-                      child: Opacity(
-                        opacity: monthOpacity,
-                        child: _monthGrid(tokens),
-                      ),
+                      child: Opacity(opacity: monthOpacity, child: month),
                     ),
                   ),
                   // Sized to the open card's bottom padding so it never covers
@@ -436,17 +435,15 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            for (var column = 0; column < 7; column += 1)
-              Builder(
-                builder: (context) {
-                  final date = gridStart.add(Duration(days: row * 7 + column));
-                  return _dayPill(
-                    tokens,
-                    date,
-                    dimmed: !_isSameMonth(date, month),
-                    keyPrefix: 'month',
-                  );
-                },
+            for (final date in [
+              for (var column = 0; column < 7; column += 1)
+                gridStart.add(Duration(days: row * 7 + column)),
+            ])
+              _dayPill(
+                tokens,
+                date,
+                dimmed: !_isSameMonth(date, month),
+                keyPrefix: 'month',
               ),
           ],
         ),

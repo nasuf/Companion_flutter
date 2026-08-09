@@ -166,27 +166,7 @@ class _CheckinDetailSheet extends StatelessWidget {
   }
 
   Future<void> _confirmDelete(BuildContext context) async {
-    // The row this came from is already ticked, so a stray tap here would be
-    // deleting history rather than cancelling something pending.
-    final confirmed = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('删除这个计划？'),
-        content: const Text('删除后打卡记录也会一起消失。'),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
+    if (!await _confirmCheckinDelete(context) || !context.mounted) return;
     Navigator.of(context).pop(_CheckinDeleteRequest(item));
   }
 }

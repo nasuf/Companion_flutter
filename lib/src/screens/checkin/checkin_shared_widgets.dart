@@ -65,6 +65,33 @@ class _CheckinFab extends StatelessWidget {
   }
 }
 
+/// Confirmation for the two delete buttons.
+///
+/// The swipe gesture is deliberate enough to stand on its own, but both delete
+/// buttons sit a thumb's width from a non-destructive one, and a plan cannot be
+/// brought back.
+Future<bool> _confirmCheckinDelete(BuildContext context) async {
+  final confirmed = await showCupertinoDialog<bool>(
+    context: context,
+    builder: (context) => CupertinoAlertDialog(
+      title: const Text('删除这个计划？'),
+      content: const Text('删除后打卡记录也会一起消失。'),
+      actions: [
+        CupertinoDialogAction(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('取消'),
+        ),
+        CupertinoDialogAction(
+          isDestructiveAction: true,
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('删除'),
+        ),
+      ],
+    ),
+  );
+  return confirmed ?? false;
+}
+
 class _CheckinLoadingCard extends StatelessWidget {
   const _CheckinLoadingCard();
 

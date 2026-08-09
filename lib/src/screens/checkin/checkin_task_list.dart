@@ -125,6 +125,11 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
   );
 
   double _offset = 0;
+  bool _dragging = false;
+
+  /// Which end the last swipe opened. Kept past the release so the colour and
+  /// the action stay put while the card eases back over them.
+  bool _openLeading = true;
   bool _flashFromRight = false;
   bool _collapsing = false;
   bool _sweeping = false;
@@ -208,18 +213,27 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
   Widget build(BuildContext context) {
     final tokens = _CheckinTokens.of(context);
     final completed = widget.completed || _optimisticCompleted;
-    final openLeading = _offset > 0;
     final revealed = _offset.abs();
     return GestureDetector(
+      onHorizontalDragStart: (_) {
+        if (_sweeping || _collapsing) return;
+        setState(() => _dragging = true);
+      },
       onHorizontalDragUpdate: (details) {
         if (_sweeping || _collapsing) return;
         final next = (_offset + details.delta.dx).clamp(-_reveal, _reveal);
         if (next.abs() > 2) widget.onSwipeOpen(widget.item.id);
-        setState(() => _offset = next);
+        setState(() {
+          _offset = next;
+          if (next != 0) _openLeading = next > 0;
+        });
       },
       onHorizontalDragEnd: (_) {
         if (_sweeping || _collapsing) return;
         setState(() {
+          // Leaving _dragging false hands the settle to the implicit
+          // animation below; during the drag it has to track the finger.
+          _dragging = false;
           if (_offset > 36) {
             _offset = _reveal;
           } else if (_offset < -36) {
@@ -251,43 +265,42 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
             borderRadius: BorderRadius.circular(_kCheckinCardRadius),
             child: Stack(
               children: [
-                if (revealed > 0 && !_sweeping) ...[
-                  Positioned.fill(
-                    child: ColoredBox(
-                      color: openLeading ? _pinColor : _deleteColor,
+                // The colour and the action sit under the card at full width
+                // and never move; the card slides off them. Animating one
+                // thing keeps the two halves locked together.
+                Positioned.fill(
+                  // Rounded like the row rather than a plain fill: at rest the
+                  // card's own corner arcs sit exactly on top, and a square
+                  // base would fringe through them.
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: _openLeading ? _pinColor : _deleteColor,
+                      borderRadius: BorderRadius.circular(_kCheckinCardRadius),
                     ),
-                  ),
-                  Positioned(
-                    left: openLeading ? 0 : null,
-                    right: openLeading ? null : 0,
-                    top: 0,
-                    bottom: 0,
-                    width: revealed,
-                    child: _TaskSwipeAction(
-                      icon: openLeading
-                          ? (widget.pinned
-                                ? CupertinoIcons.pin_slash_fill
-                                : CupertinoIcons.pin_fill)
-                          : CupertinoIcons.delete,
-                      label: openLeading
-                          ? (widget.pinned ? '取消置顶' : '置顶')
-                          : '删除',
-                      reveal: revealed / _reveal,
-                      onTap: openLeading ? _handlePin : _handleDelete,
-                    ),
-                  ),
-                ],
-                Transform.translate(
-                  offset: Offset(_offset, 0),
-                  child: Stack(
-                    children: [
-                      _card(tokens, completed),
-                      Positioned.fill(
-                        child: IgnorePointer(child: _sweepOverlay()),
-                      ),
-                    ],
                   ),
                 ),
+                Positioned(
+                  left: _openLeading ? 0 : null,
+                  right: _openLeading ? null : 0,
+                  top: 0,
+                  bottom: 0,
+                  width: _reveal,
+                  child: _TaskSwipeAction(
+                    icon: _openLeading
+                        ? (widget.pinned
+                              ? CupertinoIcons.pin_slash_fill
+                              : CupertinoIcons.pin_fill)
+                        : CupertinoIcons.delete,
+                    label: _openLeading
+                        ? (widget.pinned ? '取消置顶' : '置顶')
+                        : '删除',
+                    reveal: revealed / _reveal,
+                    dragging: _dragging,
+                    onTap: _openLeading ? _handlePin : _handleDelete,
+                  ),
+                ),
+                _card(tokens, completed),
+                Positioned.fill(child: IgnorePointer(child: _sweepOverlay())),
               ],
             ),
           ),
@@ -304,7 +317,12 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
 
   Widget _card(_CheckinTokens tokens, bool completed) {
     final item = widget.item;
-    return Container(
+    // Position and corner rounding animate together on release, so the card
+    // eases back over the colour instead of snapping and popping its corner.
+    return AnimatedContainer(
+      duration: _dragging ? Duration.zero : const Duration(milliseconds: 190),
+      curve: Curves.easeOutCubic,
+      transform: Matrix4.translationValues(_offset, 0, 0),
       height: _kCheckinTaskRowHeight,
       padding: const EdgeInsets.symmetric(horizontal: _kCheckinMargin),
       decoration: BoxDecoration(color: tokens.card, borderRadius: _cardRadius),
@@ -402,7 +420,9 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
                     opacity: opacity,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        borderRadius: _cardRadius,
+                        borderRadius: BorderRadius.circular(
+                          _kCheckinCardRadius,
+                        ),
                         gradient: LinearGradient(
                           begin: _flashFromRight
                               ? Alignment.centerRight
@@ -436,12 +456,19 @@ class _TaskSwipeAction extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.reveal,
+    required this.dragging,
     required this.onTap,
   });
+
+  static const Duration _settle = Duration(milliseconds: 190);
 
   final IconData icon;
   final String label;
   final double reveal;
+
+  /// While the finger is down the fade tracks it; on release it eases out in
+  /// step with the card sliding back, instead of blinking off.
+  final bool dragging;
   final VoidCallback onTap;
 
   @override
@@ -450,9 +477,13 @@ class _TaskSwipeAction extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Opacity(
+      child: AnimatedOpacity(
+        duration: dragging ? Duration.zero : _settle,
+        curve: Curves.easeOutCubic,
         opacity: progress,
-        child: Transform.scale(
+        child: AnimatedScale(
+          duration: dragging ? Duration.zero : _settle,
+          curve: Curves.easeOutCubic,
           scale: 0.82 + progress * 0.18,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,

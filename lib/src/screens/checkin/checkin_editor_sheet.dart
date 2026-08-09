@@ -215,7 +215,7 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
           onPick: _pickDateTime,
         ),
         const SizedBox(height: _kCheckinSheetFieldGap),
-        _CheckinNoteCard(controller: _noteController, enabled: true),
+        _CheckinNoteCard(controller: _noteController),
       ],
     );
   }
@@ -406,6 +406,7 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
   Future<void> _delete() async {
     final existing = widget.item;
     if (existing == null || _busy) return;
+    if (!await _confirmCheckinDelete(context) || !mounted) return;
     setState(() => _deleting = true);
     try {
       await widget.api.deleteReminder(

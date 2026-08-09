@@ -361,10 +361,9 @@ class _CheckinWeekdayCard extends StatelessWidget {
 
 /// Optional free-text note.
 class _CheckinNoteCard extends StatelessWidget {
-  const _CheckinNoteCard({required this.controller, required this.enabled});
+  const _CheckinNoteCard({required this.controller});
 
   final TextEditingController controller;
-  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -407,7 +406,6 @@ class _CheckinNoteCard extends StatelessWidget {
             ),
             child: TextField(
               controller: controller,
-              enabled: enabled,
               maxLines: 1,
               maxLength: 500,
               textInputAction: TextInputAction.done,
