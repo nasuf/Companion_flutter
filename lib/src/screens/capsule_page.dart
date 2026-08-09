@@ -1107,16 +1107,25 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
               padding: const EdgeInsets.fromLTRB(18, 10, 18, 8),
               child: Row(
                 children: [
-                  // The module's own circle button, matching the delete button
-                  // opposite it. The shared app one is 38pt and tinted with the
-                  // app accent, which both clashed here and left the title
-                  // off-centre against the 54pt spacer the row balances on.
-                  _CapsuleCircleButton(
-                    icon: CupertinoIcons.xmark,
-                    onTap: _saving || !_routeSettled
-                        ? null
-                        : () => unawaited(_closeEditor()),
-                  ),
+                  // The module's own circle buttons rather than the shared app
+                  // one, which is tinted with the app accent and clashes here.
+                  // Sized to whatever sits opposite it: the read-only header
+                  // carries 44pt mini actions, the editor a 54pt button or the
+                  // 54pt spacer standing in for one.
+                  if (isReadOnly)
+                    _CapsuleMiniActionButton(
+                      icon: CupertinoIcons.xmark,
+                      onTap: _saving || !_routeSettled
+                          ? null
+                          : () => unawaited(_closeEditor()),
+                    )
+                  else
+                    _CapsuleCircleButton(
+                      icon: CupertinoIcons.xmark,
+                      onTap: _saving || !_routeSettled
+                          ? null
+                          : () => unawaited(_closeEditor()),
+                    ),
                   Expanded(
                     child: Text(
                       widget.readOnly ? '胶囊详情' : '写新胶囊',

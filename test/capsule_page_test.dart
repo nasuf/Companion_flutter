@@ -404,6 +404,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('胶囊详情'), findsOneWidget);
 
+      // Close on the left and delete on the right are separate widgets, so
+      // nothing but this keeps them the same circle: the header reads as
+      // lopsided the moment one of them is resized on its own.
+      expect(
+        _circleSize(tester, CupertinoIcons.xmark),
+        _circleSize(tester, CupertinoIcons.delete),
+      );
+
       await tester.tap(find.byIcon(CupertinoIcons.delete));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(CupertinoDialogAction, '删除'));
@@ -467,6 +475,15 @@ void main() {
       expect(File(path).existsSync(), isTrue, reason: 'missing $path');
     }
   });
+}
+
+/// Size of the round button drawn behind a header icon.
+Size _circleSize(WidgetTester tester, IconData icon) {
+  return tester.getSize(
+    find
+        .ancestor(of: find.byIcon(icon), matching: find.byType(Container))
+        .first,
+  );
 }
 
 /// Every colour the current tree actually paints through an icon, a text style
