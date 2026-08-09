@@ -152,6 +152,101 @@ void main() {
     });
   });
 
+  group('capsule drafts', () {
+    testWidgets('the sheet reads as the warm capsule list, not purple chips', (
+      tester,
+    ) async {
+      _useDesignCanvas(tester);
+
+      final api = _FakeCapsuleApi([
+        _capsule(
+          id: 'd1',
+          state: 'draft',
+          content: '今天想跟一年后的你说点什么',
+          openDate: DateTime(2026, 8, 20),
+        ),
+        _capsule(id: 'd2', state: 'draft', content: '第二封还没写完'),
+      ]);
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          home: CapsulePage(api: api, session: _session),
+        ),
+      );
+      await _settleWithImages(tester);
+
+      await tester.tap(find.text('草稿'));
+      await _settleWithImages(tester);
+
+      expect(find.text('还没封存，随时可以接着写'), findsOneWidget);
+      expect(find.text('今天想跟一年后的你说点什么'), findsOneWidget);
+      // Seeded 2025-07-12, so the edit date is the same on both rows and only
+      // the open date differs.
+      expect(find.text('7月12日 编辑 · 8月20日 开启'), findsOneWidget);
+      expect(find.text('7月12日 编辑 · 7月12日 开启'), findsOneWidget);
+
+      // One medallion per row plus the 草稿 shortcut card behind the sheet:
+      // the rows deliberately echo the card the tap came from.
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Image &&
+              widget.image is AssetImage &&
+              (widget.image as AssetImage).assetName ==
+                  'assets/capsule/draft-icon.png',
+        ),
+        findsNWidgets(3),
+      );
+
+      // The rows used to lead with a lavender square holding 1/2/3. Nothing in
+      // the capsule palette is purple, and the sequence number carried no
+      // meaning once the rows show their own dates.
+      expect(find.text('1'), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Text && widget.style?.color == const Color(0xFF7C3CFF),
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+
+      // Framed on the sheet alone rather than the whole app: the home behind
+      // it already has its own goldens, and capturing it here would make this
+      // one fail for changes it does not speak to.
+      await expectLater(
+        find.byType(BottomSheet),
+        matchesGoldenFile('goldens/capsule_drafts_sheet.png'),
+      );
+    });
+
+    testWidgets('tapping a row opens that draft in the editor', (tester) async {
+      _useDesignCanvas(tester);
+
+      final api = _FakeCapsuleApi([
+        _capsule(id: 'd1', state: 'draft', content: '今天想跟一年后的你说点什么'),
+      ]);
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          home: CapsulePage(api: api, session: _session),
+        ),
+      );
+      await _settleWithImages(tester);
+
+      await tester.tap(find.text('草稿'));
+      await _settleWithImages(tester);
+      await tester.tap(find.text('今天想跟一年后的你说点什么'));
+      await _settleWithImages(tester);
+
+      // The row is the only way into an unsealed draft, so a swallowed pop
+      // value would strand the drafts with no entry point at all.
+      expect(find.byType(CapsuleEditorPage), findsOneWidget);
+      expect(find.text('草稿'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('opened capsules', () {
     testWidgets('summary card counts the list and rows use dotted dates', (
       tester,
@@ -201,6 +296,37 @@ void main() {
   });
 
   group('compose', () {
+    testWidgets('the editor is warm capsule orange, not the app purple', (
+      tester,
+    ) async {
+      _useDesignCanvas(tester);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          home: CapsulePage(api: _FakeCapsuleApi(const []), session: _session),
+        ),
+      );
+      await _settleWithImages(tester);
+
+      await tester.tap(find.text('写新胶囊'));
+      await _settleWithImages(tester);
+      expect(find.byType(CapsuleEditorPage), findsOneWidget);
+
+      // The 封存 button, the date pill's calendar and the default letter
+      // paper's accent all used to be the app-wide purple, which reads as a
+      // different product from the orange screen the editor opens out of.
+      final painted = _paintedColors(tester);
+      expect(painted, isNot(contains(const Color(0xFF7C3CFF))));
+      expect(painted, contains(const Color(0xFFFE9631)));
+      expect(tester.takeException(), isNull);
+
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/capsule_composer.png'),
+      );
+    });
+
     testWidgets('open-date wheels never list a day already gone', (
       tester,
     ) async {
@@ -318,6 +444,15 @@ void main() {
     expect(builders, ['lib/src/screens/capsule_page.dart']);
   });
 
+  test('no capsule screen reaches for the app-wide purple', () {
+    final source = File('lib/src/screens/capsule_page.dart').readAsStringSync();
+    // Covers the states a widget test never renders — the button's loading
+    // spinner, the disabled pill — where the purple used to hide. The
+    // 薰衣草信笺 skin keeps its own violet palette on purpose: that one is a
+    // letter paper the user picks, not chrome the module imposes.
+    expect(source.contains('0xFF7C3CFF'), isFalse);
+  });
+
   test('every capsule artwork the page names is actually shipped', () {
     final source = File('lib/src/screens/capsule_page.dart').readAsStringSync();
     final referenced = RegExp(r"'(assets/[^']+)'")
@@ -332,6 +467,30 @@ void main() {
       expect(File(path).existsSync(), isTrue, reason: 'missing $path');
     }
   });
+}
+
+/// Every colour the current tree actually paints through an icon, a text style
+/// or a box decoration. Cheaper and far more legible than a golden diff when
+/// the question is only "is this hue still on screen".
+Set<Color> _paintedColors(WidgetTester tester) {
+  final colors = <Color>{};
+  for (final widget in tester.allWidgets) {
+    if (widget is Icon && widget.color != null) colors.add(widget.color!);
+    if (widget is Text && widget.style?.color != null) {
+      colors.add(widget.style!.color!);
+    }
+    final decoration = switch (widget) {
+      Container(:final decoration) => decoration,
+      DecoratedBox(:final decoration) => decoration,
+      _ => null,
+    };
+    if (decoration is BoxDecoration) {
+      if (decoration.color != null) colors.add(decoration.color!);
+      final border = decoration.border;
+      if (border is Border) colors.add(border.top.color);
+    }
+  }
+  return colors;
 }
 
 /// Reads the numbers currently laid out in one date wheel column.

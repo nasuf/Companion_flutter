@@ -246,7 +246,7 @@ class _CapsulePageState extends State<CapsulePage> {
       enableDrag: true,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.42),
-      builder: (_) => _CapsulePickerSheet(title: '草稿', capsules: drafts),
+      builder: (_) => _CapsuleDraftSheet(capsules: drafts),
     );
     if (!mounted) return;
     if (selected == null) {
@@ -1107,9 +1107,13 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
               padding: const EdgeInsets.fromLTRB(18, 10, 18, 8),
               child: Row(
                 children: [
-                  _AppNavCircleButton(
+                  // The module's own circle button, matching the delete button
+                  // opposite it. The shared app one is 38pt and tinted with the
+                  // app accent, which both clashed here and left the title
+                  // off-centre against the 54pt spacer the row balances on.
+                  _CapsuleCircleButton(
                     icon: CupertinoIcons.xmark,
-                    onPressed: _saving || !_routeSettled
+                    onTap: _saving || !_routeSettled
                         ? null
                         : () => unawaited(_closeEditor()),
                   ),
@@ -1381,7 +1385,9 @@ class _CapsuleSkin {
       line: Color(0xFFE6E1D5),
       text: Color(0xFF37342D),
       muted: Color(0xFF928D82),
-      accent: Color(0xFF7C3CFF),
+      // Every other skin accents with its own palette; this default one used
+      // to reach for the app-wide purple, which belongs to no capsule screen.
+      accent: _capsuleOrange,
     ),
     _CapsuleSkin(
       id: 'warm',
@@ -2007,7 +2013,7 @@ class _CapsuleDatePill extends StatelessWidget {
           children: [
             const Icon(
               CupertinoIcons.calendar,
-              color: Color(0xFF7C3CFF),
+              color: _capsuleOrange,
               size: 20,
             ),
             const SizedBox(width: 8),
@@ -2190,7 +2196,11 @@ class _CapsuleSkinIconPainter extends CustomPainter {
 }
 
 class _SheetGrabber extends StatelessWidget {
-  const _SheetGrabber();
+  // The default grey rides on the editor sheets, which follow the agent skin
+  // and can be dark. Only the warm capsule sheets pass a colour.
+  const _SheetGrabber({this.color = const Color(0xFFD8DCE0)});
+
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -2201,7 +2211,7 @@ class _SheetGrabber extends StatelessWidget {
           width: 42,
           height: 5,
           decoration: BoxDecoration(
-            color: const Color(0xFFD8DCE0),
+            color: color,
             borderRadius: BorderRadius.circular(999),
           ),
         ),
@@ -2899,116 +2909,107 @@ class _CapsuleLastOpenedCard extends StatelessWidget {
   }
 }
 
-class _CapsuleListTile extends StatelessWidget {
-  const _CapsuleListTile({
-    required this.index,
-    required this.capsule,
-    required this.enabled,
-    this.compact = false,
-    this.onTap,
-  });
+/// A draft row inside [_CapsuleDraftSheet]. Deliberately shares the white card
+/// language of [_OpenedCapsuleSheetTile] — hairline border, radius 20, ink
+/// title over a 10pt grey meta line — at a shorter 80pt height, so the drafts
+/// read as the same family of list rows one screen earlier.
+class _CapsuleDraftTile extends StatelessWidget {
+  const _CapsuleDraftTile({required this.capsule, required this.onTap});
 
-  final int index;
   final TimeCapsule capsule;
-  final bool enabled;
-  final bool compact;
-  final VoidCallback? onTap;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final openDateLabel = capsule.openDate == null
-        ? '--/--'
-        : _formatCapsuleShortDate(capsule.openDate!);
-    final isDark = AppColors.isDark(context);
-    final tile = CupertinoButton(
+    final edited = _formatCapsuleMonthDay(capsule.updatedAt);
+    final openDate = capsule.openDate;
+    // A draft's open date is optional and often unset, so the last edit is the
+    // line that always earns its place.
+    final meta = openDate == null
+        ? '$edited 编辑'
+        : '$edited 编辑 · ${_formatCapsuleMonthDay(openDate)} 开启';
+    return CupertinoButton(
+      minimumSize: Size.zero,
       padding: EdgeInsets.zero,
-      onPressed: enabled ? onTap : null,
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 180),
-        opacity: enabled ? 1 : 0.74,
-        child: Container(
-          constraints: BoxConstraints(minHeight: compact ? 76 : 86),
-          padding: EdgeInsets.fromLTRB(
-            compact ? 14 : 16,
-            compact ? 12 : 14,
-            compact ? 14 : 16,
-            compact ? 12 : 14,
-          ),
-          decoration: BoxDecoration(
-            color: compact
-                ? AppColors.elevatedSurface(context, light: 0.96)
-                : AppColors.elevatedSurface(context, light: 0.90),
-            borderRadius: BorderRadius.circular(compact ? 22 : 24),
-            border: Border.all(color: AppColors.glassBorder(context)),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.shadow.withValues(
-                  alpha: isDark ? 0.58 : (compact ? 0.07 : 0.045),
-                ),
-                blurRadius: compact ? 18 : 18,
-                offset: Offset(0, compact ? 9 : 10),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: compact ? 48 : 50,
-                height: compact ? 48 : 50,
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? const Color(0xFF2C214A)
-                      : const Color(0xFFE9DCFF),
-                  borderRadius: BorderRadius.circular(compact ? 15 : 16),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  '$index',
-                  style: TextStyle(
-                    color: Color(0xFF7C3CFF),
-                    fontSize: compact ? 20 : 22,
-                    fontWeight: FontWeight.w800,
-                    decoration: TextDecoration.none,
+      onPressed: onTap,
+      child: Container(
+        // minHeight rather than a fixed 80: the two text lines are the only
+        // thing that grows under a large system text scale, and a hard height
+        // would overflow instead of letting the row breathe.
+        constraints: const BoxConstraints(minHeight: 80),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: _capsuleHairline),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [_capsuleGlassShadow],
+        ),
+        child: Row(
+          children: [
+            // Same 48/24 medallion as the 草稿 shortcut card on the home
+            // screen, so the sheet looks like it grew out of the tapped card.
+            const _CapsuleIconMedallion(
+              diameter: 48,
+              asset: _capsuleAssetDraftIcon,
+              iconSize: 24,
+              bordered: true,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    capsule.preview,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _capsuleInk,
+                      fontSize: 14,
+                      height: 17 / 14,
+                      fontWeight: FontWeight.w500,
+                      decoration: TextDecoration.none,
+                    ),
                   ),
-                ),
-              ),
-              SizedBox(width: compact ? 14 : 15),
-              Expanded(
-                child: Text(
-                  capsule.preview,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: compact ? 15 : 16,
-                    height: 1.34,
-                    fontWeight: FontWeight.w700,
-                    decoration: TextDecoration.none,
+                  const SizedBox(height: 5),
+                  Row(
+                    children: [
+                      SvgPicture.asset(
+                        _capsuleAssetOpenedCalendar,
+                        width: 10,
+                        height: 10,
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          meta,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF666666),
+                            fontSize: 10,
+                            height: 12 / 10,
+                            fontWeight: FontWeight.w400,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
+                ],
               ),
-              SizedBox(width: compact ? 10 : 12),
-              ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: compact ? 72 : 78),
-                child: Text(
-                  openDateLabel,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    color: isDark ? AppColors.muted : const Color(0xFF9AA19E),
-                    fontSize: compact ? 16 : 15,
-                    fontWeight: compact ? FontWeight.w900 : FontWeight.w800,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 12),
+            const Icon(
+              CupertinoIcons.chevron_forward,
+              size: 16,
+              color: Color(0xFFCFCFCF),
+            ),
+          ],
         ),
       ),
     );
-    return tile;
   }
 }
 
@@ -3836,52 +3837,99 @@ class _CapsuleWarmBackButton extends StatelessWidget {
   }
 }
 
-class _CapsulePickerSheet extends StatelessWidget {
-  const _CapsulePickerSheet({required this.title, required this.capsules});
+/// The 草稿 sheet. Carries the capsule palette rather than the app surface
+/// tokens, because it is only ever reached from the warm capsule home.
+class _CapsuleDraftSheet extends StatelessWidget {
+  const _CapsuleDraftSheet({required this.capsules});
 
-  final String title;
   final List<TimeCapsule> capsules;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: math.min(430, MediaQuery.sizeOf(context).height * 0.56),
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-      decoration: BoxDecoration(
-        color: AppColors.page,
+      // Hugs its rows instead of always claiming half the screen: one draft
+      // under a tall white slab reads as a loading failure.
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.58,
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+      decoration: const BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
       child: SafeArea(
         top: false,
-        child: DefaultTextStyle(
-          style: TextStyle(
-            color: AppColors.text,
+        // merge, not replace: a plain DefaultTextStyle would also drop the font
+        // family the app installs.
+        child: DefaultTextStyle.merge(
+          style: const TextStyle(
+            color: _capsuleInk,
             decoration: TextDecoration.none,
           ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _SheetGrabber(),
-              Text(
-                title,
+              const _SheetGrabber(color: Color(0xFFFFDCB0)),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Text(
+                    '草稿',
+                    style: TextStyle(
+                      color: _capsuleInk,
+                      fontSize: 18,
+                      height: 22 / 18,
+                      fontWeight: FontWeight.w700,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _capsuleOrange,
+                      borderRadius: BorderRadius.circular(999),
+                      boxShadow: const [_capsuleOrangeShadow],
+                    ),
+                    child: Text(
+                      '${capsules.length}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        height: 13 / 11,
+                        fontWeight: FontWeight.w700,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                '还没封存，随时可以接着写',
                 style: TextStyle(
-                  color: AppColors.text,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF666666),
+                  fontSize: 11,
+                  height: 13 / 11,
+                  fontWeight: FontWeight.w400,
                   decoration: TextDecoration.none,
                 ),
               ),
-              const SizedBox(height: 10),
-              Expanded(
+              const SizedBox(height: 14),
+              Flexible(
                 child: ListView.separated(
-                  padding: EdgeInsets.zero,
+                  // The viewport clips, so the last row needs room to drop its
+                  // shadow.
+                  padding: const EdgeInsets.only(bottom: 8),
+                  shrinkWrap: true,
                   itemCount: capsules.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) => _CapsuleListTile(
-                    index: index + 1,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) => _CapsuleDraftTile(
                     capsule: capsules[index],
-                    enabled: true,
-                    compact: true,
                     onTap: () {
                       final selected = capsules[index];
                       Navigator.of(context).pop(selected);
@@ -4678,13 +4726,11 @@ class _CapsuleActionButton extends StatelessWidget {
           height: 54,
           decoration: BoxDecoration(
             color: filled
-                ? const Color(0xFF7C3CFF)
+                ? _capsuleOrange
                 : AppColors.elevatedSurface(context, light: 0.92),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: filled
-                  ? const Color(0xFF7C3CFF)
-                  : AppColors.glassBorder(context),
+              color: filled ? _capsuleOrange : AppColors.glassBorder(context),
             ),
             boxShadow: [
               if (!filled && isDark)
@@ -4706,7 +4752,7 @@ class _CapsuleActionButton extends StatelessWidget {
                       child: CircularProgressIndicator(
                         strokeWidth: 2.1,
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          filled ? Colors.white : const Color(0xFF7C3CFF),
+                          filled ? Colors.white : _capsuleOrange,
                         ),
                       ),
                     ),
@@ -4717,9 +4763,7 @@ class _CapsuleActionButton extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: filled
-                              ? Colors.white
-                              : const Color(0xFF7C3CFF),
+                          color: filled ? Colors.white : _capsuleOrange,
                           fontWeight: FontWeight.w800,
                           fontSize: 13,
                         ),
@@ -4896,6 +4940,12 @@ String _formatCapsuleDate(DateTime value) {
 
 String _formatCapsuleShortDate(DateTime value) {
   return '${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}';
+}
+
+/// Compact Chinese form for the draft rows ("7月12日 编辑"), where the year is
+/// noise and the row only has a 10pt line to spend.
+String _formatCapsuleMonthDay(DateTime value) {
+  return '${value.month}月${value.day}日';
 }
 
 /// Dotted form used by the opened-capsule list design ("2025.07.12 创建").
