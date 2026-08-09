@@ -15,16 +15,19 @@ class _CapsuleEditorResult {
   final bool deleted;
 }
 
+const _capsuleAssetArrivedPostcard = 'assets/capsule/arrived-postcard.png';
+const _capsuleAssetBackChevron = 'assets/capsule/back-chevron.svg';
+const _capsuleAssetDialogClose = 'assets/capsule/dialog-close.png';
 const _capsuleAssetDraftIcon = 'assets/capsule/draft-icon.png';
 const _capsuleAssetHomeHero = 'assets/capsule/home-hero.png';
+const _capsuleAssetHomeStarLg = 'assets/capsule/home-star-lg.png';
+const _capsuleAssetHomeStarSm = 'assets/capsule/home-star-sm.png';
 const _capsuleAssetHomeUnderline = 'assets/capsule/home-underline.svg';
 const _capsuleAssetLastOpened = 'assets/capsule/last-opened.png';
 const _capsuleAssetOpenedCalendar = 'assets/capsule/opened-calendar.svg';
 const _capsuleAssetOpenedIcon = 'assets/capsule/opened-icon.png';
 const _capsuleAssetOpenedStar = 'assets/capsule/opened-star.svg';
-const _capsuleAssetOpenedSummary = 'assets/capsule/opened-summary.png';
 const _capsuleAssetOpenedThumb = 'assets/capsule/opened-thumb.png';
-const _capsuleAssetOrangeArrow = 'assets/capsule/orange-arrow.svg';
 const _capsuleAssetPendingBig = 'assets/capsule/pending-big.png';
 const _capsuleAssetPendingIcon = 'assets/capsule/pending-icon.png';
 const _capsuleAssetPendingShadowRing = 'assets/capsule/pending-shadow-ring.svg';
@@ -36,6 +39,25 @@ const _capsuleAssetPendingSticker58 = 'assets/capsule/pending-sticker-58.png';
 const _capsuleAssetPendingSticker59 = 'assets/capsule/pending-sticker-59.png';
 const _capsuleAssetPendingSticker64 = 'assets/capsule/pending-sticker-64.png';
 const _capsuleAssetPendingSticker65 = 'assets/capsule/pending-sticker-65.png';
+
+// Design tokens shared by the capsule home / opened screens. Coordinates in
+// those widgets are expressed against the 390x844 reference canvas.
+const _capsuleDesignWidth = 390.0;
+const _capsuleOrange = Color(0xFFFE9631);
+const _capsuleHairline = Color(0xFFF6F5F5);
+const _capsuleGlassFill = Color(0x40FFFFFF);
+const _capsuleBadgeRed = Color(0xFFFF6265);
+const _capsuleInk = Color(0xFF333333);
+const _capsuleGlassShadow = BoxShadow(
+  color: Color(0x40FFDCB0),
+  blurRadius: 16,
+  offset: Offset(0, 8),
+);
+const _capsuleOrangeShadow = BoxShadow(
+  color: Color(0x40FE9631),
+  blurRadius: 4,
+  offset: Offset(0, 4),
+);
 
 class CapsulePage extends StatefulWidget {
   const CapsulePage({super.key, required this.api, required this.session});
@@ -89,19 +111,15 @@ class _CapsulePageState extends State<CapsulePage> {
   }
 
   Future<void> _openEditor({TimeCapsule? draft}) async {
-    final result = await Navigator.of(context).push<_CapsuleEditorResult>(
-      CupertinoPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => CapsuleEditorPage(
-          api: widget.api,
-          session: widget.session,
-          draft: draft,
-        ),
-      ),
+    final result = await CapsuleEditorPage.push(
+      context,
+      api: widget.api,
+      session: widget.session,
+      draft: draft,
     );
     if (!mounted) return;
     await _reloadLatestCapsules();
-    if (!mounted || result == null) return;
+    if (!mounted || result is! _CapsuleEditorResult) return;
     if (!result.deleted && result.capsule.status == 'sealed') {
       await showGeneralDialog<void>(
         context: context,
@@ -134,7 +152,7 @@ class _CapsulePageState extends State<CapsulePage> {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
-      backgroundColor: const Color(0xFFFEFCFA),
+      backgroundColor: Colors.white,
       body: FutureBuilder<List<TimeCapsule>>(
         future: _capsules,
         builder: (context, snapshot) {
@@ -148,82 +166,72 @@ class _CapsulePageState extends State<CapsulePage> {
             ...opened,
             ...items.where((item) => item.isReady),
           ];
+          // "距上一个胶囊开启过去" tracks the last actual open, not the
+          // scheduled unlock date.
           final newestOpened = opened.isEmpty
               ? null
               : opened.reduce((a, b) {
-                  final aDate = a.openDate ?? a.createdAt;
-                  final bDate = b.openDate ?? b.createdAt;
+                  final aDate = a.openedAt ?? a.openDate ?? a.createdAt;
+                  final bDate = b.openedAt ?? b.openDate ?? b.createdAt;
                   return aDate.isAfter(bDate) ? a : b;
                 });
-          return Stack(
-            children: [
-              const Positioned.fill(child: _CapsuleHomeBackground()),
-              SafeArea(
-                bottom: false,
-                child: CustomScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                        child: _CapsuleTopBar(
-                          onBack: () => Navigator.of(context).maybePop(),
-                        ),
-                      ),
-                    ),
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-                        child: const _CapsuleHomeHeader(),
-                      ),
-                    ),
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                        child: _CapsuleWriteEntryCard(
-                          onTap: () => _openEditor(),
-                        ),
-                      ),
-                    ),
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 48, 20, 0),
-                        child: _CapsuleHomeShortcutGrid(
-                          draftCount: drafts.length,
-                          pendingCount: pending.length,
-                          openedCount: arrived.length,
-                          onDrafts: drafts.isEmpty
-                              ? null
-                              : () => _openDrafts(drafts),
-                          onPending: pending.isEmpty
-                              ? null
-                              : () => _openPending(pending),
-                          onOpened: arrived.isEmpty
-                              ? null
-                              : () => _openOpened(arrived),
-                        ),
-                      ),
-                    ),
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: EdgeInsets.fromLTRB(20, 48, 20, bottom + 34),
-                        child: _CapsuleLastOpenedCard(
-                          newestOpened: newestOpened,
-                          openedCount: opened.length,
-                        ),
-                      ),
-                    ),
-                    if (snapshot.hasError && !hasCachedItems)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(22, 0, 22, 28),
-                          child: _CapsuleError(onRetry: _refresh),
-                        ),
-                      ),
-                  ],
+          return SafeArea(
+            bottom: false,
+            child: CustomScrollView(
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                // Design y=55..202: back button, hero bottle, greeting, squiggle.
+                SliverToBoxAdapter(
+                  child: _CapsuleHomeHeader(
+                    onBack: () => Navigator.of(context).maybePop(),
+                  ),
                 ),
-              ),
-            ],
+                // Design y=211, 348x96 centered.
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(21, 0, 21, 0),
+                    child: _CapsuleWriteEntryCard(onTap: () => _openEditor()),
+                  ),
+                ),
+                // Design y=351, three 86-high cards inset 24 with a 19 gutter.
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 44, 24, 0),
+                    child: _CapsuleHomeShortcutGrid(
+                      draftCount: drafts.length,
+                      pendingCount: pending.length,
+                      openedCount: arrived.length,
+                      onDrafts: drafts.isEmpty
+                          ? null
+                          : () => _openDrafts(drafts),
+                      onPending: pending.isEmpty
+                          ? null
+                          : () => _openPending(pending),
+                      onOpened: arrived.isEmpty
+                          ? null
+                          : () => _openOpened(arrived),
+                    ),
+                  ),
+                ),
+                // Design y=492, 350x120 centered.
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(20, 55, 20, bottom + 34),
+                    child: _CapsuleLastOpenedCard(
+                      newestOpened: newestOpened,
+                      hasOpened: opened.isNotEmpty,
+                    ),
+                  ),
+                ),
+                if (snapshot.hasError && !hasCachedItems)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(22, 0, 22, 28),
+                      child: _CapsuleError(onRetry: _refresh),
+                    ),
+                  ),
+              ],
+            ),
           );
         },
       ),
@@ -249,16 +257,12 @@ class _CapsulePageState extends State<CapsulePage> {
   }
 
   Future<Object?> _showDetail(TimeCapsule capsule) {
-    return Navigator.of(context).push<Object?>(
-      CupertinoPageRoute<Object?>(
-        fullscreenDialog: true,
-        builder: (_) => CapsuleEditorPage(
-          api: widget.api,
-          session: widget.session,
-          draft: capsule,
-          readOnly: true,
-        ),
-      ),
+    return CapsuleEditorPage.push(
+      context,
+      api: widget.api,
+      session: widget.session,
+      draft: capsule,
+      readOnly: true,
     );
   }
 
@@ -335,6 +339,34 @@ class CapsuleEditorPage extends StatefulWidget {
   final AuthSession session;
   final TimeCapsule? draft;
   final bool readOnly;
+
+  /// The only supported way to open the editor.
+  ///
+  /// It finishes in three different shapes — a [_CapsuleEditorResult] when a
+  /// capsule is saved or deleted, a [CapsuleChatDraft] when the reader hands it
+  /// back to chat, or null when it is dismissed — so the route has to be able
+  /// to carry all of them. Popping a result the route's type argument cannot
+  /// hold throws inside the navigator's history flush, which both swallows the
+  /// pop and leaves the navigator locked, so every later push and pop fails.
+  static Future<Object?> push(
+    BuildContext context, {
+    required CompanionApi api,
+    required AuthSession session,
+    TimeCapsule? draft,
+    bool readOnly = false,
+  }) {
+    return Navigator.of(context).push<Object?>(
+      CupertinoPageRoute<Object?>(
+        fullscreenDialog: true,
+        builder: (_) => CapsuleEditorPage(
+          api: api,
+          session: session,
+          draft: draft,
+          readOnly: readOnly,
+        ),
+      ),
+    );
+  }
 
   @override
   State<CapsuleEditorPage> createState() => _CapsuleEditorPageState();
@@ -492,7 +524,13 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
-    var selected = _openDate ?? DateTime(now.year, now.month, now.day + 1);
+    final today = DateTime(now.year, now.month, now.day);
+    final latest = DateTime(now.year + 20, 12, 31);
+    var selected = _openDate ?? today;
+    // A capsule can only be scheduled for today or later, so a draft that has
+    // gone stale must not seed the wheel outside its own bounds.
+    if (selected.isBefore(today)) selected = today;
+    if (selected.isAfter(latest)) selected = latest;
     final skin = _CapsuleSkin.byId(_skin);
     final isDark = AppColors.isDark(context);
     final sheetColor = isDark ? skin.paper : skin.page;
@@ -577,41 +615,18 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
                       color: pickerSurface,
                       child: SizedBox(
                         height: 238,
-                        child: CupertinoTheme(
-                          data: CupertinoThemeData(
-                            brightness: isDark
-                                ? Brightness.dark
-                                : Brightness.light,
-                            primaryColor: skin.accent,
-                            textTheme: CupertinoTextThemeData(
-                              dateTimePickerTextStyle: TextStyle(
-                                color: skin.text,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                        child: _CapsuleDateWheels(
+                          initial: selected,
+                          first: today,
+                          last: latest,
+                          overlayColor: overlayColor,
+                          textStyle: TextStyle(
+                            color: skin.text,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.none,
                           ),
-                          child: CupertinoDatePicker(
-                            mode: CupertinoDatePickerMode.date,
-                            backgroundColor: pickerSurface,
-                            initialDateTime: selected,
-                            minimumDate: DateTime(now.year, now.month, now.day),
-                            maximumDate: DateTime(now.year + 20, 12, 31),
-                            selectionOverlayBuilder:
-                                (
-                                  context, {
-                                  required columnCount,
-                                  required selectedIndex,
-                                }) {
-                                  return CupertinoPickerDefaultSelectionOverlay(
-                                    background: overlayColor,
-                                    capStartEdge: selectedIndex == 0,
-                                    capEndEdge:
-                                        selectedIndex == columnCount - 1,
-                                  );
-                                },
-                            onDateTimeChanged: (value) => selected = value,
-                          ),
+                          onChanged: (value) => selected = value,
                         ),
                       ),
                     ),
@@ -756,12 +771,6 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
     });
     try {
       await widget.api.deleteTimeCapsule(draft.id);
-      if (mounted) {
-        await _waitForNavigatorUnlock(delay: Duration.zero);
-      }
-      if (mounted) {
-        Navigator.of(context).pop(_CapsuleEditorResult.deleted(draft));
-      }
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -770,6 +779,16 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
           _savingStatus = null;
         });
       }
+      return;
+    }
+    // Past this point the capsule is gone on the server, so nothing here may
+    // surface as a retryable "删除失败" — a second attempt would only come back
+    // as "Capsule not found".
+    if (mounted) {
+      await _waitForNavigatorUnlock(delay: Duration.zero);
+    }
+    if (mounted) {
+      Navigator.of(context).pop(_CapsuleEditorResult.deleted(draft));
     }
   }
 
@@ -2283,17 +2302,6 @@ class _CapsuleSkinSheet extends StatelessWidget {
   }
 }
 
-class _CapsuleTopBar extends StatelessWidget {
-  const _CapsuleTopBar({required this.onBack});
-
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(children: [_CapsuleWarmBackButton(onTap: onBack, light: true)]);
-  }
-}
-
 class _CapsuleSendChatButton extends StatelessWidget {
   const _CapsuleSendChatButton({required this.onTap});
 
@@ -2430,39 +2438,6 @@ class _CapsuleMiniActionButton extends StatelessWidget {
   }
 }
 
-class _CapsuleHomeBackground extends StatelessWidget {
-  const _CapsuleHomeBackground();
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFFFDEBD4), Color(0xFFFEFCFA)],
-          stops: [0, 0.28],
-        ),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            height: 253,
-            child: Image.asset(
-              _capsuleAssetHomeHero,
-              fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _WarmBlurSpot extends StatelessWidget {
   const _WarmBlurSpot({required this.color, required this.size});
 
@@ -2482,53 +2457,76 @@ class _WarmBlurSpot extends StatelessWidget {
   }
 }
 
+/// Design y=55..211 of the home screen: back button, hero bottle, greeting and
+/// the hand-drawn squiggle. Laid out with absolute offsets scaled off the 390pt
+/// reference width so the bottle keeps overlapping the greeting on any device.
 class _CapsuleHomeHeader extends StatelessWidget {
-  const _CapsuleHomeHeader();
+  const _CapsuleHomeHeader({required this.onBack});
+
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 92,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            left: 4,
-            top: 25,
-            child: Text(
-              'Hi，未来的自己',
-              style: TextStyle(
-                color: const Color(0xFFFE9631),
-                fontSize: 24,
-                height: 1.12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0,
-                shadows: [
-                  Shadow(
-                    color: const Color(0xFFFFB764).withValues(alpha: 0.16),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
+    // Scale off the width we were actually given rather than the screen: the
+    // two agree on phones, and only the local width keeps the absolute design
+    // coordinates inside the box we occupy.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scale = constraints.maxWidth / _capsuleDesignWidth;
+        double x(double value) => value * scale;
+        // Design coordinates are absolute; the status bar (47pt) is already
+        // consumed by the enclosing SafeArea.
+        const statusBar = 47.0;
+        return SizedBox(
+          height: x(211 - statusBar),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                left: x(194),
+                top: x(58 - statusBar),
+                width: x(178),
+                height: x(144),
+                child: Image.asset(_capsuleAssetHomeHero, fit: BoxFit.contain),
               ),
-            ),
+              Positioned(
+                left: x(20),
+                top: x(55 - statusBar),
+                child: _CapsuleWarmBackButton(onTap: onBack, light: true),
+              ),
+              Positioned(
+                left: x(56),
+                top: x(108 - statusBar),
+                child: Text(
+                  'Hi，未来的自己',
+                  style: TextStyle(
+                    color: _capsuleOrange,
+                    fontSize: x(24),
+                    height: 29 / 24,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ),
+              Positioned(
+                left: x(117),
+                top: x(154 - statusBar),
+                child: SvgPicture.asset(
+                  _capsuleAssetHomeUnderline,
+                  width: x(76),
+                  height: x(13.91),
+                  fit: BoxFit.fill,
+                ),
+              ),
+            ],
           ),
-          Positioned(
-            left: 97,
-            top: 63,
-            child: SvgPicture.asset(
-              _capsuleAssetHomeUnderline,
-              width: 76,
-              height: 14,
-              fit: BoxFit.fill,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
+/// Design "Rectangle 282" — 348x96 translucent orange card.
 class _CapsuleWriteEntryCard extends StatelessWidget {
   const _CapsuleWriteEntryCard({required this.onTap});
 
@@ -2542,30 +2540,29 @@ class _CapsuleWriteEntryCard extends StatelessWidget {
       onPressed: onTap,
       child: Container(
         height: 96,
-        padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
-            colors: [Color(0xFFFCD8B1), Color(0xFFFCE7CB)],
+            colors: [
+              _capsuleOrange.withValues(alpha: 0.40),
+              _capsuleOrange.withValues(alpha: 0.25),
+            ],
           ),
+          border: Border.all(color: _capsuleHairline.withValues(alpha: 0.5)),
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFA85300).withValues(alpha: 0.25),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          boxShadow: const [_capsuleGlassShadow],
         ),
         child: Row(
           children: [
-            SizedBox(
-              width: 64,
-              height: 64,
-              child: Image.asset(_capsuleAssetWriteIcon, fit: BoxFit.contain),
+            const _CapsuleIconMedallion(
+              diameter: 55.43,
+              asset: _capsuleAssetWriteIcon,
+              iconSize: 24,
+              bordered: true,
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 18),
             const Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -2574,35 +2571,66 @@ class _CapsuleWriteEntryCard extends StatelessWidget {
                   Text(
                     '写新胶囊',
                     style: TextStyle(
-                      color: Color(0xFF333333),
+                      color: _capsuleInk,
                       fontSize: 20,
-                      height: 1,
-                      fontWeight: FontWeight.w800,
+                      height: 24 / 20,
+                      fontWeight: FontWeight.w700,
                       decoration: TextDecoration.none,
                     ),
                   ),
-                  SizedBox(height: 10),
+                  SizedBox(height: 12),
                   Text(
                     '写一封信给未来的自己',
                     style: TextStyle(
                       color: Color(0xFF666666),
-                      fontSize: 11,
-                      height: 1,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 12,
+                      height: 14 / 12,
+                      fontWeight: FontWeight.w400,
                       decoration: TextDecoration.none,
                     ),
                   ),
                 ],
               ),
             ),
-            SizedBox(
-              width: 36,
-              height: 36,
-              child: SvgPicture.asset(_capsuleAssetOrangeArrow),
-            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Solid orange circle holding a white line icon — the design reuses this for
+/// the write card and for every shortcut card.
+class _CapsuleIconMedallion extends StatelessWidget {
+  const _CapsuleIconMedallion({
+    required this.diameter,
+    required this.asset,
+    required this.iconSize,
+    this.opacity = 1,
+    this.bordered = false,
+  });
+
+  final double diameter;
+  final String asset;
+  final double iconSize;
+  final double opacity;
+  final bool bordered;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: diameter,
+      height: diameter,
+      decoration: BoxDecoration(
+        color: _capsuleOrange.withValues(alpha: opacity),
+        shape: BoxShape.circle,
+        border: bordered
+            ? Border.all(color: _capsuleHairline.withValues(alpha: 0.5))
+            : null,
+        boxShadow: const [_capsuleOrangeShadow],
+      ),
+      alignment: Alignment.center,
+      child: Image.asset(asset, height: iconSize, fit: BoxFit.contain),
     );
   }
 }
@@ -2632,16 +2660,8 @@ class _CapsuleHomeShortcutGrid extends StatelessWidget {
           child: _CapsuleHomeShortcutCard(
             label: '草稿',
             count: draftCount,
-            background: const Color(0xFFFEF4EC),
-            shadow: const Color(0xFFAB5F00),
-            badgeColor: const Color(0xFFFFA02E),
+            icon: _capsuleAssetDraftIcon,
             onTap: onDrafts,
-            icon: Image.asset(
-              _capsuleAssetDraftIcon,
-              width: 38,
-              height: 48,
-              fit: BoxFit.contain,
-            ),
           ),
         ),
         const SizedBox(width: 19),
@@ -2649,17 +2669,8 @@ class _CapsuleHomeShortcutGrid extends StatelessWidget {
           child: _CapsuleHomeShortcutCard(
             label: '待解封',
             count: pendingCount,
-            background: const Color(0xFFF3F1FD),
-            shadow: const Color(0xFF4300A8),
-            badgeColor: const Color(0xFFFF6265),
+            icon: _capsuleAssetPendingIcon,
             onTap: onPending,
-            icon: Image.asset(
-              _capsuleAssetPendingIcon,
-              width: 32,
-              height: 48,
-              fit: BoxFit.contain,
-            ),
-            showBadge: pendingCount > 0,
           ),
         ),
         const SizedBox(width: 19),
@@ -2667,16 +2678,8 @@ class _CapsuleHomeShortcutGrid extends StatelessWidget {
           child: _CapsuleHomeShortcutCard(
             label: '已解封',
             count: openedCount,
-            background: const Color(0xFFEBF9EF),
-            shadow: const Color(0xFF058700),
-            badgeColor: const Color(0xFF3DC45D),
+            icon: _capsuleAssetOpenedIcon,
             onTap: onOpened,
-            icon: Image.asset(
-              _capsuleAssetOpenedIcon,
-              width: 48,
-              height: 48,
-              fit: BoxFit.contain,
-            ),
           ),
         ),
       ],
@@ -2684,191 +2687,211 @@ class _CapsuleHomeShortcutGrid extends StatelessWidget {
   }
 }
 
+/// Design "Rectangle 206/207" — 86-high glass card with an orange medallion,
+/// a label and a red count badge. The empty variant dims the medallion and the
+/// label and drops the badge.
 class _CapsuleHomeShortcutCard extends StatelessWidget {
   const _CapsuleHomeShortcutCard({
     required this.label,
     required this.count,
-    required this.background,
-    required this.shadow,
-    required this.badgeColor,
     required this.icon,
     required this.onTap,
-    this.showBadge = false,
   });
 
   final String label;
   final int count;
-  final Color background;
-  final Color shadow;
-  final Color badgeColor;
-  final Widget icon;
+  final String icon;
   final VoidCallback? onTap;
-  final bool showBadge;
 
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
-    final badgeText = count > 99 ? '99+' : '$count';
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
       onPressed: onTap,
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 180),
-        opacity: enabled ? 1 : 0.52,
-        child: Container(
-          height: 104,
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: shadow.withValues(alpha: enabled ? 0.25 : 0.10),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.center,
-            children: [
-              Positioned(top: 14, child: icon),
-              Positioned(
-                bottom: 18,
-                left: 0,
-                right: 0,
-                child: Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFF333333),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    decoration: TextDecoration.none,
-                  ),
+      child: Container(
+        height: 86,
+        decoration: BoxDecoration(
+          color: _capsuleGlassFill,
+          border: Border.all(color: _capsuleHairline),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [_capsuleGlassShadow],
+        ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              top: 10,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: _CapsuleIconMedallion(
+                  diameter: 48,
+                  asset: icon,
+                  iconSize: 24,
+                  opacity: enabled ? 1 : 0.5,
                 ),
               ),
-              if (showBadge)
-                Positioned(
-                  top: 4,
-                  right: 12,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: badgeColor,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      badgeText,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
-                        height: 1,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                  ),
+            ),
+            Positioned(
+              top: 63,
+              left: 0,
+              right: 0,
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _capsuleInk.withValues(alpha: enabled ? 1 : 0.5),
+                  fontSize: 14,
+                  height: 17 / 14,
+                  fontWeight: FontWeight.w700,
+                  decoration: TextDecoration.none,
                 ),
-            ],
-          ),
+              ),
+            ),
+            if (count > 0)
+              Positioned(top: 5, right: 6, child: _CapsuleCountBadge(count)),
+          ],
         ),
       ),
     );
   }
 }
 
-class _CapsuleLastOpenedCard extends StatelessWidget {
-  const _CapsuleLastOpenedCard({
-    required this.newestOpened,
-    required this.openedCount,
-  });
+/// Design "Frame 331" — 16-high red pill. Counts above 99 collapse to "99+" so
+/// the pill cannot outgrow the card corner it sits on.
+class _CapsuleCountBadge extends StatelessWidget {
+  const _CapsuleCountBadge(this.count);
 
-  final TimeCapsule? newestOpened;
-  final int openedCount;
+  final int count;
 
   @override
   Widget build(BuildContext context) {
-    final openedAt = newestOpened?.openDate ?? newestOpened?.createdAt;
-    final days = openedAt == null
+    return Container(
+      height: 16,
+      constraints: const BoxConstraints(minWidth: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: const BoxDecoration(
+        color: _capsuleBadgeRed,
+        borderRadius: BorderRadius.all(Radius.circular(999)),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          height: 12 / 10,
+          fontWeight: FontWeight.w700,
+          decoration: TextDecoration.none,
+        ),
+      ),
+    );
+  }
+}
+
+/// Design "Rectangle 283" — 350x120 glass card with the opened-capsule
+/// illustration bleeding out to the right.
+class _CapsuleLastOpenedCard extends StatelessWidget {
+  const _CapsuleLastOpenedCard({
+    required this.newestOpened,
+    required this.hasOpened,
+  });
+
+  final TimeCapsule? newestOpened;
+  final bool hasOpened;
+
+  @override
+  Widget build(BuildContext context) {
+    final openedAt =
+        newestOpened?.openedAt ??
+        newestOpened?.openDate ??
+        newestOpened?.createdAt;
+    final days = !hasOpened || openedAt == null
         ? 0
         : DateTime.now().difference(openedAt).inDays.clamp(0, 9999);
     return Container(
       height: 120,
-      padding: const EdgeInsets.fromLTRB(28, 24, 18, 18),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFFFAEFE1), Color(0xFFFCF3E9)],
-        ),
+        color: _capsuleGlassFill,
+        border: Border.all(color: _capsuleHairline),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFA85300).withValues(alpha: 0.25),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        boxShadow: const [_capsuleGlassShadow],
       ),
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
+          // Design "胶囊 2" and the two stars sit against the card's right edge,
+          // so they are anchored from the right to survive wider screens.
           Positioned(
-            right: 0,
-            top: -20,
-            child: SizedBox(
-              width: 132,
-              height: 109,
-              child: Image.asset(_capsuleAssetLastOpened, fit: BoxFit.contain),
+            right: 43,
+            top: 0,
+            width: 110,
+            height: 110,
+            child: Image.asset(_capsuleAssetLastOpened, fit: BoxFit.contain),
+          ),
+          Positioned(
+            right: 25,
+            top: 14,
+            child: Image.asset(_capsuleAssetHomeStarLg, width: 14, height: 14),
+          ),
+          Positioned(
+            right: 23,
+            top: 32,
+            child: Image.asset(_capsuleAssetHomeStarSm, width: 6, height: 6),
+          ),
+          const Positioned(
+            left: 28,
+            top: 24,
+            child: Text(
+              '距上一个胶囊开启过去',
+              style: TextStyle(
+                color: _capsuleInk,
+                fontSize: 16,
+                height: 19 / 16,
+                fontWeight: FontWeight.w700,
+                decoration: TextDecoration.none,
+              ),
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '距上一个胶囊开启过去',
-                style: TextStyle(
-                  color: Color(0xFF333333),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  height: 1,
-                  decoration: TextDecoration.none,
+          Positioned(
+            left: 28,
+            top: 57,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '$days',
+                  style: const TextStyle(
+                    color: _capsuleOrange,
+                    fontSize: 36,
+                    height: 1,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    openedCount == 0 ? '0' : '$days',
-                    style: const TextStyle(
-                      color: Color(0xFFFE9631),
-                      fontSize: 36,
-                      height: 1,
-                      fontWeight: FontWeight.w900,
+                const SizedBox(width: 10),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 3),
+                  child: Text(
+                    '天',
+                    style: TextStyle(
+                      color: Color(0xFFBFBFBF),
+                      fontSize: 12,
+                      height: 14 / 12,
+                      fontWeight: FontWeight.w700,
                       decoration: TextDecoration.none,
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      '天',
-                      style: TextStyle(
-                        color: Color(0xFFBFBFBF),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 28,
+            top: 96,
+            child: Container(width: 86, height: 3, color: _capsuleOrange),
           ),
         ],
       ),
@@ -3363,12 +3386,7 @@ class _OpenedCapsulesPageState extends State<_OpenedCapsulesPage> {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final safeTop = MediaQuery.paddingOf(context).top;
-    final sx = size.width / 390;
-    final sy = size.height / 844;
-    double x(double value) => value * sx;
-    double y(double value) => value * sy;
+    final bottom = MediaQuery.paddingOf(context).bottom;
     return Material(
       color: const Color(0xFFFEFCFA),
       child: DefaultTextStyle(
@@ -3376,120 +3394,129 @@ class _OpenedCapsulesPageState extends State<_OpenedCapsulesPage> {
           color: Color(0xFF111111),
           decoration: TextDecoration.none,
         ),
-        child: Stack(
-          children: [
-            Positioned(
-              left: x(20),
-              top: safeTop + 8,
-              child: _CapsuleWarmBackButton(
-                onTap: () => Navigator.of(context).maybePop(),
-                light: true,
-              ),
-            ),
-            Positioned(
-              top: safeTop + 12,
-              left: 0,
-              right: 0,
-              child: const Text(
-                '已解封',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.black,
-                  fontSize: 20,
-                  height: 1,
-                  fontWeight: FontWeight.w700,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-            ),
-            Positioned(
-              left: x(17),
-              top: y(117),
-              width: x(350),
-              height: y(148),
-              child: _OpenedSummaryCard(count: _capsules.length),
-            ),
-            Positioned(
-              left: x(17),
-              top: y(294),
-              child: Row(
-                children: [
-                  SvgPicture.asset(
-                    _capsuleAssetOpenedStar,
-                    width: x(20),
-                    height: y(20),
-                  ),
-                  SizedBox(width: x(8)),
-                  const Text(
-                    '我的胶囊',
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 16,
-                      height: 1,
-                      fontWeight: FontWeight.w500,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Positioned(
-              left: x(17),
-              right: x(17),
-              top: y(334),
-              bottom: y(34),
-              child: _capsules.isEmpty
-                  ? const Center(
-                      child: Text(
-                        '暂无已解封胶囊',
-                        style: TextStyle(
-                          color: Color(0xFF9A9A9A),
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          decoration: TextDecoration.none,
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              // Design y=55..91: back button with the page title centred on it.
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: SizedBox(
+                  height: 36,
+                  child: Stack(
+                    children: [
+                      const Positioned.fill(
+                        child: Center(
+                          child: Text(
+                            '已解封',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontSize: 24,
+                              height: 29 / 24,
+                              fontWeight: FontWeight.w700,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
                         ),
                       ),
-                    )
-                  : ListView.separated(
-                      physics: const BouncingScrollPhysics(),
-                      padding: EdgeInsets.zero,
-                      itemCount: _capsules.length,
-                      separatorBuilder: (_, __) => SizedBox(height: y(16)),
-                      itemBuilder: (context, index) {
-                        final capsule = _capsules[index];
-                        final isOpening = _openingCapsuleId == capsule.id;
-                        final interactionLocked =
-                            _openingCapsuleId != null || _showingCapsuleDetail;
-                        return _OpenedCapsuleSheetTile(
-                          capsule: capsule,
-                          isOpening: isOpening,
-                          interactionLocked: interactionLocked,
-                          onTap: () {
-                            if (capsule.isReady) {
-                              unawaited(_openReadyCapsule(capsule));
-                            } else {
-                              unawaited(_showCapsuleDetail(capsule));
-                            }
-                          },
-                          onDelete: () async {
-                            if (_openingCapsuleId != null) return false;
-                            final deleted = await widget.onDelete(capsule);
-                            if (deleted && mounted) {
-                              setState(() => _capsules.removeAt(index));
-                            }
-                            return deleted;
-                          },
-                        );
-                      },
+                      Positioned(
+                        left: 20,
+                        child: _CapsuleWarmBackButton(
+                          onTap: () => Navigator.of(context).maybePop(),
+                          light: true,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // Design y=110, 348x96 centred.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(21, 19, 21, 0),
+                child: _OpenedSummaryCard(count: _capsules.length),
+              ),
+              // Design y=229 "Frame 334".
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 23, 20, 0),
+                child: Row(
+                  children: [
+                    SvgPicture.asset(
+                      _capsuleAssetOpenedStar,
+                      width: 20,
+                      height: 20,
                     ),
-            ),
-          ],
+                    const SizedBox(width: 8),
+                    const Text(
+                      '我的胶囊',
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: 20,
+                        height: 24 / 20,
+                        fontWeight: FontWeight.w500,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: _capsules.isEmpty
+                    ? const Center(
+                        child: Text(
+                          '暂无已解封胶囊',
+                          style: TextStyle(
+                            color: Color(0xFF9A9A9A),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      )
+                    // Design y=270 with a 125 pitch on 96-high cards.
+                    : ListView.separated(
+                        physics: const BouncingScrollPhysics(),
+                        padding: EdgeInsets.fromLTRB(20, 17, 20, bottom + 34),
+                        itemCount: _capsules.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 29),
+                        itemBuilder: (context, index) {
+                          final capsule = _capsules[index];
+                          final isOpening = _openingCapsuleId == capsule.id;
+                          final interactionLocked =
+                              _openingCapsuleId != null ||
+                              _showingCapsuleDetail;
+                          return _OpenedCapsuleSheetTile(
+                            capsule: capsule,
+                            isOpening: isOpening,
+                            interactionLocked: interactionLocked,
+                            onTap: () {
+                              if (capsule.isReady) {
+                                unawaited(_openReadyCapsule(capsule));
+                              } else {
+                                unawaited(_showCapsuleDetail(capsule));
+                              }
+                            },
+                            onDelete: () async {
+                              if (_openingCapsuleId != null) return false;
+                              final deleted = await widget.onDelete(capsule);
+                              if (deleted && mounted) {
+                                setState(() => _capsules.removeAt(index));
+                              }
+                              return deleted;
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
+/// Design "Rectangle 282" on the opened screen — same translucent orange card
+/// as the home write entry, with the count spelled out over two lines.
 class _OpenedSummaryCard extends StatelessWidget {
   const _OpenedSummaryCard({required this.count});
 
@@ -3498,85 +3525,74 @@ class _OpenedSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 148,
-      padding: const EdgeInsets.fromLTRB(36, 24, 20, 18),
+      height: 96,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
       decoration: BoxDecoration(
-        color: const Color(0xFFFCECDF),
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            _capsuleOrange.withValues(alpha: 0.40),
+            _capsuleOrange.withValues(alpha: 0.25),
+          ],
+        ),
+        border: Border.all(color: _capsuleHairline),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFC36000).withValues(alpha: 0.25),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        boxShadow: const [_capsuleGlassShadow],
       ),
-      child: Stack(
-        clipBehavior: Clip.none,
+      child: Row(
         children: [
-          Positioned(
-            right: -8,
-            top: -24,
-            child: SizedBox(
-              width: 191,
-              height: 146,
-              child: Image.asset(
-                _capsuleAssetOpenedSummary,
-                fit: BoxFit.contain,
-              ),
-            ),
+          const _CapsuleIconMedallion(
+            diameter: 55.06,
+            asset: _capsuleAssetOpenedIcon,
+            iconSize: 24,
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text(
-                    '共有',
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 20,
-                      height: 1.1,
-                      fontWeight: FontWeight.w300,
-                      decoration: TextDecoration.none,
-                    ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // The count is the one word the design blows up and tints; the
+                // rest of the sentence stays 20/700 black.
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      const TextSpan(text: '共有 '),
+                      TextSpan(
+                        text: '$count',
+                        style: const TextStyle(
+                          color: _capsuleOrange,
+                          fontSize: 30,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const TextSpan(text: ' 枚胶囊'),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '$count',
-                    style: const TextStyle(
-                      color: Color(0xFFFE9631),
-                      fontSize: 48,
-                      height: 0.9,
-                      fontWeight: FontWeight.w900,
-                      decoration: TextDecoration.none,
-                    ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontSize: 20,
+                    height: 25 / 20,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
                   ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    '枚胶囊',
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 20,
-                      height: 1.1,
-                      fontWeight: FontWeight.w300,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                '已经解封',
-                style: TextStyle(
-                  color: Colors.black,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w400,
-                  decoration: TextDecoration.none,
                 ),
-              ),
-            ],
+                const SizedBox(height: 2),
+                const Text(
+                  '已经解封',
+                  style: TextStyle(
+                    color: Color(0xFF333333),
+                    fontSize: 14,
+                    height: 17 / 14,
+                    fontWeight: FontWeight.w400,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -3584,6 +3600,8 @@ class _OpenedSummaryCard extends StatelessWidget {
   }
 }
 
+/// Design "Group 430" — 350x96 white list card. Capsules that are due but not
+/// yet opened keep a locked thumbnail and an "开启" pill.
 class _OpenedCapsuleSheetTile extends StatelessWidget {
   const _OpenedCapsuleSheetTile({
     required this.capsule,
@@ -3604,79 +3622,70 @@ class _OpenedCapsuleSheetTile extends StatelessWidget {
     final isReady = capsule.isReady;
     final open = capsule.openDate == null
         ? '未知日期'
-        : _formatCapsuleDate(capsule.openDate!);
-    final created = _formatCapsuleDate(capsule.createdAt);
+        : _formatCapsuleDotDate(capsule.openDate!);
+    final created = _formatCapsuleDotDate(capsule.createdAt);
     final tile = CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
       onPressed: interactionLocked ? () {} : onTap,
       child: Container(
         height: 96,
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+        padding: const EdgeInsets.fromLTRB(22, 0, 15, 0),
         decoration: BoxDecoration(
           color: Colors.white,
+          border: Border.all(color: _capsuleHairline),
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFFE9631).withValues(alpha: 0.18),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
         ),
+        // Design anchors each column to its own y inside the 96-high card
+        // (thumb 23, copy 11, pill 56) rather than centring them together.
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Opacity(
-                    opacity: isReady ? 0.42 : 1,
-                    child: Image.asset(
-                      _capsuleAssetOpenedThumb,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                  if (isReady)
-                    ColoredBox(
-                      color: const Color(0xFFFFF4E8).withValues(alpha: 0.28),
-                    ),
-                  if (isReady)
-                    const Center(
-                      child: Icon(
-                        CupertinoIcons.lock_fill,
-                        color: Color(0xFFFE9631),
-                        size: 36,
+            Padding(
+              padding: const EdgeInsets.only(top: 23),
+              child: SizedBox(
+                width: 52,
+                height: 51,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Opacity(
+                      opacity: isReady ? 0.42 : 1,
+                      child: Image.asset(
+                        _capsuleAssetOpenedThumb,
+                        fit: BoxFit.contain,
                       ),
                     ),
-                ],
+                    if (isReady)
+                      const Icon(
+                        CupertinoIcons.lock_fill,
+                        color: _capsuleOrange,
+                        size: 26,
+                      ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 26),
             Expanded(
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const SizedBox(height: 11),
                   Text(
                     isReady ? '一封来自过去的信' : capsule.preview,
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: Color(0xFF333333),
+                      color: _capsuleInk,
                       fontSize: 14,
-                      height: 1.28,
-                      fontWeight: FontWeight.w700,
+                      height: 17 / 14,
+                      fontWeight: FontWeight.w500,
                       decoration: TextDecoration.none,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   Text(
                     '$created 创建',
                     maxLines: 1,
@@ -3684,11 +3693,12 @@ class _OpenedCapsuleSheetTile extends StatelessWidget {
                     style: const TextStyle(
                       color: Color(0xFF666666),
                       fontSize: 10,
-                      fontWeight: FontWeight.w500,
+                      height: 12 / 10,
+                      fontWeight: FontWeight.w400,
                       decoration: TextDecoration.none,
                     ),
                   ),
-                  const SizedBox(height: 7),
+                  const SizedBox(height: 20),
                   Row(
                     children: [
                       SvgPicture.asset(
@@ -3697,13 +3707,18 @@ class _OpenedCapsuleSheetTile extends StatelessWidget {
                         height: 10,
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        '$open 开启',
-                        style: const TextStyle(
-                          color: Color(0xFF666666),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                          decoration: TextDecoration.none,
+                      Flexible(
+                        child: Text(
+                          '$open 开启',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF666666),
+                            fontSize: 10,
+                            height: 12 / 10,
+                            fontWeight: FontWeight.w400,
+                            decoration: TextDecoration.none,
+                          ),
                         ),
                       ),
                     ],
@@ -3711,49 +3726,71 @@ class _OpenedCapsuleSheetTile extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            Container(
-              height: 26,
-              constraints: const BoxConstraints(minWidth: 58),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFE9D3),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              alignment: Alignment.center,
-              child: isOpening
-                  ? const CupertinoActivityIndicator(
-                      radius: 8,
-                      color: Color(0xFFFE9631),
-                    )
-                  : Text(
-                      isReady ? '开启' : '查看详情',
-                      style: const TextStyle(
-                        color: Color(0xFFFE9631),
-                        fontSize: 13,
-                        height: 1,
-                        fontWeight: FontWeight.w800,
-                        decoration: TextDecoration.none,
+            const SizedBox(width: 12),
+            // Design "Rectangle 237" — 82x27 orange pill sitting low in the card.
+            Padding(
+              padding: const EdgeInsets.only(top: 56),
+              child: Container(
+                width: 82,
+                height: 27,
+                decoration: BoxDecoration(
+                  color: _capsuleOrange,
+                  border: Border.all(
+                    color: _capsuleHairline.withValues(alpha: 0.5),
+                  ),
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: const [_capsuleOrangeShadow],
+                ),
+                alignment: Alignment.center,
+                child: isOpening
+                    ? const CupertinoActivityIndicator(
+                        radius: 8,
+                        color: Colors.white,
+                      )
+                    : Text(
+                        isReady ? '开启' : '查看详情',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          height: 17 / 14,
+                          fontWeight: FontWeight.w700,
+                          decoration: TextDecoration.none,
+                        ),
                       ),
-                    ),
+              ),
             ),
           ],
         ),
       ),
     );
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: Dismissible(
-        key: ValueKey('arrived-sheet-${capsule.id}'),
-        direction: interactionLocked
-            ? DismissDirection.none
-            : DismissDirection.endToStart,
-        confirmDismiss: (_) async {
-          await onDelete();
-          return false;
-        },
-        background: const _CapsuleDeleteSwipeBackground(),
-        child: tile,
+    // The swipe-to-delete background has to be clipped to the card radius, but
+    // clipping would also eat the card's drop shadow — so the shadow is painted
+    // by an outer box that the clip never touches.
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: _capsuleOrange.withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Dismissible(
+          key: ValueKey('arrived-sheet-${capsule.id}'),
+          direction: interactionLocked
+              ? DismissDirection.none
+              : DismissDirection.endToStart,
+          confirmDismiss: (_) async {
+            await onDelete();
+            return false;
+          },
+          background: const _CapsuleDeleteSwipeBackground(),
+          child: tile,
+        ),
       ),
     );
   }
@@ -3775,23 +3812,25 @@ class _CapsuleWarmBackButton extends StatelessWidget {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.40),
+          // Design "Ellipse 46": opaque white on the light screens; the warm
+          // pending scene keeps the translucent treatment it was built for.
+          color: light ? Colors.white : Colors.white.withValues(alpha: 0.40),
           shape: BoxShape.circle,
+          border: light ? Border.all(color: _capsuleHairline) : null,
           boxShadow: [
-            BoxShadow(
-              color: (light ? const Color(0xFFFE9631) : const Color(0xFFFFE3C8))
-                  .withValues(alpha: 0.25),
-              blurRadius: 4,
-              offset: const Offset(0, 4),
-            ),
+            light
+                ? _capsuleOrangeShadow
+                : BoxShadow(
+                    color: const Color(0xFFFFE3C8).withValues(alpha: 0.25),
+                    blurRadius: 4,
+                    offset: const Offset(0, 4),
+                  ),
           ],
         ),
         alignment: Alignment.center,
-        child: Icon(
-          CupertinoIcons.back,
-          color: light ? const Color(0xFFFE9631) : Colors.white,
-          size: 25,
-        ),
+        child: light
+            ? SvgPicture.asset(_capsuleAssetBackChevron, width: 24, height: 24)
+            : const Icon(CupertinoIcons.back, color: Colors.white, size: 25),
       ),
     );
   }
@@ -3901,6 +3940,19 @@ class _CapsuleSealedOverlayState extends State<_CapsuleSealedOverlay>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The card drops in on the very first frame; without this it spends a
+    // frame or two as a bare shadow while the artwork decodes.
+    unawaited(
+      precacheImage(
+        const AssetImage('assets/capsule/sealed-card.png'),
+        context,
+      ),
+    );
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
@@ -3996,8 +4048,13 @@ class _CapsuleSealedOverlayState extends State<_CapsuleSealedOverlay>
                   child: Center(
                     child: _SealedTicket(
                       date: date,
-                      width: x(282),
-                      height: y(335),
+                      // The card keeps the design's proportions, so on screens
+                      // that are wide for their height the width has to give
+                      // way rather than let the card grow into the button.
+                      width: math.min(
+                        x(282),
+                        y(565 - 143 - 24) / _SealedTicket.aspectRatio,
+                      ),
                     ),
                   ),
                 ),
@@ -4058,234 +4115,265 @@ class _CapsuleSealedOverlayState extends State<_CapsuleSealedOverlay>
   }
 }
 
-class _SealedTicket extends StatelessWidget {
-  const _SealedTicket({
-    required this.date,
-    required this.width,
-    required this.height,
+/// Year/month/day wheels that only ever list selectable values.
+///
+/// [CupertinoDatePicker] renders every month and day of the year regardless of
+/// `minimumDate` and merely bounces back off the invalid ones, which reads as
+/// "the past is offered but refused". Here the lists themselves are clipped to
+/// [first]..[last], so today is simply the first row on the wheel.
+class _CapsuleDateWheels extends StatefulWidget {
+  const _CapsuleDateWheels({
+    required this.initial,
+    required this.first,
+    required this.last,
+    required this.textStyle,
+    required this.overlayColor,
+    required this.onChanged,
   });
 
-  final DateTime? date;
-  final double width;
-  final double height;
+  final DateTime initial;
+  final DateTime first;
+  final DateTime last;
+  final TextStyle textStyle;
+  final Color overlayColor;
+  final ValueChanged<DateTime> onChanged;
+
+  @override
+  State<_CapsuleDateWheels> createState() => _CapsuleDateWheelsState();
+}
+
+class _CapsuleDateWheelsState extends State<_CapsuleDateWheels> {
+  late int _year;
+  late int _month;
+  late int _day;
+  late final FixedExtentScrollController _yearCtrl;
+  late final FixedExtentScrollController _monthCtrl;
+  late final FixedExtentScrollController _dayCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    // A caller that seeds a stale draft date must not produce a negative row
+    // index, which would take the wheel down with an assertion.
+    final seed = widget.initial.isBefore(widget.first)
+        ? widget.first
+        : (widget.initial.isAfter(widget.last) ? widget.last : widget.initial);
+    _year = seed.year;
+    _month = seed.month;
+    _day = seed.day;
+    _yearCtrl = FixedExtentScrollController(
+      initialItem: _year - widget.first.year,
+    );
+    _monthCtrl = FixedExtentScrollController(initialItem: _month - _minMonth);
+    _dayCtrl = FixedExtentScrollController(initialItem: _day - _minDay);
+  }
+
+  @override
+  void dispose() {
+    _yearCtrl.dispose();
+    _monthCtrl.dispose();
+    _dayCtrl.dispose();
+    super.dispose();
+  }
+
+  int get _minMonth => _year == widget.first.year ? widget.first.month : 1;
+  int get _maxMonth => _year == widget.last.year ? widget.last.month : 12;
+
+  int get _minDay => _year == widget.first.year && _month == widget.first.month
+      ? widget.first.day
+      : 1;
+
+  int get _maxDay {
+    final daysInMonth = DateTime(_year, _month + 1, 0).day;
+    return _year == widget.last.year && _month == widget.last.month
+        ? math.min(widget.last.day, daysInMonth)
+        : daysInMonth;
+  }
+
+  /// Picking a boundary year or month resizes the wheels to its right, so both
+  /// the value and the row index below the change have to be pulled back into
+  /// the new range once the shorter list has been laid out.
+  void _reclamp() {
+    setState(() {
+      _month = _month.clamp(_minMonth, _maxMonth);
+      _day = _day.clamp(_minDay, _maxDay);
+    });
+    widget.onChanged(DateTime(_year, _month, _day));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final monthIndex = _month - _minMonth;
+      if (_monthCtrl.hasClients && _monthCtrl.selectedItem != monthIndex) {
+        _monthCtrl.jumpToItem(monthIndex);
+      }
+      final dayIndex = _day - _minDay;
+      if (_dayCtrl.hasClients && _dayCtrl.selectedItem != dayIndex) {
+        _dayCtrl.jumpToItem(dayIndex);
+      }
+    });
+  }
+
+  Widget _wheel({
+    required FixedExtentScrollController controller,
+    required List<int> values,
+    required String suffix,
+    required int column,
+    required ValueChanged<int> onChanged,
+  }) {
+    return Expanded(
+      child: CupertinoPicker(
+        scrollController: controller,
+        itemExtent: 38,
+        squeeze: 1.1,
+        magnification: 1.06,
+        useMagnifier: true,
+        backgroundColor: Colors.transparent,
+        selectionOverlay: CupertinoPickerDefaultSelectionOverlay(
+          background: widget.overlayColor,
+          capStartEdge: column == 0,
+          capEndEdge: column == 2,
+        ),
+        onSelectedItemChanged: onChanged,
+        children: [
+          for (final value in values)
+            Center(child: Text('$value$suffix', style: widget.textStyle)),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final years = [
+      for (var y = widget.first.year; y <= widget.last.year; y++) y,
+    ];
+    final months = [for (var m = _minMonth; m <= _maxMonth; m++) m];
+    final days = [for (var d = _minDay; d <= _maxDay; d++) d];
+    return Row(
+      children: [
+        _wheel(
+          controller: _yearCtrl,
+          values: years,
+          suffix: '年',
+          column: 0,
+          onChanged: (index) {
+            _year = years[index];
+            _reclamp();
+          },
+        ),
+        _wheel(
+          controller: _monthCtrl,
+          values: months,
+          suffix: '月',
+          column: 1,
+          // The wheel can report a stale index for one frame after the list
+          // shrinks; the post-frame jump in _reclamp settles it.
+          onChanged: (index) {
+            if (index < months.length) _month = months[index];
+            _reclamp();
+          },
+        ),
+        _wheel(
+          controller: _dayCtrl,
+          values: days,
+          suffix: '日',
+          column: 2,
+          onChanged: (index) {
+            if (index < days.length) _day = days[index];
+            _reclamp();
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _SealedTicket extends StatelessWidget {
+  const _SealedTicket({required this.date, required this.width});
+
+  /// The frame the artwork was cut from, in its own pixels. Anything the live
+  /// sentence has to line up with — the divider above it, the jar it tucks
+  /// into — is baked into the asset, so the placement below is written as
+  /// fractions of this frame instead of round numbers.
+  static const double _artWidth = 840;
+  static const double _artHeight = 1004;
+  static const double aspectRatio = _artHeight / _artWidth;
+
+  /// Design-space geometry of the two body lines the asset had painted out.
+  static const double _bodyBlockTop = 615;
+  static const double _bodyLinePitch = 74;
+  static const double _bodyFontSize = 49;
+
+  final DateTime? date;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = width * aspectRatio;
     final dateLabel = date == null ? '未来某天' : _formatCapsuleDate(date!);
-    return Container(
+    return SizedBox(
       width: width,
       height: height,
-      decoration: BoxDecoration(
-        gradient: const RadialGradient(
-          center: Alignment(-0.10, -0.34),
-          radius: 1.02,
-          colors: [
-            Color(0xFFFFF8BE),
-            Color(0xFFFFE682),
-            Color(0xFFFFCC3F),
-            Color(0xFFFFC735),
-          ],
-          stops: [0, 0.42, 0.76, 1],
-        ),
-        borderRadius: BorderRadius.circular(38),
-        border: Border.all(color: const Color(0xFFFFB72E), width: 1.4),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFFFD65E).withValues(alpha: 0.52),
-            blurRadius: 54,
-            spreadRadius: 9,
-          ),
-          BoxShadow(
-            color: const Color(0xFF1B1100).withValues(alpha: 0.24),
-            blurRadius: 34,
-            offset: const Offset(0, 18),
-          ),
-        ],
-      ),
       child: Stack(
         children: [
           Positioned.fill(
-            child: Padding(
-              padding: const EdgeInsets.all(7),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(32),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.28),
-                    width: 1,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(width * 100 / _artWidth),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFFC94E).withValues(alpha: 0.30),
+                    blurRadius: 44,
                   ),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: -18,
-            bottom: -16,
-            child: Opacity(
-              opacity: 0.55,
-              child: _CloudBubble(width: width * 0.43, height: height * 0.18),
-            ),
-          ),
-          Positioned(
-            left: width * 0.17,
-            bottom: -8,
-            child: Opacity(
-              opacity: 0.38,
-              child: _CloudBubble(width: width * 0.32, height: height * 0.12),
-            ),
-          ),
-          Positioned(
-            right: width * 0.16,
-            bottom: -10,
-            child: Opacity(
-              opacity: 0.36,
-              child: _CloudBubble(width: width * 0.28, height: height * 0.11),
-            ),
-          ),
-          Positioned(
-            right: -20,
-            bottom: -14,
-            child: Opacity(
-              opacity: 0.54,
-              child: Transform.rotate(
-                angle: -0.28,
-                child: SizedBox(
-                  width: width * 0.46,
-                  height: height * 0.45,
-                  child: CustomPaint(painter: _BottleLetterPainter()),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: width * 0.23,
-            top: height * 0.30,
-            child: const _TicketSparkle(size: 5),
-          ),
-          Positioned(
-            right: width * 0.19,
-            top: height * 0.17,
-            child: const _TicketSparkle(size: 7),
-          ),
-          Positioned(
-            right: width * 0.10,
-            top: height * 0.36,
-            child: const _TicketSparkle(size: 6),
-          ),
-          Positioned(
-            left: width * 0.18,
-            bottom: height * 0.18,
-            child: const _TicketSparkle(size: 6),
-          ),
-          Column(
-            children: [
-              SizedBox(height: height * 0.084),
-              Container(
-                width: width * 0.30,
-                height: width * 0.30,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.64),
-                    width: 8,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFB87900).withValues(alpha: 0.17),
-                      blurRadius: 18,
-                      offset: const Offset(0, 10),
-                    ),
-                    BoxShadow(
-                      color: Colors.white.withValues(alpha: 0.36),
-                      blurRadius: 16,
-                      spreadRadius: 4,
-                    ),
-                  ],
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  CupertinoIcons.lock_fill,
-                  color: const Color(0xFFF7AF21),
-                  size: width * 0.108,
-                ),
-              ),
-              SizedBox(height: height * 0.095),
-              Text(
-                '封存完成',
-                style: TextStyle(
-                  color: const Color(0xFF4B2E05),
-                  fontSize: width * 0.116,
-                  height: 1,
-                  fontWeight: FontWeight.w900,
-                  decoration: TextDecoration.none,
-                  shadows: [
-                    Shadow(
-                      color: Colors.white.withValues(alpha: 0.25),
-                      blurRadius: 1,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(height: height * 0.065),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: width * 0.22,
-                    height: 1,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.transparent,
-                          const Color(0xFFDCA121).withValues(alpha: 0.78),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 9),
-                    child: _TicketSparkle(size: 10, color: Color(0xFFE3A11D)),
-                  ),
-                  Container(
-                    width: width * 0.22,
-                    height: 1,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFFDCA121).withValues(alpha: 0.78),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
+                  BoxShadow(
+                    color: const Color(0xFF6B4600).withValues(alpha: 0.22),
+                    blurRadius: 28,
+                    offset: const Offset(0, 16),
                   ),
                 ],
               ),
-              SizedBox(height: height * 0.065),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: width * 0.13),
-                child: RichText(
-                  textAlign: TextAlign.center,
-                  text: TextSpan(
-                    style: TextStyle(
-                      color: const Color(0xFF5A3908),
-                      fontSize: width * 0.058,
-                      height: 1.48,
-                      fontWeight: FontWeight.w800,
-                    ),
-                    children: [
-                      const TextSpan(text: '时间胶囊已经封存，\n期待'),
-                      TextSpan(
-                        text: dateLabel,
-                        style: const TextStyle(color: Color(0xFFC47E00)),
-                      ),
-                      const TextSpan(text: '开启。'),
-                    ],
-                  ),
+            ),
+          ),
+          // Everything static — gradient, inset groove, clouds, jar, sparkles,
+          // lock badge, title, divider — is one cut of the design so the card
+          // matches it exactly instead of approximating it in paint calls.
+          Positioned.fill(
+            child: Image.asset(
+              'assets/capsule/sealed-card.png',
+              fit: BoxFit.fill,
+              filterQuality: FilterQuality.medium,
+            ),
+          ),
+          Positioned(
+            top: height * (_bodyBlockTop / _artHeight),
+            left: width * 0.08,
+            right: width * 0.08,
+            child: Text.rich(
+              textAlign: TextAlign.center,
+              // The title above and the scenery below are pixels, so growing
+              // this one sentence with the system text size would push it into
+              // the clouds instead of making the card readable.
+              textScaler: TextScaler.noScaling,
+              TextSpan(
+                style: TextStyle(
+                  color: const Color(0xFF3D2607),
+                  fontSize: width * (_bodyFontSize / _artWidth),
+                  height: _bodyLinePitch / _bodyFontSize,
+                  // Even leading keeps the glyphs centred in the line box, so
+                  // the block lands where the painted-out one used to sit.
+                  leadingDistribution: TextLeadingDistribution.even,
+                  fontWeight: FontWeight.w700,
+                  decoration: TextDecoration.none,
                 ),
+                children: [
+                  const TextSpan(text: '时间胶囊已经封存，\n期待'),
+                  TextSpan(
+                    text: dateLabel,
+                    style: const TextStyle(color: Color(0xFFB56E00)),
+                  ),
+                  const TextSpan(text: '开启。'),
+                ],
               ),
-            ],
+            ),
           ),
         ],
       ),
@@ -4305,337 +4393,209 @@ class _CapsuleReadyOverlay extends StatefulWidget {
 class _CapsuleReadyOverlayState extends State<_CapsuleReadyOverlay>
     with TickerProviderStateMixin {
   late final AnimationController _controller;
-  late final AnimationController _closeController;
-  late final Animation<double> _drop;
-  late final Animation<double> _fade;
-  late final Animation<double> _lamp;
-  late final Animation<double> _close;
-  bool _closing = false;
-  double? _closingCardTop;
+  late final Animation<double> _entrance;
+  bool _dismissed = false;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1050),
+      duration: const Duration(milliseconds: 360),
     )..forward();
-    _closeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 260),
-    );
-    _drop = CurvedAnimation(
-      parent: _controller,
-      curve: const Interval(0, 0.70, curve: Curves.easeOutBack),
-    );
-    _fade = CurvedAnimation(
-      parent: _controller,
-      curve: const Interval(0, 0.32, curve: Curves.easeOut),
-    );
-    _lamp = CurvedAnimation(
-      parent: _controller,
-      curve: const Interval(0.18, 0.86, curve: Curves.easeInOutCubic),
-    );
-    _close = CurvedAnimation(
-      parent: _closeController,
-      curve: Curves.easeInCubic,
-    );
+    _entrance = CurvedAnimation(parent: _controller, curve: Curves.easeOutBack);
   }
 
   @override
   void dispose() {
     _controller.dispose();
-    _closeController.dispose();
     super.dispose();
   }
 
-  Future<void> _closeWithoutOpening() async {
-    if (_closing) return;
-    setState(() {
-      _closing = true;
-      _closingCardTop = lerpDouble(-230, 94, _drop.value)!;
-    });
-    _controller.stop();
-    await _closeController.forward();
-    if (mounted) Navigator.of(context).pop(false);
+  // The route owns the fade in/out (see chat_page's showGeneralDialog), so
+  // dismissing only has to pop; there is no exit animation to await here.
+  void _dismiss({required bool open}) {
+    if (_dismissed) return;
+    _dismissed = true;
+    Navigator.of(context).pop(open);
   }
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.black.withValues(alpha: 0.74),
-      child: SafeArea(
-        child: AnimatedBuilder(
-          animation: Listenable.merge([_controller, _closeController]),
-          builder: (context, _) {
-            final openCardTop = lerpDouble(-230, 94, _drop.value)!;
-            final cardTop = _closing
-                ? lerpDouble(
-                    _closingCardTop ?? openCardTop,
-                    -360,
-                    _close.value,
-                  )!
-                : openCardTop;
-            final closeOpacity = _closing ? 1 - _close.value : 1.0;
-            final glowOpacity = (1 - _lamp.value) * 0.30 + 0.08;
-            final rotation = math.sin(_lamp.value * math.pi) * -0.012;
-            return Stack(
-              children: [
-                Positioned.fill(
-                  child: Opacity(
-                    opacity: _fade.value * closeOpacity,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: RadialGradient(
-                          center: const Alignment(0, -0.42),
-                          radius: 0.78,
-                          colors: [
-                            const Color(
-                              0xFFFFE59B,
-                            ).withValues(alpha: glowOpacity),
-                            const Color(0xFF7C3CFF).withValues(alpha: 0.06),
-                            Colors.transparent,
-                          ],
+      color: Colors.transparent,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final scale = constraints.maxWidth / _capsuleDesignWidth;
+          double x(double value) => value * scale;
+          return Stack(
+            children: [
+              // Design "Rectangle 245" — a flat 70% black scrim. Tapping it is the
+              // same "look later" exit as the close button.
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _dismiss(open: false),
+                  child: const ColoredBox(color: Color(0xB3000000)),
+                ),
+              ),
+              Center(
+                // Design puts the postcard + buttons group at y=238..571 of the
+                // 844 canvas, which is 17.5 above the vertical centre.
+                child: Transform.translate(
+                  offset: Offset(0, -x(17.5)),
+                  child: AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) => Transform.scale(
+                      scale: 0.92 + 0.08 * _entrance.value,
+                      child: child,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _ReadyPostcard(
+                          capsule: widget.capsule,
+                          scale: scale,
+                          onClose: () => _dismiss(open: false),
                         ),
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 38,
-                  left: 0,
-                  right: 0,
-                  child: Opacity(
-                    opacity: closeOpacity,
-                    child: Center(
-                      child: Container(
-                        width: 2,
-                        height: math.max(0, cardTop - 18),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.86),
-                          borderRadius: BorderRadius.circular(999),
+                        SizedBox(height: x(36)),
+                        // Design y=541: two 124x30 pills with a 24 gutter, which
+                        // centres the pair on the canvas.
+                        SizedBox(
+                          width: x(272),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _ReadyActionPill(
+                                  label: '稍后再看',
+                                  scale: scale,
+                                  filled: false,
+                                  onTap: () => _dismiss(open: false),
+                                ),
+                              ),
+                              SizedBox(width: x(24)),
+                              Expanded(
+                                child: _ReadyActionPill(
+                                  label: '立即查看',
+                                  scale: scale,
+                                  filled: true,
+                                  onTap: () => _dismiss(open: true),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ),
-                Positioned(
-                  top: cardTop,
-                  left: 0,
-                  right: 0,
-                  child: Transform.rotate(
-                    angle: rotation,
-                    child: Center(
-                      child: _ReadyTicket(
-                        capsule: widget.capsule,
-                        onClose: _closeWithoutOpening,
-                        onOpen: () => Navigator.of(context).pop(true),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 }
 
-class _ReadyTicket extends StatelessWidget {
-  const _ReadyTicket({
+class _ReadyPostcard extends StatelessWidget {
+  const _ReadyPostcard({
     required this.capsule,
+    required this.scale,
     required this.onClose,
-    required this.onOpen,
   });
 
   final TimeCapsule capsule;
+  final double scale;
   final VoidCallback onClose;
-  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
-    final created = _formatCapsuleDate(capsule.createdAt);
-    final elapsed = _elapsedSince(capsule.createdAt, DateTime.now());
-    return Container(
-      width: 342,
-      height: 286,
-      padding: const EdgeInsets.fromLTRB(26, 28, 24, 24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFFFBF5), Color(0xFFFFECD4), Color(0xFFFFFDF8)],
-        ),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFFF9B32).withValues(alpha: 0.26),
-            blurRadius: 38,
-            offset: const Offset(0, 18),
-          ),
-        ],
-      ),
+    double x(double value) => value * scale;
+    final sealedAt = capsule.sealedAt ?? capsule.createdAt;
+    // The 20pt gutter on both sides makes the 324-wide card land on the
+    // design's x=33 while leaving room for the close button's overhang.
+    return SizedBox(
+      width: x(364),
+      height: x(267),
       child: Stack(
         children: [
           Positioned(
-            right: -10,
-            top: -10,
+            left: x(20),
+            top: x(20),
+            width: x(324),
+            height: x(247),
+            // Swallow taps: the scrim behind treats a tap as "look later",
+            // and hitting the artwork itself should not close the card.
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {},
+              child: Image.asset(
+                _capsuleAssetArrivedPostcard,
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+          // Design "Frame 363" at (72, 427) — the only dynamic copy; the
+          // heading and illustration are baked into the postcard artwork.
+          Positioned(
+            left: x(59),
+            top: x(189),
+            width: x(150),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '《${capsule.displayTitle}》',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: _capsuleInk,
+                    fontSize: x(14),
+                    height: 17 / 14,
+                    fontWeight: FontWeight.w400,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                SizedBox(height: x(4)),
+                Text(
+                  '封存于${_formatCapsuleDate(sealedAt)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: const Color(0xFF999999),
+                    fontSize: x(10),
+                    height: 12 / 10,
+                    fontWeight: FontWeight.w400,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Design "close" sits detached off the card's top-right corner
+          // (x=353/y=238 against a card at 33..357/258..505). The 44pt tap
+          // target grows inwards so the glyph keeps that exact slot.
+          Positioned(
+            right: 0,
+            top: 0,
             child: CupertinoButton(
               minimumSize: Size.zero,
               padding: EdgeInsets.zero,
               onPressed: onClose,
-              child: Container(
-                width: 42,
-                height: 42,
-                alignment: Alignment.center,
-                child: const Icon(
-                  CupertinoIcons.xmark,
-                  color: Colors.white,
-                  size: 21,
-                  shadows: [
-                    Shadow(
-                      color: Color(0x33000000),
-                      blurRadius: 8,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            right: 18,
-            top: 14,
-            child: Transform.rotate(
-              angle: -0.18,
               child: SizedBox(
-                width: 126,
-                height: 136,
-                child: CustomPaint(painter: _BottleLetterPainter()),
+                width: x(44),
+                height: x(44),
+                child: Align(
+                  alignment: Alignment.topRight,
+                  child: Image.asset(
+                    _capsuleAssetDialogClose,
+                    width: x(24),
+                    height: x(24),
+                  ),
+                ),
               ),
             ),
-          ),
-          const Positioned(right: 42, top: 10, child: _TicketSparkle(size: 8)),
-          const Positioned(right: 14, top: 70, child: _TicketSparkle(size: 6)),
-          const Positioned(left: 128, top: 128, child: _TicketSparkle(size: 7)),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '一封来自过去的信',
-                style: TextStyle(
-                  color: Color(0xFF333333),
-                  fontSize: 18,
-                  height: 1,
-                  fontWeight: FontWeight.w800,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                '已送达',
-                style: TextStyle(
-                  color: Color(0xFFFF7A1A),
-                  fontSize: 40,
-                  height: 1,
-                  fontWeight: FontWeight.w900,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-              const SizedBox(height: 28),
-              Text(
-                '来自 $elapsed 的你',
-                style: const TextStyle(
-                  color: Color(0xFF555555),
-                  fontSize: 14,
-                  height: 1,
-                  fontWeight: FontWeight.w800,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                '$created 写给未来的自己',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF8D8D8D),
-                  fontSize: 13,
-                  height: 1,
-                  fontWeight: FontWeight.w700,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-              const Spacer(),
-              Row(
-                children: [
-                  Expanded(
-                    child: CupertinoButton(
-                      minimumSize: Size.zero,
-                      padding: EdgeInsets.zero,
-                      onPressed: onClose,
-                      child: Container(
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFFCF8),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: const Color(0xFFEBD7C2)),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Text(
-                          '稍后再看',
-                          style: TextStyle(
-                            color: Color(0xFF333333),
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 18),
-                  Expanded(
-                    child: CupertinoButton(
-                      minimumSize: Size.zero,
-                      padding: EdgeInsets.zero,
-                      onPressed: onOpen,
-                      child: Container(
-                        height: 48,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFFFFA338), Color(0xFFFF721B)],
-                          ),
-                          borderRadius: BorderRadius.circular(18),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(
-                                0xFFFF7A1A,
-                              ).withValues(alpha: 0.28),
-                              blurRadius: 18,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        alignment: Alignment.center,
-                        child: const Text(
-                          '立即查看',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
           ),
         ],
       ),
@@ -4643,190 +4603,49 @@ class _ReadyTicket extends StatelessWidget {
   }
 }
 
-class _CloudBubble extends StatelessWidget {
-  const _CloudBubble({required this.width, required this.height});
+class _ReadyActionPill extends StatelessWidget {
+  const _ReadyActionPill({
+    required this.label,
+    required this.scale,
+    required this.filled,
+    required this.onTap,
+  });
 
-  final double width;
-  final double height;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: height,
-      child: CustomPaint(painter: _CloudBubblePainter()),
-    );
-  }
-}
-
-class _CloudBubblePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.white.withValues(alpha: 0.26);
-    canvas.drawOval(
-      Rect.fromLTWH(
-        0,
-        size.height * 0.42,
-        size.width * 0.48,
-        size.height * 0.52,
-      ),
-      paint,
-    );
-    canvas.drawOval(
-      Rect.fromLTWH(
-        size.width * 0.22,
-        size.height * 0.22,
-        size.width * 0.52,
-        size.height * 0.70,
-      ),
-      paint,
-    );
-    canvas.drawOval(
-      Rect.fromLTWH(
-        size.width * 0.56,
-        size.height * 0.46,
-        size.width * 0.44,
-        size.height * 0.48,
-      ),
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _TicketSparkle extends StatelessWidget {
-  const _TicketSparkle({required this.size, this.color = Colors.white});
-
-  final double size;
-  final Color color;
+  final String label;
+  final double scale;
+  final bool filled;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: CustomPaint(painter: _TicketSparklePainter(color: color)),
+    double x(double value) => value * scale;
+    // Design "Rectangle 243/244": #F29048 fill vs 1px #F29048 outline.
+    const accent = Color(0xFFF29048);
+    return CupertinoButton(
+      minimumSize: Size.zero,
+      padding: EdgeInsets.zero,
+      onPressed: onTap,
+      child: Container(
+        height: x(30),
+        decoration: BoxDecoration(
+          color: filled ? accent : Colors.transparent,
+          border: filled ? null : Border.all(color: accent),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            color: filled ? Colors.white.withValues(alpha: 0.9) : accent,
+            fontSize: x(14),
+            height: 17 / 14,
+            fontWeight: FontWeight.w500,
+            decoration: TextDecoration.none,
+          ),
+        ),
+      ),
     );
   }
-}
-
-class _TicketSparklePainter extends CustomPainter {
-  const _TicketSparklePainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color.withValues(alpha: 0.92);
-    final path = Path()
-      ..moveTo(size.width / 2, 0)
-      ..lineTo(size.width * 0.62, size.height * 0.38)
-      ..lineTo(size.width, size.height / 2)
-      ..lineTo(size.width * 0.62, size.height * 0.62)
-      ..lineTo(size.width / 2, size.height)
-      ..lineTo(size.width * 0.38, size.height * 0.62)
-      ..lineTo(0, size.height / 2)
-      ..lineTo(size.width * 0.38, size.height * 0.38)
-      ..close();
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _TicketSparklePainter oldDelegate) {
-    return oldDelegate.color != color;
-  }
-}
-
-class _OrangeMiniCapsulePainter extends CustomPainter {
-  const _OrangeMiniCapsulePainter({this.alpha = 1, this.strokeAlpha = 0.62});
-
-  final double alpha;
-  final double strokeAlpha;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final rect = Rect.fromCenter(
-      center: Offset.zero,
-      width: size.width * 0.56,
-      height: size.height * 0.88,
-    );
-    final capsule = RRect.fromRectAndRadius(rect, Radius.circular(rect.width));
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(0.34);
-    canvas.drawRRect(
-      capsule,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFFFFF2B4).withValues(alpha: alpha),
-            const Color(0xFFFFA01D).withValues(alpha: alpha),
-            const Color(0xFFFFE58E).withValues(alpha: alpha),
-          ],
-        ).createShader(rect),
-    );
-    canvas.drawRRect(
-      capsule.deflate(2),
-      Paint()
-        ..color = Colors.white.withValues(alpha: strokeAlpha)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
-    );
-    canvas.drawLine(
-      Offset(rect.left + 6, 0),
-      Offset(rect.right - 6, 0),
-      Paint()
-        ..color = const Color(0xFFFF7B00).withValues(alpha: 0.42 * alpha)
-        ..strokeWidth = 2.5
-        ..strokeCap = StrokeCap.round,
-    );
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _OrangeMiniCapsulePainter oldDelegate) {
-    return oldDelegate.alpha != alpha || oldDelegate.strokeAlpha != strokeAlpha;
-  }
-}
-
-class _BottleLetterPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    const capsule = _OrangeMiniCapsulePainter(alpha: 0.46, strokeAlpha: 0.84);
-    capsule.paint(canvas, size);
-    final envelope = RRect.fromRectAndRadius(
-      Rect.fromLTWH(size.width * 0.54, size.height * 0.58, 50, 32),
-      const Radius.circular(6),
-    );
-    canvas.drawRRect(
-      envelope,
-      Paint()..color = Colors.white.withValues(alpha: 0.84),
-    );
-    final flap = Path()
-      ..moveTo(size.width * 0.54, size.height * 0.60)
-      ..lineTo(size.width * 0.54 + 25, size.height * 0.73)
-      ..lineTo(size.width * 0.54 + 50, size.height * 0.60);
-    canvas.drawPath(
-      flap,
-      Paint()
-        ..color = const Color(0xFFFFB378)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
-    );
-    canvas.drawCircle(
-      Offset(size.width * 0.54 + 25, size.height * 0.70),
-      6,
-      Paint()..color = const Color(0xFFFF7257),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _CapsuleActionButton extends StatelessWidget {
@@ -5079,12 +4898,11 @@ String _formatCapsuleShortDate(DateTime value) {
   return '${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}';
 }
 
-String _elapsedSince(DateTime from, DateTime now) {
-  final days = now.difference(from).inDays;
-  if (days >= 365) return '${days ~/ 365}年前';
-  if (days >= 30) return '${days ~/ 30}个月前';
-  if (days >= 1) return '$days天前';
-  return '今天';
+/// Dotted form used by the opened-capsule list design ("2025.07.12 创建").
+String _formatCapsuleDotDate(DateTime value) {
+  final month = value.month.toString().padLeft(2, '0');
+  final day = value.day.toString().padLeft(2, '0');
+  return '${value.year}.$month.$day';
 }
 
 String _dateOnly(DateTime value) {
