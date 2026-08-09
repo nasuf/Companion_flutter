@@ -213,6 +213,9 @@ class _MergeHomeStatCard extends StatelessWidget {
               child: Center(
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
+                  // The design puts a yellow glow behind the value. Dropped on
+                  // purpose: on device it tints wide values gold while a lone
+                  // digit stays white, so the four cards stop matching.
                   child: Text(
                     value,
                     style: const TextStyle(
@@ -221,18 +224,6 @@ class _MergeHomeStatCard extends StatelessWidget {
                       height: 1,
                       fontWeight: FontWeight.w900,
                       decoration: TextDecoration.none,
-                      // The css flattens the design's effect into a single
-                      // drop shadow, which on the plate reads as barely
-                      // anything. The exported value art carries the glow well
-                      // past the drop, so the halo goes back on top of it.
-                      shadows: [
-                        Shadow(
-                          color: Color(0x99FFBB00),
-                          offset: Offset(0, 4),
-                          blurRadius: 4,
-                        ),
-                        Shadow(color: Color(0x80FFBB00), blurRadius: 10),
-                      ],
                     ),
                   ),
                 ),
