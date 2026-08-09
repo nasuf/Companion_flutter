@@ -112,15 +112,20 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
     final safeBottom = media.padding.bottom;
     // The sheet rides on top of the keyboard, so its own height has to give
     // that space back or the top would slide under the status bar.
-    final available = media.size.height - widget.topInset - 24 - keyboard;
+    // The keyboard's own top corners are rounded, so a sheet that stops exactly
+    // at the keyboard line leaves two dark notches of scrim showing. Running it
+    // a little way underneath fills them.
+    const underlap = 20.0;
+    final lift = keyboard > 0 ? math.max(keyboard - underlap, 0.0) : 0.0;
+    final available = media.size.height - widget.topInset - 24 - lift;
     // The floor only bites on a screen too short to hold the button row; the
     // sheet would rather overlap the status bar than overflow its own column.
     final height = math.min<double>(
-      media.size.height * _kCheckinSheetRatio,
+      media.size.height * _kCheckinSheetRatio + (keyboard > 0 ? underlap : 0),
       math.max<double>(available, 240),
     );
     return Padding(
-      padding: EdgeInsets.only(bottom: keyboard),
+      padding: EdgeInsets.only(bottom: lift),
       child: Container(
         key: const Key('checkin-sheet'),
         height: height,
@@ -154,7 +159,9 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
                 _kCheckinMargin,
                 12,
                 _kCheckinMargin,
-                keyboard > 0 ? 16 : _kCheckinSheetSaveGap + safeBottom,
+                keyboard > 0
+                    ? 16 + underlap
+                    : _kCheckinSheetSaveGap + safeBottom,
               ),
               child: _CheckinPrimaryButton(
                 label: widget.readOnly ? '删除计划' : '保存计划',
@@ -206,7 +213,9 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
           const SizedBox(height: _kCheckinSheetFieldGap),
         ],
         _CheckinReminderRow(
-          value: habit ? _timeLabel(_dateTime) : _checkinDateTimeLabel(_dateTime),
+          value: habit
+              ? _timeLabel(_dateTime)
+              : _checkinDateTimeLabel(_dateTime),
           onPick: widget.readOnly ? null : _pickDateTime,
         ),
         const SizedBox(height: _kCheckinSheetFieldGap),

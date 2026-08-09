@@ -15,6 +15,8 @@ enum _CheckinDayMark {
   done,
 }
 
+const String _kCheckinAsset = 'assets/checkin/';
+
 // Geometry lifted from the Figma frames (390x844). Horizontal values stay put
 // on wider screens; only the day columns and cards stretch.
 const double _kCheckinMargin = 16;
@@ -123,7 +125,11 @@ class _CheckinTokens {
 
   /// `box-shadow: 0px 8px 16px` on every card in the design.
   List<BoxShadow> get cardShadow => [
-    BoxShadow(color: cardShadowColor, blurRadius: 16, offset: const Offset(0, 8)),
+    BoxShadow(
+      color: cardShadowColor,
+      blurRadius: 16,
+      offset: const Offset(0, 8),
+    ),
   ];
 
   /// The shallower `0px 4px 4px` used by the round nav button and the FAB.
@@ -138,4 +144,77 @@ class _CheckinTokens {
       offset: const Offset(2, 8),
     ),
   ];
+}
+
+/// A text field with no chrome of its own.
+///
+/// The app theme fills and outlines every `TextField`, and its `enabledBorder`
+/// outranks a plain `border: none`, so each slot has to be cleared by hand —
+/// otherwise a second rounded outline shows up inside the card that already
+/// draws the field.
+InputDecoration _checkinBareInput({
+  required String hint,
+  required TextStyle hintStyle,
+}) {
+  return InputDecoration(
+    isDense: true,
+    filled: false,
+    counterText: '',
+    contentPadding: EdgeInsets.zero,
+    hintText: hint,
+    hintStyle: hintStyle,
+    border: InputBorder.none,
+    enabledBorder: InputBorder.none,
+    focusedBorder: InputBorder.none,
+    disabledBorder: InputBorder.none,
+    errorBorder: InputBorder.none,
+    focusedErrorBorder: InputBorder.none,
+  );
+}
+
+/// The design's "done" mark: a filled accent disc with the check knocked out.
+///
+/// It shows up at three sizes — 12px under a calendar day, 12px on a weekday
+/// pill, 24px on a task row — and all three are the same glyph.
+class _CheckinCheckBadge extends StatelessWidget {
+  const _CheckinCheckBadge({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      child: Icon(
+        Icons.check_rounded,
+        size: size * 0.78,
+        color: Colors.white,
+        weight: 700,
+      ),
+    );
+  }
+}
+
+/// The unchecked counterpart: a hairline ring.
+class _CheckinRingMark extends StatelessWidget {
+  const _CheckinRingMark({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: color, width: 2),
+      ),
+    );
+  }
 }

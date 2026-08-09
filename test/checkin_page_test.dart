@@ -134,7 +134,9 @@ void main() {
       await tester.pumpWidget(_app(_FakeReminderApi([_once('a', '阅读30分钟')])));
       await tester.pumpAndSettle();
 
-      final calendar = tester.getRect(find.byKey(const Key('checkin-calendar')));
+      final calendar = tester.getRect(
+        find.byKey(const Key('checkin-calendar')),
+      );
       expect(calendar.top, 115);
       expect(calendar.height, 164);
       expect(calendar.left, 16);
@@ -201,7 +203,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(tester.getRect(find.byKey(const Key('checkin-calendar'))).top, 115);
+      expect(
+        tester.getRect(find.byKey(const Key('checkin-calendar'))).top,
+        115,
+      );
       expect(tester.getRect(find.byKey(const Key('checkin-task-a'))).top, 355);
       expect(tester.takeException(), isNull);
     });
@@ -216,7 +221,9 @@ void main() {
       await tester.dragFrom(const Offset(195, 268), const Offset(0, 200));
       await tester.pumpAndSettle();
 
-      final calendar = tester.getRect(find.byKey(const Key('checkin-calendar')));
+      final calendar = tester.getRect(
+        find.byKey(const Key('checkin-calendar')),
+      );
       // Five- and six-row months differ; both are taller than the strip.
       expect(calendar.height, greaterThan(_kCheckinCalendarCollapsedForTest));
       expect(calendar.top, 115);
@@ -290,7 +297,10 @@ void main() {
       expect(tester.getRect(find.byKey(const Key('checkin-sheet'))).top, 164);
       expect(tester.getRect(find.byKey(const Key('checkin-name'))).top, 200);
       expect(tester.getRect(find.byKey(const Key('checkin-mode'))).top, 268);
-      expect(tester.getRect(find.byKey(const Key('checkin-reminder'))).top, 336);
+      expect(
+        tester.getRect(find.byKey(const Key('checkin-reminder'))).top,
+        336,
+      );
       expect(tester.getRect(find.byKey(const Key('checkin-note'))).top, 424);
       expect(tester.getRect(find.byKey(const Key('checkin-save'))).top, 722);
 
@@ -313,8 +323,14 @@ void main() {
       await tester.tap(find.text('周期习惯'));
       await tester.pumpAndSettle();
 
-      expect(tester.getRect(find.byKey(const Key('checkin-weekdays'))).top, 336);
-      expect(tester.getRect(find.byKey(const Key('checkin-reminder'))).top, 476);
+      expect(
+        tester.getRect(find.byKey(const Key('checkin-weekdays'))).top,
+        336,
+      );
+      expect(
+        tester.getRect(find.byKey(const Key('checkin-reminder'))).top,
+        476,
+      );
       expect(tester.getRect(find.byKey(const Key('checkin-note'))).top, 564);
       expect(find.text('重复频率'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -368,9 +384,11 @@ void main() {
 
       final sheet = tester.getRect(find.byKey(const Key('checkin-sheet')));
       final save = tester.getRect(find.byKey(const Key('checkin-save')));
-      // The sheet sits on the keyboard without sliding under the status bar,
+      // The sheet runs a little way under the keyboard so its rounded top
+      // corners do not expose the scrim, without sliding under the status bar,
       // and the save button stays above the keyboard line.
-      expect(sheet.bottom, _canvasHeight - keyboard);
+      expect(sheet.bottom, greaterThan(_canvasHeight - keyboard));
+      expect(sheet.bottom, lessThanOrEqualTo(_canvasHeight - keyboard + 24));
       expect(sheet.top, greaterThanOrEqualTo(_safeTop));
       expect(save.bottom, lessThanOrEqualTo(_canvasHeight - keyboard));
       // Every field is still reachable by scrolling rather than being clipped.
@@ -388,8 +406,10 @@ String _key(DateTime value) =>
     '${value.year}-${value.month.toString().padLeft(2, '0')}-'
     '${value.day.toString().padLeft(2, '0')}';
 
-DateTime _weekMonday(DateTime value) =>
-    DateTime(value.year, value.month, value.day)
-        .subtract(Duration(days: value.weekday - 1));
+DateTime _weekMonday(DateTime value) => DateTime(
+  value.year,
+  value.month,
+  value.day,
+).subtract(Duration(days: value.weekday - 1));
 
 DateTime _monthOf(DateTime value) => DateTime(value.year, value.month);

@@ -5,9 +5,11 @@ final DateTime _kCheckinEpochMonday = DateTime.utc(2000, 1, 3);
 
 int _checkinWeekIndex(DateTime date) {
   final monday = _weekStart(date);
-  return DateTime.utc(monday.year, monday.month, monday.day)
-          .difference(_kCheckinEpochMonday)
-          .inDays ~/
+  return DateTime.utc(
+        monday.year,
+        monday.month,
+        monday.day,
+      ).difference(_kCheckinEpochMonday).inDays ~/
       7;
 }
 
@@ -171,7 +173,8 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
       tween: Tween<double>(end: _checkinExpandedHeight(widget.visibleMonth)),
       duration: _heightSettle,
       curve: Curves.easeOutCubic,
-      builder: (context, expandedHeight, _) => _buildCard(tokens, expandedHeight),
+      builder: (context, expandedHeight, _) =>
+          _buildCard(tokens, expandedHeight),
     );
   }
 
@@ -187,64 +190,73 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
         )!;
         final weekOpacity = (1 - t * 2.2).clamp(0.0, 1.0);
         final monthOpacity = ((t - 0.45) / 0.55).clamp(0.0, 1.0);
-        return Container(
-          key: const Key('checkin-calendar'),
-          height: height,
-          decoration: BoxDecoration(
-            color: tokens.card,
-            borderRadius: BorderRadius.circular(_kCheckinCardRadius),
-            boxShadow: tokens.cardShadow,
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(_kCheckinCardRadius),
-            child: Stack(
-              children: [
-                Positioned(
-                  left: _kCheckinMargin,
-                  right: _kCheckinMargin,
-                  top: 12,
-                  height: 22,
-                  child: _monthHeader(tokens, t),
-                ),
-                // Both views stay mounted even at zero opacity: a detached
-                // PageController forgets the page it was on, so collapsing
-                // after swiping would drop the calendar back to its start.
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: 50,
-                  height: 79,
-                  child: IgnorePointer(
-                    ignoring: weekOpacity < 0.5,
-                    child: Opacity(
-                      opacity: weekOpacity,
-                      child: _weekStrip(tokens),
+        // The whole card takes the vertical drag, not just the handle bar:
+        // "pull the calendar down" is the gesture people reach for, and a
+        // 4px bar is not a target. The cost is that a vertical drag started on
+        // the card does not scroll the page — the task list below still does.
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onVerticalDragUpdate: _handleDragUpdate,
+          onVerticalDragEnd: _handleDragEnd,
+          child: Container(
+            key: const Key('checkin-calendar'),
+            height: height,
+            decoration: BoxDecoration(
+              color: tokens.card,
+              borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+              boxShadow: tokens.cardShadow,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+              child: Stack(
+                children: [
+                  Positioned(
+                    left: _kCheckinMargin,
+                    right: _kCheckinMargin,
+                    top: 12,
+                    height: 22,
+                    child: _monthHeader(tokens, t),
+                  ),
+                  // Both views stay mounted even at zero opacity: a detached
+                  // PageController forgets the page it was on, so collapsing
+                  // after swiping would drop the calendar back to its start.
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: 50,
+                    height: 79,
+                    child: IgnorePointer(
+                      ignoring: weekOpacity < 0.5,
+                      child: Opacity(
+                        opacity: weekOpacity,
+                        child: _weekStrip(tokens),
+                      ),
                     ),
                   ),
-                ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: 50,
-                  bottom: 24,
-                  child: IgnorePointer(
-                    ignoring: monthOpacity < 0.5,
-                    child: Opacity(
-                      opacity: monthOpacity,
-                      child: _monthGrid(tokens),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: 50,
+                    bottom: 24,
+                    child: IgnorePointer(
+                      ignoring: monthOpacity < 0.5,
+                      child: Opacity(
+                        opacity: monthOpacity,
+                        child: _monthGrid(tokens),
+                      ),
                     ),
                   ),
-                ),
-                // Sized to the open card's bottom padding so it never covers
-                // the last row of dates.
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: 24,
-                  child: _dragHandle(tokens, t),
-                ),
-              ],
+                  // Sized to the open card's bottom padding so it never covers
+                  // the last row of dates.
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 24,
+                    child: _dragHandle(tokens, t),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -275,7 +287,11 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
             if (t < 1)
               Opacity(
                 opacity: (1 - t * 2.2).clamp(0.0, 1.0),
-                child: _weekRangeChip(tokens),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: t < 0.5 ? () => widget.onExpandedChanged(true) : null,
+                  child: _weekRangeChip(tokens),
+                ),
               ),
             if (t > 0)
               Opacity(
@@ -423,9 +439,7 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
             for (var column = 0; column < 7; column += 1)
               Builder(
                 builder: (context) {
-                  final date = gridStart.add(
-                    Duration(days: row * 7 + column),
-                  );
+                  final date = gridStart.add(Duration(days: row * 7 + column));
                   return _dayPill(
                     tokens,
                     date,
@@ -512,8 +526,6 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
   Widget _dragHandle(_CheckinTokens tokens, double t) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onVerticalDragUpdate: _handleDragUpdate,
-      onVerticalDragEnd: _handleDragEnd,
       onTap: () => widget.onExpandedChanged(!widget.expanded),
       child: Align(
         alignment: Alignment.bottomCenter,
@@ -547,15 +559,11 @@ class _CheckinDayMarker extends StatelessWidget {
   Widget build(BuildContext context) {
     switch (mark) {
       case _CheckinDayMark.done:
-        return SizedBox(
-          width: _size,
-          height: _size,
-          child: Icon(Icons.check_rounded, size: _size, color: tokens.accent),
-        );
+        return _CheckinCheckBadge(size: _size, color: tokens.accent);
       case _CheckinDayMark.partial:
-        return _ring(tokens.accent);
+        return _CheckinRingMark(size: _size, color: tokens.accent);
       case _CheckinDayMark.pending:
-        return _ring(tokens.markIdle);
+        return _CheckinRingMark(size: _size, color: tokens.markIdle);
       case _CheckinDayMark.none:
         return Center(
           child: Container(
@@ -568,16 +576,5 @@ class _CheckinDayMarker extends StatelessWidget {
           ),
         );
     }
-  }
-
-  Widget _ring(Color color) {
-    return Container(
-      width: _size,
-      height: _size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: color, width: 2),
-      ),
-    );
   }
 }

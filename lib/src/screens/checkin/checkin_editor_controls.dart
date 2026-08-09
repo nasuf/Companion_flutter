@@ -44,11 +44,8 @@ class _CheckinNameField extends StatelessWidget {
           height: 1.2,
           fontWeight: FontWeight.w400,
         ),
-        decoration: InputDecoration(
-          isDense: true,
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.zero,
-          hintText: '输入计划名称',
+        decoration: _checkinBareInput(
+          hint: '输入计划名称',
           hintStyle: TextStyle(
             color: tokens.placeholder,
             fontSize: 14,
@@ -63,10 +60,7 @@ class _CheckinNameField extends StatelessWidget {
 
 /// Single plan / repeating habit switch. The blue thumb slides between halves.
 class _CheckinModeSwitch extends StatelessWidget {
-  const _CheckinModeSwitch({
-    required this.value,
-    required this.onChanged,
-  });
+  const _CheckinModeSwitch({required this.value, required this.onChanged});
 
   final _CheckinEntryMode value;
   final ValueChanged<_CheckinEntryMode>? onChanged;
@@ -105,31 +99,40 @@ class _CheckinModeSwitch extends StatelessWidget {
                   ),
                 ),
               ),
-              Row(
-                children: [
-                  Expanded(
-                    child: _segment(
-                      tokens,
-                      icon: Icons.schedule_rounded,
-                      label: '单次计划',
-                      active: !habit,
-                      onTap: onChanged == null
-                          ? null
-                          : () => onChanged!(_CheckinEntryMode.once),
+              // Positioned.fill, not a bare child: a loose Stack child is laid
+              // out at its own height and pinned to the top corner, which is
+              // what left the labels riding above the pill's centre line.
+              Positioned.fill(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _segment(
+                        tokens,
+                        asset: 'icon_clock.png',
+                        iconWidth: 26,
+                        label: '单次计划',
+                        active: !habit,
+                        onTap: onChanged == null
+                            ? null
+                            : () => onChanged!(_CheckinEntryMode.once),
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: _segment(
-                      tokens,
-                      icon: Icons.autorenew_rounded,
-                      label: '周期习惯',
-                      active: habit,
-                      onTap: onChanged == null
-                          ? null
-                          : () => onChanged!(_CheckinEntryMode.habit),
+                    Expanded(
+                      child: _segment(
+                        tokens,
+                        asset: 'icon_repeat.png',
+                        // The loop glyph is wider than tall and only fills part
+                        // of its 26px frame in the design.
+                        iconWidth: 22,
+                        label: '周期习惯',
+                        active: habit,
+                        onTap: onChanged == null
+                            ? null
+                            : () => onChanged!(_CheckinEntryMode.habit),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -140,7 +143,8 @@ class _CheckinModeSwitch extends StatelessWidget {
 
   Widget _segment(
     _CheckinTokens tokens, {
-    required IconData icon,
+    required String asset,
+    required double iconWidth,
     required String label,
     required bool active,
     required VoidCallback? onTap,
@@ -152,11 +156,22 @@ class _CheckinModeSwitch extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
+      // Both halves start their icon 23px in rather than centring the pair,
+      // which is how the design lines the two labels up with each other.
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 22, color: color),
-          const SizedBox(width: 8),
+          const SizedBox(width: 23),
+          SizedBox(
+            width: 26,
+            height: 26,
+            child: Image.asset(
+              '$_kCheckinAsset$asset',
+              width: iconWidth,
+              color: color,
+              fit: BoxFit.contain,
+            ),
+          ),
+          const SizedBox(width: 9),
           Text(
             label,
             style: TextStyle(
@@ -175,10 +190,7 @@ class _CheckinModeSwitch extends StatelessWidget {
 
 /// White card holding the label / value pair for the reminder time.
 class _CheckinReminderRow extends StatelessWidget {
-  const _CheckinReminderRow({
-    required this.value,
-    required this.onPick,
-  });
+  const _CheckinReminderRow({required this.value, required this.onPick});
 
   final String value;
   final VoidCallback? onPick;
@@ -215,10 +227,12 @@ class _CheckinReminderRow extends StatelessWidget {
                   ),
                 ],
               ),
-              child: const Icon(
-                Icons.alarm_rounded,
-                size: 26,
+              child: Image.asset(
+                '${_kCheckinAsset}icon_alarm.png',
+                width: 24,
+                height: 24,
                 color: Colors.white,
+                fit: BoxFit.contain,
               ),
             ),
             const SizedBox(width: 14),
@@ -266,10 +280,7 @@ class _CheckinReminderRow extends StatelessWidget {
 
 /// Weekday picker for a repeating habit.
 class _CheckinWeekdayCard extends StatelessWidget {
-  const _CheckinWeekdayCard({
-    required this.selected,
-    required this.onToggle,
-  });
+  const _CheckinWeekdayCard({required this.selected, required this.onToggle});
 
   final Set<int> selected;
   final ValueChanged<int>? onToggle;
@@ -339,15 +350,8 @@ class _CheckinWeekdayCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             active
-                ? Icon(Icons.check_rounded, size: 12, color: tokens.accent)
-                : Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: tokens.markIdle, width: 2),
-                    ),
-                  ),
+                ? _CheckinCheckBadge(size: 12, color: tokens.accent)
+                : _CheckinRingMark(size: 12, color: tokens.markIdle),
           ],
         ),
       ),
@@ -357,10 +361,7 @@ class _CheckinWeekdayCard extends StatelessWidget {
 
 /// Optional free-text note.
 class _CheckinNoteCard extends StatelessWidget {
-  const _CheckinNoteCard({
-    required this.controller,
-    required this.enabled,
-  });
+  const _CheckinNoteCard({required this.controller, required this.enabled});
 
   final TextEditingController controller;
   final bool enabled;
@@ -371,7 +372,12 @@ class _CheckinNoteCard extends StatelessWidget {
     return Container(
       key: const Key('checkin-note'),
       height: 84,
-      padding: const EdgeInsets.fromLTRB(_kCheckinMargin, 12, _kCheckinMargin, 0),
+      padding: const EdgeInsets.fromLTRB(
+        _kCheckinMargin,
+        12,
+        _kCheckinMargin,
+        0,
+      ),
       decoration: BoxDecoration(
         color: tokens.card,
         borderRadius: BorderRadius.circular(_kCheckinCardRadius),
@@ -412,12 +418,8 @@ class _CheckinNoteCard extends StatelessWidget {
                 height: 1.4,
                 fontWeight: FontWeight.w400,
               ),
-              decoration: InputDecoration(
-                isDense: true,
-                counterText: '',
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-                hintText: '请填写备注内容',
+              decoration: _checkinBareInput(
+                hint: '请填写备注内容',
                 hintStyle: TextStyle(
                   color: tokens.placeholder,
                   fontSize: 12,

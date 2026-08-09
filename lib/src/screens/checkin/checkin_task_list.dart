@@ -406,18 +406,9 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
             padding: EdgeInsets.zero,
             minimumSize: const Size(24, 24),
             onPressed: completed ? null : _handleComplete,
-            child: SizedBox(
-              width: 24,
-              height: 24,
-              child: completed
-                  ? Icon(Icons.check_rounded, size: 24, color: tokens.accent)
-                  : DecoratedBox(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: tokens.markIdle, width: 2),
-                      ),
-                    ),
-            ),
+            child: completed
+                ? _CheckinCheckBadge(size: 24, color: tokens.accent)
+                : _CheckinRingMark(size: 24, color: tokens.markIdle),
           ),
         ],
       ),

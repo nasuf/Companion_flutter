@@ -80,6 +80,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/checkin/
     - assets/login/
     - assets/prototype/agent-creation-bottom-orb.png
     - assets/prototype/agent-creation-female.png
