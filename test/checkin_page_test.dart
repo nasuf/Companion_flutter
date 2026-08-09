@@ -1,6 +1,7 @@
 import 'package:companion_flutter/companion_api.dart';
 import 'package:companion_flutter/main.dart';
 import 'package:companion_flutter/models.dart';
+import 'package:flutter/cupertino.dart' show CupertinoButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -75,6 +76,30 @@ class _FakeReminderApi extends CompanionApi {
     int limit = 200,
     int offset = 0,
   }) async => RemindersResponse(items: items, total: items.length, dlqCount: 0);
+
+  @override
+  Future<ReminderItem> completeReminder(
+    String reminderId, {
+    String? conversationId,
+    DateTime? occurrenceDate,
+  }) async {
+    final item = items.firstWhere((it) => it.id == reminderId);
+    return ReminderItem(
+      id: item.id,
+      summary: item.summary,
+      note: item.note,
+      triggerTime: item.triggerTime,
+      recurrence: item.recurrence,
+      status: item.status,
+      agentId: item.agentId,
+      createdAt: item.createdAt,
+      habitWeekdays: item.habitWeekdays,
+      completedAt: item.isHabit ? null : DateTime.now(),
+      completedDates: item.isHabit
+          ? [...item.completedDates, _dayKey(occurrenceDate ?? DateTime.now())]
+          : item.completedDates,
+    );
+  }
 
   @override
   Future<ReminderItem> createReminder({
@@ -336,6 +361,53 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('a finished plan opens as a summary, not a dead form', (
+      tester,
+    ) async {
+      _useDesignCanvas(tester);
+      final done = _once('a', '阅读30分钟', done: true);
+
+      await tester.pumpWidget(_app(_FakeReminderApi([done])));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('阅读30分钟'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('checkin-detail')), findsOneWidget);
+      expect(find.byKey(const Key('checkin-sheet')), findsNothing);
+      expect(find.text('已完成'), findsOneWidget);
+      expect(find.text('计划类型'), findsOneWidget);
+      expect(find.text('删除计划'), findsOneWidget);
+      // Nothing editable is on screen.
+      expect(find.byType(TextField), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a habit ticked today is still editable', (tester) async {
+      _useDesignCanvas(tester);
+      final habit = _habit('h', '晨跑', [_today.weekday]);
+
+      await tester.pumpWidget(_app(_FakeReminderApi([habit])));
+      await tester.pumpAndSettle();
+      // Tick it, then reopen.
+      // The tick sits last in the row; the earlier buttons are the swipe
+      // actions hidden behind it.
+      await tester.tap(
+        find
+            .descendant(
+              of: find.byKey(const Key('checkin-task-h')),
+              matching: find.byType(CupertinoButton),
+            )
+            .last,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('晨跑'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('checkin-sheet')), findsOneWidget);
+      expect(find.byKey(const Key('checkin-detail')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('saving sends the note along with the plan', (tester) async {
       _useDesignCanvas(tester);
       final api = _FakeReminderApi(const []);
@@ -377,6 +449,7 @@ void main() {
       await tester.pumpWidget(_app(_FakeReminderApi(const [])));
       await tester.pumpAndSettle();
       await _openEditor(tester);
+      final closed = tester.getRect(find.byKey(const Key('checkin-sheet')));
 
       const keyboard = 336.0;
       _useDesignCanvas(tester, keyboard: keyboard);
@@ -384,12 +457,13 @@ void main() {
 
       final sheet = tester.getRect(find.byKey(const Key('checkin-sheet')));
       final save = tester.getRect(find.byKey(const Key('checkin-save')));
-      // The sheet runs a little way under the keyboard so its rounded top
-      // corners do not expose the scrim, without sliding under the status bar,
-      // and the save button stays above the keyboard line.
+      // Only the bottom edge tracks the keyboard. If the top moved too, the
+      // panel would visibly hop a second time after the open animation.
+      expect(sheet.top, closed.top);
+      // It runs a little way under the keyboard so the keyboard's own rounded
+      // top corners do not expose the scrim, and save stays above that line.
       expect(sheet.bottom, greaterThan(_canvasHeight - keyboard));
       expect(sheet.bottom, lessThanOrEqualTo(_canvasHeight - keyboard + 24));
-      expect(sheet.top, greaterThanOrEqualTo(_safeTop));
       expect(save.bottom, lessThanOrEqualTo(_canvasHeight - keyboard));
       // Every field is still reachable by scrolling rather than being clipped.
       expect(find.text('输入计划名称'), findsOneWidget);
@@ -401,6 +475,8 @@ void main() {
 
 /// Mirrors the private layout constant so a drift shows up as a test failure.
 const double _kCheckinCalendarCollapsedForTest = 164;
+
+String _dayKey(DateTime value) => _key(value);
 
 String _key(DateTime value) =>
     '${value.year}-${value.month.toString().padLeft(2, '0')}-'

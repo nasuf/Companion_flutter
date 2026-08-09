@@ -60,6 +60,7 @@ part 'src/screens/chat/chat_page.dart';
 part 'src/screens/checkin_page.dart';
 part 'src/screens/checkin/checkin_calendar.dart';
 part 'src/screens/checkin/checkin_date_utils.dart';
+part 'src/screens/checkin/checkin_detail_sheet.dart';
 part 'src/screens/checkin/checkin_editor_controls.dart';
 part 'src/screens/checkin/checkin_editor_sheet.dart';
 part 'src/screens/checkin/checkin_shared_widgets.dart';

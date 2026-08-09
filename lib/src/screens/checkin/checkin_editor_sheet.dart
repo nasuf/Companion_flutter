@@ -18,7 +18,6 @@ Future<Object?> _showCheckinEditor({
   required AuthSession session,
   required DateTime initialDate,
   ReminderItem? item,
-  bool readOnly = false,
 }) {
   // showModalBottomSheet strips the top padding from the sheet's MediaQuery,
   // so the safe area has to be read here or the sheet would grow under the
@@ -34,7 +33,6 @@ Future<Object?> _showCheckinEditor({
       session: session,
       initialDate: initialDate,
       item: item,
-      readOnly: readOnly,
       topInset: topInset,
     ),
   );
@@ -47,7 +45,6 @@ class _CheckinEditorSheet extends StatefulWidget {
     required this.initialDate,
     required this.topInset,
     this.item,
-    this.readOnly = false,
   });
 
   final CompanionApi api;
@@ -55,7 +52,6 @@ class _CheckinEditorSheet extends StatefulWidget {
   final DateTime initialDate;
   final double topInset;
   final ReminderItem? item;
-  final bool readOnly;
 
   @override
   State<_CheckinEditorSheet> createState() => _CheckinEditorSheetState();
@@ -110,20 +106,26 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
     final media = MediaQuery.of(context);
     final keyboard = media.viewInsets.bottom;
     final safeBottom = media.padding.bottom;
-    // The sheet rides on top of the keyboard, so its own height has to give
-    // that space back or the top would slide under the status bar.
     // The keyboard's own top corners are rounded, so a sheet that stops exactly
     // at the keyboard line leaves two dark notches of scrim showing. Running it
     // a little way underneath fills them.
     const underlap = 20.0;
     final lift = keyboard > 0 ? math.max(keyboard - underlap, 0.0) : 0.0;
-    final available = media.size.height - widget.topInset - 24 - lift;
-    // The floor only bites on a screen too short to hold the button row; the
-    // sheet would rather overlap the status bar than overflow its own column.
-    final height = math.min<double>(
-      media.size.height * _kCheckinSheetRatio + (keyboard > 0 ? underlap : 0),
-      math.max<double>(available, 240),
+    // Only the bottom edge follows the keyboard. Letting the height stay fixed
+    // and lifting the whole panel instead makes it hop a second time once the
+    // clamp kicks in, which is the jerk you feel on open and on dismiss.
+    final minTop = widget.topInset + 24;
+    var top = math.max<double>(
+      minTop,
+      media.size.height * (1 - _kCheckinSheetRatio),
     );
+    var height = media.size.height - top - lift;
+    if (height < 260) {
+      // Only on a screen too short to hold the button row: give up the fixed
+      // top rather than overflow the column.
+      top = math.max<double>(minTop, media.size.height - lift - 260);
+      height = media.size.height - top - lift;
+    }
     return Padding(
       padding: EdgeInsets.only(bottom: lift),
       child: Container(
@@ -164,12 +166,9 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
                     : _kCheckinSheetSaveGap + safeBottom,
               ),
               child: _CheckinPrimaryButton(
-                label: widget.readOnly ? '删除计划' : '保存计划',
-                busy: _saving || _deleting,
-                danger: widget.readOnly,
-                onPressed: widget.readOnly
-                    ? (_busy ? null : _delete)
-                    : (_busy || !_canSave ? null : _save),
+                label: '保存计划',
+                busy: _saving,
+                onPressed: _busy || !_canSave ? null : _save,
               ),
             ),
           ],
@@ -185,30 +184,27 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
       children: [
         // The design only draws the "create" flow. Editing needs a couple of
         // extra verbs, so they sit in a compact row above the name field and
-        // the create layout stays exactly as drawn. A finished task has just
-        // one verb left and it is already the bottom button.
-        if (widget.item != null && !widget.readOnly) ...[
+        // the create layout stays exactly as drawn.
+        if (widget.item != null) ...[
           _actionRow(tokens),
           const SizedBox(height: 12),
         ],
         _CheckinNameField(
           controller: _nameController,
-          enabled: !widget.readOnly,
+          enabled: true,
           autofocus: widget.item == null,
           onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: _kCheckinSheetFieldGap),
         _CheckinModeSwitch(
           value: _mode,
-          onChanged: widget.readOnly
-              ? null
-              : (value) => setState(() => _mode = value),
+          onChanged: (value) => setState(() => _mode = value),
         ),
         const SizedBox(height: _kCheckinSheetFieldGap),
         if (habit) ...[
           _CheckinWeekdayCard(
             selected: _habitWeekdays,
-            onToggle: widget.readOnly ? null : _toggleWeekday,
+            onToggle: _toggleWeekday,
           ),
           const SizedBox(height: _kCheckinSheetFieldGap),
         ],
@@ -216,13 +212,10 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
           value: habit
               ? _timeLabel(_dateTime)
               : _checkinDateTimeLabel(_dateTime),
-          onPick: widget.readOnly ? null : _pickDateTime,
+          onPick: _pickDateTime,
         ),
         const SizedBox(height: _kCheckinSheetFieldGap),
-        _CheckinNoteCard(
-          controller: _noteController,
-          enabled: !widget.readOnly,
-        ),
+        _CheckinNoteCard(controller: _noteController, enabled: true),
       ],
     );
   }

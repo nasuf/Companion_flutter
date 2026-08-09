@@ -159,6 +159,11 @@ String _timeLabel(DateTime date) {
   return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
 }
 
+String _checkinDayLabel(DateTime date) {
+  final local = date.toLocal();
+  return '${local.year}年${local.month}月${local.day}日';
+}
+
 String _fullDateTimeLabel(DateTime date) {
   final local = date.toLocal();
   return '${local.year}年${local.month.toString().padLeft(2, '0')}月${local.day.toString().padLeft(2, '0')}日 ${_timeLabel(local)}';
