@@ -485,9 +485,12 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
         width: _kCheckinDayWidth,
         height: _kCheckinDayHeight,
         decoration: BoxDecoration(
-          color: selected ? tokens.accent : tokens.dayPill,
+          // Today owns the solid pill and keeps it whether or not it is the
+          // selected day; selection is the outline. The plan mark stays on in
+          // both cases — it is the only thing telling the two states apart.
+          color: isToday ? tokens.accent : tokens.dayPill,
           borderRadius: BorderRadius.circular(999),
-          border: isToday && !selected
+          border: selected && !isToday
               ? Border.all(color: tokens.accent)
               : null,
         ),
@@ -497,7 +500,7 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
             Text(
               '${date.day}',
               style: TextStyle(
-                color: selected
+                color: isToday
                     ? Colors.white
                     : dimmed
                     ? tokens.dayNumber.withValues(alpha: 0.35)
@@ -508,15 +511,15 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
                 decoration: TextDecoration.none,
               ),
             ),
-            // The selected pill is already solid blue; a marker on top of it
-            // would only add noise, so the design drops it there.
-            if (!selected) ...[
-              const SizedBox(height: 8),
-              Opacity(
-                opacity: dimmed ? 0.4 : 1,
-                child: _CheckinDayMarker(mark: mark, tokens: tokens),
+            const SizedBox(height: 8),
+            Opacity(
+              opacity: dimmed ? 0.4 : 1,
+              child: _CheckinDayMarker(
+                mark: mark,
+                tokens: tokens,
+                onAccent: isToday,
               ),
-            ],
+            ),
           ],
         ),
       ),
@@ -546,35 +549,54 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
   }
 }
 
-/// The 12x12 dot under a day number.
+/// The 12x12 mark under a day number.
+///
+/// Every state occupies the same 12x12 box so the day number does not shift
+/// by a couple of pixels as a day goes from empty to done.
 class _CheckinDayMarker extends StatelessWidget {
-  const _CheckinDayMarker({required this.mark, required this.tokens});
+  const _CheckinDayMarker({
+    required this.mark,
+    required this.tokens,
+    this.onAccent = false,
+  });
 
   static const double _size = 12;
 
   final _CheckinDayMark mark;
   final _CheckinTokens tokens;
 
+  /// Today's pill is solid accent, so the mark inverts to white on it.
+  final bool onAccent;
+
   @override
   Widget build(BuildContext context) {
-    switch (mark) {
-      case _CheckinDayMark.done:
-        return _CheckinCheckBadge(size: _size, color: tokens.accent);
-      case _CheckinDayMark.partial:
-        return _CheckinRingMark(size: _size, color: tokens.accent);
-      case _CheckinDayMark.pending:
-        return _CheckinRingMark(size: _size, color: tokens.markIdle);
-      case _CheckinDayMark.none:
-        return Center(
-          child: Container(
-            width: _size * 2 / 3,
-            height: _size * 2 / 3,
-            decoration: BoxDecoration(
-              color: tokens.markIdle,
-              shape: BoxShape.circle,
-            ),
-          ),
-        );
-    }
+    final marked = onAccent ? Colors.white : tokens.accent;
+    final idle = onAccent
+        ? Colors.white.withValues(alpha: 0.45)
+        : tokens.markIdle;
+    return SizedBox(
+      width: _size,
+      height: _size,
+      child: switch (mark) {
+        _CheckinDayMark.done => _CheckinCheckBadge(
+          size: _size,
+          color: marked,
+          checkColor: onAccent ? tokens.accent : Colors.white,
+        ),
+        _CheckinDayMark.partial => _CheckinRingMark(size: _size, color: marked),
+        _CheckinDayMark.pending => _dot(marked),
+        _CheckinDayMark.none => _dot(idle),
+      },
+    );
+  }
+
+  Widget _dot(Color color) {
+    return Center(
+      child: Container(
+        width: _size * 2 / 3,
+        height: _size * 2 / 3,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
+    );
   }
 }

@@ -21,6 +21,8 @@ const _session = AuthSession(
   conversationId: 'conv-1',
 );
 
+/// Mirrors the light-theme accent so a token change surfaces here.
+const Color _accent = Color(0xFF496CFC);
 const double _safeTop = 47;
 const double _safeBottom = 34;
 const double _canvasWidth = 390;
@@ -200,6 +202,45 @@ void main() {
         ),
         findsOneWidget,
       );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('today keeps the filled pill and selection is an outline', (
+      tester,
+    ) async {
+      _useDesignCanvas(tester);
+
+      await tester.pumpWidget(_app(_FakeReminderApi(const [])));
+      await tester.pumpAndSettle();
+
+      BoxDecoration pill(DateTime day) {
+        final container = tester.widget<Container>(
+          find
+              .descendant(
+                of: find.byKey(Key('checkin-week-day-${_key(day)}')),
+                matching: find.byType(Container),
+              )
+              .first,
+        );
+        return container.decoration! as BoxDecoration;
+      }
+
+      // Today starts selected: filled, no outline — the outline is reserved
+      // for "the day you tapped".
+      expect(pill(_today).color, _accent);
+      expect(pill(_today).border, isNull);
+
+      // Pick another day in the same week; today has to keep its fill.
+      final other = _today.weekday == DateTime.monday
+          ? _today.add(const Duration(days: 1))
+          : _today.subtract(const Duration(days: 1));
+      await tester.tap(find.byKey(Key('checkin-week-day-${_key(other)}')));
+      await tester.pumpAndSettle();
+
+      expect(pill(_today).color, _accent);
+      expect(pill(_today).border, isNull);
+      expect(pill(other).color, isNot(_accent));
+      expect(pill(other).border, isNotNull);
       expect(tester.takeException(), isNull);
     });
 

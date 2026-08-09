@@ -1,17 +1,17 @@
 part of 'package:companion_flutter/main.dart';
 
-/// What the 12px dot under a day number says about that day.
+/// What the 12px mark under a day number says about that day.
 enum _CheckinDayMark {
   /// Nothing scheduled — a flat grey dot.
   none,
 
-  /// Scheduled, nothing ticked yet — a grey ring.
+  /// Scheduled, nothing ticked yet — a solid accent dot.
   pending,
 
-  /// Some of the day's tasks are ticked — a blue ring.
+  /// Some of the day's tasks are ticked — an accent ring.
   partial,
 
-  /// Everything on that day is ticked — a blue check.
+  /// Everything on that day is ticked — an accent disc with a check.
   done,
 }
 
@@ -177,10 +177,17 @@ InputDecoration _checkinBareInput({
 /// It shows up at three sizes — 12px under a calendar day, 12px on a weekday
 /// pill, 24px on a task row — and all three are the same glyph.
 class _CheckinCheckBadge extends StatelessWidget {
-  const _CheckinCheckBadge({required this.size, required this.color});
+  const _CheckinCheckBadge({
+    required this.size,
+    required this.color,
+    this.checkColor = Colors.white,
+  });
 
   final double size;
   final Color color;
+
+  /// Inverted on today's filled pill, where the disc itself has to be white.
+  final Color checkColor;
 
   @override
   Widget build(BuildContext context) {
@@ -192,7 +199,7 @@ class _CheckinCheckBadge extends StatelessWidget {
       child: Icon(
         Icons.check_rounded,
         size: size * 0.78,
-        color: Colors.white,
+        color: checkColor,
         weight: 700,
       ),
     );
