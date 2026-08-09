@@ -54,6 +54,21 @@ class _MergeHome extends StatelessWidget {
                 ),
               ),
               Positioned(
+                left: width * (36.5 / 393),
+                top: height * (150 / 852),
+                width: width * (320 / 393),
+                height: height * (127 / 852),
+                child: _GomokuBreathingMotion(
+                  duration: const Duration(milliseconds: 5200),
+                  scaleAmount: 0.009,
+                  translateY: 1.4,
+                  child: Image.asset(
+                    '${_mergeFigmaAsset}home_logo.png',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+              Positioned(
                 left: width * (31 / 393),
                 top: height * (325 / 852),
                 width: width * (331 / 393),
