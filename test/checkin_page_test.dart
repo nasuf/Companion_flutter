@@ -244,6 +244,35 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('a swiped row reveals one flush action, not a loose button', (
+      tester,
+    ) async {
+      _useDesignCanvas(tester);
+
+      await tester.pumpWidget(_app(_FakeReminderApi([_once('a', '测试一')])));
+      await tester.pumpAndSettle();
+
+      final row = tester.getRect(find.byKey(const Key('checkin-task-a')));
+      await tester.drag(find.text('测试一'), const Offset(120, 0));
+      await tester.pumpAndSettle();
+
+      expect(find.text('置顶'), findsOneWidget);
+      // The action sits inside the row's own bounds and starts at its edge —
+      // a detached button would be outside it or inset from it.
+      final action = tester.getRect(find.text('置顶'));
+      expect(action.left, greaterThan(row.left));
+      expect(action.right, lessThan(row.right));
+      expect(tester.getRect(find.byKey(const Key('checkin-task-a'))), row);
+
+      // Swiping the other way swaps in delete on the trailing end.
+      await tester.drag(find.text('测试一'), const Offset(-240, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('置顶'), findsNothing);
+      expect(find.text('删除'), findsOneWidget);
+      expect(tester.getRect(find.text('删除')).right, lessThan(row.right));
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('empty day shows the placeholder card', (tester) async {
       _useDesignCanvas(tester);
 

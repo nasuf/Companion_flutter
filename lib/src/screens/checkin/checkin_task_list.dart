@@ -16,7 +16,6 @@ class _CheckinTaskList extends StatelessWidget {
     required this.onItemTap,
     required this.onComplete,
     required this.onPin,
-    required this.onReschedule,
     required this.onDelete,
   });
 
@@ -30,7 +29,6 @@ class _CheckinTaskList extends StatelessWidget {
   final ValueChanged<ReminderItem> onItemTap;
   final Future<void> Function(ReminderItem item) onComplete;
   final Future<void> Function(ReminderItem item) onPin;
-  final Future<void> Function(ReminderItem item) onReschedule;
   final Future<void> Function(ReminderItem item) onDelete;
 
   @override
@@ -68,7 +66,6 @@ class _CheckinTaskList extends StatelessWidget {
                   onTap: () => onItemTap(items[index]),
                   onComplete: () => onComplete(items[index]),
                   onPin: () => onPin(items[index]),
-                  onReschedule: () => onReschedule(items[index]),
                   onDelete: () => onDelete(items[index]),
                 ),
               ),
@@ -79,8 +76,13 @@ class _CheckinTaskList extends StatelessWidget {
   }
 }
 
-/// A task row. The design only draws a tick circle; complete / pin / reschedule
-/// / delete stay reachable by swiping the row sideways.
+/// A task row. The design only draws a tick circle; pin and delete live behind
+/// a sideways swipe.
+///
+/// The revealed action is part of the row rather than a button parked next to
+/// it: the colour fills the whole rounded rectangle, the card slides over it,
+/// and the card's leading (or trailing) corners go square while it is open so
+/// the two halves meet flush instead of showing a crescent of colour.
 class _SwipeTaskRow extends StatefulWidget {
   const _SwipeTaskRow({
     super.key,
@@ -93,7 +95,6 @@ class _SwipeTaskRow extends StatefulWidget {
     required this.onTap,
     required this.onComplete,
     required this.onPin,
-    required this.onReschedule,
     required this.onDelete,
   });
 
@@ -106,7 +107,6 @@ class _SwipeTaskRow extends StatefulWidget {
   final VoidCallback onTap;
   final Future<void> Function() onComplete;
   final Future<void> Function() onPin;
-  final Future<void> Function() onReschedule;
   final Future<void> Function() onDelete;
 
   @override
@@ -115,7 +115,9 @@ class _SwipeTaskRow extends StatefulWidget {
 
 class _SwipeTaskRowState extends State<_SwipeTaskRow>
     with SingleTickerProviderStateMixin {
-  static const double _reveal = 112;
+  static const double _reveal = 88;
+  static const Color _pinColor = Color(0xFFFFB83F);
+  static const Color _deleteColor = Color(0xFFFF4C4C);
 
   late final AnimationController _sweepController = AnimationController(
     vsync: this,
@@ -195,14 +197,8 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
     await widget.onPin();
   }
 
-  Future<void> _handleReschedule() async {
-    if (widget.completed || _optimisticCompleted) return;
-    await _closeActions();
-    await widget.onReschedule();
-  }
-
   Future<void> _handleDelete() async {
-    await _flash(const Color(0xFFFF4C4C), fromRight: true);
+    await _flash(_deleteColor, fromRight: true);
     if (mounted) setState(() => _collapsing = true);
     await Future<void>.delayed(const Duration(milliseconds: 170));
     await widget.onDelete();
@@ -212,27 +208,22 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
   Widget build(BuildContext context) {
     final tokens = _CheckinTokens.of(context);
     final completed = widget.completed || _optimisticCompleted;
-    final leadingLimit = completed ? _reveal / 2 : _reveal;
-    final trailingLimit = completed ? _reveal / 2 : _reveal;
-    final leadingWidth = _offset > 0 ? _offset : 0.0;
-    final trailingWidth = _offset < 0 ? -_offset : 0.0;
+    final openLeading = _offset > 0;
+    final revealed = _offset.abs();
     return GestureDetector(
       onHorizontalDragUpdate: (details) {
         if (_sweeping || _collapsing) return;
-        final next = (_offset + details.delta.dx).clamp(
-          -trailingLimit,
-          leadingLimit,
-        );
+        final next = (_offset + details.delta.dx).clamp(-_reveal, _reveal);
         if (next.abs() > 2) widget.onSwipeOpen(widget.item.id);
         setState(() => _offset = next);
       },
       onHorizontalDragEnd: (_) {
         if (_sweeping || _collapsing) return;
         setState(() {
-          if (_offset > 44) {
-            _offset = leadingLimit;
-          } else if (_offset < -44) {
-            _offset = -trailingLimit;
+          if (_offset > 36) {
+            _offset = _reveal;
+          } else if (_offset < -36) {
+            _offset = -_reveal;
           } else {
             _offset = 0;
           }
@@ -249,96 +240,74 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 140),
         opacity: _collapsing ? 0 : 1,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(_kCheckinCardRadius),
-          child: Stack(
-            children: [
-              if (!_sweeping) ...[
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: leadingWidth,
-                  child: Row(
-                    children: [
-                      if (!completed)
-                        Expanded(
-                          child: _TaskActionButton(
-                            color: const Color(0xFF5DCFA8),
-                            icon: CupertinoIcons.check_mark,
-                            onTap: _handleComplete,
-                            reveal: leadingWidth / leadingLimit,
-                          ),
-                        ),
-                      Expanded(
-                        child: _TaskActionButton(
-                          color: const Color(0xFFFFB83F),
-                          icon: widget.pinned
-                              ? CupertinoIcons.pin_slash
-                              : CupertinoIcons.pin,
-                          onTap: _handlePin,
-                          reveal: leadingWidth / leadingLimit,
-                        ),
-                      ),
-                    ],
+        child: DecoratedBox(
+          // The shadow belongs to the row, not to the sliding card — leaving it
+          // on the card would darken the action colour it slides over.
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+            boxShadow: tokens.cardShadow,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+            child: Stack(
+              children: [
+                if (revealed > 0 && !_sweeping) ...[
+                  Positioned.fill(
+                    child: ColoredBox(
+                      color: openLeading ? _pinColor : _deleteColor,
+                    ),
                   ),
-                ),
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: trailingWidth,
-                  child: Row(
+                  Positioned(
+                    left: openLeading ? 0 : null,
+                    right: openLeading ? null : 0,
+                    top: 0,
+                    bottom: 0,
+                    width: revealed,
+                    child: _TaskSwipeAction(
+                      icon: openLeading
+                          ? (widget.pinned
+                                ? CupertinoIcons.pin_slash_fill
+                                : CupertinoIcons.pin_fill)
+                          : CupertinoIcons.delete,
+                      label: openLeading
+                          ? (widget.pinned ? '取消置顶' : '置顶')
+                          : '删除',
+                      reveal: revealed / _reveal,
+                      onTap: openLeading ? _handlePin : _handleDelete,
+                    ),
+                  ),
+                ],
+                Transform.translate(
+                  offset: Offset(_offset, 0),
+                  child: Stack(
                     children: [
-                      if (!completed)
-                        Expanded(
-                          child: _TaskActionButton(
-                            color: tokens.accent,
-                            icon: CupertinoIcons.calendar,
-                            onTap: _handleReschedule,
-                            reveal: trailingWidth / trailingLimit,
-                          ),
-                        ),
-                      Expanded(
-                        child: _TaskActionButton(
-                          color: const Color(0xFFFF4C4C),
-                          icon: CupertinoIcons.delete,
-                          onTap: _handleDelete,
-                          reveal: trailingWidth / trailingLimit,
-                        ),
+                      _card(tokens, completed),
+                      Positioned.fill(
+                        child: IgnorePointer(child: _sweepOverlay()),
                       ),
                     ],
                   ),
                 ),
               ],
-              Transform.translate(
-                offset: Offset(_offset, 0),
-                child: Stack(
-                  children: [
-                    _card(tokens, completed),
-                    Positioned.fill(
-                      child: IgnorePointer(child: _sweepOverlay()),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
+  /// Square off whichever end is butted against the revealed action.
+  BorderRadius get _cardRadius => BorderRadius.horizontal(
+    left: Radius.circular(_offset > 0 ? 0 : _kCheckinCardRadius),
+    right: Radius.circular(_offset < 0 ? 0 : _kCheckinCardRadius),
+  );
+
   Widget _card(_CheckinTokens tokens, bool completed) {
     final item = widget.item;
     return Container(
       height: _kCheckinTaskRowHeight,
       padding: const EdgeInsets.symmetric(horizontal: _kCheckinMargin),
-      decoration: BoxDecoration(
-        color: tokens.card,
-        borderRadius: BorderRadius.circular(_kCheckinCardRadius),
-        boxShadow: tokens.cardShadow,
-      ),
+      decoration: BoxDecoration(color: tokens.card, borderRadius: _cardRadius),
       child: Row(
         children: [
           Container(
@@ -395,11 +364,7 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
             ),
           ),
           if (widget.pinned) ...[
-            const Icon(
-              CupertinoIcons.pin_fill,
-              color: Color(0xFFFFB83F),
-              size: 14,
-            ),
+            const Icon(CupertinoIcons.pin_fill, color: _pinColor, size: 14),
             const SizedBox(width: 8),
           ],
           CupertinoButton(
@@ -437,9 +402,7 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
                     opacity: opacity,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(
-                          _kCheckinCardRadius,
-                        ),
+                        borderRadius: _cardRadius,
                         gradient: LinearGradient(
                           begin: _flashFromRight
                               ? Alignment.centerRight
@@ -467,35 +430,47 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
   }
 }
 
-class _TaskActionButton extends StatelessWidget {
-  const _TaskActionButton({
-    required this.color,
+/// Icon + label filling the revealed end of a row.
+class _TaskSwipeAction extends StatelessWidget {
+  const _TaskSwipeAction({
     required this.icon,
-    required this.onTap,
+    required this.label,
     required this.reveal,
+    required this.onTap,
   });
 
-  final Color color;
   final IconData icon;
-  final VoidCallback onTap;
+  final String label;
   final double reveal;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final progress = Curves.easeOutCubic.transform(reveal.clamp(0.0, 1.0));
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      minimumSize: Size.zero,
-      onPressed: onTap,
-      child: Container(
-        height: double.infinity,
-        color: color,
-        alignment: Alignment.center,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Opacity(
+        opacity: progress,
         child: Transform.scale(
-          scale: 0.76 + progress * 0.24,
-          child: Opacity(
-            opacity: progress,
-            child: Icon(icon, color: Colors.white, size: 24),
+          scale: 0.82 + progress * 0.18,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: Colors.white, size: 20),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                maxLines: 1,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  height: 1.2,
+                  fontWeight: FontWeight.w500,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ],
           ),
         ),
       ),

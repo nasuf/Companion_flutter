@@ -47,13 +47,6 @@ class _CheckinPageState extends State<CheckinPage> {
     return response.items;
   }
 
-  void _reload() {
-    if (!mounted) return;
-    setState(() {
-      _future = _load();
-    });
-  }
-
   void _selectDate(DateTime date) {
     final day = _dateOnlyTime(date);
     setState(() {
@@ -128,7 +121,6 @@ class _CheckinPageState extends State<CheckinPage> {
                               onItemTap: _openTaskSheet,
                               onComplete: _complete,
                               onPin: _pin,
-                              onReschedule: _reschedule,
                               onDelete: _delete,
                             ),
                         ],
@@ -348,25 +340,6 @@ class _CheckinPageState extends State<CheckinPage> {
     }
   }
 
-  Future<void> _reschedule(ReminderItem item) async {
-    if (item.isHabit) {
-      await _openTaskSheet(item);
-      return;
-    }
-    final picked = await _pickDateTime(
-      initial: item.triggerTime.toLocal(),
-      title: '修改日期',
-    );
-    if (picked == null) return;
-    final updated = await widget.api.updateReminder(
-      item.id,
-      triggerTime: picked,
-      conversationId: widget.session.conversationId,
-    );
-    await CheckinNotificationService.instance.scheduleReminder(updated);
-    _reload();
-  }
-
   Future<void> _delete(ReminderItem item) async {
     await widget.api.deleteReminder(
       item.id,
@@ -402,43 +375,6 @@ class _CheckinPageState extends State<CheckinPage> {
       _selectDate(focusDate);
       unawaited(_openTaskSheet(targetItem));
     });
-  }
-
-  Future<DateTime?> _pickDateTime({
-    required DateTime initial,
-    required String title,
-  }) async {
-    final minimum = _minimumReminderDateTime();
-    final initialValue = initial.isAfter(minimum)
-        ? initial
-        : _defaultReminderDateTime();
-    var value = initialValue;
-    return showCupertinoModalPopup<DateTime>(
-      context: context,
-      builder: (context) => Localizations.override(
-        context: context,
-        locale: const Locale('zh', 'CN'),
-        child: _PickerSheet(
-          title: title,
-          onCancel: () => Navigator.of(context).pop(),
-          onSave: () {
-            if (!_isFutureReminderTime(value)) {
-              _showFutureTimeRequired(context);
-              return;
-            }
-            Navigator.of(context).pop(value);
-          },
-          child: CupertinoDatePicker(
-            mode: CupertinoDatePickerMode.dateAndTime,
-            initialDateTime: initialValue,
-            minimumDate: minimum,
-            minuteInterval: 1,
-            use24hFormat: true,
-            onDateTimeChanged: (date) => value = date,
-          ),
-        ),
-      ),
-    );
   }
 
   List<ReminderItem> _tasksForDate(List<ReminderItem> items, DateTime date) {
