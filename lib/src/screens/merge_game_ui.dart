@@ -123,12 +123,14 @@ class _MergeHome extends StatelessWidget {
                   child: _MergeHomeStatCard(
                     label: const ['总对局', '胜利局', '胜率', '时长'][index],
                     value: values[index],
+                    // The kit ships one stopwatch and the design puts it on
+                    // both the first and the last card, so the two files hold
+                    // the same art until a dedicated "total games" icon lands.
                     icon: const [
                       '${_mergeFigmaAsset}icon_total.png',
                       '${_mergeFigmaAsset}icon_wins.png',
                       '${_mergeFigmaAsset}icon_rate.png',
-                      // Merge's kit has no clock art; borrow minesweeper's.
-                      '${_mineFigmaAsset}icon_time.png',
+                      '${_mergeFigmaAsset}icon_time.png',
                     ][index],
                   ),
                 ),
@@ -220,7 +222,11 @@ class _MergeHomeStatCard extends StatelessWidget {
                       fontWeight: FontWeight.w900,
                       decoration: TextDecoration.none,
                       shadows: [
-                        Shadow(color: Color(0x80FFBB00), blurRadius: 8),
+                        Shadow(
+                          color: Color(0x80FFBB00),
+                          offset: Offset(0, 4),
+                          blurRadius: 4,
+                        ),
                       ],
                     ),
                   ),
