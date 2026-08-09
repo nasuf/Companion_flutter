@@ -255,7 +255,6 @@ class _MinesweeperGameScreen extends StatefulWidget {
     required this.onReveal,
     required this.onFlag,
     required this.onShowLose,
-    required this.onPreviewWin,
     required this.onPauseChanged,
     required this.gamePoints,
   });
@@ -273,11 +272,6 @@ class _MinesweeperGameScreen extends StatefulWidget {
   final ValueChanged<int> onFlag;
   // Quitting or restarting mid-game → 失败.
   final Future<void> Function() onShowLose;
-
-  // TODO(games): temporary test hook — 重新开局 jumps straight to the 胜利
-  // screen so its layout can be checked without actually winning a round.
-  // Restore the onShowLose call below once the result screens are signed off.
-  final VoidCallback onPreviewWin;
   // Holds/releases the page-level idle gate while a sheet / rules popup is up.
   final ValueChanged<bool> onPauseChanged;
   final int? gamePoints;
@@ -595,7 +589,9 @@ class _MinesweeperGameScreenState extends State<_MinesweeperGameScreen> {
             label: '重新开局',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              widget.onPreviewWin();
+              // Restarting mid-game forfeits the round → 失败; the 失败 screen's
+              // 重来一局 then starts the new game.
+              unawaited(widget.onShowLose());
             },
           ),
         ],
@@ -1223,6 +1219,9 @@ class _MinesweeperResultScreenState extends State<_MinesweeperResultScreen>
                   if (widget.pointsDelta != null)
                     _NativeGameScoreDelta(
                       delta: widget.pointsDelta!,
+                      assetPrefix: _mineFigmaAsset,
+                      winValue: 3,
+                      loseValue: -2,
                       fill: const Color(0xFFFDEBC0),
                       stroke: const Color(0xFF77240A),
                       height: 24,

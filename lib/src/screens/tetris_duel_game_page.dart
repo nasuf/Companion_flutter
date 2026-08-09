@@ -399,14 +399,6 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
         !_paused;
   }
 
-  // TODO(games): temporary test hook — 重新开局 shows the 胜利 screen so its
-  // layout can be reviewed without winning a round for real. Deliberately only
-  // flips the UI: the round is left unsettled so no win is ever reported.
-  void _previewWin() {
-    if (!mounted || _result != null) return;
-    setState(() => _result = _TetrisResultKind.win);
-  }
-
   void _setPaused(bool value) {
     if (_paused == value || !mounted) return;
     if (value) _stopSoftDrop();
@@ -610,7 +602,6 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
             onPanEnd: _onPanEnd,
             // Both leaving and restarting mid-duel count as a forfeit → 失败.
             onShowLose: _forfeit,
-            onPreviewWin: _previewWin,
             onPauseChanged: _setPaused,
           ),
         ),

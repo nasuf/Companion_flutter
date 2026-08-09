@@ -373,26 +373,9 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
           onExit: _closeGame,
           onPauseChanged: _setPaused,
           onAbandon: _abandonRound,
-          onPreviewWin: _previewWin,
         ),
       ),
     );
-  }
-
-  // TODO(games): temporary test hook — 重新开局 shows the 胜利 screen so its
-  // layout can be reviewed without reaching 2048 for real. Deliberately only
-  // flips the UI: the round is left unsettled so no win is ever reported.
-  void _previewWin() {
-    if (!mounted || _result != null) return;
-    _resultTimer?.cancel();
-    _resultTimer = null;
-    setState(() {
-      _result = _MergeResultKind.win;
-      _resultDelta = _runtime.pointRules?.deltaFor(
-        GameOutcome.win,
-        maxTile: _engine?.maxTile ?? 0,
-      );
-    });
   }
 
   /// Quitting or restarting from the pause sheet gives up the board, so the

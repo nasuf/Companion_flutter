@@ -240,7 +240,6 @@ class _GoGameScreen extends StatefulWidget {
     required this.enabled,
     required this.onTap,
     required this.onShowLose,
-    required this.onPreviewWin,
     required this.bannerInMs,
     required this.bannerHoldMs,
     required this.bannerOutMs,
@@ -258,11 +257,6 @@ class _GoGameScreen extends StatefulWidget {
   final ValueChanged<int> onTap;
   // Quitting or restarting mid-game → 失败 + 扣分.
   final Future<void> Function() onShowLose;
-
-  // TODO(games): temporary test hook — 重新开局 jumps straight to the 胜利
-  // screen so its layout can be checked without actually winning a round.
-  // Restore the onShowLose call below once the result screens are signed off.
-  final VoidCallback onPreviewWin;
   // "你的回合" banner timing (ms), from the per-game admin config.
   final int bannerInMs;
   final int bannerHoldMs;
@@ -478,7 +472,7 @@ class _GoGameScreenState extends State<_GoGameScreen> {
               Navigator.of(dialogContext).pop();
               // Restarting mid-game → 失败 + 扣分; the 失败 screen's 重来一局 then
               // starts the new round.
-              widget.onPreviewWin();
+              unawaited(widget.onShowLose());
             },
           ),
         ),
@@ -1129,6 +1123,9 @@ class _GoResultScreenState extends State<_GoResultScreen>
                 if (widget.pointsDelta != null)
                   _NativeGameScoreDelta(
                     delta: widget.pointsDelta!,
+                    assetPrefix: _goAsset,
+                    winValue: 5,
+                    loseValue: -4,
                     fill: const Color(0xFFE8C79B),
                     stroke: const Color(0xFFAC9473),
                     height: 26,

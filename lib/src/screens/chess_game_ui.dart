@@ -322,7 +322,6 @@ class _ChessGameScreen extends StatefulWidget {
     required this.enabled,
     required this.onSquareTap,
     required this.onShowLose,
-    required this.onPreviewWin,
     required this.bannerInMs,
     required this.bannerHoldMs,
     required this.bannerOutMs,
@@ -341,11 +340,6 @@ class _ChessGameScreen extends StatefulWidget {
   final ValueChanged<int> onSquareTap;
   // Quitting or restarting mid-game → 失败 + 扣分.
   final Future<void> Function() onShowLose;
-
-  // TODO(games): temporary test hook — 重新开局 jumps straight to the 胜利
-  // screen so its layout can be checked without actually winning a round.
-  // Restore the onShowLose call below once the result screens are signed off.
-  final VoidCallback onPreviewWin;
   // "你的回合" banner timing (ms), from the per-game admin config.
   final int bannerInMs;
   final int bannerHoldMs;
@@ -534,7 +528,7 @@ class _ChessGameScreenState extends State<_ChessGameScreen> {
               Navigator.of(dialogContext).pop();
               // Restarting mid-game → 失败 + 扣分; the 失败 screen's 重来一局 then
               // starts the new round.
-              widget.onPreviewWin();
+              unawaited(widget.onShowLose());
             },
           ),
         ),
@@ -1364,6 +1358,9 @@ class _ChessResultScreenState extends State<_ChessResultScreen>
                 if (widget.pointsDelta != null)
                   _NativeGameScoreDelta(
                     delta: widget.pointsDelta!,
+                    assetPrefix: _chessFigmaAsset,
+                    winValue: 4,
+                    loseValue: -3,
                     fill: const Color(0xFFFDEBC0),
                     stroke: const Color(0xFF77240A),
                     height: 26,

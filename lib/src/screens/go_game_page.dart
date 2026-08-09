@@ -54,14 +54,6 @@ class _GoGamePageState extends State<_GoGamePage> {
     super.dispose();
   }
 
-  // TODO(games): temporary test hook — 重新开局 shows the 胜利 screen so its
-  // layout can be reviewed without winning a round for real. Deliberately only
-  // flips the UI: the round is left unsettled so no win is ever reported.
-  void _previewWin() {
-    if (!mounted || _result != null) return;
-    setState(() => _result = _GoResultKind.win);
-  }
-
   Future<void> _closeGame() async {
     final engine = _engine;
     if (_runtime.session != null && !_runtime.completed) {
@@ -311,7 +303,6 @@ class _GoGamePageState extends State<_GoGamePage> {
             onTap: _userPlay,
             // Quitting or restarting mid-game → 失败 + 扣分.
             onShowLose: _forfeit,
-            onPreviewWin: _previewWin,
             bannerInMs: _runtime.bannerInMs,
             bannerHoldMs: _runtime.bannerHoldMs,
             bannerOutMs: _runtime.bannerOutMs,

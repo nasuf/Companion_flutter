@@ -406,7 +406,6 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
             onFlag: (index) => unawaited(_userAct(index, forceFlag: true)),
             // Quitting or restarting mid-game → 失败.
             onShowLose: _forfeit,
-            onPreviewWin: _previewWin,
             onPauseChanged: _setPaused,
             gamePoints: _runtime.pointsBalance,
           ),
@@ -419,14 +418,6 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
       switchOutCurve: Curves.easeIn,
       child: child,
     );
-  }
-
-  // TODO(games): temporary test hook — 重新开局 shows the 胜利 screen so its
-  // layout can be reviewed without winning a round for real. Deliberately only
-  // flips the UI: the round is left unsettled so no win is ever reported.
-  void _previewWin() {
-    if (!mounted || _result != null) return;
-    setState(() => _result = _MinesweeperResultKind.win);
   }
 
   void _setPaused(bool value) {

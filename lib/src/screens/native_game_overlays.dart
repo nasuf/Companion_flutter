@@ -718,36 +718,61 @@ void _showNativeGamePointsInfo(BuildContext context) {
   );
 }
 
-/// The 积分 delta on a result screen, drawn as text rather than baked art.
+/// The 积分 delta on a result screen.
 ///
-/// Every game shipped the same "+3 / -3" pieces, but the actual settlement
-/// differs per game (win is +3…+5, a loss is -2…-4) and 数字合并 pays out its
-/// highest tile, anywhere from +2 to +25. Rendering the number keeps the screen
-/// honest; [fill] and [stroke] carry each game's own palette so it still reads
-/// like the original artwork.
+/// Each game ships one piece of art per outcome, e.g. 围棋 has a "+5" and a
+/// "-4". Those are used whenever the round actually settles for that amount,
+/// which is the common case. When it doesn't — 数字合并 pays out its highest
+/// tile, anywhere from +2 to +25 — the number is drawn as text in the same
+/// palette so the screen still tells the truth.
 class _NativeGameScoreDelta extends StatelessWidget {
   const _NativeGameScoreDelta({
     required this.delta,
+    required this.assetPrefix,
+    required this.winValue,
+    required this.loseValue,
     required this.fill,
     required this.stroke,
-    this.height = 24,
+    required this.height,
   });
 
   final int delta;
+  final String assetPrefix;
+
+  /// What this game's win / lose art actually reads, or null when the game
+  /// has none. A settlement that differs — a rules change, or 数字合并's
+  /// milestone payout — falls through to text.
+  final int? winValue;
+  final int? loseValue;
+
   final Color fill;
   final Color stroke;
   final double height;
 
   @override
   Widget build(BuildContext context) {
-    // A leading sign for anything non-zero, matching the exported art.
-    final text = delta > 0 ? '+$delta' : '$delta';
-    final fontSize = height * 0.94;
+    if (winValue != null && delta == winValue) {
+      return _art('result_score_win.png');
+    }
+    if (loseValue != null && delta == loseValue) {
+      return _art('result_score_lose.png');
+    }
+    return _text();
+  }
+
+  Widget _art(String name) =>
+      Image.asset('$assetPrefix$name', height: height, fit: BoxFit.contain);
+
+  Widget _text() {
+    final label = delta > 0 ? '+$delta' : '$delta';
+    // The art is a heavy display face; approximate its weight so a fallback
+    // number doesn't read as a different element.
+    final fontSize = height * 0.92;
     final base = TextStyle(
       fontSize: fontSize,
-      height: 1.05,
+      height: 1.0,
       fontWeight: FontWeight.w900,
-      letterSpacing: fontSize * 0.02,
+      letterSpacing: fontSize * 0.01,
       decoration: TextDecoration.none,
     );
     return SizedBox(
@@ -756,16 +781,28 @@ class _NativeGameScoreDelta extends StatelessWidget {
         alignment: Alignment.center,
         children: [
           Text(
-            text,
+            label,
             style: base.copyWith(
               foreground: Paint()
                 ..style = PaintingStyle.stroke
-                ..strokeWidth = fontSize * 0.20
+                ..strokeWidth = fontSize * 0.26
                 ..strokeJoin = StrokeJoin.round
                 ..color = stroke,
             ),
           ),
-          Text(text, style: base.copyWith(color: fill)),
+          Text(
+            label,
+            style: base.copyWith(
+              color: fill,
+              shadows: [
+                Shadow(
+                  color: stroke.withValues(alpha: 0.55),
+                  blurRadius: fontSize * 0.10,
+                  offset: Offset(0, fontSize * 0.07),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

@@ -112,22 +112,6 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
     });
   }
 
-  // TODO(games): temporary test hook — 重新开局 shows the 胜利 screen so its
-  // layout can be reviewed without winning a round for real. Deliberately only
-  // flips the UI: the round is left unsettled so no win is ever reported.
-  void _previewChessWin() {
-    if (!mounted || _chessResult != null) return;
-    setState(() => _chessResult = _ChessResultKind.win);
-  }
-
-  // TODO(games): temporary test hook — 重新开局 shows the 胜利 screen so its
-  // layout can be reviewed without winning a round for real. Deliberately only
-  // flips the UI: the round is left unsettled so no win is ever reported.
-  void _previewXiangqiWin() {
-    if (!mounted || _xiangqiResult != null) return;
-    setState(() => _xiangqiResult = _XiangqiResultKind.win);
-  }
-
   Future<void> _closeGame() async {
     final engine = _engine;
     if (_runtime.session != null && !_runtime.completed) {
@@ -432,7 +416,6 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
               onSquareTap: _handleSquareTap,
               // Quitting or restarting mid-game → 失败 + 扣分.
               onShowLose: _forfeitChess,
-              onPreviewWin: _previewChessWin,
               bannerInMs: _runtime.bannerInMs,
               bannerHoldMs: _runtime.bannerHoldMs,
               bannerOutMs: _runtime.bannerOutMs,
@@ -530,7 +513,6 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
               notice: _runtime.syncNotice,
               onSquareTap: _handleSquareTap,
               onShowLose: _forfeitXiangqi,
-              onPreviewWin: _previewXiangqiWin,
               onTimerPauseChanged: _setXiangqiTimerPaused,
               bannerInMs: _runtime.bannerInMs,
               bannerHoldMs: _runtime.bannerHoldMs,

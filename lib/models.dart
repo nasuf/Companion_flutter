@@ -1121,7 +1121,6 @@ class GameWallet {
     this.level,
     this.nextTier,
     this.gamePointsForGame,
-    this.rules,
   });
 
   final int balance;
@@ -1135,10 +1134,6 @@ class GameWallet {
   // Net points settled for a specific game (only when the request scoped to a
   // game_key); null for the global wallet fetch.
   final int? gamePointsForGame;
-
-  /// This game's scoring rules, so a result screen can show what the round was
-  /// actually worth. Only populated alongside a game_key.
-  final GamePointRules? rules;
 
   factory GameWallet.fromJson(Map<String, dynamic> json) {
     GameLevel? parseLevel(Object? value) {
@@ -1158,11 +1153,6 @@ class GameWallet {
       level: parseLevel(json['level']),
       nextTier: parseLevel(json['next_tier']),
       gamePointsForGame: (json['game_points_for_game'] as num?)?.round(),
-      rules: json['rules'] is Map
-          ? GamePointRules.fromJson(
-              Map<String, dynamic>.from(json['rules'] as Map),
-            )
-          : null,
     );
   }
 }
@@ -1170,9 +1160,11 @@ class GameWallet {
 /// Per-game scoring rules, mirroring `game_point_rules.rules` on the server.
 ///
 /// Two shapes: most games score by outcome (win / lose / draw / quit), while
-/// 数字合并 scores by the highest tile reached, with its own quit penalty. The
-/// deltas here must stay in step with `game_points.settle_session`; the client
-/// only uses them to label the result screen, the ledger is always the server's.
+/// 数字合并 scores by the highest tile reached, with its own quit penalty.
+///
+/// These only label the result screen — the ledger is always settled by the
+/// server. Both sides therefore carry the same table, each pinned by its own
+/// test, rather than the client fetching it.
 class GamePointRules {
   const GamePointRules({
     required this.isMilestone,
@@ -1225,9 +1217,9 @@ class GamePointRules {
   /// Points this round settles for. [maxTile] only matters for 数字合并.
   ///
   /// Mirrors `_outcome_delta` / `_milestone_delta` on the server: a milestone
-  /// game awards the highest tile reached whenever the board actually finished
-  /// (win or lose), and only charges the quit penalty when the round is
-  /// abandoned.
+  /// game charges the quit penalty below the first tile no matter how the
+  /// round ended, and above it awards the highest tile reached unless the
+  /// player walked away.
   int deltaFor(GameOutcome outcome, {int maxTile = 0}) {
     if (!isMilestone) {
       return switch (outcome) {
@@ -1237,9 +1229,11 @@ class GamePointRules {
         GameOutcome.aborted => quit,
       };
     }
-    if (outcome == GameOutcome.aborted) {
-      return maxTile < quitThreshold ? quitBelow : quitAtOrAbove;
-    }
+    // Short of the first milestone the round counts as a loss however it
+    // ended: filling the grid without ever reaching 128 is no better than
+    // walking away from it.
+    if (maxTile < quitThreshold) return quitBelow;
+    if (outcome == GameOutcome.aborted) return quitAtOrAbove;
     var points = 0;
     for (final entry in milestones) {
       if (maxTile >= entry.key) points = entry.value;
@@ -1249,6 +1243,45 @@ class GamePointRules {
 }
 
 enum GameOutcome { win, lose, draw, aborted }
+
+/// Scoring rules per game, matching the server's `game_point_rules` seed.
+///
+/// A result screen needs its number the moment it appears, and these values are
+/// product constants, so they live here instead of arriving over the wire.
+/// Pinned to the server's table by test/game_point_rules_test.dart — change one
+/// side and the other has to follow.
+GamePointRules? seedGamePointRules(String gameKey) {
+  Map<String, dynamic> outcome(int win, int lose, int quit) => {
+    'type': 'outcome',
+    'win': win,
+    'lose': lose,
+    'draw': 0,
+    'quit': quit,
+  };
+  final raw = switch (gameKey) {
+    'go' || 'chinese_checkers' => outcome(5, -4, -4),
+    'reversi' || 'xiangqi' || 'chess' => outcome(4, -3, -3),
+    'gomoku' || 'minesweeper' || 'match3' => outcome(3, -2, -2),
+    'tetris_duel' => outcome(3, -3, -3),
+    'number_merge' => {
+      'type': 'milestone',
+      'milestones': [
+        {'tile': 128, 'points': 2},
+        {'tile': 256, 'points': 5},
+        {'tile': 512, 'points': 6},
+        {'tile': 1024, 'points': 15},
+        {'tile': 2048, 'points': 25},
+      ],
+      'quit_below_threshold': {
+        'threshold': 128,
+        'below': -2,
+        'at_or_above': 0,
+      },
+    },
+    _ => null,
+  };
+  return raw == null ? null : GamePointRules.fromJson(raw);
+}
 
 class GamePointConvertResult {
   const GamePointConvertResult({

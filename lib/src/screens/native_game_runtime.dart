@@ -29,8 +29,9 @@ class _NativeGameRuntime {
   // as the games hub (NOT the per-game score).
   int? pointsBalance;
   // This game's scoring rules, so result screens can show what the round was
-  // worth. Null until the wallet lands; screens fall back to hiding the number.
-  GamePointRules? pointRules;
+  // worth. Read from the built-in table: the values are product constants, and
+  // making the result screen wait on a round-trip only ever delayed the number.
+  late final GamePointRules? pointRules = seedGamePointRules(gameKey);
   Map<String, dynamic>? terminalPayload;
   DateTime? terminalPresentedAt;
   bool turnTimeoutVisible = false;
@@ -153,7 +154,6 @@ class _NativeGameRuntime {
       final wallet = await api.getGameWallet(gameKey: gameKey);
       gamePoints = wallet.gamePointsForGame ?? wallet.balance;
       pointsBalance = wallet.balance;
-      pointRules = wallet.rules ?? pointRules;
       _notify();
     } catch (_) {
       // Keep whatever value we last had; never block the game screen.

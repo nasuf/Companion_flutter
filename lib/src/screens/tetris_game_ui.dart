@@ -237,7 +237,6 @@ class _TetrisGameScreen extends StatelessWidget {
     required this.onPanUpdate,
     required this.onPanEnd,
     required this.onShowLose,
-    required this.onPreviewWin,
     required this.onPauseChanged,
   });
 
@@ -258,11 +257,6 @@ class _TetrisGameScreen extends StatelessWidget {
   final GestureDragUpdateCallback onPanUpdate;
   final GestureDragEndCallback onPanEnd;
   final Future<void> Function() onShowLose;
-
-  // TODO(games): temporary test hook — 重新开局 jumps straight to the 胜利
-  // screen so its layout can be checked without actually winning a round.
-  // Restore the onShowLose call below once the result screens are signed off.
-  final VoidCallback onPreviewWin;
   final ValueChanged<bool> onPauseChanged;
 
   static const _userCyan = Color(0xFF28FDFE);
@@ -547,7 +541,7 @@ class _TetrisGameScreen extends StatelessWidget {
               Navigator.of(dialogContext).pop();
               // Restarting mid-duel abandons the round, so it forfeits just
               // like quitting does.
-              onPreviewWin();
+              unawaited(onShowLose());
             },
           ),
         ],
@@ -1634,9 +1628,14 @@ class _TetrisResultScreenState extends State<_TetrisResultScreen>
                       if (widget.pointsDelta != null)
                         _NativeGameScoreDelta(
                           delta: widget.pointsDelta!,
+                          assetPrefix: _tetrisFigmaAsset,
+                          winValue: 3,
+                          loseValue: -3,
                           fill: const Color(0xFFFFFFFF),
                           stroke: const Color(0xFF1DE1FE),
-                          height: y(34),
+                          // Slightly under the 积分 label: the digits are solid
+                          // strokes and read heavier at a matching height.
+                          height: y(25),
                         ),
                     ],
                   ),

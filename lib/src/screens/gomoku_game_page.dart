@@ -74,14 +74,6 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
     });
   }
 
-  // TODO(games): temporary test hook — 重新开局 shows the 胜利 screen so its
-  // layout can be reviewed without winning a round for real. Deliberately only
-  // flips the UI: the round is left unsettled so no win is ever reported.
-  void _previewWin() {
-    if (!mounted || _result != null) return;
-    setState(() => _result = _GomokuResultKind.win);
-  }
-
   Future<void> _closeGame() async {
     final engine = _engine;
     if (_runtime.session != null && !_runtime.completed) {
@@ -279,7 +271,6 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
           onPointTap: _handleBoardTap,
           // Quitting / restarting mid-game counts as a loss (design note).
           onShowLose: _forfeit,
-          onPreviewWin: _previewWin,
           bannerInMs: _runtime.bannerInMs,
           bannerHoldMs: _runtime.bannerHoldMs,
           bannerOutMs: _runtime.bannerOutMs,
@@ -1012,7 +1003,6 @@ class _GomokuGameScreen extends StatefulWidget {
     required this.syncNotice,
     required this.onPointTap,
     required this.onShowLose,
-    required this.onPreviewWin,
     required this.bannerInMs,
     required this.bannerHoldMs,
     required this.bannerOutMs,
@@ -1030,11 +1020,6 @@ class _GomokuGameScreen extends StatefulWidget {
   final ValueChanged<GomokuPoint> onPointTap;
   // Quitting / restarting mid-game → settle as a loss and show the 失败 screen.
   final Future<void> Function() onShowLose;
-
-  // TODO(games): temporary test hook — 重新开局 jumps straight to the 胜利
-  // screen so its layout can be checked without actually winning a round.
-  // Restore the onShowLose call below once the result screens are signed off.
-  final VoidCallback onPreviewWin;
   // "你的回合" banner timing (ms), from the per-game admin config.
   final int bannerInMs;
   final int bannerHoldMs;
@@ -1306,7 +1291,7 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
               Navigator.of(dialogContext).pop();
               // Restarting mid-game → 失败 + 扣分; the 失败 screen's 重来一局 then
               // starts the new round.
-              widget.onPreviewWin();
+              unawaited(widget.onShowLose());
             },
           ),
         ),
@@ -1960,6 +1945,9 @@ class _GomokuResultScreenState extends State<_GomokuResultScreen>
             if (widget.pointsDelta != null)
               _NativeGameScoreDelta(
                 delta: widget.pointsDelta!,
+                assetPrefix: _gomokuHomeAsset,
+                winValue: 3,
+                loseValue: -2,
                 fill: const Color(0xFFFFFFFF),
                 stroke: const Color(0xFF000000),
                 height: 28,

@@ -235,7 +235,6 @@ class _MergeGameScreen extends StatelessWidget {
     required this.onExit,
     required this.onPauseChanged,
     required this.onAbandon,
-    required this.onPreviewWin,
   });
 
   final NumberMergeEngine engine;
@@ -254,15 +253,10 @@ class _MergeGameScreen extends StatelessWidget {
   final Future<void> Function() onExit;
   final ValueChanged<bool> onPauseChanged;
 
-  /// Giving up mid-board — from 退出 — counts as a loss and shows the lose
-  /// screen, which is where the player then picks between leaving and starting
-  /// over.
+  /// Giving up mid-board — from either 重新开局 or 退出 — counts as a loss and
+  /// shows the lose screen, which is where the player then picks between
+  /// leaving and starting over.
   final VoidCallback onAbandon;
-
-  // TODO(games): temporary test hook — 重新开局 shows the 胜利 screen so its
-  // layout can be checked without actually reaching 2048. Restore the
-  // onAbandon call below once the result screens are signed off.
-  final VoidCallback onPreviewWin;
 
   @override
   Widget build(BuildContext context) {
@@ -484,7 +478,7 @@ class _MergeGameScreen extends StatelessWidget {
             enabled: !starting,
             onTap: () {
               Navigator.of(dialogContext).pop();
-              onPreviewWin();
+              onAbandon();
             },
           ),
         ],
@@ -1018,6 +1012,13 @@ class _MergeResultScreenState extends State<_MergeResultScreen>
                             if (widget.pointsDelta != null)
                               _NativeGameScoreDelta(
                                 delta: widget.pointsDelta!,
+                                // Milestone payouts (+2…+25) and the below-
+                                // threshold penalty never match a fixed piece
+                                // of art, so this one is always drawn as text
+                                // and ships no win / lose score image.
+                                assetPrefix: _mergeFigmaAsset,
+                                winValue: null,
+                                loseValue: null,
                                 fill: const Color(0xFFFFFFFF),
                                 stroke: const Color(0xFF000000),
                                 height: 22,

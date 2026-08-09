@@ -72,14 +72,6 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
     setState(() => _timerPaused = paused);
   }
 
-  // TODO(games): temporary test hook — 重新开局 shows the 胜利 screen so its
-  // layout can be reviewed without winning a round for real. Deliberately only
-  // flips the UI: the round is left unsettled so no win is ever reported.
-  void _previewWin() {
-    if (!mounted || _result != null) return;
-    setState(() => _result = _ReversiResultKind.win);
-  }
-
   Future<void> _closeGame() async {
     final engine = _engine;
     if (_runtime.session != null && !_runtime.completed) {
@@ -351,7 +343,6 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
           bannerOutMs: _runtime.bannerOutMs,
           gamePoints: _runtime.pointsBalance,
           onShowLose: _forfeit,
-          onPreviewWin: _previewWin,
         ),
       );
     }
@@ -669,7 +660,6 @@ class _ReversiGameScreen extends StatefulWidget {
     required this.onExit,
     required this.onTimerPauseChanged,
     required this.onShowLose,
-    required this.onPreviewWin,
     required this.bannerInMs,
     required this.bannerHoldMs,
     required this.bannerOutMs,
@@ -694,11 +684,6 @@ class _ReversiGameScreen extends StatefulWidget {
   final ValueChanged<bool> onTimerPauseChanged;
   // Quit / restart mid-game → show the loss result instead of exiting directly.
   final VoidCallback onShowLose;
-
-  // TODO(games): temporary test hook — 重新开局 jumps straight to the 胜利
-  // screen so its layout can be checked without actually winning a round.
-  // Restore the onShowLose call below once the result screens are signed off.
-  final VoidCallback onPreviewWin;
   // "你的回合" banner timing (ms), from the per-game admin config.
   final int bannerInMs;
   final int bannerHoldMs;
@@ -944,7 +929,7 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
             label: '重新开局',
             onTap: () {
               Navigator.of(dialogContext).pop();
-              widget.onPreviewWin();
+              widget.onShowLose();
             },
           ),
         ),
@@ -1894,14 +1879,19 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Image.asset('$_reversiAsset$labelAsset', height: 30),
+              Image.asset('$_reversiAsset$labelAsset', height: 26),
               const SizedBox(width: 8),
               if (widget.pointsDelta != null)
+                // Slightly under the label: the digits are solid strokes and
+                // read heavier than the 积分 characters at a matching height.
                 _NativeGameScoreDelta(
                   delta: widget.pointsDelta!,
+                  assetPrefix: _reversiAsset,
+                  winValue: 4,
+                  loseValue: -3,
                   fill: const Color(0xFFF1DFC5),
                   stroke: const Color(0xFF4E1F0F),
-                  height: 34,
+                  height: 24,
                 ),
             ],
           ),

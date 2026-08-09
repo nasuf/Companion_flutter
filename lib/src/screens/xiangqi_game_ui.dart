@@ -315,7 +315,6 @@ class _XiangqiGameScreen extends StatelessWidget {
     required this.notice,
     required this.onSquareTap,
     required this.onShowLose,
-    required this.onPreviewWin,
     required this.onTimerPauseChanged,
     required this.bannerInMs,
     required this.bannerHoldMs,
@@ -342,11 +341,6 @@ class _XiangqiGameScreen extends StatelessWidget {
   final ValueChanged<int> onSquareTap;
   // Quitting / restarting mid-game → settle as a loss and show the 失败 screen.
   final Future<void> Function() onShowLose;
-
-  // TODO(games): temporary test hook — 重新开局 jumps straight to the 胜利
-  // screen so its layout can be checked without actually winning a round.
-  // Restore the onShowLose call below once the result screens are signed off.
-  final VoidCallback onPreviewWin;
   final ValueChanged<bool> onTimerPauseChanged;
   // "你的回合" banner timing (ms), from the per-game admin config (read fresh
   // each round from engine_config).
@@ -569,7 +563,7 @@ class _XiangqiGameScreen extends StatelessWidget {
             enabled: !starting,
             onTap: () {
               Navigator.of(dialogContext).pop();
-              onPreviewWin();
+              unawaited(onShowLose());
             },
           ),
         ),
@@ -1132,6 +1126,9 @@ class _XiangqiResultScreenState extends State<_XiangqiResultScreen>
                 if (widget.pointsDelta != null)
                   _NativeGameScoreDelta(
                     delta: widget.pointsDelta!,
+                    assetPrefix: _xiangqiAsset,
+                    winValue: 4,
+                    loseValue: -3,
                     fill: const Color(0xFFFDEBC0),
                     stroke: const Color(0xFF77240A),
                     height: 28,
