@@ -106,94 +106,91 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
     final media = MediaQuery.of(context);
     final keyboard = media.viewInsets.bottom;
     final safeBottom = media.padding.bottom;
-    // The keyboard's own top corners are rounded, so a sheet that stops exactly
-    // at the keyboard line leaves two dark notches of scrim showing. Running it
-    // a little way underneath fills them.
-    const underlap = 20.0;
-    final lift = keyboard > 0 ? math.max(keyboard - underlap, 0.0) : 0.0;
+    final typing = keyboard > 0;
     // At rest the panel is only as tall as what is in it, with a gap so the
     // page stays visible behind. The Figma frame is a fixed 680 with a dead
     // gap above the button, which made the button fly ~280px on keyboard open.
     //
-    // While typing it takes the whole area above the keyboard instead. This is
-    // what UIKit's own sheets do (WWDC21 "Customize and resize sheets in
-    // UIKit": the sheet grows to the large detent when the keyboard comes up
-    // and collapses back after). The sliver left above it is the status bar —
-    // a Flutter modal sheet will not lay out over that, and iOS's large detent
-    // leaves the same gap, so this is as far up as it goes.
-    final room = media.size.height - widget.topInset - lift;
-    final typing = keyboard > 0;
-    return Padding(
-      padding: EdgeInsets.only(bottom: lift),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: math.max(typing ? room : room - 24, 0),
-        ),
-        child: SizedBox(
-          height: typing ? math.max(room, 0) : null,
-          child: Container(
-            key: const Key('checkin-sheet'),
-            decoration: BoxDecoration(
-              color: tokens.page,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(_kCheckinCardRadius),
+    // While typing it grows — UIKit's own sheets do the same (WWDC21
+    // "Customize and resize sheets in UIKit": the sheet goes to the large
+    // detent when the keyboard appears and collapses back after) — but it
+    // grows *down*, all the way to the screen edge, so its background carries
+    // on behind the keyboard. Stopping at the keyboard line instead makes the
+    // keyboard read as a separate slab pasted under the panel.
+    final full = media.size.height - widget.topInset;
+    // The form and the button live in the part that is not covered.
+    final uncovered = media.size.height - keyboard - widget.topInset;
+    final block = ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: math.max(typing ? uncovered : full - 24, 0),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Flexible, not Expanded: the form takes only the room it needs
+          // until the panel hits the cap, and scrolls after that.
+          Flexible(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => FocusScope.of(context).unfocus(),
+              child: SingleChildScrollView(
+                // Scrolling must not kill the keyboard: iOS's polished
+                // equivalent is keyboardDismissMode .interactive (the
+                // keyboard follows the finger and can be pulled back),
+                // which Flutter has no mode for — of the two it does
+                // have, manual is the one that does not yank the
+                // keyboard away mid-scroll. Tapping outside still does.
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.manual,
+                padding: const EdgeInsets.fromLTRB(
+                  _kCheckinMargin,
+                  _kCheckinSheetPadTop,
+                  _kCheckinMargin,
+                  8,
+                ),
+                // Switching to 周期习惯 adds a 140px card; animating the
+                // content rather than the panel keeps the keyboard-driven
+                // resize instant while the mode change still eases.
+                child: AnimatedSize(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topCenter,
+                  child: _form(tokens),
+                ),
               ),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Flexible, not Expanded: the form takes only the room it needs
-                // until the panel hits the cap, and scrolls after that.
-                Flexible(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => FocusScope.of(context).unfocus(),
-                    child: SingleChildScrollView(
-                      // Scrolling must not kill the keyboard: iOS's polished
-                      // equivalent is keyboardDismissMode .interactive (the
-                      // keyboard follows the finger and can be pulled back),
-                      // which Flutter has no mode for — of the two it does
-                      // have, manual is the one that does not yank the
-                      // keyboard away mid-scroll. Tapping outside still does.
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.manual,
-                      padding: const EdgeInsets.fromLTRB(
-                        _kCheckinMargin,
-                        _kCheckinSheetPadTop,
-                        _kCheckinMargin,
-                        8,
-                      ),
-                      // Switching to 周期习惯 adds a 140px card; animating the
-                      // content rather than the panel keeps the keyboard-driven
-                      // resize instant while the mode change still eases.
-                      child: AnimatedSize(
-                        duration: const Duration(milliseconds: 220),
-                        curve: Curves.easeOutCubic,
-                        alignment: Alignment.topCenter,
-                        child: _form(tokens),
-                      ),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    _kCheckinMargin,
-                    12,
-                    _kCheckinMargin,
-                    keyboard > 0
-                        ? 16 + underlap
-                        : _kCheckinSheetSaveGap + safeBottom,
-                  ),
-                  child: _CheckinPrimaryButton(
-                    label: '保存计划',
-                    busy: _saving,
-                    onPressed: _busy || !_canSave ? null : _save,
-                  ),
-                ),
-              ],
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              _kCheckinMargin,
+              12,
+              _kCheckinMargin,
+              typing ? 16 : _kCheckinSheetSaveGap + safeBottom,
+            ),
+            child: _CheckinPrimaryButton(
+              label: '保存计划',
+              busy: _saving,
+              onPressed: _busy || !_canSave ? null : _save,
             ),
           ),
+        ],
+      ),
+    );
+    return SizedBox(
+      height: typing ? math.max(full, 0) : null,
+      child: Container(
+        key: const Key('checkin-sheet'),
+        decoration: BoxDecoration(
+          color: tokens.page,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(_kCheckinCardRadius),
+          ),
         ),
+        // Pinned to the top of the grown panel: the rest of it is background
+        // sitting behind the keyboard, not space to spread the form into.
+        child: typing
+            ? Align(alignment: Alignment.topCenter, child: block)
+            : block,
       ),
     );
   }

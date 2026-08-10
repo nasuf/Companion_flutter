@@ -602,17 +602,15 @@ void main() {
       final sheet = tester.getRect(find.byKey(const Key('checkin-sheet')));
       final save = tester.getRect(find.byKey(const Key('checkin-save')));
       final note = tester.getRect(find.byKey(const Key('checkin-note')));
-      // While typing the panel takes the whole area above the keyboard and
-      // starts at the safe area, so no sliver of scrim is left showing above
-      // it. A single plan still fits whole, without scrolling.
+      // While typing the panel grows to the safe area at the top and all the
+      // way to the screen edge at the bottom, so its background carries on
+      // behind the keyboard: no scrim above it, no seam under it.
       expect(sheet.top, _safeTop);
       expect(sheet.top, lessThan(closed.top));
-      expect(note.bottom, lessThanOrEqualTo(sheet.bottom));
-      // It runs a little way under the keyboard so the keyboard's own rounded
-      // top corners do not expose the scrim, and save stays above that line.
-      expect(sheet.bottom, greaterThan(_canvasHeight - keyboard));
-      expect(sheet.bottom, lessThanOrEqualTo(_canvasHeight - keyboard + 24));
+      expect(sheet.bottom, _canvasHeight);
+      // The form and the button stay in the part the keyboard does not cover.
       expect(save.bottom, lessThanOrEqualTo(_canvasHeight - keyboard));
+      expect(note.bottom, lessThanOrEqualTo(_canvasHeight - keyboard));
       expect(find.text('输入计划名称'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
