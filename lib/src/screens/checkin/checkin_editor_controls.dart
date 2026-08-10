@@ -6,13 +6,11 @@ const _kCheckinWeekdayLabels = ['周一', '周二', '周三', '周四', '周五'
 class _CheckinNameField extends StatelessWidget {
   const _CheckinNameField({
     required this.controller,
-    required this.enabled,
     required this.autofocus,
     required this.onChanged,
   });
 
   final TextEditingController controller;
-  final bool enabled;
   final bool autofocus;
   final ValueChanged<String> onChanged;
 
@@ -32,7 +30,6 @@ class _CheckinNameField extends StatelessWidget {
       ),
       child: TextField(
         controller: controller,
-        enabled: enabled,
         autofocus: autofocus,
         maxLines: 1,
         textInputAction: TextInputAction.done,

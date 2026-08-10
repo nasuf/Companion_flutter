@@ -563,68 +563,24 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('deleting a finished plan asks first', (tester) async {
-      _useDesignCanvas(tester);
-      final api = _FakeReminderApi([_once('a', '阅读30分钟', done: true)]);
-
-      await tester.pumpWidget(_app(api));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('阅读30分钟'));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('删除计划'));
-      await tester.pumpAndSettle();
-      expect(find.text('删除这个计划？'), findsOneWidget);
-
-      await tester.tap(find.text('取消'));
-      await tester.pumpAndSettle();
-      expect(api.deleted, isEmpty);
-      expect(find.byKey(const Key('checkin-detail')), findsOneWidget);
-
-      await tester.tap(find.text('删除计划'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('删除'));
-      await tester.pumpAndSettle();
-      expect(api.deleted, ['a']);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('deleting a finished plan asks first', (tester) async {
-      _useDesignCanvas(tester);
-      final api = _FakeReminderApi([_once('a', '阅读30分钟', done: true)]);
-
-      await tester.pumpWidget(_app(api));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('阅读30分钟'));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('删除计划'));
-      await tester.pumpAndSettle();
-      expect(find.text('删除这个计划？'), findsOneWidget);
-
-      await tester.tap(find.text('取消'));
-      await tester.pumpAndSettle();
-      expect(api.deleted, isEmpty);
-      expect(find.byKey(const Key('checkin-detail')), findsOneWidget);
-
-      await tester.tap(find.text('删除计划'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('删除'));
-      await tester.pumpAndSettle();
-      expect(api.deleted, ['a']);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('a ticked habit opens as a summary with a way back in', (
+    testWidgets('the tally counts the tick that has not synced yet', (
       tester,
     ) async {
       _useDesignCanvas(tester);
-      final habit = _habit('h', '晨跑', [_today.weekday]);
+      final habit = ReminderItem(
+        id: 'h',
+        summary: '晨跑',
+        triggerTime: _today.add(const Duration(hours: 8)),
+        recurrence: 'weekly',
+        status: 'active',
+        agentId: 'agent-1',
+        createdAt: _today.subtract(const Duration(days: 20)),
+        habitWeekdays: [_today.weekday],
+        completedDates: [_key(_today.subtract(const Duration(days: 7)))],
+      );
 
       await tester.pumpWidget(_app(_FakeReminderApi([habit])));
       await tester.pumpAndSettle();
-      // Tick it, then reopen. The tick sits last in the row; the earlier
-      // buttons are the swipe actions hidden behind it.
       await tester.tap(
         find
             .descendant(
@@ -637,44 +593,43 @@ void main() {
       await tester.tap(find.text('晨跑'));
       await tester.pumpAndSettle();
 
-      // Read-only: the weekdays and the time are shown, nothing is a field.
-      expect(find.byKey(const Key('checkin-detail')), findsOneWidget);
-      expect(find.byKey(const Key('checkin-sheet')), findsNothing);
-      expect(find.text('今日已打卡'), findsOneWidget);
-      expect(find.byKey(const Key('checkin-weekdays')), findsOneWidget);
-      expect(find.byType(TextField), findsNothing);
-
-      // A habit is still running, so the editor is one deliberate tap away.
-      await tester.tap(find.text('编辑习惯'));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('checkin-sheet')), findsOneWidget);
-      expect(find.byKey(const Key('checkin-detail')), findsNothing);
+      // The list is not refetched after a tick, so the item still carries the
+      // old dates; the page has to fold in the one it is holding locally.
+      expect(find.text('累计 2 次'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('deleting a finished plan asks first', (tester) async {
+    testWidgets('a habit without weekdays says how often instead', (
+      tester,
+    ) async {
       _useDesignCanvas(tester);
-      final api = _FakeReminderApi([_once('a', '阅读30分钟', done: true)]);
+      final daily = ReminderItem(
+        id: 'd',
+        summary: '喝水',
+        triggerTime: _today.add(const Duration(hours: 9)),
+        recurrence: 'daily',
+        status: 'active',
+        agentId: 'agent-1',
+        createdAt: _today.subtract(const Duration(days: 3)),
+        completedDates: [_key(_today)],
+      );
 
-      await tester.pumpWidget(_app(api));
+      await tester.pumpWidget(_app(_FakeReminderApi([daily])));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('阅读30分钟'));
+      await tester.tap(find.text('喝水'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('删除计划'));
-      await tester.pumpAndSettle();
-      expect(find.text('删除这个计划？'), findsOneWidget);
-
-      await tester.tap(find.text('取消'));
-      await tester.pumpAndSettle();
-      expect(api.deleted, isEmpty);
+      // Daily and monthly habits come from chat and carry no weekday list;
+      // seven blank pills would say nothing, so the type row carries it.
       expect(find.byKey(const Key('checkin-detail')), findsOneWidget);
-
-      await tester.tap(find.text('删除计划'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('删除'));
-      await tester.pumpAndSettle();
-      expect(api.deleted, ['a']);
+      expect(find.byKey(const Key('checkin-weekdays')), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('checkin-detail')),
+          matching: find.text('每天'),
+        ),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
 

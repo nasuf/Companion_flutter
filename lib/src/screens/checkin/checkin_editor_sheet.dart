@@ -204,7 +204,6 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
         ],
         _CheckinNameField(
           controller: _nameController,
-          enabled: true,
           autofocus: widget.item == null,
           onChanged: (_) => setState(() {}),
         ),

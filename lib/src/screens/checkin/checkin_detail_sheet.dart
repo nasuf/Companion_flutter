@@ -11,6 +11,7 @@ Future<Object?> _showCheckinDetail({
   required BuildContext context,
   required ReminderItem item,
   required DateTime date,
+  required int completedCount,
 }) {
   return showModalBottomSheet<Object?>(
     context: context,
@@ -20,6 +21,7 @@ Future<Object?> _showCheckinDetail({
     builder: (_) => _CheckinDetailSheet(
       item: item,
       date: date,
+      completedCount: completedCount,
       topInset: MediaQuery.paddingOf(context).top,
     ),
   );
@@ -44,11 +46,17 @@ class _CheckinDetailSheet extends StatelessWidget {
   const _CheckinDetailSheet({
     required this.item,
     required this.date,
+    required this.completedCount,
     required this.topInset,
   });
 
   final ReminderItem item;
   final DateTime date;
+
+  /// Counted by the page, which also knows about the tick that has not been
+  /// written back yet — reading the item alone is one short right after you
+  /// check something off.
+  final int completedCount;
   final double topInset;
 
   @override
@@ -57,6 +65,7 @@ class _CheckinDetailSheet extends StatelessWidget {
     final safeBottom = MediaQuery.paddingOf(context).bottom;
     final maxHeight = MediaQuery.sizeOf(context).height - topInset - 24;
     final habit = item.isHabit;
+    final weekly = habit && item.habitWeekdays.isNotEmpty;
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: math.max(maxHeight, 0)),
       child: Container(
@@ -91,10 +100,12 @@ class _CheckinDetailSheet extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 20),
-              if (habit) ...[
-                // The weekdays as chips, the same ones the editor draws. A
-                // comma-joined sentence is the sort of thing you have to read;
-                // the row you just glance at.
+              // The weekdays as chips, the same ones the editor draws: a
+              // comma-joined sentence is the sort of thing you have to read,
+              // the row you just glance at. Only weekly habits have weekdays —
+              // a daily or monthly one (they come from chat) would show seven
+              // empty pills, so those say it in the type row instead.
+              if (weekly) ...[
                 _CheckinWeekdayCard(selected: item.habitWeekdays.toSet()),
                 const SizedBox(height: _kCheckinSheetFieldGap),
               ],
@@ -109,7 +120,6 @@ class _CheckinDetailSheet extends StatelessWidget {
   }
 
   Widget _status(_CheckinTokens tokens, bool habit) {
-    final done = habit ? item.completedDates.length : 1;
     return Row(
       children: [
         _CheckinCheckBadge(size: 24, color: tokens.accent),
@@ -127,7 +137,7 @@ class _CheckinDetailSheet extends StatelessWidget {
         const Spacer(),
         if (habit)
           Text(
-            '累计 $done 次',
+            '累计 $completedCount 次',
             style: TextStyle(
               color: tokens.subtitle,
               fontSize: 12,
@@ -151,7 +161,13 @@ class _CheckinDetailSheet extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _row(tokens, '计划类型', habit ? '周期习惯' : '单次计划'),
+          // 每周 / 每天 / 每月 / 每年, so a non-weekly habit still says what it
+          // is even without a weekday row above.
+          _row(
+            tokens,
+            '计划类型',
+            habit ? _recurrenceLabel(item.recurrence) : '单次计划',
+          ),
           _divider(tokens),
           _row(
             tokens,

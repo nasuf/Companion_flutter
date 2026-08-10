@@ -229,6 +229,7 @@ class _CheckinPageState extends State<CheckinPage> {
         context: context,
         item: item,
         date: _selectedDate,
+        completedCount: _completedCount(item),
       );
       if (!mounted) return;
       if (request is _CheckinDeleteRequest) {
@@ -298,6 +299,18 @@ class _CheckinPageState extends State<CheckinPage> {
       }
       rethrow;
     }
+  }
+
+  /// Ticks written to the server plus the one that is still only local.
+  int _completedCount(ReminderItem item) {
+    if (!item.isHabit) return 1;
+    final dates = item.completedDates.toSet();
+    if (_optimisticCompletedKeys.contains(
+      _completionKey(item, _selectedDate),
+    )) {
+      dates.add(_dateKey(_selectedDate));
+    }
+    return dates.length;
   }
 
   String _completionKey(ReminderItem item, DateTime date) {
