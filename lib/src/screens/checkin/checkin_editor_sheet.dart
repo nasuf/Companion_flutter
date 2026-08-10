@@ -106,78 +106,23 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
     final media = MediaQuery.of(context);
     final keyboard = media.viewInsets.bottom;
     final safeBottom = media.padding.bottom;
-    final typing = keyboard > 0;
-    // At rest the panel is only as tall as what is in it, with a gap so the
-    // page stays visible behind. The Figma frame is a fixed 680 with a dead
-    // gap above the button, which made the button fly ~280px on keyboard open.
+    // The panel is its content plus however much keyboard there is, so its
+    // height is a continuous function of the inset: at every frame of the
+    // keyboard animation the button's bottom edge lands exactly on the
+    // keyboard line, and the panel keeps reaching the screen edge underneath.
     //
-    // While typing it grows — UIKit's own sheets do the same (WWDC21
-    // "Customize and resize sheets in UIKit": the sheet goes to the large
-    // detent when the keyboard appears and collapses back after) — but it
-    // grows *down*, all the way to the screen edge, so its background carries
-    // on behind the keyboard. Stopping at the keyboard line instead makes the
-    // keyboard read as a separate slab pasted under the panel.
-    final full = media.size.height - widget.topInset;
-    // The form and the button live in the part that is not covered.
-    final uncovered = media.size.height - keyboard - widget.topInset;
-    final block = ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: math.max(typing ? uncovered : full - 24, 0),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Flexible, not Expanded: the form takes only the room it needs
-          // until the panel hits the cap, and scrolls after that.
-          Flexible(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => FocusScope.of(context).unfocus(),
-              child: SingleChildScrollView(
-                // Scrolling must not kill the keyboard: iOS's polished
-                // equivalent is keyboardDismissMode .interactive (the
-                // keyboard follows the finger and can be pulled back),
-                // which Flutter has no mode for — of the two it does
-                // have, manual is the one that does not yank the
-                // keyboard away mid-scroll. Tapping outside still does.
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.manual,
-                padding: const EdgeInsets.fromLTRB(
-                  _kCheckinMargin,
-                  _kCheckinSheetPadTop,
-                  _kCheckinMargin,
-                  8,
-                ),
-                // Switching to 周期习惯 adds a 140px card; animating the
-                // content rather than the panel keeps the keyboard-driven
-                // resize instant while the mode change still eases.
-                child: AnimatedSize(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutCubic,
-                  alignment: Alignment.topCenter,
-                  child: _form(tokens),
-                ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              _kCheckinMargin,
-              12,
-              _kCheckinMargin,
-              typing ? 16 : _kCheckinSheetSaveGap + safeBottom,
-            ),
-            child: _CheckinPrimaryButton(
-              label: '保存计划',
-              busy: _saving,
-              onPressed: _busy || !_canSave ? null : _save,
-            ),
-          ),
-        ],
-      ),
-    );
-    return SizedBox(
-      height: typing ? math.max(full, 0) : null,
+    // Anything branching on "is the keyboard up" steps instead of tracks — the
+    // panel would jump to full height on the first frame and only fall back
+    // once the inset finished animating away, which is the lag you feel.
+    //
+    // Growing on keyboard is what UIKit's own sheets do (WWDC21 "Customize and
+    // resize sheets in UIKit": the sheet goes to the large detent when the
+    // keyboard appears and collapses back after); growing downwards rather
+    // than upwards is what keeps its background behind the keyboard so the two
+    // do not read as separate slabs.
+    final maxPanel = math.max(media.size.height - widget.topInset, 0.0);
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxPanel),
       child: Container(
         key: const Key('checkin-sheet'),
         decoration: BoxDecoration(
@@ -186,19 +131,60 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
             top: Radius.circular(_kCheckinCardRadius),
           ),
         ),
-        // Pinned to the top of the grown panel: the rest of it is background
-        // sitting behind the keyboard, not space to spread the form into.
-        //
-        // Always present, never wrapped conditionally — swapping this layer in
-        // and out as the keyboard comes and goes changes the shape of the tree,
-        // which rebuilds the fields instead of updating them and fires their
-        // autofocus a second time (the keyboard reopens the moment you dismiss
-        // it). heightFactor makes one widget cover both cases: it fills when
-        // the panel is given a height and wraps the form when it is not.
-        child: Align(
-          alignment: Alignment.topCenter,
-          heightFactor: 1,
-          child: block,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Flexible, not Expanded: the form takes only the room it needs
+            // until the panel hits the cap, and scrolls after that.
+            Flexible(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => FocusScope.of(context).unfocus(),
+                child: SingleChildScrollView(
+                  // Scrolling must not kill the keyboard: iOS's polished
+                  // equivalent is keyboardDismissMode .interactive (the
+                  // keyboard follows the finger and can be pulled back), which
+                  // Flutter has no mode for — of the two it does have, manual
+                  // is the one that does not yank the keyboard away mid-scroll.
+                  // Tapping outside a field still dismisses it.
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.manual,
+                  padding: const EdgeInsets.fromLTRB(
+                    _kCheckinMargin,
+                    _kCheckinSheetPadTop,
+                    _kCheckinMargin,
+                    8,
+                  ),
+                  // Switching to 周期习惯 adds a 140px card; animating the
+                  // content rather than the panel keeps the keyboard-driven
+                  // resize instant while the mode change still eases.
+                  child: AnimatedSize(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    alignment: Alignment.topCenter,
+                    child: _form(tokens),
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                _kCheckinMargin,
+                12,
+                _kCheckinMargin,
+                // The home indicator inset is only worth clearing while it is
+                // actually showing; the keyboard eats it as it rises.
+                _kCheckinSheetSaveGap + math.max(safeBottom - keyboard, 0),
+              ),
+              child: _CheckinPrimaryButton(
+                label: '保存计划',
+                busy: _saving,
+                onPressed: _busy || !_canSave ? null : _save,
+              ),
+            ),
+            // The stretch that lives behind the keyboard.
+            SizedBox(height: keyboard),
+          ],
         ),
       ),
     );

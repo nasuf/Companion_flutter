@@ -602,13 +602,12 @@ void main() {
       final sheet = tester.getRect(find.byKey(const Key('checkin-sheet')));
       final save = tester.getRect(find.byKey(const Key('checkin-save')));
       final note = tester.getRect(find.byKey(const Key('checkin-note')));
-      // While typing the panel grows to the safe area at the top and all the
-      // way to the screen edge at the bottom, so its background carries on
-      // behind the keyboard: no scrim above it, no seam under it.
-      expect(sheet.top, _safeTop);
+      // The panel grows upwards while still reaching the screen edge, so its
+      // background carries on behind the keyboard: no scrim above it, no seam
+      // under it, and the form stays in the part that is not covered.
       expect(sheet.top, lessThan(closed.top));
+      expect(sheet.top, greaterThanOrEqualTo(_safeTop));
       expect(sheet.bottom, _canvasHeight);
-      // The form and the button stay in the part the keyboard does not cover.
       expect(save.bottom, lessThanOrEqualTo(_canvasHeight - keyboard));
       expect(note.bottom, lessThanOrEqualTo(_canvasHeight - keyboard));
       expect(find.text('输入计划名称'), findsOneWidget);
@@ -640,6 +639,37 @@ void main() {
         isFalse,
         reason: 'the keyboard must stay down after the done key',
       );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the panel tracks the keyboard frame by frame', (tester) async {
+      _useDesignCanvas(tester);
+
+      await tester.pumpWidget(_app(_FakeReminderApi(const [])));
+      await tester.pumpAndSettle();
+      await _openEditor(tester);
+
+      // Walk the inset the way the platform reports it mid-animation. Height
+      // has to be a continuous function of it: anything keyed off "is the
+      // keyboard up" jumps on the first frame and only comes back on the last,
+      // which reads as the panel lagging behind the keyboard.
+      double? gap;
+      var previousTop = double.infinity;
+      for (final inset in [80.0, 160.0, 240.0, 336.0]) {
+        _useDesignCanvas(tester, keyboard: inset);
+        await tester.pump();
+
+        final sheet = tester.getRect(find.byKey(const Key('checkin-sheet')));
+        final save = tester.getRect(find.byKey(const Key('checkin-save')));
+        expect(sheet.bottom, _canvasHeight);
+        expect(sheet.top, lessThan(previousTop));
+        previousTop = sheet.top;
+
+        // The button rides the keyboard line at a fixed distance.
+        final toKeyboard = (_canvasHeight - inset) - save.bottom;
+        gap ??= toKeyboard;
+        expect(toKeyboard, closeTo(gap, 0.5));
+      }
       expect(tester.takeException(), isNull);
     });
 
