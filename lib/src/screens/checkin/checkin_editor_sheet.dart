@@ -111,22 +111,24 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
     // a little way underneath fills them.
     const underlap = 20.0;
     final lift = keyboard > 0 ? math.max(keyboard - underlap, 0.0) : 0.0;
-    // The panel is as tall as what is in it, not a fixed slice of the screen.
-    // The Figma frame is a fixed 680 with a dead gap above the button; keeping
-    // that gap means the button has to fly ~280px when the keyboard opens,
-    // which reads as the whole screen being reflowed. Sized to its content the
-    // panel simply rides up onto the keyboard in one piece.
-    final available = media.size.height - widget.topInset - 24 - lift;
+    // At rest the panel is only as tall as what is in it, with a gap so the
+    // page stays visible behind. The Figma frame is a fixed 680 with a dead
+    // gap above the button, which made the button fly ~280px on keyboard open.
+    //
+    // While typing it takes the whole area above the keyboard instead. The
+    // form needs ~450 and the keyboard leaves ~500, so a content-sized panel
+    // would end up floating with a sliver of scrim above it — reading as a
+    // panel that got shoved rather than an editor that took the screen.
+    final room = media.size.height - widget.topInset - lift;
+    final typing = keyboard > 0;
     return Padding(
       padding: EdgeInsets.only(bottom: lift),
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: math.max(available, 0)),
-        // Switching to 周期习惯 adds a 140px card; with a content-sized panel
-        // that would otherwise pop the top edge up in one frame.
-        child: AnimatedSize(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          alignment: Alignment.bottomCenter,
+        constraints: BoxConstraints(
+          maxHeight: math.max(typing ? room : room - 24, 0),
+        ),
+        child: SizedBox(
+          height: typing ? math.max(room, 0) : null,
           child: Container(
             key: const Key('checkin-sheet'),
             decoration: BoxDecoration(
@@ -153,7 +155,15 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
                         _kCheckinMargin,
                         8,
                       ),
-                      child: _form(tokens),
+                      // Switching to 周期习惯 adds a 140px card; animating the
+                      // content rather than the panel keeps the keyboard-driven
+                      // resize instant while the mode change still eases.
+                      child: AnimatedSize(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.topCenter,
+                        child: _form(tokens),
+                      ),
                     ),
                   ),
                 ),

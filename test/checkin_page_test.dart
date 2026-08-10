@@ -602,10 +602,11 @@ void main() {
       final sheet = tester.getRect(find.byKey(const Key('checkin-sheet')));
       final save = tester.getRect(find.byKey(const Key('checkin-save')));
       final note = tester.getRect(find.byKey(const Key('checkin-note')));
-      // The panel rides up onto the keyboard in one piece instead of staying
-      // put and reflowing inside; a single plan still fits above it whole.
+      // While typing the panel takes the whole area above the keyboard and
+      // starts at the safe area, so no sliver of scrim is left showing above
+      // it. A single plan still fits whole, without scrolling.
+      expect(sheet.top, _safeTop);
       expect(sheet.top, lessThan(closed.top));
-      expect(sheet.top, greaterThanOrEqualTo(_safeTop));
       expect(note.bottom, lessThanOrEqualTo(sheet.bottom));
       // It runs a little way under the keyboard so the keyboard's own rounded
       // top corners do not expose the scrim, and save stays above that line.
