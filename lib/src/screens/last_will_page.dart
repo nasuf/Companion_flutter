@@ -15,7 +15,7 @@ class _LastWillPageState extends State<LastWillPage>
   late final AnimationController _glowController;
   late Future<List<LastWill>> _wills;
   LastWill? _current;
-  int _draftDays = 30;
+  int _pendingDays = 30;
   List<LastWillContact> _draftContacts = const [];
   bool _busy = false;
 
@@ -40,7 +40,7 @@ class _LastWillPageState extends State<LastWillPage>
     if (mounted) {
       setState(() {
         _current = items.isEmpty ? null : items.first;
-        _draftDays = _current?.inactivityDays ?? _draftDays;
+        _pendingDays = _current?.inactivityDays ?? _pendingDays;
         _draftContacts = _current?.contacts ?? _draftContacts;
       });
     }
@@ -55,189 +55,152 @@ class _LastWillPageState extends State<LastWillPage>
     await future;
   }
 
-  int get _days => _current?.inactivityDays ?? _draftDays;
+  int? get _savedDays => _current?.inactivityDays;
   List<LastWillContact> get _contacts => _current?.contacts ?? _draftContacts;
   String get _content => _current?.content ?? '';
   bool get _isTiming =>
       _current?.isActive == true && _current?.hasContent == true;
-  bool get _showBottomWriteButton =>
-      _current == null || _current?.hasContent != true;
-  bool get _canEditContacts => true;
-  bool get _canEditDays => true;
+  bool get _daysDirty => _savedDays != _pendingDays;
   bool get _canConvertToDraft =>
       _current?.hasContent == true && _current?.status != 'draft';
   bool get _canStartFromEditor =>
       _current?.status != 'active' && _current?.status != 'triggered';
+
+  /// Trailing label of the 遗言 card: the status once the countdown runs, the
+  /// edit affordance otherwise.
   String get _contentTrail {
     final status = _current?.status;
-    if (status == 'draft') return '草稿';
     if (status == 'triggered') return '已触发';
     if (_isTiming) return '已计时';
-    return '已保存';
+    if (status == 'draft' && _current?.hasContent == true) return '草稿';
+    return '编辑';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.page,
-      body: SafeArea(
-        bottom: false,
-        child: FutureBuilder<List<LastWill>>(
-          future: _wills,
-          builder: (context, snapshot) {
-            final loading = snapshot.connectionState == ConnectionState.waiting;
-            final safeBottom = MediaQuery.paddingOf(context).bottom;
-            return Stack(
-              children: [
-                Positioned.fill(
-                  child: Builder(
-                    builder: (context) {
-                      final colors = AppColors.of(context);
-                      final isDark = AppColors.isDark(context);
-                      return DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: RadialGradient(
-                            center: const Alignment(0.72, -0.36),
-                            radius: 0.92,
-                            colors: [
-                              isDark
-                                  ? Color.lerp(
-                                      colors.page,
-                                      const Color(0xFF2D3440),
-                                      0.46,
-                                    )!
-                                  : const Color(
-                                      0xFFE6E9E3,
-                                    ).withValues(alpha: 0.86),
-                              colors.page,
-                            ],
-                          ),
+      body: Stack(
+        children: [
+          const Positioned.fill(child: _LegacyBackground()),
+          SafeArea(
+            bottom: false,
+            child: FutureBuilder<List<LastWill>>(
+              future: _wills,
+              builder: (context, snapshot) {
+                final loading =
+                    snapshot.connectionState == ConnectionState.waiting;
+                final safeBottom = MediaQuery.paddingOf(context).bottom;
+                return Column(
+                  children: [
+                    _LegacyHeader(
+                      title: 'Hi，牵挂之人',
+                      onBack: () => Navigator.of(context).maybePop(),
+                    ),
+                    Expanded(
+                      child: ListView(
+                        physics: const BouncingScrollPhysics(),
+                        padding: EdgeInsets.fromLTRB(
+                          _legacyGutter,
+                          0,
+                          _legacyGutter,
+                          math.max(24, safeBottom + 12),
                         ),
-                      );
-                    },
-                  ),
-                ),
-                CustomScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  slivers: [
-                    const SliverToBoxAdapter(child: _TopActions()),
-                    SliverPadding(
-                      padding: EdgeInsets.fromLTRB(
-                        24,
-                        34,
-                        24,
-                        _showBottomWriteButton || _isTiming
-                            ? 126 + safeBottom
-                            : 104,
-                      ),
-                      sliver: SliverList.list(
                         children: [
-                          _HeroCard(
+                          // Without this a failed load is indistinguishable
+                          // from "nothing saved yet", and the user would write
+                          // a second will over the one already on the server.
+                          if (snapshot.hasError) ...[
+                            const _LegacyLoadErrorNotice(),
+                            const SizedBox(height: 16),
+                          ],
+                          _LegacyCountdownCard(
                             animation: _glowController,
-                            active: _isTiming,
-                            days: _days,
-                            contacts: _contacts.length,
-                            onDaysTap: _canEditDays ? _openDaysSheet : null,
-                            onContactsTap: _contacts.isNotEmpty
-                                ? _openContactsDetailSheet
-                                : _canEditContacts
-                                ? _openContactsSheet
-                                : null,
+                            glowing: _isTiming,
+                            days: _pendingDays,
+                            showConfirm: _daysDirty && !_busy,
+                            onDaysChanged: (value) {
+                              setState(() => _pendingDays = value);
+                            },
+                            onConfirm: _confirmDays,
                           ),
-                          if (_content.trim().isNotEmpty) ...[
-                            const SizedBox(height: 18),
-                            _LastWillContentItem(
-                              id: _current?.id ?? 'draft',
-                              canDelete: _current != null && !_busy,
-                              onDelete: _deleteCurrentWill,
-                              lead: '文',
-                              title: '遗言内容',
-                              body: _current?.preview ?? _content,
-                              trail: _contentTrail,
-                              onTap: _current == null ? null : _openEditor,
+                          const SizedBox(height: 24),
+                          _LegacyContactsCard(
+                            contacts: _contacts,
+                            onManage: _openContactsManager,
+                            onSlotTap: _openContactSlot,
+                          ),
+                          const SizedBox(height: 24),
+                          _LegacyWillCard(
+                            content: _content,
+                            trail: _contentTrail,
+                            editedAt: _current?.updatedAt,
+                            onEdit: _busy ? null : _openEditor,
+                          ),
+                          if (_isTiming) ...[
+                            const SizedBox(height: 32),
+                            _LegacyGuardBanner(
+                              days: _savedDays ?? _pendingDays,
+                              startedAt: _current?.startedAt,
                             ),
                           ],
-                          if (_contacts.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            _InfoRow(
-                              lead: '联',
-                              title: '紧急联系人',
-                              body: _contactSummary(_contacts),
-                              trail: '${_contacts.length} 人',
-                              onTap: _openContactsDetailSheet,
+                          if (loading) ...[
+                            const SizedBox(height: 24),
+                            const Center(
+                              child: CupertinoActivityIndicator(
+                                color: Colors.white,
+                              ),
                             ),
                           ],
-                          if (!_isTiming && loading)
-                            const Center(child: CupertinoActivityIndicator()),
                         ],
                       ),
                     ),
                   ],
-                ),
-                if (_showBottomWriteButton && !loading)
-                  Positioned(
-                    left: 24,
-                    right: 24,
-                    bottom: math.max(18, safeBottom + 10),
-                    child: _BottomWriteButton(onTap: _openEditor, busy: _busy),
-                  ),
-                if (_isTiming && !loading)
-                  Positioned(
-                    left: 24,
-                    right: 24,
-                    bottom: math.max(18, safeBottom + 10),
-                    child: _TimingFooter(
-                      days: _days,
-                      startedAt: _current?.startedAt,
-                      animation: _glowController,
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  String _contactSummary(List<LastWillContact> contacts) {
-    return contacts
-        .map((item) {
-          final phone = item.phone == null ? '' : _maskPhone(item.phone!);
-          final email = item.email == null ? '' : _maskEmail(item.email!);
-          final channel = phone.isNotEmpty ? phone : email;
-          return channel.isEmpty ? item.name : '${item.name} · $channel';
-        })
-        .join('；');
-  }
-
-  String _maskPhone(String value) {
-    final digits = value.replaceAll(RegExp(r'\D'), '');
-    if (digits.length < 7) return value;
-    return '${digits.substring(0, 3)}****${digits.substring(digits.length - 4)}';
-  }
-
-  String _maskEmail(String value) {
-    final at = value.indexOf('@');
-    if (at <= 1) return value;
-    return '${value.substring(0, 1)}***${value.substring(at)}';
+  Future<void> _confirmDays() async {
+    final days = _pendingDays;
+    final confirmed = await _showLegacyConfirmDialog(
+      context,
+      title: '失联天数',
+      message: '系统将按时间约定，把未能说出口的话，悄悄送达你指定的人',
+      confirmLabel: '确认',
+    );
+    if (!confirmed || !mounted) return;
+    // Explicit confirmation, so create the record even at the default 30 days.
+    await _persistDraftSettings(inactivityDays: days, force: true);
   }
 
   Future<void> _openEditor() async {
-    final result = await showModalBottomSheet<_LastWillEditResult>(
-      context: context,
-      isScrollControlled: true,
-      enableDrag: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.transparent,
-      builder: (_) => _LastWillEditorSheet(
-        initialContent: _content,
-        canStart: _contacts.isNotEmpty,
-        allowStart: _canStartFromEditor,
-        canConvertToDraft: _canConvertToDraft,
-        ensureContacts: _ensureContactsForTrigger,
-        onDelete: _current?.hasContent == true ? _deleteCurrentWill : null,
+    final result = await Navigator.of(context).push<_LastWillEditResult>(
+      PageRouteBuilder<_LastWillEditResult>(
+        transitionDuration: const Duration(milliseconds: 320),
+        reverseTransitionDuration: const Duration(milliseconds: 260),
+        pageBuilder: (_, __, ___) => _LastWillEditorPage(
+          initialContent: _content,
+          hasContacts: _contacts.isNotEmpty,
+          allowStart: _canStartFromEditor,
+          canConvertToDraft: _canConvertToDraft,
+          ensureContacts: _ensureContactsForTrigger,
+          onDelete: _current?.hasContent == true ? _deleteCurrentWill : null,
+        ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 1),
+              end: Offset.zero,
+            ).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+            ),
+            child: child,
+          );
+        },
       ),
     );
     if (result == null || !mounted) return;
@@ -275,20 +238,19 @@ class _LastWillPageState extends State<LastWillPage>
       final saved = _current == null
           ? await widget.api.createLastWill(
               content: content,
-              inactivityDays: _days,
+              inactivityDays: _savedDays ?? _pendingDays,
               contacts: _contacts,
               status: status,
             )
           : await widget.api.updateLastWill(
               _current!.id,
               content: content,
-              inactivityDays: _days,
               contacts: _contacts,
               status: status,
             );
       setState(() {
         _current = saved;
-        _draftDays = saved.inactivityDays;
+        _pendingDays = saved.inactivityDays;
         _draftContacts = saved.contacts;
       });
       await _refresh();
@@ -302,25 +264,14 @@ class _LastWillPageState extends State<LastWillPage>
   Future<bool> _deleteCurrentWill() async {
     final current = _current;
     if (current == null || !current.hasContent || _busy) return false;
-    final confirmed = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('删除遗言？'),
-        content: const Text('只会删除遗言内容，失联天数和联系人会保留。'),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await _showLegacyConfirmDialog(
+      context,
+      title: '删除遗言？',
+      message: '只会删除遗言内容，失联天数和联系人会保留。',
+      confirmLabel: '删除',
+      buttonHeight: 32,
     );
-    if (confirmed != true || !mounted) return false;
+    if (!confirmed || !mounted) return false;
     setState(() => _busy = true);
     try {
       final saved = await widget.api.updateLastWill(
@@ -330,7 +281,7 @@ class _LastWillPageState extends State<LastWillPage>
       );
       setState(() {
         _current = saved;
-        _draftDays = saved.inactivityDays;
+        _pendingDays = saved.inactivityDays;
         _draftContacts = saved.contacts;
       });
       await _refresh();
@@ -343,18 +294,21 @@ class _LastWillPageState extends State<LastWillPage>
     }
   }
 
+  /// [inactivityDays] is only sent when the caller changed it — a contacts-only
+  /// edit must not silently commit a day count the user has not confirmed yet.
   Future<LastWill?> _persistDraftSettings({
     int? inactivityDays,
     List<LastWillContact>? contacts,
+    bool force = false,
   }) async {
-    final nextDays = inactivityDays ?? _days;
+    final current = _current;
+    final nextDays = inactivityDays ?? current?.inactivityDays ?? _pendingDays;
     final nextContacts = contacts ?? _contacts;
-    if (_current == null && nextDays == 30 && nextContacts.isEmpty) {
+    if (!force && current == null && nextDays == 30 && nextContacts.isEmpty) {
       return null;
     }
     setState(() => _busy = true);
     try {
-      final current = _current;
       final saved = current == null
           ? await widget.api.createLastWill(
               content: '',
@@ -364,13 +318,13 @@ class _LastWillPageState extends State<LastWillPage>
             )
           : await widget.api.updateLastWill(
               current.id,
-              inactivityDays: nextDays,
+              inactivityDays: inactivityDays,
               contacts: nextContacts,
             );
       if (mounted) {
         setState(() {
           _current = saved;
-          _draftDays = saved.inactivityDays;
+          _pendingDays = saved.inactivityDays;
           _draftContacts = saved.contacts;
         });
       }
@@ -383,24 +337,10 @@ class _LastWillPageState extends State<LastWillPage>
     }
   }
 
-  Future<void> _openDaysSheet() async {
-    final selected = await showModalBottomSheet<int>(
-      context: context,
-      isScrollControlled: true,
-      enableDrag: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.42),
-      builder: (_) => _DaysSheet(initial: _days),
-    );
-    if (selected == null || !mounted) return;
-    setState(() => _draftDays = selected);
-    await _persistDraftSettings(inactivityDays: selected);
-  }
-
   Future<bool> _ensureContactsForTrigger() async {
     if (_contacts.isNotEmpty) return true;
-    final saved = await _openContactsSheet();
-    if (!mounted || saved == null) return false;
+    await _openContactSlot(_contacts.length);
+    if (!mounted) return false;
     if (_contacts.isEmpty) {
       _toast('先添加至少 1 位紧急联系人');
       return false;
@@ -408,39 +348,60 @@ class _LastWillPageState extends State<LastWillPage>
     return true;
   }
 
-  Future<void> _openContactsDetailSheet() async {
-    if (_contacts.isEmpty) {
-      if (_canEditContacts) await _openContactsSheet();
-      return;
-    }
-    final action = await showModalBottomSheet<_ContactDetailAction>(
-      context: context,
-      isScrollControlled: true,
-      enableDrag: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.42),
-      builder: (_) =>
-          _ContactsDetailSheet(contacts: _contacts, editable: _canEditContacts),
+  Future<void> _openContactsManager() async {
+    await Navigator.of(context).push<void>(
+      CupertinoPageRoute(
+        builder: (_) => _LegacyContactsManagePage(
+          contacts: _contacts,
+          onSave: _saveContacts,
+        ),
+      ),
     );
-    if (!mounted) return;
-    if (action == _ContactDetailAction.edit) {
-      await _openContactsSheet();
-    }
   }
 
-  Future<bool?> _openContactsSheet() async {
-    final contacts = await showModalBottomSheet<List<LastWillContact>>(
-      context: context,
-      isScrollControlled: true,
-      enableDrag: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.42),
-      builder: (_) => _ContactsSheet(initial: _contacts),
+  /// Opens the add / edit sheet for a slot on the home card.
+  Future<void> _openContactSlot(int index) async {
+    final contacts = _contacts;
+    final existing = index < contacts.length ? contacts[index] : null;
+    if (existing == null && contacts.length >= _legacyMaxContacts) {
+      _toast('最多添加 $_legacyMaxContacts 位紧急联系人');
+      return;
+    }
+    final result = await _showLegacyContactSheet(
+      context,
+      // A tap on the third bubble while only one contact exists still adds the
+      // second one, so label the sheet by the slot it will occupy.
+      index: existing == null ? contacts.length : index,
+      initial: existing,
     );
-    if (contacts == null || !mounted) return null;
-    setState(() => _draftContacts = contacts);
-    final saved = await _persistDraftSettings(contacts: contacts);
-    return (saved?.contacts ?? contacts).isNotEmpty;
+    if (result == null || !mounted) return;
+    final next = [...contacts];
+    if (result.deleted) {
+      if (existing != null) next.removeAt(index);
+    } else if (result.contact != null) {
+      if (existing == null) {
+        next.add(result.contact!);
+      } else {
+        next[index] = result.contact!;
+      }
+    }
+    await _saveContacts(next);
+  }
+
+  /// Returns the list that ended up in effect, so the manage page never shows a
+  /// contact the server refused.
+  Future<List<LastWillContact>> _saveContacts(
+    List<LastWillContact> contacts,
+  ) async {
+    final next = contacts.take(_legacyMaxContacts).toList();
+    final previous = _contacts;
+    setState(() => _draftContacts = next);
+    final saved = await _persistDraftSettings(contacts: next);
+    if (saved == null && _current != null) {
+      if (mounted) setState(() => _draftContacts = previous);
+      return previous;
+    }
+    return saved?.contacts ?? next;
   }
 
   void _toast(String message) {
@@ -451,18 +412,411 @@ class _LastWillPageState extends State<LastWillPage>
   }
 }
 
-class _TopActions extends StatelessWidget {
-  const _TopActions();
+/// 失联倒计时 card: big day readout, scrubbable day ruler and preset chips.
+class _LegacyCountdownCard extends StatelessWidget {
+  const _LegacyCountdownCard({
+    required this.animation,
+    required this.glowing,
+    required this.days,
+    required this.showConfirm,
+    required this.onDaysChanged,
+    required this.onConfirm,
+  });
+
+  final Animation<double> animation;
+  final bool glowing;
+  final int days;
+  final bool showConfirm;
+  final ValueChanged<int> onDaysChanged;
+  final VoidCallback onConfirm;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-      child: Row(
+    final card = _LegacyCard(
+      child: Stack(
         children: [
-          _AppNavCircleButton(
-            icon: CupertinoIcons.chevron_left,
-            onPressed: () => Navigator.of(context).maybePop(),
+          Column(
+            children: [
+              const SizedBox(height: 20),
+              const Text(
+                '失联倒计时',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  height: 19 / 16,
+                  fontWeight: FontWeight.w700,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '$days',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 40,
+                  height: 48 / 40,
+                  fontWeight: FontWeight.w400,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _LegacyDayRuler(value: days, onChanged: onDaysChanged),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 13),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    for (final preset in _legacyDayPresets)
+                      _LegacyChip(
+                        label: '$preset天',
+                        selected: preset == days,
+                        onTap: () => onDaysChanged(preset),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 13),
+            ],
+          ),
+          if (showConfirm)
+            Positioned(
+              right: _legacyGutter,
+              top: 16,
+              child: _LegacyCardAction(label: '确认', onTap: onConfirm),
+            ),
+        ],
+      ),
+    );
+    if (!glowing) return card;
+    return AnimatedBuilder(
+      animation: animation,
+      child: card,
+      builder: (context, child) {
+        return CustomPaint(
+          foregroundPainter: _GlowBorderPainter(progress: animation.value),
+          child: child,
+        );
+      },
+    );
+  }
+}
+
+/// Horizontal day ruler. One tick every 32px; the tick under the marker is the
+/// selection, and emphasis falls off continuously to either side of it.
+class _LegacyDayRuler extends StatefulWidget {
+  const _LegacyDayRuler({required this.value, required this.onChanged});
+
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  State<_LegacyDayRuler> createState() => _LegacyDayRulerState();
+}
+
+class _LegacyDayRulerState extends State<_LegacyDayRuler> {
+  static const _count = _legacyMaxDays - _legacyMinDays + 1;
+
+  late final ScrollController _controller;
+  late int _centre;
+
+  @override
+  void initState() {
+    super.initState();
+    _centre = _clampDay(widget.value);
+    _controller = ScrollController(initialScrollOffset: _offsetFor(_centre));
+  }
+
+  @override
+  void didUpdateWidget(covariant _LegacyDayRuler oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A scrub reports through onChanged and comes straight back here, so the
+    // guard below is what stops it from animating against the finger: _centre is
+    // already the reported day, and only an outside change (a preset chip) can
+    // disagree with it.
+    final target = _clampDay(widget.value);
+    if (target == _centre) return;
+    // A rebuild of this widget is already in flight, so no setState is needed.
+    _centre = target;
+    // Starting the scroll here would dispatch ScrollStartNotification while the
+    // tree is still building, and reporting from that notification would call
+    // setState on the page mid-build. Hand it to the next frame instead.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_controller.hasClients) return;
+      if (_clampDay(widget.value) != _centre) return;
+      _controller.animateTo(
+        _offsetFor(_centre),
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  int _clampDay(int value) => value.clamp(_legacyMinDays, _legacyMaxDays);
+
+  double _offsetFor(int day) => (day - _legacyMinDays) * _legacyRulerPitch;
+
+  double get _offset =>
+      _controller.hasClients ? _controller.offset : _offsetFor(_centre);
+
+  /// Reports while the finger is still down so the big readout tracks the ruler.
+  bool _onNotification(ScrollNotification notification) {
+    if (!_controller.hasClients) return false;
+    final index = (_controller.offset / _legacyRulerPitch).round().clamp(
+      0,
+      _count - 1,
+    );
+    final day = _legacyMinDays + index;
+    if (day != _centre) {
+      setState(() => _centre = day);
+      widget.onChanged(day);
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: _legacyRulerHeight,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final side = math.max(
+            0.0,
+            constraints.maxWidth / 2 - _legacyRulerPitch / 2,
+          );
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: _onNotification,
+                  child: ListView.builder(
+                    controller: _controller,
+                    scrollDirection: Axis.horizontal,
+                    physics: const _LegacyRulerPhysics(),
+                    padding: EdgeInsets.symmetric(horizontal: side),
+                    itemExtent: _legacyRulerPitch,
+                    itemCount: _count,
+                    itemBuilder: (context, index) {
+                      return AnimatedBuilder(
+                        animation: _controller,
+                        builder: (context, _) {
+                          final ticksFromCentre =
+                              (index * _legacyRulerPitch - _offset) /
+                              _legacyRulerPitch;
+                          return _LegacyDayTick(
+                            day: _legacyMinDays + index,
+                            emphasis: _legacyRulerEmphasis(ticksFromCentre),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 0,
+                left: constraints.maxWidth / 2 - _legacyRulerMarkerSize / 2,
+                child: const IgnorePointer(child: _LegacyRulerMarker()),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Lands the ruler on whole ticks, modelled on [FixedExtentScrollPhysics].
+///
+/// Correcting after a `ScrollEndNotification` with `animateTo` leaves the marker
+/// a fraction of a tick off whenever that correction is interrupted; making the
+/// ballistic simulation itself stop on a multiple cannot drift.
+class _LegacyRulerPhysics extends ScrollPhysics {
+  const _LegacyRulerPhysics({super.parent});
+
+  @override
+  _LegacyRulerPhysics applyTo(ScrollPhysics? ancestor) {
+    return _LegacyRulerPhysics(parent: buildParent(ancestor));
+  }
+
+  double _settleFor(double offset, ScrollMetrics metrics) {
+    final clamped = offset.clamp(
+      metrics.minScrollExtent,
+      metrics.maxScrollExtent,
+    );
+    return (clamped / _legacyRulerPitch).round() * _legacyRulerPitch;
+  }
+
+  @override
+  Simulation? createBallisticSimulation(
+    ScrollMetrics metrics,
+    double velocity,
+  ) {
+    // Out of range and not heading back in: let the parent spring to the edge.
+    if ((velocity <= 0 && metrics.pixels <= metrics.minScrollExtent) ||
+        (velocity >= 0 && metrics.pixels >= metrics.maxScrollExtent)) {
+      return super.createBallisticSimulation(metrics, velocity);
+    }
+    final natural = super.createBallisticSimulation(metrics, velocity);
+    final naturalEnd = natural?.x(double.infinity) ?? metrics.pixels;
+    if (natural != null &&
+        (naturalEnd == metrics.minScrollExtent ||
+            naturalEnd == metrics.maxScrollExtent)) {
+      return super.createBallisticSimulation(metrics, velocity);
+    }
+
+    final settle = _settleFor(naturalEnd, metrics);
+    final tolerance = toleranceFor(metrics);
+    if (velocity.abs() < tolerance.velocity &&
+        (settle - metrics.pixels).abs() < tolerance.distance) {
+      return null;
+    }
+    if (settle == _settleFor(metrics.pixels, metrics)) {
+      return SpringSimulation(
+        spring,
+        metrics.pixels,
+        settle,
+        velocity,
+        tolerance: tolerance,
+      );
+    }
+    return FrictionSimulation.through(
+      metrics.pixels,
+      settle,
+      velocity,
+      tolerance.velocity * velocity.sign,
+    );
+  }
+}
+
+class _LegacyDayTick extends StatelessWidget {
+  const _LegacyDayTick({required this.day, required this.emphasis});
+
+  final int day;
+
+  /// 1 directly under the marker, easing to 0 by [_legacyRulerEmphasisSpan].
+  final double emphasis;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Color.lerp(_legacyFaint, Colors.white, emphasis)!;
+    return Column(
+      children: [
+        const SizedBox(height: _legacyRulerMarkerSize),
+        // Both slots keep a fixed height so growing a tick never nudges the
+        // labels off their shared centre line.
+        SizedBox(
+          height: 12,
+          child: Center(
+            child: Container(width: 2, height: 8 + 4 * emphasis, color: color),
+          ),
+        ),
+        SizedBox(
+          height: 16,
+          child: Center(
+            child: Text(
+              '$day',
+              key: Key('legacy-day-label-$day'),
+              style: TextStyle(
+                color: color,
+                fontSize: 12 + 3 * emphasis,
+                height: 1,
+                fontWeight: FontWeight.w500,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LegacyRulerMarker extends StatelessWidget {
+  const _LegacyRulerMarker();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 20,
+      height: 20,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.fromBorderSide(BorderSide(color: Colors.white)),
+      ),
+      alignment: Alignment.center,
+      child: Container(
+        width: 12,
+        height: 12,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+        ),
+      ),
+    );
+  }
+}
+
+/// 紧急联系人 card: three 48px slots, filled or "点击添加".
+class _LegacyContactsCard extends StatelessWidget {
+  const _LegacyContactsCard({
+    required this.contacts,
+    required this.onManage,
+    required this.onSlotTap,
+  });
+
+  final List<LastWillContact> contacts;
+  final VoidCallback onManage;
+  final ValueChanged<int> onSlotTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return _LegacyCard(
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(_legacyGutter, 16, _legacyGutter, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '紧急联系人',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    height: 19 / 16,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 19),
+                Row(
+                  children: [
+                    for (var index = 0; index < _legacyMaxContacts; index += 1)
+                      Padding(
+                        padding: EdgeInsets.only(left: index == 0 ? 0 : 16),
+                        child: _LegacyContactSlot(
+                          contact: index < contacts.length
+                              ? contacts[index]
+                              : null,
+                          onTap: () => onSlotTap(index),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            right: _legacyGutter,
+            top: 18,
+            child: _LegacyCardAction(label: '管理', onTap: onManage),
           ),
         ],
       ),
@@ -470,264 +824,39 @@ class _TopActions extends StatelessWidget {
   }
 }
 
-class _HeroBreathScope extends InheritedWidget {
-  const _HeroBreathScope({required this.breath, required super.child});
+class _LegacyContactSlot extends StatelessWidget {
+  const _LegacyContactSlot({required this.contact, required this.onTap});
 
-  final double breath;
-
-  static double of(BuildContext context) {
-    return context
-            .dependOnInheritedWidgetOfExactType<_HeroBreathScope>()
-            ?.breath ??
-        0.5;
-  }
-
-  @override
-  bool updateShouldNotify(covariant _HeroBreathScope oldWidget) {
-    return oldWidget.breath != breath;
-  }
-}
-
-class _LegacyHeroLight extends StatelessWidget {
-  const _LegacyHeroLight();
+  final LastWillContact? contact;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return const CustomPaint(painter: _LegacyHeroLightPainter());
-  }
-}
-
-class _LegacyHeroLightPainter extends CustomPainter {
-  const _LegacyHeroLightPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final baseRect = Offset.zero & size;
-    canvas.drawRect(
-      baseRect,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.surface.withValues(alpha: 0.82),
-            AppColors.surfaceMuted.withValues(alpha: 0.58),
-          ],
-        ).createShader(baseRect),
-    );
-
-    void drawGlow({
-      required Alignment center,
-      required double radius,
-      required List<Color> colors,
-      List<double>? stops,
-      double widthScale = 1,
-      double heightScale = 1,
-    }) {
-      final offset = Offset(
-        (center.x + 1) * size.width / 2,
-        (center.y + 1) * size.height / 2,
-      );
-      final rect = Rect.fromCenter(
-        center: offset,
-        width: radius * widthScale,
-        height: radius * heightScale,
-      );
-      canvas.drawOval(
-        rect,
-        Paint()
-          ..shader = RadialGradient(
-            colors: colors,
-            stops: stops,
-          ).createShader(rect)
-          ..blendMode = BlendMode.srcOver,
-      );
-    }
-
-    drawGlow(
-      center: const Alignment(0.76, -0.76),
-      radius: size.width * 0.56,
-      widthScale: 1,
-      heightScale: 0.88,
-      colors: [
-        const Color(0xFF151820).withValues(alpha: 0.18),
-        const Color(0xFF151820).withValues(alpha: 0.05),
-        const Color(0x00151820),
-      ],
-      stops: const [0, 0.66, 1],
-    );
-    drawGlow(
-      center: const Alignment(-1.16, 0.84),
-      radius: size.width * 0.56,
-      widthScale: 1,
-      heightScale: 0.84,
-      colors: [
-        const Color(0xFFCDB9FF).withValues(alpha: 0.10),
-        const Color(0xFFCDB9FF).withValues(alpha: 0.04),
-        const Color(0x00CDB9FF),
-      ],
-      stops: const [0, 0.72, 1],
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _HeroCard extends StatelessWidget {
-  const _HeroCard({
-    required this.animation,
-    required this.active,
-    required this.days,
-    required this.contacts,
-    required this.onDaysTap,
-    required this.onContactsTap,
-  });
-
-  final Animation<double> animation;
-  final bool active;
-  final int days;
-  final int contacts;
-  final VoidCallback? onDaysTap;
-  final VoidCallback? onContactsTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
-    return AnimatedBuilder(
-      animation: animation,
-      builder: (context, child) {
-        final breath = 0.5 + 0.5 * math.sin(animation.value * math.pi * 2);
-        return CustomPaint(
-          foregroundPainter: active
-              ? _GlowBorderPainter(progress: animation.value)
-              : null,
-          child: _HeroBreathScope(breath: breath, child: child!),
-        );
-      },
-      child: Container(
-        clipBehavior: Clip.antiAlias,
-        constraints: const BoxConstraints(minHeight: 224),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: AppColors.glassBorder(context)),
-          boxShadow: [
-            if (!AppColors.isDark(context))
-              BoxShadow(
-                color: Colors.white.withValues(alpha: 0.96),
-                blurRadius: 1,
-                offset: const Offset(0, -1),
-              ),
-            BoxShadow(
-              color: AppColors.shadow.withValues(
-                alpha: AppColors.isDark(context) ? 0.72 : 0.10,
-              ),
-              blurRadius: 42,
-              offset: const Offset(0, 22),
-            ),
-            BoxShadow(
-              color: const Color(0xFF7C3CFF).withValues(alpha: 0.08),
-              blurRadius: 28,
-              offset: const Offset(-14, 24),
-            ),
-          ],
-        ),
-        child: Stack(
-          clipBehavior: Clip.hardEdge,
+    final contact = this.contact;
+    final label = contact == null
+        ? '点击添加'
+        : (contact.name.trim().isEmpty ? '未命名' : contact.name.trim());
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: Size.zero,
+      onPressed: onTap,
+      child: SizedBox(
+        width: 48,
+        child: Column(
           children: [
-            const Positioned.fill(child: _LegacyHeroLight()),
-            Builder(
-              builder: (context) {
-                final breath = _HeroBreathScope.of(context);
-                return Positioned(
-                  right: -34 + breath * 6,
-                  bottom: 16 + breath * 8,
-                  child: Transform.rotate(
-                    angle: 0.157 + breath * 0.035,
-                    child: Transform.scale(
-                      scale: 0.98 + breath * 0.035,
-                      child: const IgnorePointer(
-                        child: CustomPaint(
-                          size: Size(112, 112),
-                          painter: _LegacyOrbPainter(),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'PRIVATE NOTE',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.4,
-                      color: isDark
-                          ? AppColors.muted.withValues(alpha: 0.70)
-                          : const Color(0xFF1F252C),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 64),
-                    child: Text(
-                      '留一份遗书吧',
-                      style: TextStyle(
-                        fontSize: 30,
-                        height: 1.12,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0,
-                        color: isDark
-                            ? AppColors.text
-                            : const Color(0xFF171B20),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 74),
-                    child: Text(
-                      '既要生得光荣，也要死得伟大',
-                      style: TextStyle(
-                        fontSize: 15,
-                        height: 1.52,
-                        color: isDark
-                            ? AppColors.muted
-                            : const Color(0xFF747C82),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-                  SizedBox(
-                    width: 226,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _MetricTile(
-                            value: '$days',
-                            label: '失联天数',
-                            onTap: onDaysTap,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _MetricTile(
-                            value: '$contacts',
-                            label: '联系人',
-                            onTap: onContactsTap,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+            _LegacyContactAvatar(filled: contact != null),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                height: 14 / 12,
+                fontWeight: FontWeight.w500,
+                decoration: TextDecoration.none,
               ),
             ),
           ],
@@ -737,56 +866,163 @@ class _HeroCard extends StatelessWidget {
   }
 }
 
-class _MetricTile extends StatelessWidget {
-  const _MetricTile({required this.value, required this.label, this.onTap});
+/// 遗言 card: headline is the first line of the note, body is the preview panel.
+class _LegacyWillCard extends StatelessWidget {
+  const _LegacyWillCard({
+    required this.content,
+    required this.trail,
+    required this.editedAt,
+    required this.onEdit,
+  });
 
-  final String value;
-  final String label;
+  final String content;
+  final String trail;
+  final DateTime? editedAt;
+  final VoidCallback? onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final body = content.trim();
+    final empty = body.isEmpty;
+    final headline = empty ? _legacyWillEmptyHeadline : _legacyWillHeadline;
+    return _LegacyCard(
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(_legacyGutter, 16, _legacyGutter, 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 64),
+                  child: Text(
+                    headline,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      height: 19 / 16,
+                      fontWeight: FontWeight.w700,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 19),
+                if (empty)
+                  _LegacyWillEmptyPanel(onTap: onEdit)
+                else
+                  _LegacyWillPreviewPanel(body: body, onTap: onEdit),
+                if (!empty) ...[
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 13),
+                    child: Text(
+                      _editedLabel(editedAt),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        height: 12 / 10,
+                        fontWeight: FontWeight.w500,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Positioned(
+            right: _legacyGutter,
+            top: 18,
+            child: _LegacyCardAction(
+              label: trail,
+              onTap: trail == '编辑' ? onEdit : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _editedLabel(DateTime? value) {
+    if (value == null) return '尚未保存';
+    final local = value.toLocal();
+    return '编辑于${local.year}年${local.month}月${local.day}日';
+  }
+}
+
+class _LegacyWillEmptyPanel extends StatelessWidget {
+  const _LegacyWillEmptyPanel({required this.onTap});
+
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
+    return Container(
+      height: 130,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: _legacyPanelFill,
+        borderRadius: _legacyCardBorderRadius,
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 24),
+          const SizedBox(
+            width: 24,
+            height: 24,
+            child: CustomPaint(painter: _LegacyDocPainter()),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '尚未填写遗言内容',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              height: 14 / 12,
+              fontWeight: FontWeight.w500,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _LegacyChip(label: '去填写', selected: true, onTap: onTap),
+        ],
+      ),
+    );
+  }
+}
+
+class _LegacyWillPreviewPanel extends StatelessWidget {
+  const _LegacyWillPreviewPanel({required this.body, required this.onTap});
+
+  final String body;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
     return CupertinoButton(
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
       onPressed: onTap,
       child: Container(
-        height: 58,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        height: 108,
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(13, 21, 13, 14),
         decoration: BoxDecoration(
-          color: AppColors.subtleFill(context, light: 0.56),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.glassBorder(context)),
+          color: _legacyPanelFill,
+          borderRadius: _legacyCardBorderRadius,
         ),
-        alignment: Alignment.centerLeft,
-        child: FittedBox(
-          alignment: Alignment.centerLeft,
-          fit: BoxFit.scaleDown,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 22,
-                  height: 1,
-                  fontWeight: FontWeight.w900,
-                  color: isDark ? AppColors.text : const Color(0xFF171B20),
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 10,
-                  height: 1.05,
-                  color: isDark ? AppColors.muted : const Color(0xFF9AA0A4),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
+        child: Text(
+          body,
+          maxLines: 5,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            height: 14 / 12,
+            fontWeight: FontWeight.w500,
+            decoration: TextDecoration.none,
           ),
         ),
       ),
@@ -794,517 +1030,73 @@ class _MetricTile extends StatelessWidget {
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({
-    required this.lead,
-    required this.title,
-    required this.body,
-    required this.trail,
-    this.onTap,
-  });
-
-  final String lead;
-  final String title;
-  final String body;
-  final String trail;
-  final VoidCallback? onTap;
+class _LegacyLoadErrorNotice extends StatelessWidget {
+  const _LegacyLoadErrorNotice();
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      onPressed: onTap,
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 180),
-        opacity: onTap == null ? 0.82 : 1,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 80),
-          padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
-          decoration: BoxDecoration(
-            color: AppColors.elevatedSurface(context, light: 0.76),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.glassBorder(context)),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF314054).withValues(alpha: 0.045),
-                blurRadius: 18,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDADCDD),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  lead,
-                  style: const TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF151A1F),
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      body,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        height: 1.28,
-                        color: Color(0xFF777F84),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 56),
-                child: Text(
-                  trail,
-                  textAlign: TextAlign.right,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF9AA19F),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LastWillContentItem extends StatelessWidget {
-  const _LastWillContentItem({
-    required this.id,
-    required this.canDelete,
-    required this.onDelete,
-    required this.lead,
-    required this.title,
-    required this.body,
-    required this.trail,
-    this.onTap,
-  });
-
-  final String id;
-  final bool canDelete;
-  final Future<bool> Function() onDelete;
-  final String lead;
-  final String title;
-  final String body;
-  final String trail;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final row = _InfoRow(
-      lead: lead,
-      title: title,
-      body: body,
-      trail: trail,
-      onTap: onTap,
-    );
-    if (!canDelete) return row;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: Dismissible(
-        key: ValueKey('last-will-content-$id'),
-        direction: DismissDirection.endToStart,
-        confirmDismiss: (_) => onDelete(),
-        background: const _LastWillDeleteSwipeBackground(),
-        child: row,
-      ),
-    );
-  }
-}
-
-class _LastWillDeleteSwipeBackground extends StatelessWidget {
-  const _LastWillDeleteSwipeBackground();
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
+    return Container(
+      padding: const EdgeInsets.fromLTRB(13, 10, 20, 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFE95656),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFE95656).withValues(alpha: 0.22),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
+        color: _legacyBannerFill,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            CupertinoIcons.exclamationmark_circle,
+            size: 20,
+            color: Colors.white,
+          ),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              '没能读取到已保存的遗言，下面显示的可能不是最新内容，请检查网络后重新进入。',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                height: 14 / 12,
+                fontWeight: FontWeight.w500,
+                decoration: TextDecoration.none,
+              ),
+            ),
           ),
         ],
       ),
-      child: const Align(
-        alignment: Alignment.centerRight,
-        child: Padding(
-          padding: EdgeInsets.only(right: 22),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(CupertinoIcons.delete_solid, color: Colors.white, size: 24),
-              SizedBox(height: 4),
-              Text(
-                '删除',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
 
-class _BottomWriteButton extends StatelessWidget {
-  const _BottomWriteButton({required this.onTap, required this.busy});
-
-  final VoidCallback onTap;
-  final bool busy;
-
-  @override
-  Widget build(BuildContext context) {
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      onPressed: busy ? null : onTap,
-      child: Container(
-        height: 58,
-        decoration: BoxDecoration(
-          color: const Color(0xFF121A23),
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF121A23).withValues(alpha: 0.16),
-              blurRadius: 24,
-              offset: const Offset(0, 12),
-            ),
-          ],
-        ),
-        alignment: Alignment.center,
-        child: busy
-            ? const CupertinoActivityIndicator(color: Colors.white)
-            : const Text(
-                '留遗言',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-      ),
-    );
-  }
-}
-
-class _TimingFooter extends StatelessWidget {
-  const _TimingFooter({
-    required this.days,
-    required this.animation,
-    this.startedAt,
-  });
+/// 遗言守护开启 banner, shown once the countdown is running.
+class _LegacyGuardBanner extends StatelessWidget {
+  const _LegacyGuardBanner({required this.days, required this.startedAt});
 
   final int days;
-  final Animation<double> animation;
   final DateTime? startedAt;
 
   @override
   Widget build(BuildContext context) {
-    final date = startedAt == null
-        ? '今天'
-        : '${startedAt!.month}月${startedAt!.day}日';
+    final started = startedAt?.toLocal();
+    final date = started == null ? '今天' : '${started.month}月${started.day}日';
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+      padding: const EdgeInsets.fromLTRB(13, 10, 32, 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF121A23),
-        borderRadius: BorderRadius.circular(22),
+        color: _legacyBannerFill,
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          AnimatedBuilder(
-            animation: animation,
-            child: const Icon(
-              CupertinoIcons.timer,
-              color: Colors.white,
-              size: 22,
-            ),
-            builder: (context, child) {
-              return Transform.rotate(
-                angle: animation.value * math.pi * 2,
-                child: child,
-              );
-            },
-          ),
-          const SizedBox(width: 12),
+          const Icon(CupertinoIcons.clock, size: 24, color: Colors.white),
+          const SizedBox(width: 6),
           Expanded(
             child: Text(
-              '$date起，连续$days日未登录，我们将替你把未曾说出口的心意，代为转告挂念之人。',
+              '遗言守护开启—$date起，连续$days日未登录，我们将替你把未曾说出口的心意，代为转告挂念之人。',
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 14,
-                height: 1.35,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DaysSheet extends StatefulWidget {
-  const _DaysSheet({required this.initial});
-
-  final int initial;
-
-  @override
-  State<_DaysSheet> createState() => _DaysSheetState();
-}
-
-class _DaysSheetState extends State<_DaysSheet> {
-  static const _days = [5, 7, 10, 30, 60];
-  late final FixedExtentScrollController _controller;
-  late int _selected;
-
-  @override
-  void initState() {
-    super.initState();
-    final index = _initialIndex(widget.initial);
-    _selected = _days[index];
-    _controller = FixedExtentScrollController(initialItem: index);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  int _initialIndex(int value) {
-    final exact = _days.indexOf(value);
-    if (exact >= 0) return exact;
-    var best = 0;
-    for (var i = 1; i < _days.length; i += 1) {
-      if ((_days[i] - value).abs() < (_days[best] - value).abs()) {
-        best = i;
-      }
-    }
-    return best;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.sizeOf(context).height * 0.48,
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-      decoration: BoxDecoration(
-        color: AppColors.page,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: DefaultTextStyle(
-          style: TextStyle(
-            color: AppColors.text,
-            decoration: TextDecoration.none,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const _LastWillSheetGrabber(),
-              Text(
-                '请选择连续未登录天数',
-                style: TextStyle(
-                  color: AppColors.text,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '系统将按约定，把你未说出口的话，悄悄送达',
-                style: TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 14,
-                  height: 1.35,
-                  fontWeight: FontWeight.w600,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 206,
-                child: Stack(
-                  children: [
-                    const Center(child: _LastWillWheelGlassSelection()),
-                    CupertinoPicker(
-                      scrollController: _controller,
-                      itemExtent: 58,
-                      diameterRatio: 1.35,
-                      useMagnifier: true,
-                      magnification: 1.03,
-                      squeeze: 1.10,
-                      selectionOverlay: const SizedBox.shrink(),
-                      onSelectedItemChanged: (index) {
-                        setState(() => _selected = _days[index]);
-                      },
-                      children: [
-                        for (final day in _days)
-                          _LastWillDayWheelItem(
-                            day: day,
-                            selected: day == _selected,
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: () => Navigator.of(context).pop(_selected),
-                child: Container(
-                  height: 54,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF121A23),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF121A23).withValues(alpha: 0.12),
-                        blurRadius: 22,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    '确认 $_selected 天',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LastWillWheelGlassSelection extends StatelessWidget {
-  const _LastWillWheelGlassSelection();
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 34),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            height: 58,
-            decoration: BoxDecoration(
-              color: AppColors.subtleFill(context, light: 0.42),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: AppColors.glassBorder(context)),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.shadow.withValues(
-                    alpha: isDark ? 0.58 : 0.08,
-                  ),
-                  blurRadius: 28,
-                  offset: const Offset(0, 14),
-                ),
-                if (!isDark)
-                  BoxShadow(
-                    color: Colors.white.withValues(alpha: 0.55),
-                    blurRadius: 1,
-                    offset: const Offset(0, -1),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LastWillDayWheelItem extends StatelessWidget {
-  const _LastWillDayWheelItem({required this.day, required this.selected});
-
-  final int day;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = selected
-        ? const Color(0xFF121A23)
-        : const Color(0xFF9DA4AA).withValues(alpha: 0.48);
-    return Center(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            '$day',
-            style: TextStyle(
-              color: color,
-              fontSize: selected ? 34 : 25,
-              height: 1,
-              fontWeight: FontWeight.w900,
-              decoration: TextDecoration.none,
-            ),
-          ),
-          const SizedBox(width: 5),
-          Padding(
-            padding: EdgeInsets.only(bottom: selected ? 3 : 1),
-            child: Text(
-              '天',
-              style: TextStyle(
-                color: color,
-                fontSize: selected ? 18 : 14,
-                fontWeight: FontWeight.w800,
+                fontSize: 12,
+                height: 14 / 12,
+                fontWeight: FontWeight.w500,
                 decoration: TextDecoration.none,
               ),
             ),
@@ -1315,963 +1107,37 @@ class _LastWillDayWheelItem extends StatelessWidget {
   }
 }
 
-class _LastWillSheetGrabber extends StatelessWidget {
-  const _LastWillSheetGrabber();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 10, bottom: 12),
-      child: Center(
-        child: Container(
-          width: 42,
-          height: 5,
-          decoration: BoxDecoration(
-            color: const Color(0xFFD8DCE0),
-            borderRadius: BorderRadius.circular(999),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ContactsSheet extends StatefulWidget {
-  const _ContactsSheet({required this.initial});
-
-  final List<LastWillContact> initial;
-
-  @override
-  State<_ContactsSheet> createState() => _ContactsSheetState();
-}
-
-class _ContactsSheetState extends State<_ContactsSheet> {
-  late final List<_ContactDraft> _drafts = [
-    for (final item in widget.initial) _ContactDraft.fromContact(item),
-    if (widget.initial.isEmpty) _ContactDraft(),
-  ];
-  String? _error;
-
-  @override
-  void dispose() {
-    for (final draft in _drafts) {
-      draft.dispose();
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.86,
-      ),
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 18,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + 22,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.page,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        border: Border(top: BorderSide(color: AppColors.glassBorder(context))),
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const _LastWillSheetGrabber(),
-            const Text(
-              '紧急联系人',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '最多 3 位。邮箱或电话至少填写一个。',
-              style: TextStyle(color: AppColors.muted, fontSize: 14),
-            ),
-            const SizedBox(height: 18),
-            for (var i = 0; i < _drafts.length; i += 1) ...[
-              _ContactEditor(
-                index: i,
-                draft: _drafts[i],
-                onRemove: _drafts.length == 1
-                    ? null
-                    : () => setState(() {
-                        final removed = _drafts.removeAt(i);
-                        removed.dispose();
-                      }),
-              ),
-              const SizedBox(height: 14),
-            ],
-            if (_drafts.length < 3)
-              CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: () => setState(() {
-                  _error = null;
-                  _drafts.add(_ContactDraft());
-                }),
-                child: Container(
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceMuted,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    '添加联系人',
-                    style: TextStyle(
-                      color: AppColors.text,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _error!,
-                style: const TextStyle(
-                  color: Color(0xFFE95656),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-            const SizedBox(height: 18),
-            CupertinoButton(
-              padding: EdgeInsets.zero,
-              onPressed: _save,
-              child: Container(
-                height: 54,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF121A23),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                alignment: Alignment.center,
-                child: const Text(
-                  '保存联系人',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _save() {
-    final contacts = <LastWillContact>[];
-    for (var i = 0; i < _drafts.length; i += 1) {
-      final draft = _drafts[i];
-      final error = draft.validationError(index: i);
-      if (error != null) {
-        setState(() => _error = error);
-        return;
-      }
-      final contact = draft.toContact();
-      if (contact == null) continue;
-      contacts.add(contact);
-    }
-    setState(() => _error = null);
-    Navigator.of(context).pop(contacts.take(3).toList());
-  }
-}
-
-enum _ContactDetailAction { edit }
-
-class _ContactsDetailSheet extends StatelessWidget {
-  const _ContactsDetailSheet({required this.contacts, required this.editable});
-
-  final List<LastWillContact> contacts;
-  final bool editable;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.76,
-      ),
-      padding: EdgeInsets.fromLTRB(
-        20,
-        0,
-        20,
-        MediaQuery.paddingOf(context).bottom + 18,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.page,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: DefaultTextStyle(
-          style: TextStyle(
-            color: AppColors.text,
-            decoration: TextDecoration.none,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const _LastWillSheetGrabber(),
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      '紧急联系人',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '${contacts.length} 人',
-                    style: TextStyle(
-                      color: AppColors.muted,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: contacts.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    return _ContactDetailCard(
-                      index: index,
-                      contact: contacts[index],
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 18),
-              CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: () => Navigator.of(
-                  context,
-                ).pop(editable ? _ContactDetailAction.edit : null),
-                child: Container(
-                  height: 54,
-                  decoration: BoxDecoration(
-                    color: editable
-                        ? const Color(0xFF121A23)
-                        : AppColors.elevatedSurface(context, light: 0.90),
-                    borderRadius: BorderRadius.circular(20),
-                    border: editable
-                        ? null
-                        : Border.all(color: AppColors.glassBorder(context)),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    editable ? '编辑联系人' : '完成',
-                    style: TextStyle(
-                      color: editable ? Colors.white : AppColors.text,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ContactDetailCard extends StatelessWidget {
-  const _ContactDetailCard({required this.index, required this.contact});
-
-  final int index;
-  final LastWillContact contact;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.elevatedSurface(context, light: 0.84),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.glassBorder(context)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadow.withValues(alpha: isDark ? 0.50 : 0.05),
-            blurRadius: 22,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              color: const Color(0xFFDADCDD),
-              borderRadius: BorderRadius.circular(17),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              '${index + 1}',
-              style: TextStyle(
-                color: AppColors.text,
-                fontSize: 21,
-                fontWeight: FontWeight.w900,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  contact.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _ContactDetailLine(
-                  label: '邮箱',
-                  value: contact.email?.trim().isNotEmpty == true
-                      ? contact.email!.trim()
-                      : '未填写',
-                ),
-                const SizedBox(height: 6),
-                _ContactDetailLine(
-                  label: '电话',
-                  value: contact.phone?.trim().isNotEmpty == true
-                      ? contact.phone!.trim()
-                      : '未填写',
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ContactDetailLine extends StatelessWidget {
-  const _ContactDetailLine({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 42,
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFF9AA0A4),
-              fontSize: 13,
-              height: 1.35,
-              fontWeight: FontWeight.w800,
-              decoration: TextDecoration.none,
-            ),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(
-              color: Color(0xFF60686E),
-              fontSize: 14,
-              height: 1.35,
-              fontWeight: FontWeight.w700,
-              decoration: TextDecoration.none,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ContactEditor extends StatelessWidget {
-  const _ContactEditor({
-    required this.index,
-    required this.draft,
-    required this.onRemove,
-  });
-
-  final int index;
-  final _ContactDraft draft;
-  final VoidCallback? onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.elevatedSurface(context, light: 0.88),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.glassBorder(context)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Text(
-                '联系人 ${index + 1}',
-                style: const TextStyle(fontWeight: FontWeight.w900),
-              ),
-              const Spacer(),
-              if (onRemove != null)
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  minimumSize: Size.zero,
-                  onPressed: () {
-                    FocusScope.of(context).unfocus();
-                    onRemove?.call();
-                  },
-                  child: const Icon(CupertinoIcons.xmark_circle_fill, size: 22),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          _SheetField(controller: draft.name, placeholder: '名字'),
-          const SizedBox(height: 10),
-          _SheetField(controller: draft.email, placeholder: '邮箱'),
-          const SizedBox(height: 10),
-          _SheetField(controller: draft.phone, placeholder: '电话'),
-        ],
-      ),
-    );
-  }
-}
-
-class _SheetField extends StatelessWidget {
-  const _SheetField({required this.controller, required this.placeholder});
-
-  final TextEditingController controller;
-  final String placeholder;
-
-  @override
-  Widget build(BuildContext context) {
-    return CupertinoTextField(
-      controller: controller,
-      placeholder: placeholder,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      decoration: BoxDecoration(
-        color: AppColors.elevatedSurface(context, light: 0.92),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.glassBorder(context)),
-      ),
-      style: TextStyle(color: AppColors.text),
-      placeholderStyle: TextStyle(
-        color: AppColors.muted.withValues(alpha: 0.62),
-      ),
-    );
-  }
-}
-
-class _ContactDraft {
-  _ContactDraft()
-    : name = TextEditingController(),
-      email = TextEditingController(),
-      phone = TextEditingController();
-
-  _ContactDraft.fromContact(LastWillContact contact)
-    : name = TextEditingController(text: contact.name),
-      email = TextEditingController(text: contact.email ?? ''),
-      phone = TextEditingController(text: contact.phone ?? '');
-
-  final TextEditingController name;
-  final TextEditingController email;
-  final TextEditingController phone;
-
-  LastWillContact? toContact() {
-    final n = name.text.trim();
-    final e = email.text.trim();
-    final p = phone.text.trim();
-    if (n.isEmpty && e.isEmpty && p.isEmpty) return null;
-    return LastWillContact(
-      name: n,
-      email: e.isEmpty ? null : e,
-      phone: p.isEmpty ? null : p,
-    );
-  }
-
-  String? validationError({required int index}) {
-    final n = name.text.trim();
-    final e = email.text.trim();
-    final p = phone.text.trim();
-    if (n.isEmpty && e.isEmpty && p.isEmpty) return null;
-    final label = '联系人 ${index + 1}';
-    if (n.isEmpty) return '$label 请填写名字';
-    if (e.isEmpty && p.isEmpty) return '$label 请填写邮箱或电话';
-    if (e.isNotEmpty && !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(e)) {
-      return '$label 邮箱格式不正确';
-    }
-    if (p.isNotEmpty && !RegExp(r'^[0-9+()\-\s]{5,40}$').hasMatch(p)) {
-      return '$label 电话格式不正确';
-    }
-    return null;
-  }
-
-  void dispose() {
-    name.dispose();
-    email.dispose();
-    phone.dispose();
-  }
-}
-
-class _LastWillEditResult {
-  const _LastWillEditResult({
-    required this.content,
-    required this.startNow,
-    required this.convertToDraft,
-  });
-
-  final String content;
-  final bool startNow;
-  final bool convertToDraft;
-}
-
-class _LastWillEditorSheet extends StatefulWidget {
-  const _LastWillEditorSheet({
-    required this.initialContent,
-    required this.canStart,
-    required this.allowStart,
-    required this.canConvertToDraft,
-    required this.ensureContacts,
-    this.onDelete,
-  });
-
-  final String initialContent;
-  final bool canStart;
-  final bool allowStart;
-  final bool canConvertToDraft;
-  final Future<bool> Function() ensureContacts;
-  final Future<bool> Function()? onDelete;
-
-  @override
-  State<_LastWillEditorSheet> createState() => _LastWillEditorSheetState();
-}
-
-class _LastWillEditorSheetState extends State<_LastWillEditorSheet> {
-  late final TextEditingController _controller = TextEditingController(
-    text: widget.initialContent,
-  );
-  late bool _hasContacts = widget.canStart;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
-    final availableHeight = MediaQuery.sizeOf(context).height - bottomInset;
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: Container(
-          height: availableHeight,
-          color: AppColors.page,
-          child: SafeArea(
-            top: true,
-            bottom: false,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 10, 18, 8),
-                  child: Row(
-                    children: [
-                      _AppNavCircleButton(
-                        icon: CupertinoIcons.xmark,
-                        onPressed: () => Navigator.of(context).maybePop(),
-                      ),
-                      const Expanded(
-                        child: Text(
-                          '留遗言',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                      if (widget.onDelete == null)
-                        const SizedBox(width: 58)
-                      else
-                        _LastWillEditorDeleteButton(onTap: _delete),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(22, 14, 22, 12),
-                    child: Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        color: AppColors.elevatedSurface(context, light: 0.82),
-                        borderRadius: BorderRadius.circular(28),
-                        border: Border.all(
-                          color: AppColors.glassBorder(context),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.shadow.withValues(
-                              alpha: AppColors.isDark(context) ? 0.56 : 0.08,
-                            ),
-                            blurRadius: 30,
-                            offset: const Offset(0, 18),
-                          ),
-                        ],
-                      ),
-                      child: CupertinoTextField(
-                        controller: _controller,
-                        maxLines: null,
-                        expands: true,
-                        textAlignVertical: TextAlignVertical.top,
-                        placeholder: '把想留下的话写在这里。',
-                        padding: EdgeInsets.zero,
-                        style: TextStyle(
-                          color: AppColors.text,
-                          fontSize: 18,
-                          height: 1.55,
-                        ),
-                        placeholderStyle: TextStyle(
-                          color: AppColors.muted.withValues(alpha: 0.62),
-                          fontSize: 18,
-                          height: 1.55,
-                        ),
-                        decoration: const BoxDecoration(),
-                      ),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    22,
-                    8,
-                    22,
-                    math.max(24, safeBottom + 14),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: CupertinoButton(
-                          padding: EdgeInsets.zero,
-                          onPressed: () => _pop(
-                            startNow: false,
-                            convertToDraft: widget.canConvertToDraft,
-                          ),
-                          child: Container(
-                            height: 54,
-                            decoration: BoxDecoration(
-                              color: AppColors.elevatedSurface(
-                                context,
-                                light: 0.92,
-                              ),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: AppColors.glassBorder(context),
-                              ),
-                              boxShadow: [
-                                if (AppColors.isDark(context))
-                                  BoxShadow(
-                                    color: AppColors.shadow.withValues(
-                                      alpha: 0.42,
-                                    ),
-                                    blurRadius: 16,
-                                    offset: const Offset(0, 8),
-                                  ),
-                              ],
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              widget.canConvertToDraft ? '转草稿' : '存草稿',
-                              style: TextStyle(
-                                color: AppColors.text,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: CupertinoButton(
-                          padding: EdgeInsets.zero,
-                          onPressed: _startNow,
-                          child: Container(
-                            height: 54,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF121A23),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              widget.allowStart
-                                  ? (_hasContacts ? '开始触发' : '添加联系人')
-                                  : '更新',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _pop({required bool startNow, bool convertToDraft = false}) {
-    Navigator.of(context).pop(
-      _LastWillEditResult(
-        content: _controller.text,
-        startNow: startNow,
-        convertToDraft: convertToDraft,
-      ),
-    );
-  }
-
-  Future<void> _startNow() async {
-    if (!widget.allowStart) {
-      _pop(startNow: false);
-      return;
-    }
-    if (!_hasContacts) {
-      final ready = await widget.ensureContacts();
-      if (!mounted || !ready) return;
-      setState(() => _hasContacts = true);
-      return;
-    }
-    _pop(startNow: true);
-  }
-
-  Future<void> _delete() async {
-    final deleted = await widget.onDelete?.call() ?? false;
-    if (!mounted || !deleted) return;
-    Navigator.of(context).maybePop();
-  }
-}
-
-class _LastWillEditorDeleteButton extends StatelessWidget {
-  const _LastWillEditorDeleteButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      onPressed: onTap,
-      child: Container(
-        width: 58,
-        height: 58,
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFEEF0),
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFE95656).withValues(alpha: 0.10),
-              blurRadius: 24,
-              offset: const Offset(0, 14),
-            ),
-          ],
-        ),
-        child: const Icon(
-          CupertinoIcons.delete,
-          color: Color(0xFFE95656),
-          size: 24,
-        ),
-      ),
-    );
-  }
-}
-
-class _GlowBorderPainter extends CustomPainter {
-  const _GlowBorderPainter({required this.progress});
-
-  final double progress;
+/// Sheet-of-paper glyph for the empty 遗言 panel.
+class _LegacyDocPainter extends CustomPainter {
+  const _LegacyDocPainter();
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    final rrect = RRect.fromRectAndRadius(
-      rect.deflate(0.8),
-      const Radius.circular(32),
-    );
-    final path = Path()..addRRect(rrect);
-    final metrics = path.computeMetrics().iterator;
-    if (!metrics.moveNext()) return;
-    final metric = metrics.current;
-    final length = metric.length;
-    final head = (length * progress) % length;
-    const segmentCount = 72;
-    final tailLength = length * 0.105;
-
-    Path tailSegment(double start, double end) {
-      final normalizedStart = (start + length) % length;
-      final normalizedEnd = (end + length) % length;
-      final segment = Path();
-      if (normalizedStart <= normalizedEnd) {
-        segment.addPath(
-          metric.extractPath(normalizedStart, normalizedEnd),
-          Offset.zero,
-        );
-      } else {
-        segment
-          ..addPath(metric.extractPath(normalizedStart, length), Offset.zero)
-          ..addPath(metric.extractPath(0, normalizedEnd), Offset.zero);
-      }
-      return segment;
-    }
-
-    for (var i = segmentCount - 1; i >= 0; i--) {
-      final from = head - tailLength * ((i + 1.46) / segmentCount);
-      final to = head - tailLength * (i / segmentCount);
-      final strength = math.pow(1 - i / segmentCount, 2.35).toDouble();
-      final segment = tailSegment(from, to);
-      final coreWidth = 0.18 + strength * 9.9;
-      canvas.drawPath(
-        segment,
-        Paint()
-          ..color = Colors.white.withValues(alpha: 0.06 + strength * 0.56)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.8 + strength * 16.2
-          ..strokeCap = StrokeCap.butt
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
-      );
-      canvas.drawPath(
-        segment,
-        Paint()
-          ..color = Colors.white.withValues(alpha: 0.05 + strength * 0.88)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = coreWidth
-          ..strokeCap = StrokeCap.butt,
-      );
-    }
-
-    final tangent = metric.getTangentForOffset(head);
-    if (tangent == null) return;
-    canvas.drawCircle(
-      tangent.position,
-      10.2,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.88)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
-    );
-    canvas.drawCircle(tangent.position, 4.4, Paint()..color = Colors.white);
-  }
-
-  @override
-  bool shouldRepaint(covariant _GlowBorderPainter oldDelegate) {
-    return oldDelegate.progress != progress;
-  }
-}
-
-class _LegacyOrbPainter extends CustomPainter {
-  const _LegacyOrbPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final bodyRect = Rect.fromLTWH(
-      size.width * 0.08,
-      size.height * 0.08,
-      size.width * 0.84,
-      size.height * 0.84,
-    );
+    final scale = size.width / 24;
+    final stroke = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1 * scale
+      ..strokeCap = StrokeCap.round;
     final body = RRect.fromRectAndRadius(
-      bodyRect,
-      Radius.circular(size.width * 0.32),
+      Rect.fromLTWH(4 * scale, 2 * scale, 16 * scale, 20 * scale),
+      Radius.circular(2 * scale),
     );
-    final shadow = Paint()
-      ..color = const Color(0xFF151820).withValues(alpha: 0.25)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18);
-    final bodyPaint = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFF151820), Color(0xFF111318)],
-        stops: [0, 1],
-      ).createShader(bodyRect);
-    canvas.drawRRect(body.shift(Offset(0, size.height * 0.16)), shadow);
-    canvas.drawRRect(body, bodyPaint);
-    canvas.drawCircle(
-      Offset(size.width * 0.35, size.height * 0.30),
-      size.width * 0.22,
-      Paint()
-        ..shader =
-            const RadialGradient(
-              colors: [Color(0xDBFFFFFF), Color(0x29FFFFFF), Color(0x00FFFFFF)],
-              stops: [0, 0.58, 1],
-            ).createShader(
-              Rect.fromCircle(
-                center: Offset(size.width * 0.35, size.height * 0.30),
-                radius: size.width * 0.40,
-              ),
-            ),
+    canvas.drawRRect(body, stroke);
+    canvas.drawLine(
+      Offset(12 * scale, 2 * scale),
+      Offset(20 * scale, 10 * scale),
+      stroke,
     );
-    final inset = bodyRect.deflate(size.width * 0.13);
-    final insetBody = RRect.fromRectAndRadius(
-      inset,
-      Radius.circular(size.width * 0.24),
+    canvas.drawLine(
+      Offset(8 * scale, 13 * scale),
+      Offset(16 * scale, 13 * scale),
+      stroke,
     );
-    canvas.drawRRect(
-      insetBody,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.12)
-        ..style = PaintingStyle.fill,
-    );
-    canvas.drawRRect(
-      insetBody,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.32)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2,
+    canvas.drawLine(
+      Offset(8 * scale, 16 * scale),
+      Offset(16 * scale, 16 * scale),
+      stroke,
     );
   }
 
