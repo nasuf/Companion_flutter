@@ -111,67 +111,70 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
     // a little way underneath fills them.
     const underlap = 20.0;
     final lift = keyboard > 0 ? math.max(keyboard - underlap, 0.0) : 0.0;
-    // Only the bottom edge follows the keyboard. Letting the height stay fixed
-    // and lifting the whole panel instead makes it hop a second time once the
-    // clamp kicks in, which is the jerk you feel on open and on dismiss.
-    final minTop = widget.topInset + 24;
-    var top = math.max<double>(
-      minTop,
-      media.size.height * (1 - _kCheckinSheetRatio),
-    );
-    var height = media.size.height - top - lift;
-    if (height < 260) {
-      // Only on a screen too short to hold the button row: give up the fixed
-      // top rather than overflow the column.
-      top = math.max<double>(minTop, media.size.height - lift - 260);
-      height = media.size.height - top - lift;
-    }
+    // The panel is as tall as what is in it, not a fixed slice of the screen.
+    // The Figma frame is a fixed 680 with a dead gap above the button; keeping
+    // that gap means the button has to fly ~280px when the keyboard opens,
+    // which reads as the whole screen being reflowed. Sized to its content the
+    // panel simply rides up onto the keyboard in one piece.
+    final available = media.size.height - widget.topInset - 24 - lift;
     return Padding(
       padding: EdgeInsets.only(bottom: lift),
-      child: Container(
-        key: const Key('checkin-sheet'),
-        height: height,
-        decoration: BoxDecoration(
-          color: tokens.page,
-          borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(_kCheckinCardRadius),
-          ),
-        ),
-        child: Column(
-          children: [
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => FocusScope.of(context).unfocus(),
-                child: SingleChildScrollView(
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.fromLTRB(
-                    _kCheckinMargin,
-                    _kCheckinSheetPadTop,
-                    _kCheckinMargin,
-                    8,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: math.max(available, 0)),
+        // Switching to 周期习惯 adds a 140px card; with a content-sized panel
+        // that would otherwise pop the top edge up in one frame.
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.bottomCenter,
+          child: Container(
+            key: const Key('checkin-sheet'),
+            decoration: BoxDecoration(
+              color: tokens.page,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(_kCheckinCardRadius),
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Flexible, not Expanded: the form takes only the room it needs
+                // until the panel hits the cap, and scrolls after that.
+                Flexible(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => FocusScope.of(context).unfocus(),
+                    child: SingleChildScrollView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.fromLTRB(
+                        _kCheckinMargin,
+                        _kCheckinSheetPadTop,
+                        _kCheckinMargin,
+                        8,
+                      ),
+                      child: _form(tokens),
+                    ),
                   ),
-                  child: _form(tokens),
                 ),
-              ),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    _kCheckinMargin,
+                    12,
+                    _kCheckinMargin,
+                    keyboard > 0
+                        ? 16 + underlap
+                        : _kCheckinSheetSaveGap + safeBottom,
+                  ),
+                  child: _CheckinPrimaryButton(
+                    label: '保存计划',
+                    busy: _saving,
+                    onPressed: _busy || !_canSave ? null : _save,
+                  ),
+                ),
+              ],
             ),
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                _kCheckinMargin,
-                12,
-                _kCheckinMargin,
-                keyboard > 0
-                    ? 16 + underlap
-                    : _kCheckinSheetSaveGap + safeBottom,
-              ),
-              child: _CheckinPrimaryButton(
-                label: '保存计划',
-                busy: _saving,
-                onPressed: _busy || !_canSave ? null : _save,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

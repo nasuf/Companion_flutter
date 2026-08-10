@@ -440,15 +440,17 @@ void main() {
       await tester.pumpAndSettle();
       await _openEditor(tester);
 
-      expect(tester.getRect(find.byKey(const Key('checkin-sheet'))).top, 164);
-      expect(tester.getRect(find.byKey(const Key('checkin-name'))).top, 200);
-      expect(tester.getRect(find.byKey(const Key('checkin-mode'))).top, 268);
-      expect(
-        tester.getRect(find.byKey(const Key('checkin-reminder'))).top,
-        336,
-      );
-      expect(tester.getRect(find.byKey(const Key('checkin-note'))).top, 424);
-      expect(tester.getRect(find.byKey(const Key('checkin-save'))).top, 722);
+      // The panel is sized to its content, so the design's offsets are
+      // asserted against its own top edge rather than the 390x844 frame.
+      final sheet = tester.getRect(find.byKey(const Key('checkin-sheet')));
+      expect(sheet.bottom, _canvasHeight);
+      expect(_offsetIn(tester, sheet, 'checkin-name'), 36);
+      expect(_offsetIn(tester, sheet, 'checkin-mode'), 104);
+      expect(_offsetIn(tester, sheet, 'checkin-reminder'), 172);
+      expect(_offsetIn(tester, sheet, 'checkin-note'), 260);
+      // Save keeps the design's gap to the bottom edge.
+      final save = tester.getRect(find.byKey(const Key('checkin-save')));
+      expect(sheet.bottom - save.bottom, 36 + _safeBottom);
 
       expect(find.text('输入计划名称'), findsOneWidget);
       expect(find.text('备注（可选）'), findsOneWidget);
@@ -469,15 +471,10 @@ void main() {
       await tester.tap(find.text('周期习惯'));
       await tester.pumpAndSettle();
 
-      expect(
-        tester.getRect(find.byKey(const Key('checkin-weekdays'))).top,
-        336,
-      );
-      expect(
-        tester.getRect(find.byKey(const Key('checkin-reminder'))).top,
-        476,
-      );
-      expect(tester.getRect(find.byKey(const Key('checkin-note'))).top, 564);
+      final sheet = tester.getRect(find.byKey(const Key('checkin-sheet')));
+      expect(_offsetIn(tester, sheet, 'checkin-weekdays'), 172);
+      expect(_offsetIn(tester, sheet, 'checkin-reminder'), 312);
+      expect(_offsetIn(tester, sheet, 'checkin-note'), 400);
       expect(find.text('重复频率'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -604,17 +601,18 @@ void main() {
 
       final sheet = tester.getRect(find.byKey(const Key('checkin-sheet')));
       final save = tester.getRect(find.byKey(const Key('checkin-save')));
-      // Only the bottom edge tracks the keyboard. If the top moved too, the
-      // panel would visibly hop a second time after the open animation.
-      expect(sheet.top, closed.top);
+      final note = tester.getRect(find.byKey(const Key('checkin-note')));
+      // The panel rides up onto the keyboard in one piece instead of staying
+      // put and reflowing inside; a single plan still fits above it whole.
+      expect(sheet.top, lessThan(closed.top));
+      expect(sheet.top, greaterThanOrEqualTo(_safeTop));
+      expect(note.bottom, lessThanOrEqualTo(sheet.bottom));
       // It runs a little way under the keyboard so the keyboard's own rounded
       // top corners do not expose the scrim, and save stays above that line.
       expect(sheet.bottom, greaterThan(_canvasHeight - keyboard));
       expect(sheet.bottom, lessThanOrEqualTo(_canvasHeight - keyboard + 24));
       expect(save.bottom, lessThanOrEqualTo(_canvasHeight - keyboard));
-      // Every field is still reachable by scrolling rather than being clipped.
       expect(find.text('输入计划名称'), findsOneWidget);
-      expect(find.byKey(const Key('checkin-note')), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });
@@ -636,3 +634,7 @@ DateTime _weekMonday(DateTime value) => DateTime(
 ).subtract(Duration(days: value.weekday - 1));
 
 DateTime _monthOf(DateTime value) => DateTime(value.year, value.month);
+
+/// Offset of a keyed block from the sheet's own top edge.
+double _offsetIn(WidgetTester tester, Rect sheet, String key) =>
+    tester.getRect(find.byKey(Key(key))).top - sheet.top;

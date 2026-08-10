@@ -32,8 +32,9 @@ const double _kCheckinSectionGap = 36;
 const double _kCheckinSectionTitleGap = 16;
 const double _kCheckinFabSize = 56;
 
-// Editor sheet, measured from the sheet's own top edge (design y=164).
-const double _kCheckinSheetRatio = 680 / 844;
+// Editor sheet, measured from the sheet's own top edge. The design frame is a
+// fixed 680 tall; the panel is sized to its content instead, so only these
+// inner offsets are lifted from it.
 const double _kCheckinSheetPadTop = 36;
 const double _kCheckinSheetFieldGap = 24;
 const double _kCheckinSheetSaveGap = 36;
