@@ -115,10 +115,12 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
     // page stays visible behind. The Figma frame is a fixed 680 with a dead
     // gap above the button, which made the button fly ~280px on keyboard open.
     //
-    // While typing it takes the whole area above the keyboard instead. The
-    // form needs ~450 and the keyboard leaves ~500, so a content-sized panel
-    // would end up floating with a sliver of scrim above it — reading as a
-    // panel that got shoved rather than an editor that took the screen.
+    // While typing it takes the whole area above the keyboard instead. This is
+    // what UIKit's own sheets do (WWDC21 "Customize and resize sheets in
+    // UIKit": the sheet grows to the large detent when the keyboard comes up
+    // and collapses back after). The sliver left above it is the status bar —
+    // a Flutter modal sheet will not lay out over that, and iOS's large detent
+    // leaves the same gap, so this is as far up as it goes.
     final room = media.size.height - widget.topInset - lift;
     final typing = keyboard > 0;
     return Padding(
@@ -147,8 +149,14 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
                     behavior: HitTestBehavior.opaque,
                     onTap: () => FocusScope.of(context).unfocus(),
                     child: SingleChildScrollView(
+                      // Scrolling must not kill the keyboard: iOS's polished
+                      // equivalent is keyboardDismissMode .interactive (the
+                      // keyboard follows the finger and can be pulled back),
+                      // which Flutter has no mode for — of the two it does
+                      // have, manual is the one that does not yank the
+                      // keyboard away mid-scroll. Tapping outside still does.
                       keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
+                          ScrollViewKeyboardDismissBehavior.manual,
                       padding: const EdgeInsets.fromLTRB(
                         _kCheckinMargin,
                         _kCheckinSheetPadTop,

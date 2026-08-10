@@ -616,6 +616,32 @@ void main() {
       expect(find.text('输入计划名称'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('scrolling the form does not dismiss the keyboard', (
+      tester,
+    ) async {
+      _useDesignCanvas(tester);
+
+      await tester.pumpWidget(_app(_FakeReminderApi(const [])));
+      await tester.pumpAndSettle();
+      await _openEditor(tester);
+      await tester.tap(find.text('周期习惯'));
+      _useDesignCanvas(tester, keyboard: 336);
+      await tester.pumpAndSettle();
+
+      // iOS scroll views default to keeping the keyboard while you scroll
+      // (.interactive at most lets you drag it away deliberately). Dropping it
+      // the moment a drag starts is what makes picking a field feel hostile.
+      await tester.drag(find.text('重复频率'), const Offset(0, -80));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.testTextInput.isVisible,
+        isTrue,
+        reason: 'a scroll must not close the keyboard',
+      );
+      expect(tester.takeException(), isNull);
+    });
   });
 }
 
