@@ -188,9 +188,18 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
         ),
         // Pinned to the top of the grown panel: the rest of it is background
         // sitting behind the keyboard, not space to spread the form into.
-        child: typing
-            ? Align(alignment: Alignment.topCenter, child: block)
-            : block,
+        //
+        // Always present, never wrapped conditionally — swapping this layer in
+        // and out as the keyboard comes and goes changes the shape of the tree,
+        // which rebuilds the fields instead of updating them and fires their
+        // autofocus a second time (the keyboard reopens the moment you dismiss
+        // it). heightFactor makes one widget cover both cases: it fills when
+        // the panel is given a height and wraps the form when it is not.
+        child: Align(
+          alignment: Alignment.topCenter,
+          heightFactor: 1,
+          child: block,
+        ),
       ),
     );
   }

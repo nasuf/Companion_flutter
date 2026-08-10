@@ -615,6 +615,34 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('closing the keyboard does not bring it straight back', (
+      tester,
+    ) async {
+      _useDesignCanvas(tester, keyboard: 336);
+
+      await tester.pumpWidget(_app(_FakeReminderApi(const [])));
+      await tester.pumpAndSettle();
+      await _openEditor(tester);
+      expect(tester.testTextInput.isVisible, isTrue);
+
+      // The keyboard's own done key: the field gives up focus, then the
+      // platform reports the inset going away.
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      _useDesignCanvas(tester);
+      await tester.pumpAndSettle();
+
+      // The panel changes shape when the keyboard leaves. If that rebuilds the
+      // field's element rather than updating it, autofocus fires a second time
+      // and the keyboard pops right back up.
+      expect(
+        tester.testTextInput.isVisible,
+        isFalse,
+        reason: 'the keyboard must stay down after the done key',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('scrolling the form does not dismiss the keyboard', (
       tester,
     ) async {
