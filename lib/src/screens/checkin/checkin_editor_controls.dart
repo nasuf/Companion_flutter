@@ -280,7 +280,8 @@ class _CheckinReminderRow extends StatelessWidget {
 
 /// Weekday picker for a repeating habit.
 class _CheckinWeekdayCard extends StatelessWidget {
-  const _CheckinWeekdayCard({required this.selected, required this.onToggle});
+  /// [onToggle] is null on the detail sheet, where the row is a readout.
+  const _CheckinWeekdayCard({required this.selected, this.onToggle});
 
   final Set<int> selected;
   final ValueChanged<int>? onToggle;
@@ -486,6 +487,44 @@ class _CheckinPrimaryButton extends StatelessWidget {
                   decoration: TextDecoration.none,
                 ),
               ),
+      ),
+    );
+  }
+}
+
+/// Outlined counterpart to the filled primary button.
+class _CheckinSecondaryButton extends StatelessWidget {
+  const _CheckinSecondaryButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = _CheckinTokens.of(context);
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: const Size.fromHeight(_kCheckinSaveHeight),
+      borderRadius: BorderRadius.circular(999),
+      onPressed: onPressed,
+      child: Container(
+        height: _kCheckinSaveHeight,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: tokens.card,
+          border: Border.all(color: tokens.accent),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: tokens.accent,
+            fontSize: 17,
+            height: 1.4,
+            fontWeight: FontWeight.w600,
+            decoration: TextDecoration.none,
+          ),
+        ),
       ),
     );
   }

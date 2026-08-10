@@ -221,17 +221,21 @@ class _CheckinPageState extends State<CheckinPage> {
 
   Future<void> _openTaskSheet(ReminderItem item) async {
     setState(() => _openSwipeItemId = null);
-    // A finished one-off has nothing left to edit, so it opens as a summary.
-    // A habit ticked today is still a running habit and stays editable.
-    if (_isCompleted(item) && !item.isHabit) {
+    // Anything already ticked opens as a summary. Landing straight in an
+    // editable form implies the record is still up for grabs; for a habit the
+    // form is one deliberate tap further in.
+    if (_isCompleted(item)) {
       final request = await _showCheckinDetail(
         context: context,
         item: item,
         date: _selectedDate,
       );
-      if (!mounted || request is! _CheckinDeleteRequest) return;
-      await _delete(request.item);
-      return;
+      if (!mounted) return;
+      if (request is _CheckinDeleteRequest) {
+        await _delete(request.item);
+        return;
+      }
+      if (request is! _CheckinEditRequest) return;
     }
     final result = await _showCheckinEditor(
       context: context,

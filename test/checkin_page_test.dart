@@ -526,15 +526,16 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('a habit ticked today is still editable', (tester) async {
+    testWidgets('a ticked habit opens as a summary with a way back in', (
+      tester,
+    ) async {
       _useDesignCanvas(tester);
       final habit = _habit('h', '晨跑', [_today.weekday]);
 
       await tester.pumpWidget(_app(_FakeReminderApi([habit])));
       await tester.pumpAndSettle();
-      // Tick it, then reopen.
-      // The tick sits last in the row; the earlier buttons are the swipe
-      // actions hidden behind it.
+      // Tick it, then reopen. The tick sits last in the row; the earlier
+      // buttons are the swipe actions hidden behind it.
       await tester.tap(
         find
             .descendant(
@@ -547,8 +548,133 @@ void main() {
       await tester.tap(find.text('晨跑'));
       await tester.pumpAndSettle();
 
+      // Read-only: the weekdays and the time are shown, nothing is a field.
+      expect(find.byKey(const Key('checkin-detail')), findsOneWidget);
+      expect(find.byKey(const Key('checkin-sheet')), findsNothing);
+      expect(find.text('今日已打卡'), findsOneWidget);
+      expect(find.byKey(const Key('checkin-weekdays')), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+
+      // A habit is still running, so the editor is one deliberate tap away.
+      await tester.tap(find.text('编辑习惯'));
+      await tester.pumpAndSettle();
       expect(find.byKey(const Key('checkin-sheet')), findsOneWidget);
       expect(find.byKey(const Key('checkin-detail')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('deleting a finished plan asks first', (tester) async {
+      _useDesignCanvas(tester);
+      final api = _FakeReminderApi([_once('a', '阅读30分钟', done: true)]);
+
+      await tester.pumpWidget(_app(api));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('阅读30分钟'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('删除计划'));
+      await tester.pumpAndSettle();
+      expect(find.text('删除这个计划？'), findsOneWidget);
+
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(api.deleted, isEmpty);
+      expect(find.byKey(const Key('checkin-detail')), findsOneWidget);
+
+      await tester.tap(find.text('删除计划'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('删除'));
+      await tester.pumpAndSettle();
+      expect(api.deleted, ['a']);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('deleting a finished plan asks first', (tester) async {
+      _useDesignCanvas(tester);
+      final api = _FakeReminderApi([_once('a', '阅读30分钟', done: true)]);
+
+      await tester.pumpWidget(_app(api));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('阅读30分钟'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('删除计划'));
+      await tester.pumpAndSettle();
+      expect(find.text('删除这个计划？'), findsOneWidget);
+
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(api.deleted, isEmpty);
+      expect(find.byKey(const Key('checkin-detail')), findsOneWidget);
+
+      await tester.tap(find.text('删除计划'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('删除'));
+      await tester.pumpAndSettle();
+      expect(api.deleted, ['a']);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a ticked habit opens as a summary with a way back in', (
+      tester,
+    ) async {
+      _useDesignCanvas(tester);
+      final habit = _habit('h', '晨跑', [_today.weekday]);
+
+      await tester.pumpWidget(_app(_FakeReminderApi([habit])));
+      await tester.pumpAndSettle();
+      // Tick it, then reopen. The tick sits last in the row; the earlier
+      // buttons are the swipe actions hidden behind it.
+      await tester.tap(
+        find
+            .descendant(
+              of: find.byKey(const Key('checkin-task-h')),
+              matching: find.byType(CupertinoButton),
+            )
+            .last,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('晨跑'));
+      await tester.pumpAndSettle();
+
+      // Read-only: the weekdays and the time are shown, nothing is a field.
+      expect(find.byKey(const Key('checkin-detail')), findsOneWidget);
+      expect(find.byKey(const Key('checkin-sheet')), findsNothing);
+      expect(find.text('今日已打卡'), findsOneWidget);
+      expect(find.byKey(const Key('checkin-weekdays')), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+
+      // A habit is still running, so the editor is one deliberate tap away.
+      await tester.tap(find.text('编辑习惯'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('checkin-sheet')), findsOneWidget);
+      expect(find.byKey(const Key('checkin-detail')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('deleting a finished plan asks first', (tester) async {
+      _useDesignCanvas(tester);
+      final api = _FakeReminderApi([_once('a', '阅读30分钟', done: true)]);
+
+      await tester.pumpWidget(_app(api));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('阅读30分钟'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('删除计划'));
+      await tester.pumpAndSettle();
+      expect(find.text('删除这个计划？'), findsOneWidget);
+
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(api.deleted, isEmpty);
+      expect(find.byKey(const Key('checkin-detail')), findsOneWidget);
+
+      await tester.tap(find.text('删除计划'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('删除'));
+      await tester.pumpAndSettle();
+      expect(api.deleted, ['a']);
       expect(tester.takeException(), isNull);
     });
 
