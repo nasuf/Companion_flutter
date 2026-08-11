@@ -6,8 +6,43 @@ cd "$ROOT_DIR"
 
 BUILD_STARTED_DIRTY=0
 
-FLAVOR="${FLAVOR:-dev}"
 FLAVOR_OVERRIDE_FILE="$ROOT_DIR/ios/Flutter/FlavorOverride.xcconfig"
+
+# FLAVOR can be preset (CI, repeat runs); otherwise ask rather than defaulting,
+# because silently picking dev would upload to the wrong App Store Connect
+# record with no visible sign that anything was chosen.
+prompt_for_flavor() {
+  if [[ -n "${FLAVOR:-}" ]]; then
+    return
+  fi
+
+  if [[ ! -t 0 ]]; then
+    FLAVOR="dev"
+    echo "No interactive terminal detected; defaulting to FLAVOR=dev"
+    return
+  fi
+
+  echo "Which build do you want?"
+  echo "  1) dev  — com.bansheng.dev   internal TestFlight"
+  echo "  2) prod — com.bansheng.prod  App Store / prod TestFlight"
+  local choice=""
+  # Aborting on EOF beats letting `set -e` kill the run with no explanation, and
+  # beats silently falling back to dev on a stray Ctrl-D.
+  if ! read -r -p "Select [1]: " choice; then
+    echo >&2
+    echo "No flavor selected; aborting." >&2
+    exit 1
+  fi
+  case "${choice:-1}" in
+    1 | dev) FLAVOR="dev" ;;
+    2 | prod) FLAVOR="prod" ;;
+    *)
+      echo "Invalid selection: '$choice' (expected 1/dev or 2/prod)." >&2
+      exit 1
+      ;;
+  esac
+  echo
+}
 
 resolve_flavor() {
   case "$FLAVOR" in
@@ -288,10 +323,11 @@ $extension_profile_entry
 EOF
 }
 
-# Validate the requested flavor before the git/worktree gate so a typo fails
-# immediately instead of hiding behind an unrelated complaint.
-resolve_flavor
+# Worktree gate first: no point asking which flavor to build only to reject the
+# run over uncommitted changes.
 require_clean_git_worktree
+prompt_for_flavor
+resolve_flavor
 
 API_BASE_URL="${API_BASE_URL:-https://banshengcomp.com/api}"
 
@@ -313,10 +349,16 @@ suggested_build_number="$((current_build_number + 1))"
 echo "Flavor:                     $FLAVOR"
 echo "Bundle id:                  $IOS_APP_BUNDLE_ID"
 echo "App Group:                  $IOS_APP_GROUP_ID"
-echo "Current app version:        $current_build_name"
-echo "Current build number:       $current_build_number"
-echo "Suggested next app version: $suggested_build_name"
-echo "Suggested next build no.:   $suggested_build_number"
+if [[ "$FLAVOR" == "dev" ]]; then
+  echo "Current app version:        $current_build_name"
+  echo "Current build number:       $current_build_number"
+  echo "Suggested next app version: $suggested_build_name"
+  echo "Suggested next build no.:   $suggested_build_number"
+else
+  # Prod promotes a version dev already validated, so offering a "next version"
+  # here would invite shipping something no dev build ever ran.
+  echo "Dev's current version:      $current_build_name (build $current_build_number)"
+fi
 echo "API_BASE_URL:               $API_BASE_URL"
 echo
 
@@ -333,7 +375,11 @@ elif [[ -n "${BUILD_NAME:-}" || -n "${BUILD_NUMBER:-}" ]]; then
   build_number="${BUILD_NUMBER:-$current_build_number}"
   echo "Using BUILD_NAME=$build_name and BUILD_NUMBER=$build_number"
 elif [[ -t 0 ]]; then
-  read -r -p "App version for this TestFlight build [$current_build_name] (type $suggested_build_name for next): " build_name
+  if [[ "$FLAVOR" == "dev" ]]; then
+    read -r -p "App version for this TestFlight build [$current_build_name] (type $suggested_build_name for next): " build_name
+  else
+    read -r -p "App version to ship to prod [$current_build_name] (dev's current version): " build_name
+  fi
   build_name="${build_name:-$current_build_name}"
 
   if [[ "$build_name" == "$current_build_name" ]]; then
@@ -342,7 +388,7 @@ elif [[ -t 0 ]]; then
     default_build_number="1"
   fi
 
-  read -r -p "Build number for App Store Connect [$default_build_number]: " build_number
+  read -r -p "Build number for App Store Connect [$default_build_number] (bump if already uploaded): " build_number
   build_number="${build_number:-$default_build_number}"
 else
   build_name="$current_build_name"
@@ -430,23 +476,34 @@ fi
 
 verify_ipa_identity "$ipa_path"
 
-if [[ "$selected_version" != "$current" ]]; then
-  CURRENT="$current" NEXT="$selected_version" perl -0pi -e \
-    's/^version:\s*\Q$ENV{CURRENT}\E\s*$/version: $ENV{NEXT}/m' pubspec.yaml
+# Only dev advances the shared version line. A prod build reads pubspec.yaml to
+# learn which dev version it is promoting, so letting prod write back would
+# destroy the very reference point the next prod build defaults to.
+if [[ "$FLAVOR" == "dev" ]]; then
+  if [[ "$selected_version" != "$current" ]]; then
+    CURRENT="$current" NEXT="$selected_version" perl -0pi -e \
+      's/^version:\s*\Q$ENV{CURRENT}\E\s*$/version: $ENV{NEXT}/m' pubspec.yaml
 
-  if ! grep -q "version: $selected_version" pubspec.yaml; then
-    echo "Could not update pubspec.yaml from $current to $selected_version" >&2
-    exit 1
+    if ! grep -q "version: $selected_version" pubspec.yaml; then
+      echo "Could not update pubspec.yaml from $current to $selected_version" >&2
+      exit 1
+    fi
+
+    commit_version_change "$selected_version"
   fi
-
-  commit_version_change "$selected_version"
+elif [[ "$selected_version" != "$current" ]]; then
+  echo "Note: pubspec.yaml stays at $current — prod does not advance the shared version line."
 fi
 
 echo "IPA output: build/ios/ipa/"
 echo "Built flavor: $FLAVOR"
 echo "Built TestFlight app version: $build_name"
 echo "Built App Store Connect build: $build_number"
-echo "Flutter pubspec app+build version: $selected_version"
+if [[ "$FLAVOR" == "dev" ]]; then
+  echo "Flutter pubspec app+build version: $selected_version"
+else
+  echo "Flutter pubspec app+build version: $current (unchanged)"
+fi
 
 if [[ "${OPEN_TRANSPORTER:-1}" != "0" ]]; then
   echo "Opening IPA in Transporter: $ipa_path"
