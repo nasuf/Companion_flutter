@@ -12,4 +12,10 @@
 APP_BUNDLE_ID = com.bansheng.dev
 APP_GROUP_ID = group.com.bansheng.dev
 
+// Suffix rather than the whole display name: Xcode's xcconfig parser mangles
+// non-ASCII values (伴生 comes back as a corrupted byte sequence), so the
+// Chinese half stays in Info.plist and only this ASCII tail varies. Empty for
+// prod, which is why the plists read 伴生$(APP_NAME_SUFFIX).
+APP_NAME_SUFFIX = Dev
+
 #include? "FlavorOverride.xcconfig"

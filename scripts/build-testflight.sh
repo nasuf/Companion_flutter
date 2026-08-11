@@ -49,12 +49,14 @@ resolve_flavor() {
     dev)
       FLAVOR_APP_BUNDLE_ID="com.bansheng.dev"
       FLAVOR_APP_GROUP_ID="group.com.bansheng.dev"
+      FLAVOR_APP_NAME_SUFFIX="Dev"
       FLAVOR_APP_PROFILE="$ROOT_DIR/../Bansheng_Dev_App_Store.mobileprovision"
       FLAVOR_EXTENSION_PROFILE="$ROOT_DIR/../Bansheng_Dev_Share_Extension_App_Store.mobileprovision"
       ;;
     prod)
       FLAVOR_APP_BUNDLE_ID="com.bansheng.prod"
       FLAVOR_APP_GROUP_ID="group.com.bansheng.prod"
+      FLAVOR_APP_NAME_SUFFIX=""
       FLAVOR_APP_PROFILE="$ROOT_DIR/../Bansheng_Prod_App_Store.mobileprovision"
       FLAVOR_EXTENSION_PROFILE="$ROOT_DIR/../Bansheng_Prod_Share_Extension_App_Store.mobileprovision"
       ;;
@@ -72,6 +74,11 @@ resolve_flavor() {
   IOS_APP_GROUP_ID="${IOS_APP_GROUP_ID:-$FLAVOR_APP_GROUP_ID}"
   IOS_APP_PROFILE_PATH="${IOS_APP_PROFILE_PATH:-${IOS_PROVISIONING_PROFILE_PATH:-$FLAVOR_APP_PROFILE}}"
   IOS_SHARE_EXTENSION_PROFILE_PATH="${IOS_SHARE_EXTENSION_PROFILE_PATH:-$FLAVOR_EXTENSION_PROFILE}"
+
+  # Deliberately not "${IOS_APP_NAME_SUFFIX:-...}": prod's suffix is the empty
+  # string, which :- would treat as unset and silently restore "Dev".
+  IOS_APP_NAME_SUFFIX="${IOS_APP_NAME_SUFFIX-$FLAVOR_APP_NAME_SUFFIX}"
+  IOS_APP_DISPLAY_NAME="伴生$IOS_APP_NAME_SUFFIX"
 }
 
 # Xcode resolves the app identity through ios/Flutter/Flavor.xcconfig, whose
@@ -83,6 +90,7 @@ write_flavor_override() {
   cat > "$FLAVOR_OVERRIDE_FILE" <<EOF
 APP_BUNDLE_ID = $IOS_APP_BUNDLE_ID
 APP_GROUP_ID = $IOS_APP_GROUP_ID
+APP_NAME_SUFFIX = $IOS_APP_NAME_SUFFIX
 EOF
 }
 
@@ -114,6 +122,15 @@ verify_ipa_identity() {
     exit 1
   fi
   echo "Verified app bundle id:             $actual"
+
+  # Two home screen icons both reading 伴生 is the whole reason the suffix
+  # exists, and an unexpanded $(APP_NAME_SUFFIX) would look plausible in a diff.
+  actual="$(unzip -p "$ipa" "$app_plist" | plutil -extract CFBundleDisplayName raw -o - -)"
+  if [[ "$actual" != "$IOS_APP_DISPLAY_NAME" ]]; then
+    echo "Built IPA display name is '$actual' but expected '$IOS_APP_DISPLAY_NAME'." >&2
+    exit 1
+  fi
+  echo "Verified display name:              $actual"
 
   ext_plist="$(echo "$entries" | grep -E '^Payload/[^/]+\.app/PlugIns/[^/]+\.appex/Info\.plist$' | head -1 || true)"
   if [[ -n "$ext_plist" ]]; then
@@ -349,6 +366,7 @@ suggested_build_number="$((current_build_number + 1))"
 echo "Flavor:                     $FLAVOR"
 echo "Bundle id:                  $IOS_APP_BUNDLE_ID"
 echo "App Group:                  $IOS_APP_GROUP_ID"
+echo "Display name:               $IOS_APP_DISPLAY_NAME"
 if [[ "$FLAVOR" == "dev" ]]; then
   echo "Current app version:        $current_build_name"
   echo "Current build number:       $current_build_number"
