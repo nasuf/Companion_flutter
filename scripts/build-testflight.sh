@@ -373,14 +373,26 @@ if [[ "$FLAVOR" == "dev" ]]; then
   echo "Suggested next app version: $suggested_build_name"
   echo "Suggested next build no.:   $suggested_build_number"
 else
-  # Prod promotes a version dev already validated, so offering a "next version"
-  # here would invite shipping something no dev build ever ran.
-  echo "Dev's current version:      $current_build_name (build $current_build_number)"
+  # Only dev maintains the version line; prod ships whatever dev last built, so
+  # there is nothing to choose and no way for prod to invent or roll back a
+  # number.
+  echo "Version (pinned to dev):    $current_build_name (build $current_build_number)"
 fi
 echo "API_BASE_URL:               $API_BASE_URL"
 echo
 
-if [[ -n "${BUILD_VERSION:-}" && "$BUILD_VERSION" == *+* ]]; then
+if [[ "$FLAVOR" != "dev" ]]; then
+  # Rejected rather than ignored: a caller that bothered to pass a version needs
+  # to hear that prod does not accept one, instead of quietly shipping something
+  # else.
+  if [[ -n "${BUILD_VERSION:-}" || -n "${BUILD_NAME:-}" || -n "${BUILD_NUMBER:-}" ]]; then
+    echo "BUILD_VERSION / BUILD_NAME / BUILD_NUMBER are not accepted for FLAVOR=$FLAVOR." >&2
+    echo "Prod ships dev's current version ($current). Run a dev build first to move it." >&2
+    exit 1
+  fi
+  build_name="$current_build_name"
+  build_number="$current_build_number"
+elif [[ -n "${BUILD_VERSION:-}" && "$BUILD_VERSION" == *+* ]]; then
   build_name="${BUILD_VERSION%%+*}"
   build_number="${BUILD_VERSION##*+}"
   echo "Using BUILD_VERSION=$BUILD_VERSION"
@@ -393,11 +405,7 @@ elif [[ -n "${BUILD_NAME:-}" || -n "${BUILD_NUMBER:-}" ]]; then
   build_number="${BUILD_NUMBER:-$current_build_number}"
   echo "Using BUILD_NAME=$build_name and BUILD_NUMBER=$build_number"
 elif [[ -t 0 ]]; then
-  if [[ "$FLAVOR" == "dev" ]]; then
-    read -r -p "App version for this TestFlight build [$current_build_name] (type $suggested_build_name for next): " build_name
-  else
-    read -r -p "App version to ship to prod [$current_build_name] (dev's current version): " build_name
-  fi
+  read -r -p "App version for this TestFlight build [$current_build_name] (type $suggested_build_name for next): " build_name
   build_name="${build_name:-$current_build_name}"
 
   if [[ "$build_name" == "$current_build_name" ]]; then
@@ -494,9 +502,9 @@ fi
 
 verify_ipa_identity "$ipa_path"
 
-# Only dev advances the shared version line. A prod build reads pubspec.yaml to
-# learn which dev version it is promoting, so letting prod write back would
-# destroy the very reference point the next prod build defaults to.
+# Only dev maintains the version line. Prod is pinned to what it read, so it has
+# nothing to write back — and keeping it read-only is what guarantees the line
+# can never move sideways or backwards from a prod build.
 if [[ "$FLAVOR" == "dev" ]]; then
   if [[ "$selected_version" != "$current" ]]; then
     CURRENT="$current" NEXT="$selected_version" perl -0pi -e \
@@ -509,8 +517,6 @@ if [[ "$FLAVOR" == "dev" ]]; then
 
     commit_version_change "$selected_version"
   fi
-elif [[ "$selected_version" != "$current" ]]; then
-  echo "Note: pubspec.yaml stays at $current — prod does not advance the shared version line."
 fi
 
 echo "IPA output: build/ios/ipa/"
