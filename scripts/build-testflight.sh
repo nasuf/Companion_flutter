@@ -6,6 +6,91 @@ cd "$ROOT_DIR"
 
 BUILD_STARTED_DIRTY=0
 
+FLAVOR="${FLAVOR:-dev}"
+FLAVOR_OVERRIDE_FILE="$ROOT_DIR/ios/Flutter/FlavorOverride.xcconfig"
+
+resolve_flavor() {
+  case "$FLAVOR" in
+    dev)
+      FLAVOR_APP_BUNDLE_ID="com.bansheng.dev"
+      FLAVOR_APP_GROUP_ID="group.com.bansheng.dev"
+      FLAVOR_APP_PROFILE="$ROOT_DIR/../Bansheng_Dev_App_Store.mobileprovision"
+      FLAVOR_EXTENSION_PROFILE="$ROOT_DIR/../Bansheng_Dev_Share_Extension_App_Store.mobileprovision"
+      ;;
+    prod)
+      FLAVOR_APP_BUNDLE_ID="com.bansheng.prod"
+      FLAVOR_APP_GROUP_ID="group.com.bansheng.prod"
+      FLAVOR_APP_PROFILE="$ROOT_DIR/../Bansheng_Prod_App_Store.mobileprovision"
+      FLAVOR_EXTENSION_PROFILE="$ROOT_DIR/../Bansheng_Prod_Share_Extension_App_Store.mobileprovision"
+      ;;
+    *)
+      echo "Unknown FLAVOR: '$FLAVOR' (expected 'dev' or 'prod')." >&2
+      exit 1
+      ;;
+  esac
+
+  # Per-value env overrides stay supported, but they are resolved here so that
+  # the xcconfig we write, the profile validation and the post-build assertion
+  # all read one set of values instead of three that can disagree.
+  IOS_APP_BUNDLE_ID="${IOS_BUNDLE_ID:-$FLAVOR_APP_BUNDLE_ID}"
+  IOS_SHARE_EXTENSION_BUNDLE_ID="${IOS_SHARE_EXTENSION_BUNDLE_ID:-$IOS_APP_BUNDLE_ID.ShareExtension}"
+  IOS_APP_GROUP_ID="${IOS_APP_GROUP_ID:-$FLAVOR_APP_GROUP_ID}"
+  IOS_APP_PROFILE_PATH="${IOS_APP_PROFILE_PATH:-${IOS_PROVISIONING_PROFILE_PATH:-$FLAVOR_APP_PROFILE}}"
+  IOS_SHARE_EXTENSION_PROFILE_PATH="${IOS_SHARE_EXTENSION_PROFILE_PATH:-$FLAVOR_EXTENSION_PROFILE}"
+}
+
+# Xcode resolves the app identity through ios/Flutter/Flavor.xcconfig, whose
+# committed defaults only serve `flutter run` and Xcode Run. Every scripted
+# build writes the override so the archive cannot disagree with what we
+# validated, and cleanup() removes it on every exit path — an interrupted build
+# must never leave the tree quietly producing another flavor's artifacts.
+write_flavor_override() {
+  cat > "$FLAVOR_OVERRIDE_FILE" <<EOF
+APP_BUNDLE_ID = $IOS_APP_BUNDLE_ID
+APP_GROUP_ID = $IOS_APP_GROUP_ID
+EOF
+}
+
+remove_flavor_override() {
+  rm -f "$FLAVOR_OVERRIDE_FILE"
+}
+
+# The archive's identity is resolved by Xcode from Flavor.xcconfig, not from
+# anything passed on the xcodebuild command line, so assert it on the finished
+# artifact instead of trusting the inputs. A prod-labelled build still carrying
+# the dev bundle id would upload to the wrong App Store Connect record.
+verify_ipa_identity() {
+  local ipa="$1"
+  local entries app_plist ext_plist actual
+
+  entries="$(unzip -Z1 "$ipa")"
+
+  # `|| true` on both greps: under pipefail a no-match would abort the script
+  # before the checks below, turning a missing extension into a silent crash.
+  app_plist="$(echo "$entries" | grep -E '^Payload/[^/]+\.app/Info\.plist$' | head -1 || true)"
+  if [[ -z "$app_plist" ]]; then
+    echo "Could not locate the app Info.plist inside $ipa" >&2
+    exit 1
+  fi
+
+  actual="$(unzip -p "$ipa" "$app_plist" | plutil -extract CFBundleIdentifier raw -o - -)"
+  if [[ "$actual" != "$IOS_APP_BUNDLE_ID" ]]; then
+    echo "Built IPA has bundle id '$actual' but flavor '$FLAVOR' expects '$IOS_APP_BUNDLE_ID'." >&2
+    exit 1
+  fi
+  echo "Verified app bundle id:             $actual"
+
+  ext_plist="$(echo "$entries" | grep -E '^Payload/[^/]+\.app/PlugIns/[^/]+\.appex/Info\.plist$' | head -1 || true)"
+  if [[ -n "$ext_plist" ]]; then
+    actual="$(unzip -p "$ipa" "$ext_plist" | plutil -extract CFBundleIdentifier raw -o - -)"
+    if [[ "$actual" != "$IOS_SHARE_EXTENSION_BUNDLE_ID" ]]; then
+      echo "Share Extension bundle id is '$actual' but expected '$IOS_SHARE_EXTENSION_BUNDLE_ID'." >&2
+      exit 1
+    fi
+    echo "Verified Share Extension bundle id: $actual"
+  fi
+}
+
 require_clean_git_worktree() {
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     return
@@ -70,11 +155,19 @@ profile_has_app_group() {
     grep -q "$app_group_id"
 }
 
+profile_has_associated_domains() {
+  local decoded_plist="$1"
+
+  /usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.developer.associated-domains" \
+    "$decoded_plist" >/dev/null 2>&1
+}
+
 install_ios_profile() {
   local profile_path="$1"
   local bundle_id="$2"
   local app_group_id="$3"
   local name_var="$4"
+  local require_associated_domains="${5:-0}"
 
   local decoded_plist
   decoded_plist="$(mktemp -t bansheng-profile.XXXXXX.plist)"
@@ -100,6 +193,16 @@ install_ios_profile() {
     exit 1
   fi
 
+  # Without this entitlement the app installs and runs fine but Universal Links
+  # never resolve, so WeChat cannot return to the app — a failure that surfaces
+  # only on-device and reports no error anywhere.
+  if [[ "$require_associated_domains" == "1" ]] && ! profile_has_associated_domains "$decoded_plist"; then
+    echo "Provisioning profile '$profile_name' has no associated-domains entitlement." >&2
+    echo "Enable Associated Domains for bundle id '$bundle_id' in Apple Developer, then regenerate this profile." >&2
+    rm -f "$decoded_plist"
+    exit 1
+  fi
+
   printf -v "$name_var" "%s" "$profile_name"
 
   local profile_dir="$HOME/Library/MobileDevice/Provisioning Profiles"
@@ -113,20 +216,22 @@ install_ios_profile() {
 }
 
 install_ios_distribution_profiles() {
-  IOS_APP_BUNDLE_ID="${IOS_BUNDLE_ID:-com.bansheng.dev}"
-  IOS_SHARE_EXTENSION_BUNDLE_ID="${IOS_SHARE_EXTENSION_BUNDLE_ID:-com.bansheng.dev.ShareExtension}"
-  IOS_APP_GROUP_ID="${IOS_APP_GROUP_ID:-group.com.bansheng.dev}"
-
-  local app_profile_path="${IOS_APP_PROFILE_PATH:-${IOS_PROVISIONING_PROFILE_PATH:-$ROOT_DIR/../Bansheng_Dev_App_Store.mobileprovision}}"
-  local extension_profile_path="${IOS_SHARE_EXTENSION_PROFILE_PATH:-$ROOT_DIR/../Bansheng_Dev_Share_Extension_App_Store.mobileprovision}"
+  local app_profile_path="$IOS_APP_PROFILE_PATH"
+  local extension_profile_path="$IOS_SHARE_EXTENSION_PROFILE_PATH"
 
   if [[ ! -f "$app_profile_path" ]]; then
+    # Falling back to Xcode automatic signing is tolerable for dev, but a prod
+    # release must be signed by the exact profile we verified — never guessed.
+    if [[ "$FLAVOR" != "dev" ]]; then
+      echo "Missing $FLAVOR app provisioning profile: $app_profile_path" >&2
+      exit 1
+    fi
     echo "No local app provisioning profile found at: $app_profile_path"
     echo "Set IOS_APP_PROFILE_PATH=/path/to/profile.mobileprovision if Xcode automatic signing cannot export."
     return
   fi
 
-  install_ios_profile "$app_profile_path" "$IOS_APP_BUNDLE_ID" "$IOS_APP_GROUP_ID" IOS_APP_PROFILE_NAME
+  install_ios_profile "$app_profile_path" "$IOS_APP_BUNDLE_ID" "$IOS_APP_GROUP_ID" IOS_APP_PROFILE_NAME 1
 
   if [[ -d "$ROOT_DIR/ios/Share Extension" ]]; then
     if [[ ! -f "$extension_profile_path" ]]; then
@@ -149,7 +254,7 @@ create_ios_export_options_plist() {
 
   local extension_profile_entry=""
   if [[ -n "${IOS_SHARE_EXTENSION_PROFILE_NAME:-}" ]]; then
-    extension_profile_entry="    <key>${IOS_SHARE_EXTENSION_BUNDLE_ID:-com.bansheng.dev.ShareExtension}</key>
+    extension_profile_entry="    <key>$IOS_SHARE_EXTENSION_BUNDLE_ID</key>
     <string>$IOS_SHARE_EXTENSION_PROFILE_NAME</string>"
   fi
 
@@ -169,7 +274,7 @@ create_ios_export_options_plist() {
   <key>provisioningProfiles</key>
   <dict>
 $extension_profile_entry
-    <key>${IOS_APP_BUNDLE_ID:-com.bansheng.dev}</key>
+    <key>$IOS_APP_BUNDLE_ID</key>
     <string>$IOS_APP_PROFILE_NAME</string>
   </dict>
   <key>destination</key>
@@ -183,6 +288,9 @@ $extension_profile_entry
 EOF
 }
 
+# Validate the requested flavor before the git/worktree gate so a typo fails
+# immediately instead of hiding behind an unrelated complaint.
+resolve_flavor
 require_clean_git_worktree
 
 API_BASE_URL="${API_BASE_URL:-https://banshengcomp.com/api}"
@@ -202,6 +310,9 @@ IFS='.' read -r major minor patch <<< "$current_build_name"
 suggested_build_name="$major.$minor.$((patch + 1))"
 suggested_build_number="$((current_build_number + 1))"
 
+echo "Flavor:                     $FLAVOR"
+echo "Bundle id:                  $IOS_APP_BUNDLE_ID"
+echo "App Group:                  $IOS_APP_GROUP_ID"
 echo "Current app version:        $current_build_name"
 echo "Current build number:       $current_build_number"
 echo "Suggested next app version: $suggested_build_name"
@@ -257,7 +368,11 @@ echo
 echo "Building TestFlight IPA app version $build_name, build $build_number"
 
 build_started_marker="$(mktemp -t build-testflight-start.XXXXXX)"
-trap 'rm -f "$build_started_marker"' EXIT
+cleanup() {
+  rm -f "$build_started_marker"
+  remove_flavor_override
+}
+trap cleanup EXIT
 
 install_ios_distribution_profiles
 
@@ -270,6 +385,8 @@ if [[ "$(uname -s)" == "Darwin" && -d ios ]]; then
     pod install
   )
 fi
+
+write_flavor_override
 
 export_options_plist="$(mktemp -t bansheng-export-options.XXXXXX.plist)"
 if create_ios_export_options_plist "$export_options_plist"; then
@@ -311,6 +428,8 @@ if [[ ! "$ipa_path" -nt "$build_started_marker" ]]; then
   exit 1
 fi
 
+verify_ipa_identity "$ipa_path"
+
 if [[ "$selected_version" != "$current" ]]; then
   CURRENT="$current" NEXT="$selected_version" perl -0pi -e \
     's/^version:\s*\Q$ENV{CURRENT}\E\s*$/version: $ENV{NEXT}/m' pubspec.yaml
@@ -324,6 +443,7 @@ if [[ "$selected_version" != "$current" ]]; then
 fi
 
 echo "IPA output: build/ios/ipa/"
+echo "Built flavor: $FLAVOR"
 echo "Built TestFlight app version: $build_name"
 echo "Built App Store Connect build: $build_number"
 echo "Flutter pubspec app+build version: $selected_version"

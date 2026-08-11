@@ -1,0 +1,15 @@
+// App identity per distribution flavor.
+//
+// Attached at the *project* level rather than from Debug/Release.xcconfig
+// because the Share Extension target has no base configuration of its own and
+// would otherwise never see these variables — its bundle id and App Group must
+// stay in lockstep with the host app or the shared container silently breaks.
+//
+// Defaults are the dev values so `flutter run`, the run-*.sh scripts and an
+// Xcode Run all keep working untouched. scripts/build-testflight.sh writes
+// FlavorOverride.xcconfig to switch to prod and removes it afterwards; that
+// file is gitignored and absent in a clean checkout.
+APP_BUNDLE_ID = com.bansheng.dev
+APP_GROUP_ID = group.com.bansheng.dev
+
+#include? "FlavorOverride.xcconfig"
