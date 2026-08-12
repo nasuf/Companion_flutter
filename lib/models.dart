@@ -4,6 +4,17 @@ UserRole parseUserRole(String value) {
   return value == 'admin' ? UserRole.admin : UserRole.user;
 }
 
+enum LoginMethod { wechat, phone, password }
+
+/// 一种已绑定的登录方式。[label] 是直接可展示的文案（手机号已由服务端脱敏成
+/// `138****5678`），[kind] 供 UI 选颜色 —— 视图层不应该去匹配文案字符串。
+class LoginMethodInfo {
+  const LoginMethodInfo(this.kind, this.label);
+
+  final LoginMethod kind;
+  final String label;
+}
+
 class AuthSession {
   const AuthSession({
     required this.token,
@@ -20,6 +31,8 @@ class AuthSession {
     this.agentCity,
     this.workspaceId,
     this.conversationId,
+    this.phone,
+    this.wechatBound = false,
   });
 
   final String token;
@@ -36,6 +49,31 @@ class AuthSession {
   final String? agentCity;
   final String? workspaceId;
   final String? conversationId;
+
+  /// 已绑定的手机号，服务端已脱敏成 `138****5678`。未绑定为 null。
+  final String? phone;
+  final bool wechatBound;
+
+  /// 账号已绑定的登录方式，用于个人资料页展示。可能同时有多个（微信 + 手机号）。
+  ///
+  /// [LoginMethod.password] 由**推断**得出而不是服务端字段：三种登录方式在数据
+  /// 模型上互斥 —— 微信/手机号各对应一条 auth_identities 行，密码账号没有任何身份
+  /// 行，所以两者都没有就只能是密码账号。密码登录目前只服务内部（登录页那个
+  /// 「QQ登录」按钮打开的就是它），不值得为它单独加一个接口字段。
+  List<LoginMethodInfo> get loginMethods {
+    final methods = <LoginMethodInfo>[];
+    if (wechatBound) {
+      methods.add(const LoginMethodInfo(LoginMethod.wechat, '微信'));
+    }
+    final bound = phone?.trim();
+    if (bound != null && bound.isNotEmpty) {
+      methods.add(LoginMethodInfo(LoginMethod.phone, bound));
+    }
+    if (methods.isEmpty) {
+      methods.add(const LoginMethodInfo(LoginMethod.password, '账号密码'));
+    }
+    return methods;
+  }
 
   /// 展示用名字，为空时用 [fallback]。
   ///
@@ -68,6 +106,8 @@ class AuthSession {
       agentCity: json['agent_city'] as String?,
       workspaceId: json['workspace_id'] as String?,
       conversationId: json['conversation_id'] as String?,
+      phone: json['phone'] as String?,
+      wechatBound: json['wechat_bound'] as bool? ?? false,
     );
   }
 
@@ -96,6 +136,10 @@ class AuthSession {
       agentCity: agentCity ?? this.agentCity,
       workspaceId: workspaceId ?? this.workspaceId,
       conversationId: conversationId ?? this.conversationId,
+      // 绑定状态只由服务端给出，没有参数可以本地改 —— 但必须在这里透传，否则每次
+      // 改昵称/头像都会把它清掉。
+      phone: phone,
+      wechatBound: wechatBound,
     );
   }
 }

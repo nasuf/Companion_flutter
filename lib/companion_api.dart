@@ -71,6 +71,8 @@ class CompanionApi {
       agentCity: session.agentCity,
       workspaceId: session.workspaceId,
       conversationId: session.conversationId,
+      phone: session.phone,
+      wechatBound: session.wechatBound,
     );
   }
 

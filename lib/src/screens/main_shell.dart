@@ -897,6 +897,11 @@ class _ProfilePageState extends State<ProfilePage>
           userAvatarUrl: widget.session.userAvatarUrl,
           role: widget.session.role,
           hasAgent: false,
+          // 删的是 agent，不是账号 —— 绑定状态照旧带上，否则删完 agent 个人资料页
+          // 的「登录方式」会变成「账号密码」。（这里刻意逐字段构造而不用 copyWith:
+          // 需要把 agent 相关字段清空，而 copyWith 的 null 表示"保持原值"。）
+          phone: widget.session.phone,
+          wechatBound: widget.session.wechatBound,
         ),
       );
     } catch (error) {
@@ -1365,10 +1370,20 @@ class _SettingsRelationHeader extends StatelessWidget {
   final VoidCallback onAgentTap;
   final VoidCallback? onAdminTap;
 
+  /// 头像直径。原为 64，2026-08-12 放大 —— 这是「我的」页的主视觉，64 在手机上偏小。
+  ///
+  /// 上限受横向空间约束：一行是 16 边距 + 头像列 + 58 连接区 + 头像列 + 16 边距，
+  /// 即每列 `(宽 - 90) / 2`，320pt 屏上是 115pt，所以 88 仍有余量。
+  /// 再往上调要重新算这个式子，并跑 test/profile_header_test.dart 的多尺寸用例。
+  static const _headerAvatarSize = 88.0;
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: topPadding + 214,
+      // 高度跟着头像走: 内容区 = 高度 - 30(上) - 20(下), 需容纳
+      // 头像 + 间距 + 名字(约18) + 14 + 标语(约18)。240 让 Spacer 仍留约 42,
+      // 与放大前的留白一致。
+      height: topPadding + 240,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -1411,12 +1426,13 @@ class _SettingsRelationHeader extends StatelessWidget {
                         assetPath: 'assets/prototype/agent-avatar.png',
                         imageUrl: agentAvatarUrl,
                         accent: _SettingsColors.orangeDark,
+                        avatarSize: _headerAvatarSize,
                         onTap: onAgentTap,
                       ),
                     ),
                     SizedBox(
                       width: 58,
-                      height: 64,
+                      height: _headerAvatarSize,
                       child: _SettingsConnectionBridge(progress: progress),
                     ),
                     Expanded(
@@ -1431,6 +1447,7 @@ class _SettingsRelationHeader extends StatelessWidget {
                             : _SettingsColors.blueDark,
                         showCrown: memberActive,
                         showEditDot: true,
+                        avatarSize: _headerAvatarSize,
                         onTap: onUserTap,
                       ),
                     ),
@@ -1475,6 +1492,7 @@ class _SettingsAvatarColumn extends StatelessWidget {
     this.imageUrl,
     this.showCrown = false,
     this.showEditDot = false,
+    this.avatarSize = 64,
   });
 
   final double progress;
@@ -1485,6 +1503,9 @@ class _SettingsAvatarColumn extends StatelessWidget {
   final Color accent;
   final bool showCrown;
 
+  /// 头像直径。角标与皇冠都按它等比摆放，见 build 里的说明。
+  final double avatarSize;
+
   /// 只有用户头像可编辑 — AI 头像由后台素材决定, 不给用户改的入口.
   final bool showEditDot;
   final VoidCallback onTap;
@@ -1493,6 +1514,10 @@ class _SettingsAvatarColumn extends StatelessWidget {
   Widget build(BuildContext context) {
     final lift = math.sin((progress + phase) * math.pi * 2) * 4;
     final breath = (math.sin((progress + phase) * math.pi * 4) + 1) / 2;
+    final dotSize = avatarSize * 23 / 64;
+    // 角标圆心落在头像圆周的右下 45° 上。直接沿用固定的 right/bottom 偏移在放大后
+    // 会离圆边越来越远 —— 圆的右下角比外接方框的角内缩 r(1-1/√2), 那个量随 r 增长。
+    final dotEdge = avatarSize / 2 * (1 - 1 / math.sqrt2) - dotSize / 2;
     return CupertinoButton(
       padding: EdgeInsets.zero,
       onPressed: onTap,
@@ -1510,23 +1535,27 @@ class _SettingsAvatarColumn extends StatelessWidget {
                     assetPath: assetPath,
                     imageUrl: imageUrl,
                     accent: accent,
+                    size: avatarSize,
                   ),
                   if (showEditDot)
-                    const Positioned(
-                      right: -3,
-                      bottom: 0,
-                      child: _AvatarEditDot(),
+                    Positioned(
+                      right: dotEdge,
+                      bottom: dotEdge,
+                      child: _AvatarEditDot(size: dotSize),
                     ),
                   if (showCrown)
-                    const Positioned(
-                      right: -5,
-                      top: -12,
-                      child: Text('👑', style: TextStyle(fontSize: 18)),
+                    Positioned(
+                      right: avatarSize * -5 / 64,
+                      top: avatarSize * -12 / 64,
+                      child: Text(
+                        '👑',
+                        style: TextStyle(fontSize: avatarSize * 18 / 64),
+                      ),
                     ),
                 ],
               ),
             ),
-            const SizedBox(height: 7),
+            SizedBox(height: avatarSize * 7 / 64),
             Text(
               name,
               maxLines: 1,
@@ -1550,11 +1579,16 @@ class _SettingsAvatarImage extends StatelessWidget {
     required this.assetPath,
     required this.accent,
     this.imageUrl,
+    this.size = 64,
   });
 
   final String assetPath;
   final String? imageUrl;
   final Color accent;
+
+  /// 直径。默认 64 供「个人资料 / AI 形象」两个二级页的行内小头像用；「我的」
+  /// 页顶部的关系头图传更大的值。
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -1565,9 +1599,10 @@ class _SettingsAvatarImage extends StatelessWidget {
       fallback: fallback,
     );
     return Container(
-      width: 64,
-      height: 64,
-      padding: const EdgeInsets.all(3),
+      width: size,
+      height: size,
+      // 描边随直径走, 否则放大后那圈渐变边会显得过细。
+      padding: EdgeInsets.all(size * 3 / 64),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: LinearGradient(
@@ -1592,13 +1627,15 @@ class _SettingsAvatarImage extends StatelessWidget {
 }
 
 class _AvatarEditDot extends StatelessWidget {
-  const _AvatarEditDot();
+  const _AvatarEditDot({this.size = 23});
+
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 23,
-      height: 23,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         color: _SettingsColors.isDark ? _SettingsColors.card : Colors.white,
         shape: BoxShape.circle,
@@ -1615,7 +1652,7 @@ class _AvatarEditDot extends StatelessWidget {
       alignment: Alignment.center,
       child: Icon(
         CupertinoIcons.pencil,
-        size: 12,
+        size: size * 12 / 23,
         color: _SettingsColors.blueDark,
       ),
     );
@@ -1837,19 +1874,26 @@ class _SettingsDashboardCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Text(data.icon, style: const TextStyle(fontSize: 17)),
-                    const Spacer(),
-                    Text(
-                      data.value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: _SettingsColors.isDark
-                            ? _SettingsColors.text
-                            : const Color(0xFF2A2A2C),
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0,
-                        fontFeatures: [FontFeature.tabularFigures()],
+                    const SizedBox(width: 6),
+                    // Expanded + 右对齐, 而不是 Spacer + 裸 Text: 裸 Text 会按自然
+                    // 宽度铺开, 它上面的 maxLines/ellipsis 只在宽度被约束时才生效,
+                    // 所以长数值 (如 "48h32m") 在 375pt 宽的机型上是直接溢出而不是
+                    // 省略号。视觉不变 —— 放得下时仍然贴右。
+                    Expanded(
+                      child: Text(
+                        data.value,
+                        maxLines: 1,
+                        textAlign: TextAlign.right,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: _SettingsColors.isDark
+                              ? _SettingsColors.text
+                              : const Color(0xFF2A2A2C),
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                       ),
                     ),
                   ],
@@ -2573,6 +2617,71 @@ class _SubCardRow extends StatelessWidget {
   }
 }
 
+/// 账号类型胶囊，跟后台用户管理的 AuthMethodBadges 同一个表达方式：一个账号可能
+/// 同时绑了微信和手机号，所以是并排的多个而不是单一文案。
+class _LoginMethodBadges extends StatelessWidget {
+  const _LoginMethodBadges({required this.methods});
+
+  final List<LoginMethodInfo> methods;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final method in methods)
+          Padding(
+            padding: const EdgeInsets.only(left: 6),
+            child: _LoginMethodBadge(method),
+          ),
+      ],
+    );
+  }
+}
+
+class _LoginMethodBadge extends StatelessWidget {
+  const _LoginMethodBadge(this.method);
+
+  final LoginMethodInfo method;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = _SettingsColors.isDark;
+    // 微信用它的品牌绿: 这是个品牌标识, 借用 app 的暖/冷强调色反而让人认不出。
+    // 手机号走蓝、密码走中性灰 —— 两者都在既有色板内。
+    final (Color bg, Color fg) = switch (method.kind) {
+      LoginMethod.wechat => dark
+          ? (const Color(0xFF16301F), const Color(0xFF5FD08A))
+          : (const Color(0xFFE6F6EC), const Color(0xFF2E9E5B)),
+      LoginMethod.phone => (
+        _SettingsColors.blueLight,
+        _SettingsColors.blueDark,
+      ),
+      LoginMethod.password => (
+        dark ? const Color(0xFF1B2430) : const Color(0xFFEFEFF4),
+        _SettingsColors.tertiary,
+      ),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: fg.withValues(alpha: 0.28)),
+      ),
+      child: Text(
+        method.label,
+        style: TextStyle(
+          color: fg,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0,
+        ),
+      ),
+    );
+  }
+}
+
 class _SubSectionHeader extends StatelessWidget {
   const _SubSectionHeader(this.text);
 
@@ -2803,6 +2912,18 @@ class _ProfileInfoPageState extends State<_ProfileInfoPage> {
     return 'image/jpeg';
   }
 
+  Future<void> _copyUserId() async {
+    await Clipboard.setData(ClipboardData(text: _session.userId));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('用户ID 已复制'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(milliseconds: 1200),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final displayName = _session.displayNameOr('小星辰');
@@ -2842,10 +2963,20 @@ class _ProfileInfoPageState extends State<_ProfileInfoPage> {
                 value: '$displayName ›',
                 onTap: _busy ? null : _editNickname,
               ),
-              _SubCardRow(label: '登录账号', value: _session.username),
+              // 原本这里是「登录账号」(wx_89b939bc004 之类的内部 hash) —— 对用户
+              // 零信息量。换成账号类型, 数据来自服务端早就在发的 phone /
+              // wechat_bound (AuthResponse 里那两个字段的注释写的就是 "for the
+              // account-settings UI")。
+              _SubCardRow(
+                label: '账号类型',
+                trailing: _LoginMethodBadges(methods: _session.loginMethods),
+              ),
               _SubCardRow(
                 label: '用户ID',
-                value: _session.userId,
+                // 只显示前 8 位: 完整 uuid 36 字符会把标签挤掉。点一下复制完整值 ——
+                // 昵称现在可改且不唯一, 反馈问题时这串是唯一能定位账号的东西。
+                value: '${_session.userId.split('-').first}… 复制',
+                onTap: _copyUserId,
                 showDivider: false,
               ),
             ],
