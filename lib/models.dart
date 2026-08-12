@@ -37,21 +37,20 @@ class AuthSession {
   final String? workspaceId;
   final String? conversationId;
 
-  /// A user-facing name that never exposes generated login identifiers.
-  String get userFacingName {
-    final displayName = userDisplayName?.trim();
-    if (displayName != null &&
-        displayName.isNotEmpty &&
-        !_isGeneratedLoginIdentifier(displayName)) {
-      return displayName;
-    }
-
-    final loginName = username.trim();
-    if (loginName.isNotEmpty && !_isGeneratedLoginIdentifier(loginName)) {
-      return loginName;
-    }
-    return '我';
+  /// 展示用名字，为空时用 [fallback]。
+  ///
+  /// 优先级（自设昵称 → 微信昵称 → 用户+手机尾号）**整条都在服务端**
+  /// (`services/user_profile.resolve_display_identity`)，客户端只需要挑一个场景
+  /// 兜底词。这里刻意不再回落到 [username]：那对真实用户是 `wx_89b939bc004` 这类
+  /// 内部 hash，历史上服务端把它塞进展示名字段，客户端不得不用正则再滤一遍——加一
+  /// 种登录方式（苹果登录已经在登录页上了）正则就会漏。
+  String displayNameOr(String fallback) {
+    final name = userDisplayName?.trim();
+    return name == null || name.isEmpty ? fallback : name;
   }
+
+  /// 对局页/胶囊等第一人称场景的名字。
+  String get userFacingName => displayNameOr('我');
 
   factory AuthSession.fromJson(Map<String, dynamic> json) {
     return AuthSession(
@@ -101,8 +100,36 @@ class AuthSession {
   }
 }
 
-bool _isGeneratedLoginIdentifier(String value) {
-  return RegExp(r'^(?:wx|ph)_[a-zA-Z0-9]+$').hasMatch(value);
+/// 用户在圆形取景框里框定的正方形，坐标是**源图像素**（EXIF 校正后）。
+///
+/// 不在客户端出成品图: Flutter 只能编码 PNG，一张 512² 的照片 PNG 约 400KB，
+/// 而服务端本来就要重新编码一遍。传原图 + 这个矩形，线上体积就是 picker 输出
+/// 的那张 JPEG（约 150-250KB），裁剪由服务端的 Pillow 精确完成。
+class AvatarCropRect {
+  const AvatarCropRect({required this.x, required this.y, required this.size});
+
+  final int x;
+  final int y;
+  final int size;
+}
+
+/// 昵称 / 头像修改的回执（`PATCH /users/me/profile`、`POST /users/me/avatar`）。
+///
+/// 服务端返回的是**解析后**的展示身份，不是刚提交的原值：只改了昵称时
+/// [avatarUrl] 仍是当前生效的头像（可能来自微信回落），调用方直接
+/// `session.copyWith` 就能让两个字段同时对齐。
+class UserProfileUpdateResult {
+  const UserProfileUpdateResult({this.displayName, this.avatarUrl});
+
+  final String? displayName;
+  final String? avatarUrl;
+
+  factory UserProfileUpdateResult.fromJson(Map<String, dynamic> json) {
+    return UserProfileUpdateResult(
+      displayName: json['display_name'] as String?,
+      avatarUrl: json['avatar_url'] as String?,
+    );
+  }
 }
 
 class AgentProfile {

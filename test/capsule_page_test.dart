@@ -11,6 +11,10 @@ const _session = AuthSession(
   token: 'test-token',
   userId: 'user-1',
   username: 'tester',
+  // 服务端总会给出解析好的展示名 (密码账号建号时预写 = username, 微信用昵称,
+  // 手机号用尾号), 客户端不再自己回落到 username —— fixture 跟着对齐, 否则这里
+  // 测的就不是真实渲染。
+  userDisplayName: 'tester',
   role: UserRole.user,
   hasAgent: true,
   agentId: 'agent-1',

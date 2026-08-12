@@ -323,6 +323,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
         api: widget.api,
         session: widget.session,
         onAgentDeleted: _handleAgentDeleted,
+        onSessionChanged: widget.onSessionChanged,
         onLogout: widget.onLogout,
       ),
     ];
@@ -676,12 +677,17 @@ class ProfilePage extends StatefulWidget {
     required this.api,
     required this.session,
     required this.onAgentDeleted,
+    required this.onSessionChanged,
     required this.onLogout,
   });
 
   final CompanionApi api;
   final AuthSession session;
   final ValueChanged<AuthSession> onAgentDeleted;
+
+  /// 昵称 / 头像改动的回传口。与 [onAgentDeleted] 分开是因为后者还要顺带把
+  /// 界面切回聊天页，这里只更新 session。
+  final ValueChanged<AuthSession> onSessionChanged;
   final VoidCallback onLogout;
 
   @override
@@ -1033,10 +1039,7 @@ class _ProfilePageState extends State<ProfilePage>
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final userName = _displayName(
-      widget.session.userDisplayName ?? widget.session.username,
-      fallback: '小星辰',
-    );
+    final userName = widget.session.displayNameOr('小星辰');
     final agentName = _displayName(widget.session.agentName, fallback: '小明');
     final topPadding = media.padding.top + 14;
     return AnimatedBuilder(
@@ -1076,7 +1079,11 @@ class _ProfilePageState extends State<ProfilePage>
                             showAdminEntry:
                                 widget.session.role == UserRole.admin,
                             onUserTap: () => _pushPage(
-                              _ProfileInfoPage(session: widget.session),
+                              _ProfileInfoPage(
+                                api: widget.api,
+                                session: widget.session,
+                                onSessionChanged: widget.onSessionChanged,
+                              ),
                             ),
                             onAgentTap: () => _pushPage(
                               _AiAppearancePage(
@@ -1250,6 +1257,8 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
+  /// Agent 名字的兜底。用户名字走 [AuthSession.displayNameOr] —— 那条链的优先级
+  /// 在服务端，不要把用户名字重新引到这里来拼来源。
   static String _displayName(String? value, {required String fallback}) {
     final trimmed = value?.trim();
     if (trimmed == null || trimmed.isEmpty) return fallback;
@@ -1421,6 +1430,7 @@ class _SettingsRelationHeader extends StatelessWidget {
                             ? _SettingsColors.gold
                             : _SettingsColors.blueDark,
                         showCrown: memberActive,
+                        showEditDot: true,
                         onTap: onUserTap,
                       ),
                     ),
@@ -1464,6 +1474,7 @@ class _SettingsAvatarColumn extends StatelessWidget {
     required this.onTap,
     this.imageUrl,
     this.showCrown = false,
+    this.showEditDot = false,
   });
 
   final double progress;
@@ -1473,6 +1484,9 @@ class _SettingsAvatarColumn extends StatelessWidget {
   final String? imageUrl;
   final Color accent;
   final bool showCrown;
+
+  /// 只有用户头像可编辑 — AI 头像由后台素材决定, 不给用户改的入口.
+  final bool showEditDot;
   final VoidCallback onTap;
 
   @override
@@ -1497,11 +1511,12 @@ class _SettingsAvatarColumn extends StatelessWidget {
                     imageUrl: imageUrl,
                     accent: accent,
                   ),
-                  const Positioned(
-                    right: -3,
-                    bottom: 0,
-                    child: _AvatarEditDot(),
-                  ),
+                  if (showEditDot)
+                    const Positioned(
+                      right: -3,
+                      bottom: 0,
+                      child: _AvatarEditDot(),
+                    ),
                   if (showCrown)
                     const Positioned(
                       right: -5,
@@ -2583,17 +2598,215 @@ class _SubSectionHeader extends StatelessWidget {
   }
 }
 
-class _ProfileInfoPage extends StatelessWidget {
-  const _ProfileInfoPage({required this.session});
+/// 个人资料二级页 —— 头像与昵称在这里编辑。
+///
+/// 改完必须把新 session 通过 [onSessionChanged] 冒泡到 auth_gate: 用户头像除了
+/// 这一页，还被顶部关系头图和各棋类对局页读取，只改本页 state 会让它们停在旧值
+/// 直到下次冷启动。
+class _ProfileInfoPage extends StatefulWidget {
+  const _ProfileInfoPage({
+    required this.api,
+    required this.session,
+    required this.onSessionChanged,
+  });
 
+  final CompanionApi api;
   final AuthSession session;
+  final ValueChanged<AuthSession> onSessionChanged;
+
+  @override
+  State<_ProfileInfoPage> createState() => _ProfileInfoPageState();
+}
+
+class _ProfileInfoPageState extends State<_ProfileInfoPage> {
+  /// 与服务端 `models/user.py: MAX_DISPLAY_NAME_LENGTH` 一致。输入框先挡一道，
+  /// 服务端超长只会回 422 的原始校验体，用户看了没法理解。
+  static const _maxNicknameLength = 32;
+
+  final _imagePicker = ImagePicker();
+  final _nicknameController = TextEditingController();
+  bool _busy = false;
+  String? _error;
+
+  /// 本页自己持有一份 session。这一页是 push 出来的路由，父级 rebuild 不会重建
+  /// 它 —— 只回传给 auth_gate 的话，本页的头像和昵称会停在改动前的值。
+  late AuthSession _session = widget.session;
+
+  @override
+  void didUpdateWidget(covariant _ProfileInfoPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.session != widget.session) _session = widget.session;
+  }
+
+  @override
+  void dispose() {
+    _nicknameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickAvatar() async {
+    if (_busy) return;
+    final source = await showCupertinoModalPopup<ImageSource>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop(ImageSource.camera),
+            child: const Text('拍照'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop(ImageSource.gallery),
+            child: const Text('从相册选择'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+    await _pickAndUploadAvatar(source);
+  }
+
+  Future<void> _pickAndUploadAvatar(ImageSource source) async {
+    // 取图和上传分开 catch：权限被拒和服务端拒绝是两回事，混在一起会给出"需要
+    // 相机权限"这种和实际原因无关的提示。
+    final XFile? picked;
+    final Uint8List bytes;
+    try {
+      // 1024 比聊天图的 1600 更小: 头像最终只存 512²，取一倍余量给裁剪留下
+      // 放大空间，再大就只是白白拉长上传时间。
+      picked = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      if (picked == null || !mounted) return;
+      bytes = await picked.readAsBytes();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error is MissingPluginException
+            ? '图片功能需要完整重启 App 后才能使用。'
+            : source == ImageSource.camera
+            ? '打不开相机，请检查系统里的相机权限。'
+            : '读不到这张图片，请检查系统里的相册权限。';
+      });
+      return;
+    }
+
+    if (!mounted) return;
+    final crop = await Navigator.of(context).push<AvatarCropRect>(
+      CupertinoPageRoute<AvatarCropRect>(
+        builder: (_) => AvatarCropPage(imageBytes: bytes),
+      ),
+    );
+    if (crop == null || !mounted) return;
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      widget.api.authToken = _session.token;
+      _applyResult(
+        await widget.api.uploadUserAvatar(
+          bytes: bytes,
+          mime: picked.mimeType ?? _imageMimeFromPath(picked.path),
+          crop: crop,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = _asMessage(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _editNickname() async {
+    if (_busy) return;
+    // controller 归本页所有而不是每次新建：弹窗 pop 之后还有一段退场动画，
+    // 那期间 CupertinoTextField 仍然挂在树上，就地 dispose 会抛"used after
+    // being disposed"。
+    _nicknameController.text = _session.displayNameOr('');
+    final name = await showCupertinoDialog<String>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('修改昵称'),
+        content: Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: CupertinoTextField(
+            controller: _nicknameController,
+            autofocus: true,
+            maxLength: _maxNicknameLength,
+            placeholder: '想让 TA 怎么称呼你',
+            onSubmitted: (value) => Navigator.of(context).pop(value),
+          ),
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () =>
+                Navigator.of(context).pop(_nicknameController.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    final trimmed = name?.trim();
+    if (trimmed == null || !mounted) return;
+    if (trimmed.isEmpty) {
+      setState(() => _error = '昵称不能为空。');
+      return;
+    }
+    if (trimmed == _session.userDisplayName?.trim()) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      widget.api.authToken = _session.token;
+      _applyResult(await widget.api.updateUserDisplayName(trimmed));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = _asMessage(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _applyResult(UserProfileUpdateResult result) {
+    if (!mounted) return;
+    final updated = _session.copyWith(
+      userDisplayName: result.displayName,
+      userAvatarUrl: result.avatarUrl,
+    );
+    setState(() {
+      _session = updated;
+      _error = null;
+    });
+    widget.onSessionChanged(updated);
+  }
+
+  String _imageMimeFromPath(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
+  }
 
   @override
   Widget build(BuildContext context) {
-    final displayName = _ProfilePageState._displayName(
-      session.userDisplayName ?? session.username,
-      fallback: '小星辰',
-    );
+    final displayName = _session.displayNameOr('小星辰');
+    final error = _error;
     return _SettingsSubScaffold(
       title: '个人资料',
       child: _SubPageContent(
@@ -2602,30 +2815,49 @@ class _ProfileInfoPage extends StatelessWidget {
             children: [
               _SubCardRow(
                 label: '头像',
+                onTap: _busy ? null : _pickAvatar,
                 trailing: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: _SettingsAvatarImage(
-                    assetPath: 'assets/prototype/user-avatar-shanmu.jpg',
-                    imageUrl: session.userAvatarUrl,
-                    accent: _SettingsColors.blueDark,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_busy)
+                        const Padding(
+                          padding: EdgeInsets.only(right: 10),
+                          child: CupertinoActivityIndicator(radius: 8),
+                        ),
+                      _SettingsAvatarImage(
+                        assetPath: 'assets/prototype/user-avatar-shanmu.jpg',
+                        imageUrl: _session.userAvatarUrl,
+                        accent: _SettingsColors.blueDark,
+                      ),
+                      const SizedBox(width: 6),
+                      const _SettingsArrow(),
+                    ],
                   ),
                 ),
               ),
-              _SubCardRow(label: '昵称', value: displayName),
-              _SubCardRow(label: '登录账号', value: session.username),
               _SubCardRow(
-                label: '微信头像',
-                value: session.userAvatarUrl?.trim().isNotEmpty == true
-                    ? '已同步'
-                    : '未同步',
+                label: '昵称',
+                value: '$displayName ›',
+                onTap: _busy ? null : _editNickname,
               ),
+              _SubCardRow(label: '登录账号', value: _session.username),
               _SubCardRow(
                 label: '用户ID',
-                value: session.userId,
+                value: _session.userId,
                 showDivider: false,
               ),
             ],
           ),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: Text(
+                error,
+                style: TextStyle(color: _SettingsColors.red, fontSize: 13),
+              ),
+            ),
         ],
       ),
     );

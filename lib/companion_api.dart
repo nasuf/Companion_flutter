@@ -74,6 +74,13 @@ class CompanionApi {
     );
   }
 
+  UserProfileUpdateResult _normalizeUserProfile(UserProfileUpdateResult value) {
+    return UserProfileUpdateResult(
+      displayName: value.displayName,
+      avatarUrl: _absoluteOptionalUrl(value.avatarUrl),
+    );
+  }
+
   AgentProfile _normalizeAgentProfile(AgentProfile profile) {
     return AgentProfile(
       id: profile.id,
@@ -381,6 +388,59 @@ class CompanionApi {
         : '/users/me/profile-stats?$query';
     final json = await _request('GET', path) as Map<String, dynamic>;
     return ProfileStats.fromJson(json);
+  }
+
+  /// 改昵称。返回服务端解析后的展示身份，调用方 `session.copyWith` 即可。
+  Future<UserProfileUpdateResult> updateUserDisplayName(String name) async {
+    final json =
+        await _request(
+              'PATCH',
+              '/users/me/profile',
+              body: {'display_name': name},
+              debugLabel: 'user.profile.name',
+            )
+            as Map<String, dynamic>;
+    return _normalizeUserProfile(UserProfileUpdateResult.fromJson(json));
+  }
+
+  /// 上传头像。传的是 picker 输出的原图 + 裁剪框（源图像素坐标），实际裁剪与
+  /// 压到 512×512 由服务端完成 —— Flutter 只能编码 PNG，在客户端出成品图反而
+  /// 让线上体积翻几倍。
+  Future<UserProfileUpdateResult> uploadUserAvatar({
+    required Uint8List bytes,
+    required String mime,
+    AvatarCropRect? crop,
+  }) async {
+    final json =
+        await _requestMultipart(
+              'POST',
+              '/users/me/avatar',
+              fields: crop == null
+                  ? const {}
+                  : {
+                      'crop_x': '${crop.x}',
+                      'crop_y': '${crop.y}',
+                      'crop_size': '${crop.size}',
+                    },
+              fileField: 'file',
+              fileName: 'avatar${_extensionForImageMime(mime)}',
+              fileMime: mime,
+              fileBytes: bytes,
+              debugLabel: 'user.profile.avatar',
+            )
+            as Map<String, dynamic>;
+    return _normalizeUserProfile(UserProfileUpdateResult.fromJson(json));
+  }
+
+  String _extensionForImageMime(String mime) {
+    switch (mime) {
+      case 'image/png':
+        return '.png';
+      case 'image/webp':
+        return '.webp';
+      default:
+        return '.jpg';
+    }
   }
 
   Future<ChatRecordsClearResult> clearChatRecords({String? workspaceId}) async {
