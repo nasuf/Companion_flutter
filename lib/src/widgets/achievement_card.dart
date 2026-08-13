@@ -101,7 +101,7 @@ class _AchievementCardFront extends StatelessWidget {
                     color: isDark ? AppColors.muted : const Color(0xFF747C82),
                     fontSize: 12,
                     height: 1.34,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w400,
                     letterSpacing: 0,
                     decoration: TextDecoration.none,
                   ),
@@ -118,7 +118,7 @@ class _AchievementCardFront extends StatelessWidget {
                             ? AppColors.muted.withValues(alpha: 0.88)
                             : const Color(0xFF9BA4A1),
                         fontSize: 12,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w600,
                         letterSpacing: 0,
                         decoration: TextDecoration.none,
                       ),
@@ -179,7 +179,7 @@ class _AchievementCardBack extends StatelessWidget {
                   style: TextStyle(
                     color: color,
                     fontSize: 12,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                     decoration: TextDecoration.none,
                   ),
@@ -198,7 +198,7 @@ class _AchievementCardBack extends StatelessWidget {
                             : const Color(0xFF5F6765),
                         fontSize: 15,
                         height: 1.42,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w400,
                         letterSpacing: 0,
                         decoration: TextDecoration.none,
                       ),
@@ -215,7 +215,7 @@ class _AchievementCardBack extends StatelessWidget {
                             ? AppColors.muted
                             : const Color(0xFF9BA4A1),
                         fontSize: 12,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w600,
                         letterSpacing: 0,
                         decoration: TextDecoration.none,
                       ),
@@ -228,7 +228,7 @@ class _AchievementCardBack extends StatelessWidget {
                             ? AppColors.muted.withValues(alpha: 0.74)
                             : const Color(0xFFB1B7B5),
                         fontSize: 11,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w400,
                         letterSpacing: 0,
                         decoration: TextDecoration.none,
                       ),
@@ -256,27 +256,16 @@ class _AchievementShell extends StatelessWidget {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        // 浅色下卡片是纯白、无描边：底下的面板带一层淡层级色，靠这点色差
-        // 加柔光投影把卡片托起来。原来那圈 #E1E9F6@78% 的描边在近白面板上
-        // 就是一条硬边，左右两侧尤其明显。
-        color: isDark
-            ? AppColors.elevatedSurface(context)
-            : AppColors.of(context).surface,
-        borderRadius: BorderRadius.circular(28),
-        // 深色底缺了边缘就糊，留一道极淡的高光边；浅色下不留。
-        border: isDark
-            ? Border.all(color: Colors.white.withValues(alpha: 0.07))
-            : null,
+        // Denser frost than the header stat cards: enough show-through to
+        // match weather glass, opaque enough that title/body stay crisp.
+        color: _achievementCardGlassFill(context),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _achievementGlassBorder(context)),
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha: isDark ? 0.22 : 0.16),
-            blurRadius: 28,
-            offset: const Offset(0, 14),
-          ),
-          BoxShadow(
-            color: AppColors.shadow.withValues(alpha: isDark ? 0.58 : 0.07),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
+            color: color.withValues(alpha: isDark ? 0.22 : 0.14),
+            blurRadius: 32,
+            offset: const Offset(0, 16),
           ),
         ],
       ),
@@ -314,6 +303,9 @@ class _AchievementCardIcon extends StatelessWidget {
   }
 }
 
+/// Weather hero-chip structure on a paper card: frosted capsule, thin
+/// hairline, w700 label. White frost would vanish on the white shell, so
+/// the fill borrows the level tint the same way weather chips borrow sky.
 class _AchievementScorePill extends StatelessWidget {
   const _AchievementScorePill({required this.score, required this.color});
 
@@ -322,19 +314,27 @@ class _AchievementScorePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      height: 24,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.16)),
+        color: color.withValues(alpha: isDark ? 0.18 : 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.14)
+              : color.withValues(alpha: 0.22),
+        ),
       ),
       child: Text(
         '+$score',
         style: TextStyle(
           color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w900,
+          fontSize: 12,
+          height: 1,
+          fontWeight: FontWeight.w700,
           letterSpacing: 0,
           decoration: TextDecoration.none,
         ),

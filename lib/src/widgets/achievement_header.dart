@@ -26,7 +26,6 @@ class _AchievementHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _AchievementTopBar(
-                tint: color,
                 onBack: () => Navigator.of(context).maybePop(),
               ),
               const SizedBox(height: 22),
@@ -36,26 +35,26 @@ class _AchievementHeader extends StatelessWidget {
                     child: _AchievementStatCard(
                       label: '已解锁成就',
                       value: '${items.length}',
-                      icon: CupertinoIcons.rosette,
+                      glyph: _AchievementStatGlyph.unlocked,
                       tint: color,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: _AchievementStatCard(
                       label: '本周新增',
-                      // 正号保留，用来区分「增量」和「总量」；字色跟其余两张一致。
+                      // Keep the plus so "delta" and "total" stay distinct.
                       value: weeklyNew > 0 ? '+$weeklyNew' : '0',
-                      icon: CupertinoIcons.sparkles,
+                      glyph: _AchievementStatGlyph.weekly,
                       tint: color,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: _AchievementStatCard(
                       label: '累计积分',
                       value: '$score',
-                      icon: CupertinoIcons.star_fill,
+                      glyph: _AchievementStatGlyph.score,
                       tint: color,
                     ),
                   ),
@@ -70,9 +69,8 @@ class _AchievementHeader extends StatelessWidget {
 }
 
 class _AchievementTopBar extends StatelessWidget {
-  const _AchievementTopBar({required this.tint, required this.onBack});
+  const _AchievementTopBar({required this.onBack});
 
-  final Color tint;
   final VoidCallback onBack;
 
   @override
@@ -89,8 +87,8 @@ class _AchievementTopBar extends StatelessWidget {
           '成就',
           style: TextStyle(
             color: isDark ? AppColors.text : const Color(0xFF151719),
-            fontSize: 28,
-            fontWeight: FontWeight.w900,
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
             letterSpacing: 0,
             decoration: TextDecoration.none,
           ),
@@ -100,18 +98,23 @@ class _AchievementTopBar extends StatelessWidget {
   }
 }
 
-/// 顶部三联指标卡：左上角标签 + 右上角图标底座，数字居中压在下半部。
+/// Weather-metric-card language, packed for a 3-up strip.
+///
+/// Weather lays a 48pt well beside the copy because each tile is ~168pt
+/// wide. Three-up here is ~108pt, so the well sits under the label instead
+/// of beside it. Fill, border, type, and the circular white glyph are the
+/// same recipe.
 class _AchievementStatCard extends StatelessWidget {
   const _AchievementStatCard({
     required this.label,
     required this.value,
-    required this.icon,
+    required this.glyph,
     required this.tint,
   });
 
   final String label;
   final String value;
-  final IconData icon;
+  final _AchievementStatGlyph glyph;
   final Color tint;
 
   @override
@@ -119,89 +122,209 @@ class _AchievementStatCard extends StatelessWidget {
     final isDark = AppColors.isDark(context);
     return Container(
       height: 88,
-      padding: const EdgeInsets.fromLTRB(12, 11, 12, 12),
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
       decoration: BoxDecoration(
-        color: AppColors.elevatedSurface(context, light: 0.93),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.glassBorder(context)),
+        color: _achievementGlassFill(context),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _achievementGlassBorder(context)),
         boxShadow: [
-          // 浅色下顶边压一条白线，卡片才有「一片玻璃」的受光边缘而不是贴纸。
-          if (!isDark)
-            BoxShadow(
-              color: Colors.white.withValues(alpha: 0.96),
-              blurRadius: 1,
-              offset: const Offset(0, -1),
-            ),
           BoxShadow(
-            color: tint.withValues(alpha: isDark ? 0.16 : 0.10),
-            blurRadius: 22,
-            offset: const Offset(0, 12),
-          ),
-          BoxShadow(
-            color: AppColors.shadow.withValues(alpha: isDark ? 0.50 : 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
+            color: tint.withValues(alpha: isDark ? 0.22 : 0.14),
+            blurRadius: 32,
+            offset: const Offset(0, 16),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: isDark ? AppColors.muted : const Color(0xFF8B9491),
+              fontSize: 12,
+              height: 1,
+              fontWeight: FontWeight.w400,
+              letterSpacing: 0,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          const Spacer(),
           Row(
             children: [
+              _AchievementStatIcon(glyph: glyph, tint: tint),
+              const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: isDark ? AppColors.muted : const Color(0xFF8B9491),
-                    fontSize: 11,
-                    height: 1,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
+                child: FittedBox(
+                  alignment: Alignment.centerLeft,
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                      color: isDark ? AppColors.text : const Color(0xFF151719),
+                      fontSize: 20,
+                      height: 1,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.4,
+                      decoration: TextDecoration.none,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: 4),
-              // 跟下方成就卡的图标底座同构（圆角方块 + 层级色淡底），是同一套语言。
-              Container(
-                width: 20,
-                height: 20,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: tint.withValues(alpha: isDark ? 0.22 : 0.14),
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                child: Icon(icon, size: 11.5, color: tint),
-              ),
             ],
-          ),
-          const Spacer(),
-          // 撑满整宽再居中，三张卡的数字才在同一条基线上左右对齐；
-          // 窄屏下积分可能到 5 位数，等宽数字 + scaleDown 兜住溢出。
-          SizedBox(
-            width: double.infinity,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                value,
-                style: TextStyle(
-                  color: isDark ? AppColors.text : const Color(0xFF151719),
-                  fontSize: 26,
-                  height: 1,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.6,
-                  decoration: TextDecoration.none,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-            ),
           ),
         ],
       ),
     );
+  }
+}
+
+enum _AchievementStatGlyph { unlocked, weekly, score }
+
+/// 32pt well + 16pt white glyph. Weather uses 48/24; this is the same 2:1
+/// ratio scaled to the 3-up tile. Well color is the contrast-safe pill tint
+/// so the white glyph stays readable on every level.
+class _AchievementStatIcon extends StatelessWidget {
+  const _AchievementStatIcon({required this.glyph, required this.tint});
+
+  static const _diameter = 32.0;
+  static const _glyphSize = 16.0;
+
+  final _AchievementStatGlyph glyph;
+  final Color tint;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = AppColors.isDark(context);
+    final well = _achievementTabPillColor(tint);
+    return Container(
+      width: _diameter,
+      height: _diameter,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: well,
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: well.withValues(alpha: 0.30),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+      ),
+      child: SizedBox(
+        width: _glyphSize,
+        height: _glyphSize,
+        child: CustomPaint(painter: _AchievementStatGlyphPainter(glyph)),
+      ),
+    );
+  }
+}
+
+/// Line-and-fill glyphs in the weather metric style: thick rounded stroke
+/// for the silhouette, solid faces for the focal nodes.
+class _AchievementStatGlyphPainter extends CustomPainter {
+  const _AchievementStatGlyphPainter(this.kind);
+
+  final _AchievementStatGlyph kind;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.width * 0.12
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final fill = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+
+    switch (kind) {
+      case _AchievementStatGlyph.unlocked:
+        _paintMedal(canvas, size, stroke, fill);
+      case _AchievementStatGlyph.weekly:
+        _paintSpark(canvas, size, stroke, fill);
+      case _AchievementStatGlyph.score:
+        _paintStar(canvas, size, stroke, fill);
+    }
+  }
+
+  void _paintMedal(Canvas canvas, Size size, Paint stroke, Paint fill) {
+    final center = Offset(size.width * 0.50, size.height * 0.42);
+    final radius = size.width * 0.28;
+    canvas.drawCircle(center, radius, stroke);
+    canvas.drawCircle(center, radius * 0.42, fill);
+    final banner = RRect.fromLTRBR(
+      size.width * 0.22,
+      size.height * 0.68,
+      size.width * 0.78,
+      size.height * 0.90,
+      Radius.circular(size.width * 0.08),
+    );
+    canvas.drawRRect(banner, fill);
+  }
+
+  void _paintSpark(Canvas canvas, Size size, Paint stroke, Paint fill) {
+    canvas.drawPath(
+      _starPath(
+        Offset(size.width * 0.42, size.height * 0.52),
+        size.width * 0.34,
+        4,
+        inner: 0.38,
+      ),
+      fill,
+    );
+    canvas.drawPath(
+      _starPath(
+        Offset(size.width * 0.78, size.height * 0.24),
+        size.width * 0.16,
+        4,
+        inner: 0.38,
+      ),
+      stroke,
+    );
+  }
+
+  void _paintStar(Canvas canvas, Size size, Paint stroke, Paint fill) {
+    final center = Offset(size.width * 0.50, size.height * 0.52);
+    canvas.drawCircle(center, size.width * 0.38, stroke);
+    canvas.drawPath(_starPath(center, size.width * 0.26, 5, inner: 0.42), fill);
+  }
+
+  Path _starPath(
+    Offset center,
+    double radius,
+    int points, {
+    double inner = 0.4,
+  }) {
+    final path = Path();
+    final step = math.pi / points;
+    for (var i = 0; i < points * 2; i++) {
+      final r = i.isEven ? radius : radius * inner;
+      final angle = -math.pi / 2 + i * step;
+      final point = Offset(
+        center.dx + r * math.cos(angle),
+        center.dy + r * math.sin(angle),
+      );
+      if (i == 0) {
+        path.moveTo(point.dx, point.dy);
+      } else {
+        path.lineTo(point.dx, point.dy);
+      }
+    }
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldRepaint(covariant _AchievementStatGlyphPainter oldDelegate) {
+    return oldDelegate.kind != kind;
   }
 }
 

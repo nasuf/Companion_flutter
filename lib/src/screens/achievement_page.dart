@@ -314,13 +314,53 @@ Color _achievementTabPillColor(Color tint) {
 /// tab 条与其下方内容区共用的面板底色。刻意不透明：面板要跟顶部的渐变头区
 /// 干净分开，靠上圆角自己形成边界，而不是靠一条描边。
 ///
-/// 浅色下带 8% 层级色而不是接近纯白——卡片是纯白且没有描边，全靠这点色差
-/// 加投影浮起来；面板再白一点卡片就消失了。
+/// 浅色带约 14% 层级色——天气页玻璃能成立，是因为底是明显的冷蓝洗。
+/// 8% 几乎是白，55% 白玻璃叠上去会消失。这块洗色是轨道和成就卡共用的「天空」。
 Color _achievementPanelColor(BuildContext context, Color tint) {
   final colors = AppColors.of(context);
   return AppColors.isDark(context)
-      ? Color.lerp(colors.surface, tint, 0.05)!
-      : Color.lerp(Colors.white, tint, 0.08)!;
+      ? Color.lerp(colors.surface, tint, 0.08)!
+      : Color.lerp(Colors.white, tint, 0.14)!;
+}
+
+/// Flat glass fill, same recipe as weather `_W2b.glass`. No BackdropFilter:
+/// the wash behind is nearly uniform, so a translucent plate already reads
+/// as frost.
+Color _achievementGlassFill(BuildContext context) {
+  return AppColors.isDark(context)
+      ? const Color(0x14FFFFFF)
+      : const Color(0x8CFFFFFF);
+}
+
+Color _achievementGlassBorder(BuildContext context) {
+  return AppColors.isDark(context)
+      ? const Color(0x24FFFFFF)
+      : const Color(0xD9FFFFFF);
+}
+
+/// Denser frost for content tiles on the panel. Weather metric cards can be
+/// 55% white because they live on a chromatic wash and hold little text;
+/// achievement cards need the type to stay crisp.
+Color _achievementCardGlassFill(BuildContext context) {
+  return AppColors.isDark(context)
+      ? Colors.white.withValues(alpha: 0.08)
+      : const Color(0xDBFFFFFF);
+}
+
+/// Tab track groove. Pure 55% white on the panel is the same value twice;
+/// mix extra tint so it reads as a recessed glass well.
+Color _achievementTabTrackFill(BuildContext context, Color tint) {
+  if (AppColors.isDark(context)) {
+    return Color.lerp(Colors.white, tint, 0.12)!.withValues(alpha: 0.10);
+  }
+  return Color.lerp(Colors.white, tint, 0.22)!.withValues(alpha: 0.88);
+}
+
+Color _achievementTabTrackBorder(BuildContext context, Color tint) {
+  if (AppColors.isDark(context)) {
+    return Colors.white.withValues(alpha: 0.16);
+  }
+  return Color.lerp(const Color(0xD9FFFFFF), tint, 0.28)!;
 }
 
 class _AchievementPageBackground extends StatelessWidget {
@@ -455,20 +495,13 @@ class _AchievementLevelTabsBar extends StatelessWidget {
                   constraints.maxWidth / _achievementLevelTabs.length;
               const indicatorInset = 3.0;
               const tabBarHeight = 40.0;
-              final isLastTab =
-                  selectedIndex == _achievementLevelTabs.length - 1;
               return Container(
                 height: tabBarHeight,
                 decoration: ShapeDecoration(
-                  // 轨道要比面板（8% 层级色）更深一档才看得出来，不然就糊在一起。
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.06)
-                      : Color.lerp(Colors.white, color, 0.18)!,
+                  color: _achievementTabTrackFill(context, color),
                   shape: StadiumBorder(
                     side: BorderSide(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.12)
-                          : color.withValues(alpha: 0.26),
+                      color: _achievementTabTrackBorder(context, color),
                     ),
                   ),
                 ),
@@ -478,10 +511,10 @@ class _AchievementLevelTabsBar extends StatelessWidget {
                     AnimatedPositioned(
                       duration: const Duration(milliseconds: 280),
                       curve: Curves.easeOutCubic,
-                      left: isLastTab
-                          ? null
-                          : tabWidth * selectedIndex + indicatorInset,
-                      right: isLastTab ? indicatorInset : null,
+                      // Always drive `left`. Pinning the last tab with
+                      // `right` instead makes AnimatedPositioned jump:
+                      // left/right can't interpolate when one side is null.
+                      left: tabWidth * selectedIndex + indicatorInset,
                       top: indicatorInset,
                       bottom: indicatorInset,
                       width: tabWidth - indicatorInset * 2,
@@ -527,8 +560,8 @@ class _AchievementLevelTabsBar extends StatelessWidget {
                                               : const Color(0xFF7E8784)),
                                     fontSize: 13,
                                     fontWeight: tab == selected
-                                        ? FontWeight.w900
-                                        : FontWeight.w700,
+                                        ? FontWeight.w700
+                                        : FontWeight.w400,
                                     letterSpacing: 0,
                                     decoration: TextDecoration.none,
                                   ),
@@ -570,19 +603,14 @@ class _AchievementEmptyState extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.fromLTRB(22, 24, 22, 24),
             decoration: BoxDecoration(
-              // 跟成就卡同一套：浅色纯白无描边，靠面板色差 + 柔光投影浮起来。
-              color: isDark
-                  ? AppColors.elevatedSurface(context)
-                  : AppColors.of(context).surface,
-              borderRadius: BorderRadius.circular(26),
-              border: isDark
-                  ? Border.all(color: Colors.white.withValues(alpha: 0.07))
-                  : null,
+              color: _achievementCardGlassFill(context),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: _achievementGlassBorder(context)),
               boxShadow: [
                 BoxShadow(
                   color: color.withValues(alpha: isDark ? 0.18 : 0.14),
-                  blurRadius: 28,
-                  offset: const Offset(0, 14),
+                  blurRadius: 32,
+                  offset: const Offset(0, 16),
                 ),
               ],
             ),
@@ -593,7 +621,7 @@ class _AchievementEmptyState extends StatelessWidget {
                 color: isDark ? AppColors.muted : const Color(0xFF7C8582),
                 fontSize: 14,
                 height: 1.48,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w400,
                 letterSpacing: 0,
                 decoration: TextDecoration.none,
               ),
