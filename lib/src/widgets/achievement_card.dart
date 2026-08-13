@@ -256,19 +256,27 @@ class _AchievementShell extends StatelessWidget {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: AppColors.elevatedSurface(context, light: 0.92),
+        // 浅色下卡片是纯白、无描边：底下的面板带一层淡层级色，靠这点色差
+        // 加柔光投影把卡片托起来。原来那圈 #E1E9F6@78% 的描边在近白面板上
+        // 就是一条硬边，左右两侧尤其明显。
+        color: isDark
+            ? AppColors.elevatedSurface(context)
+            : AppColors.of(context).surface,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: AppColors.glassBorder(context)),
+        // 深色底缺了边缘就糊，留一道极淡的高光边；浅色下不留。
+        border: isDark
+            ? Border.all(color: Colors.white.withValues(alpha: 0.07))
+            : null,
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha: isDark ? 0.22 : 0.13),
+            color: color.withValues(alpha: isDark ? 0.22 : 0.16),
             blurRadius: 28,
-            offset: const Offset(0, 18),
+            offset: const Offset(0, 14),
           ),
           BoxShadow(
-            color: AppColors.shadow.withValues(alpha: isDark ? 0.58 : 0.08),
-            blurRadius: 22,
-            offset: const Offset(0, 12),
+            color: AppColors.shadow.withValues(alpha: isDark ? 0.58 : 0.07),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -288,7 +296,8 @@ class _AchievementCardIcon extends StatelessWidget {
     return Container(
       width: 52,
       height: 52,
-      padding: const EdgeInsets.all(3),
+      // 徽章原图四周本就留了大片透明边（微光那张只占画布 73%），再加内边距会让
+      // 实际绘制尺寸掉到 34px 上下，细节糊成一团。留给原图自己的留白即可。
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.13),
         borderRadius: BorderRadius.circular(20),
