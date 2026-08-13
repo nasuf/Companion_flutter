@@ -127,8 +127,10 @@ class _MainShellState extends State<MainShell> with RouteAware {
     setState(() => _activeAchievement = item);
   }
 
-  void _closeAchievementOverlay() {
-    if (_activeAchievement == null) return;
+  void _closeAchievementOverlay({int? id}) {
+    final active = _activeAchievement;
+    if (active == null) return;
+    if (id != null && active.id != id) return;
     setState(() => _activeAchievement = null);
   }
 
@@ -285,8 +287,9 @@ class _MainShellState extends State<MainShell> with RouteAware {
     // The chat composer panel docks to the screen bottom like a keyboard, so
     // the floating tab bar slides away while it is up (same as the keyboard
     // covering it) and returns when the panel closes.
+    final activeAchievement = _activeAchievement;
     final hideTabBar =
-        _activeAchievement != null ||
+        activeAchievement != null ||
         voiceRecordingActive ||
         (_composerPanelOpen && _index == 0);
     final chatPage = widget.session.conversationId == null
@@ -372,11 +375,13 @@ class _MainShellState extends State<MainShell> with RouteAware {
               ),
             ),
           ),
-          if (_activeAchievement != null)
+          if (activeAchievement != null)
             Positioned.fill(
               child: _AchievementDetailOverlay(
-                item: _activeAchievement!,
-                onDismiss: _closeAchievementOverlay,
+                key: ValueKey(activeAchievement.id),
+                item: activeAchievement,
+                onDismiss: () =>
+                    _closeAchievementOverlay(id: activeAchievement.id),
               ),
             ),
           _ChatSidebarOverlay(

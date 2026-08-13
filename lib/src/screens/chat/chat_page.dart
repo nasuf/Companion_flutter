@@ -1960,6 +1960,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (shouldAutoScroll) _scrollToBottom(animated: true);
       _scheduleStationDockCheck();
     });
+    _openAchievementDetail(item);
   }
 
   void _openAchievementDetail(AchievementItem item) {

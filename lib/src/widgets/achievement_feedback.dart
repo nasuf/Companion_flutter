@@ -126,6 +126,7 @@ class _AchievementTimelineRow extends StatelessWidget {
 
 class _AchievementDetailOverlay extends StatefulWidget {
   const _AchievementDetailOverlay({
+    super.key,
     required this.item,
     required this.onDismiss,
   });
@@ -139,55 +140,35 @@ class _AchievementDetailOverlay extends StatefulWidget {
 }
 
 class _AchievementDetailOverlayState extends State<_AchievementDetailOverlay>
-    with TickerProviderStateMixin {
-  late final AnimationController _flipController;
+    with SingleTickerProviderStateMixin {
   late final AnimationController _presenceController;
-  late final AnimationController _breathController;
   bool _dismissing = false;
-
-  bool get _flipped => _flipController.value > 0.5;
 
   @override
   void initState() {
     super.initState();
-    _flipController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 520),
-    );
     _presenceController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 260),
+      duration: const Duration(milliseconds: 280),
       reverseDuration: const Duration(milliseconds: 220),
     )..forward();
-    _breathController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2600),
-    )..repeat(reverse: true);
   }
 
   @override
   void dispose() {
-    _flipController.dispose();
     _presenceController.dispose();
-    _breathController.dispose();
     super.dispose();
-  }
-
-  void _toggleFlip() {
-    if (_flipped) {
-      _flipController.reverse();
-    } else {
-      _flipController.forward();
-    }
   }
 
   Future<void> _requestDismiss() async {
     if (_dismissing) return;
     _dismissing = true;
-    await _presenceController.reverse();
-    if (mounted) {
-      widget.onDismiss();
+    try {
+      await _presenceController.reverse().orCancel;
+    } on TickerCanceled {
+      return;
     }
+    if (mounted) widget.onDismiss();
   }
 
   @override
@@ -198,51 +179,16 @@ class _AchievementDetailOverlayState extends State<_AchievementDetailOverlay>
         final progress = Curves.easeOutCubic.transform(
           _presenceController.value,
         );
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _requestDismiss,
-          child: ClipRect(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(
-                sigmaX: 18 * progress,
-                sigmaY: 18 * progress,
-              ),
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.28 * progress),
-                child: Center(
-                  child: Transform.scale(
-                    scale: 0.95 + progress * 0.05,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _toggleFlip,
-                      child: AnimatedBuilder(
-                        animation: _flipController,
-                        builder: (context, _) {
-                          final angle = _flipController.value * math.pi;
-                          final showBack = angle > math.pi / 2;
-                          return Transform(
-                            alignment: Alignment.center,
-                            transform: Matrix4.identity()
-                              ..setEntry(3, 2, 0.0012)
-                              ..rotateY(angle),
-                            child: showBack
-                                ? Transform(
-                                    alignment: Alignment.center,
-                                    transform: Matrix4.identity()
-                                      ..rotateY(math.pi),
-                                    child: _AchievementLargeCardBack(
-                                      item: widget.item,
-                                      breath: _breathController,
-                                    ),
-                                  )
-                                : _AchievementLargeCardFront(item: widget.item),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+        return Opacity(
+          opacity: progress,
+          child: PopScope(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) _requestDismiss();
+            },
+            child: _AchievementUnlockPopup(
+              item: widget.item,
+              onAccept: _requestDismiss,
             ),
           ),
         );
@@ -251,126 +197,592 @@ class _AchievementDetailOverlayState extends State<_AchievementDetailOverlay>
   }
 }
 
-class _AchievementLargeCardFront extends StatelessWidget {
-  const _AchievementLargeCardFront({required this.item});
+/// Full-screen unlock popup. Positions are the 390×844 CSS from
+/// 微光成就弹框, scaled independently on X/Y so the cluster sits
+/// where Figma put it instead of being stretched by Spacer.
+class _AchievementUnlockPopup extends StatefulWidget {
+  const _AchievementUnlockPopup({required this.item, required this.onAccept});
 
   final AchievementItem item;
+  final VoidCallback onAccept;
+
+  @override
+  State<_AchievementUnlockPopup> createState() =>
+      _AchievementUnlockPopupState();
+}
+
+class _AchievementUnlockPopupState extends State<_AchievementUnlockPopup>
+    with TickerProviderStateMixin {
+  late final AnimationController _enter;
+  late final AnimationController _idle;
+  late final Listenable _motion;
+  bool _alive = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _enter = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 920),
+    );
+    _idle = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    );
+    _motion = Listenable.merge([_enter, _idle]);
+    _enter.forward().whenComplete(() {
+      if (_alive) _idle.repeat(reverse: true);
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    unawaited(
+      precacheImage(AssetImage(_achievementLevelAsset(widget.item)), context),
+    );
+  }
+
+  @override
+  void dispose() {
+    _alive = false;
+    _enter.dispose();
+    _idle.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
-    return _AchievementLargeCardShell(
-      item: item,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Align(
-            alignment: Alignment.center,
-            child: _AchievementLevelIcon(item: item, size: 128, glow: true),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            item.name,
-            maxLines: 2,
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: isDark ? const Color(0xFFF2F7FB) : AppColors.text,
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-              decoration: TextDecoration.none,
+    final size = MediaQuery.sizeOf(context);
+    final sx = size.width / 390;
+    final sy = size.height / 844;
+    final item = widget.item;
+    final onAccept = widget.onAccept;
+    final body = item.popupText.isEmpty ? item.conditionText : item.popupText;
+    final bodyStyle = TextStyle(
+      color: Colors.white,
+      fontSize: 18 * sy,
+      height: 22 / 18,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0,
+      decoration: TextDecoration.none,
+    );
+    final bodyText = _layoutAchievementPopupBody(
+      text: body,
+      style: bodyStyle,
+      maxWidth: 296 * sx,
+      textScaler: MediaQuery.textScalerOf(context),
+    );
+    final bodyTwoLines = bodyText.contains('\n');
+    // CSS one-line body is 31px; a second line adds 13px before 奖励明细.
+    final rewardShift = bodyTwoLines ? 13.0 : 0.0;
+    final badgeAsset = _achievementLevelAsset(item);
+    return AnimatedBuilder(
+      animation: _motion,
+      builder: (context, _) {
+        final t = _enter.value;
+        final idle = Curves.easeInOut.transform(_idle.value);
+        final badgePop = _popupInterval(t, 0.08, 0.58, Curves.easeOutBack);
+        final badgeScale =
+            lerpDouble(0.42, 1.0, badgePop)! * lerpDouble(1.0, 1.045, idle)!;
+        final badgeRotate = lerpDouble(
+          -0.14,
+          0,
+          _popupInterval(t, 0.08, 0.5, Curves.easeOutCubic),
+        )!;
+        final glowOpacity =
+            _popupInterval(t, 0.1, 0.48, Curves.easeOut) *
+            lerpDouble(0.72, 1.0, idle)!;
+        final glowScale = badgeScale * lerpDouble(1.0, 1.07, idle)!;
+        final rays = _popupInterval(t, 0.0, 0.36, Curves.easeOut);
+        final title = _popupInterval(t, 0.18, 0.48, Curves.easeOutCubic);
+        final name = _popupInterval(t, 0.32, 0.58, Curves.easeOutCubic);
+        final bodyIn = _popupInterval(t, 0.38, 0.64, Curves.easeOutCubic);
+        final reward = _popupInterval(t, 0.46, 0.72, Curves.easeOutCubic);
+        final button = _popupInterval(t, 0.52, 0.84, Curves.easeOutBack);
+        final coinPop = _popupInterval(t, 0.5, 0.78, Curves.easeOutBack);
+
+        Widget fadeSlide(double progress, Widget child, {double dy = 14}) {
+          return Opacity(
+            opacity: progress.clamp(0.0, 1.0),
+            child: Transform.translate(
+              offset: Offset(0, dy * (1 - progress) * sy),
+              child: child,
+            ),
+          );
+        }
+
+        return Material(
+          color: Colors.transparent,
+          child: SizedBox.expand(
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Positioned.fill(child: _AchievementPopupVeil()),
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: rays,
+                    child: const _AchievementPopupRays(),
+                  ),
+                ),
+                // Group 475: same badge PNG at 271×245 with CSS blur(25px).
+                _AchievementPopupGlow(
+                  asset: badgeAsset,
+                  sx: sx,
+                  sy: sy,
+                  scale: glowScale,
+                  opacity: glowOpacity,
+                  rotation: badgeRotate,
+                ),
+                _CssPos(
+                  left: (390 - 204) / 2,
+                  top: 243,
+                  width: 204,
+                  height: 184,
+                  sx: sx,
+                  sy: sy,
+                  child: Transform.rotate(
+                    angle: badgeRotate,
+                    child: Transform.scale(
+                      scale: badgeScale,
+                      child: Image.asset(badgeAsset, fit: BoxFit.contain),
+                    ),
+                  ),
+                ),
+                _CssPos(
+                  left: 3,
+                  top: 138,
+                  width: 384,
+                  height: 70,
+                  sx: sx,
+                  sy: sy,
+                  child: fadeSlide(
+                    title,
+                    Transform.scale(
+                      scale: lerpDouble(0.9, 1.0, title)!,
+                      child: _AchievementPopupTitle(fontSize: 50 * sy),
+                    ),
+                    dy: 10,
+                  ),
+                ),
+                _CssPos(
+                  left: 47,
+                  top: 436,
+                  width: 296,
+                  height: 47,
+                  sx: sx,
+                  sy: sy,
+                  child: fadeSlide(
+                    name,
+                    Text(
+                      item.name,
+                      maxLines: 2,
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24 * sy,
+                        height: 29 / 24,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                ),
+                _CssPos(
+                  left: 47,
+                  top: 483,
+                  width: 296,
+                  height: bodyTwoLines ? 44 : 31,
+                  sx: sx,
+                  sy: sy,
+                  child: fadeSlide(
+                    bodyIn,
+                    Text(
+                      bodyText,
+                      maxLines: 2,
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.clip,
+                      style: bodyStyle,
+                    ),
+                  ),
+                ),
+                _CssPos(
+                  left: 47,
+                  top: 530 + rewardShift,
+                  width: 296,
+                  height: 31,
+                  sx: sx,
+                  sy: sy,
+                  child: fadeSlide(
+                    reward,
+                    Center(
+                      child: Text(
+                        '奖励明细',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16 * sy,
+                          height: 19 / 16,
+                          fontWeight: FontWeight.w400,
+                          letterSpacing: 0,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                    dy: 10,
+                  ),
+                ),
+                // Line 7 / Line 6: brightest next to the label, fade to the edges.
+                _CssPos(
+                  left: 67,
+                  top: 541 + rewardShift,
+                  width: 86,
+                  height: 2,
+                  sx: sx,
+                  sy: sy,
+                  child: fadeSlide(
+                    reward,
+                    Image.asset(
+                      'assets/achievements/popup_reward_line_left.png',
+                      fit: BoxFit.fill,
+                    ),
+                    dy: 8,
+                  ),
+                ),
+                _CssPos(
+                  left: 236,
+                  top: 541 + rewardShift,
+                  width: 86,
+                  height: 2,
+                  sx: sx,
+                  sy: sy,
+                  child: fadeSlide(
+                    reward,
+                    Image.asset(
+                      'assets/achievements/popup_reward_line_right.png',
+                      fit: BoxFit.fill,
+                    ),
+                    dy: 8,
+                  ),
+                ),
+                _CssPos(
+                  left: (390 - 24) / 2,
+                  top: 561 + rewardShift,
+                  width: 24,
+                  height: 24,
+                  sx: sx,
+                  sy: sy,
+                  child: fadeSlide(
+                    reward,
+                    Transform.scale(
+                      scale: lerpDouble(0.4, 1.0, coinPop)!,
+                      child: Image.asset(
+                        'assets/achievements/popup_gold_coin.png',
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                    dy: 8,
+                  ),
+                ),
+                _CssPos(
+                  left: 47,
+                  top: 604 + rewardShift,
+                  width: 296,
+                  height: 31,
+                  sx: sx,
+                  sy: sy,
+                  child: fadeSlide(
+                    reward,
+                    Text(
+                      '积分+${item.score}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14 * sy,
+                        height: 17 / 14,
+                        fontWeight: FontWeight.w400,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    dy: 8,
+                  ),
+                ),
+                _CssPos(
+                  left: 42,
+                  top: 651,
+                  width: 306,
+                  height: 56,
+                  sx: sx,
+                  sy: sy,
+                  child: fadeSlide(
+                    button,
+                    Transform.scale(
+                      scale: lerpDouble(0.86, 1.0, button)!,
+                      child: _AchievementAcceptButton(
+                        sy: sy,
+                        onPressed: onAccept,
+                      ),
+                    ),
+                    dy: 18,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Text(
-              item.popupText,
-              maxLines: 2,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: isDark ? const Color(0xB8EAF2F8) : AppColors.muted,
-                fontSize: 13,
-                height: 1.28,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ),
-          const Spacer(),
-          Text(
-            '点击翻转查看详情',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: isDark ? const Color(0x88EAF2F8) : const Color(0xFFB5BAC4),
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
-              decoration: TextDecoration.none,
-            ),
-          ),
-        ],
+        );
+      },
+    );
+  }
+}
+
+/// Keep a one-line body when it fits [maxWidth]. Otherwise split at the
+/// first comma so the two clauses sit on two centered lines.
+String _layoutAchievementPopupBody({
+  required String text,
+  required TextStyle style,
+  required double maxWidth,
+  TextScaler textScaler = TextScaler.noScaling,
+}) {
+  final trimmed = text.trim();
+  if (trimmed.isEmpty) return trimmed;
+  final painter = TextPainter(
+    text: TextSpan(text: trimmed, style: style),
+    maxLines: 1,
+    textDirection: TextDirection.ltr,
+    textScaler: textScaler,
+  );
+  painter.layout(maxWidth: maxWidth);
+  final fitsOneLine = !painter.didExceedMaxLines;
+  painter.dispose();
+  if (fitsOneLine) return trimmed;
+
+  const marks = ['，', ',', '、'];
+  var breakAt = -1;
+  for (final mark in marks) {
+    final index = trimmed.indexOf(mark);
+    if (index > 0 && index < trimmed.length - 1) {
+      breakAt = index;
+      break;
+    }
+  }
+  if (breakAt < 0) return trimmed;
+  final first = trimmed.substring(0, breakAt).trim();
+  final second = trimmed.substring(breakAt + 1).trim();
+  if (first.isEmpty || second.isEmpty) return trimmed;
+  return '$first\n$second';
+}
+
+double _popupInterval(double t, double start, double end, Curve curve) {
+  if (t <= start) return 0;
+  if (t >= end) return 1;
+  return curve.transform((t - start) / (end - start));
+}
+
+class _CssPos extends StatelessWidget {
+  const _CssPos({
+    required this.left,
+    required this.top,
+    required this.width,
+    required this.height,
+    required this.sx,
+    required this.sy,
+    required this.child,
+  });
+
+  final double left;
+  final double top;
+  final double width;
+  final double height;
+  final double sx;
+  final double sy;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: left * sx,
+      top: top * sy,
+      width: width * sx,
+      height: height * sy,
+      child: child,
+    );
+  }
+}
+
+/// Rectangle 305: brown-black veil at 90% over the chat.
+class _AchievementPopupVeil extends StatelessWidget {
+  const _AchievementPopupVeil();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xE6534641), Color(0xE61E1F23)],
+        ),
       ),
     );
   }
 }
 
-class _AchievementLargeCardBack extends StatelessWidget {
-  const _AchievementLargeCardBack({required this.item, required this.breath});
-
-  final AchievementItem item;
-  final Animation<double> breath;
+/// Rectangle 306–309 rasterized as one overlay. Two shafts from each
+/// top corner, angling into the badge — same sprites as the Figma file.
+class _AchievementPopupRays extends StatelessWidget {
+  const _AchievementPopupRays();
 
   @override
   Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
-    return _AchievementLargeCardShell(
-      item: item,
-      background: _AchievementBreathingWash(item: item, breath: breath),
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(
-                  item.conditionText.isEmpty
-                      ? item.ruleText
-                      : item.conditionText,
-                  maxLines: 5,
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: isDark
-                        ? const Color(0xEAF2F7FB)
-                        : const Color(0xFF6E7480),
-                    fontSize: 19,
-                    height: 1.36,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
+    return const IgnorePointer(
+      child: Image(
+        image: AssetImage('assets/achievements/popup_rays.png'),
+        fit: BoxFit.fill,
+        filterQuality: FilterQuality.high,
+        alignment: Alignment.topCenter,
+      ),
+    );
+  }
+}
+
+/// CSS Group 475: `url(微光.png)` at 271×245 with `filter: blur(25px)`.
+/// Pad the layer so the Gaussian tail is not clipped by the 271 box.
+class _AchievementPopupGlow extends StatelessWidget {
+  const _AchievementPopupGlow({
+    required this.asset,
+    required this.sx,
+    required this.sy,
+    this.scale = 1,
+    this.opacity = 1,
+    this.rotation = 0,
+  });
+
+  final String asset;
+  final double sx;
+  final double sy;
+  final double scale;
+  final double opacity;
+  final double rotation;
+
+  @override
+  Widget build(BuildContext context) {
+    const glowW = 271.0;
+    const glowH = 245.0;
+    const glowLeft = (390 - 271) / 2 - 0.5;
+    const glowTop = 212.0;
+    final sigmaX = 25 * sx;
+    final sigmaY = 25 * sy;
+    final pad = math.max(sigmaX, sigmaY) * 2;
+    return Positioned(
+      left: glowLeft * sx - pad,
+      top: glowTop * sy - pad,
+      width: glowW * sx + pad * 2,
+      height: glowH * sy + pad * 2,
+      child: IgnorePointer(
+        child: Opacity(
+          opacity: opacity.clamp(0.0, 1.0),
+          child: Transform.rotate(
+            angle: rotation,
+            child: Transform.scale(
+              scale: scale,
+              child: RepaintBoundary(
+                child: ImageFiltered(
+                  imageFilter: ImageFilter.blur(
+                    sigmaX: sigmaX,
+                    sigmaY: sigmaY,
+                    tileMode: TileMode.decal,
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.all(pad),
+                    child: ColorFiltered(
+                      // Lift the dark badge core so blur(25px) blooms as a halo
+                      // instead of a muddy disc. Alpha is preserved.
+                      colorFilter: const ColorFilter.matrix(<double>[
+                        1.45,
+                        0,
+                        0,
+                        0,
+                        28,
+                        0,
+                        1.45,
+                        0,
+                        0,
+                        28,
+                        0,
+                        0,
+                        1.45,
+                        0,
+                        28,
+                        0,
+                        0,
+                        0,
+                        0.92,
+                        0,
+                      ]),
+                      child: Image.asset(asset, fit: BoxFit.fill),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-          Align(
-            alignment: Alignment.bottomCenter,
+        ),
+      ),
+    );
+  }
+}
+
+/// 「达成新成就」: cream vertical gradient, 0.3px brown stroke, white highlight.
+class _AchievementPopupTitle extends StatelessWidget {
+  const _AchievementPopupTitle({required this.fontSize});
+
+  final double fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontSize: fontSize,
+      height: 59 / 50,
+      fontWeight: FontWeight.w800,
+      letterSpacing: 0,
+      decoration: TextDecoration.none,
+    );
+    return SizedBox(
+      width: double.infinity,
+      height: double.infinity,
+      child: Stack(
+        alignment: Alignment.topCenter,
+        children: [
+          Text(
+            '达成新成就',
+            textAlign: TextAlign.center,
+            style: style.copyWith(
+              shadows: const [
+                Shadow(
+                  color: Color(0x73FFFFFF),
+                  offset: Offset(-2, -2),
+                  blurRadius: 2,
+                ),
+              ],
+              foreground: Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 0.8
+                ..color = const Color(0xFF892C02),
+            ),
+          ),
+          ShaderMask(
+            blendMode: BlendMode.srcIn,
+            shaderCallback: (bounds) => const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFFFFFEF8), Color(0xFFF5ECC4)],
+            ).createShader(bounds),
             child: Text(
-              '点击翻转返回',
-              style: TextStyle(
-                color: isDark
-                    ? const Color(0x88EAF2F8)
-                    : const Color(0xFFB5BAC4),
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0,
-                decoration: TextDecoration.none,
-              ),
+              '达成新成就',
+              textAlign: TextAlign.center,
+              style: style.copyWith(color: Colors.white),
             ),
           ),
         ],
@@ -379,150 +791,124 @@ class _AchievementLargeCardBack extends StatelessWidget {
   }
 }
 
-class _AchievementLargeCardShell extends StatelessWidget {
-  const _AchievementLargeCardShell({
-    required this.item,
-    required this.child,
-    this.background,
-  });
+class _AchievementAcceptButton extends StatefulWidget {
+  const _AchievementAcceptButton({required this.sy, required this.onPressed});
 
-  final AchievementItem item;
-  final Widget child;
-  final Widget? background;
+  final double sy;
+  final VoidCallback onPressed;
+
+  @override
+  State<_AchievementAcceptButton> createState() =>
+      _AchievementAcceptButtonState();
+}
+
+class _AchievementAcceptButtonState extends State<_AchievementAcceptButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _press;
+  late final Animation<double> _scale;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _press = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+    );
+    _scale = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 1.0,
+          end: 0.92,
+        ).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 22,
+      ),
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 0.92,
+          end: 1.06,
+        ).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 32,
+      ),
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 1.06,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 46,
+      ),
+    ]).animate(_press);
+  }
+
+  @override
+  void dispose() {
+    _press.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleTap() async {
+    if (_busy) return;
+    _busy = true;
+    try {
+      await _press.forward(from: 0).orCancel;
+    } on TickerCanceled {
+      return;
+    }
+    if (mounted) widget.onPressed();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final color = _achievementLevelColor(item);
-    final isDark = AppColors.isDark(context);
-    return SizedBox(
-      width: 292,
-      height: 356,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: isDark
-              ? AppColors.surface.withValues(alpha: 0.96)
-              : Colors.white.withValues(alpha: 0.97),
-          borderRadius: BorderRadius.circular(34),
-          border: Border.all(
-            color: isDark ? Colors.white.withValues(alpha: 0.14) : Colors.white,
-            width: 1.2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.20),
-              blurRadius: 42,
-              offset: const Offset(0, 22),
-            ),
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.16),
-              blurRadius: 34,
-              offset: const Offset(0, 18),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(34),
-          child: Stack(
-            children: [
-              if (background != null) Positioned.fill(child: background!),
-              Positioned.fill(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 32, 20, 22),
-                  child: child,
-                ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _handleTap,
+      child: AnimatedBuilder(
+        animation: _scale,
+        builder: (context, child) {
+          return Transform.scale(scale: _scale.value, child: child);
+        },
+        child: Container(
+          width: double.infinity,
+          height: double.infinity,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x40FFFFFF),
+                offset: Offset(2, 8),
+                blurRadius: 16,
+              ),
+              BoxShadow(
+                color: Color(0x1A496CFC),
+                offset: Offset(0, 8),
+                blurRadius: 16,
               ),
             ],
           ),
+          child: Text(
+            '我收下啦',
+            style: TextStyle(
+              color: const Color(0xFF060606),
+              fontSize: 22 * widget.sy,
+              height: 26 / 22,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0,
+              decoration: TextDecoration.none,
+            ),
+          ),
         ),
       ),
     );
-  }
-}
-
-class _AchievementBreathingWash extends StatelessWidget {
-  const _AchievementBreathingWash({required this.item, required this.breath});
-
-  final AchievementItem item;
-  final Animation<double> breath;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _achievementLevelColor(item);
-    return IgnorePointer(
-      child: AnimatedBuilder(
-        animation: breath,
-        builder: (context, _) {
-          return CustomPaint(
-            painter: _AchievementBreathingWashPainter(
-              color: color,
-              progress: breath.value,
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _AchievementBreathingWashPainter extends CustomPainter {
-  const _AchievementBreathingWashPainter({
-    required this.color,
-    required this.progress,
-  });
-
-  final Color color;
-  final double progress;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final primary = Paint()
-      ..color = color.withValues(alpha: 0.09 + progress * 0.05)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 34);
-    final secondary = Paint()
-      ..color = color.withValues(alpha: 0.05 + (1 - progress) * 0.04)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 42);
-
-    canvas.save();
-    canvas.translate(-28 + progress * 26, 54 + progress * 8);
-    canvas.rotate(-0.16);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(0, 0, size.width + 66, 106),
-        const Radius.circular(64),
-      ),
-      primary,
-    );
-    canvas.restore();
-
-    canvas.save();
-    canvas.translate(-42 + (1 - progress) * 28, size.height - 124);
-    canvas.rotate(0.14);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(0, 0, size.width + 88, 132),
-        const Radius.circular(72),
-      ),
-      secondary,
-    );
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(_AchievementBreathingWashPainter oldDelegate) {
-    return oldDelegate.color != color || oldDelegate.progress != progress;
   }
 }
 
 class _AchievementLevelIcon extends StatelessWidget {
-  const _AchievementLevelIcon({
-    required this.item,
-    required this.size,
-    this.glow = false,
-  });
+  const _AchievementLevelIcon({required this.item, required this.size});
 
   final AchievementItem item;
   final double size;
-  final bool glow;
 
   @override
   Widget build(BuildContext context) {
@@ -534,15 +920,6 @@ class _AchievementLevelIcon extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: color.withValues(alpha: 0.12),
-          boxShadow: glow
-              ? [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.22),
-                    blurRadius: 30,
-                    spreadRadius: 4,
-                  ),
-                ]
-              : null,
         ),
         child: Padding(
           padding: EdgeInsets.all(size * 0.03),
