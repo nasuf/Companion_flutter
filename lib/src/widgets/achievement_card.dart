@@ -81,7 +81,7 @@ class _AchievementCardFront extends StatelessWidget {
                 const Spacer(),
                 Text(
                   item.name,
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: isDark ? AppColors.text : const Color(0xFF151719),
@@ -95,7 +95,7 @@ class _AchievementCardFront extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   item.popupText.isEmpty ? item.conditionText : item.popupText,
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: isDark ? AppColors.muted : const Color(0xFF747C82),

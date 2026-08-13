@@ -267,15 +267,14 @@ class _AchievementUnlockPopupState extends State<_AchievementUnlockPopup>
       letterSpacing: 0,
       decoration: TextDecoration.none,
     );
-    final bodyText = _layoutAchievementPopupBody(
-      text: body,
-      style: bodyStyle,
-      maxWidth: 296 * sx,
-      textScaler: MediaQuery.textScalerOf(context),
+    final nameStyle = TextStyle(
+      color: Colors.white,
+      fontSize: 24 * sy,
+      height: 29 / 24,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0,
+      decoration: TextDecoration.none,
     );
-    final bodyTwoLines = bodyText.contains('\n');
-    // CSS one-line body is 31px; a second line adds 13px before 奖励明细.
-    final rewardShift = bodyTwoLines ? 13.0 : 0.0;
     final badgeAsset = _achievementLevelAsset(item);
     return AnimatedBuilder(
       animation: _motion,
@@ -374,43 +373,24 @@ class _AchievementUnlockPopupState extends State<_AchievementUnlockPopup>
                   sy: sy,
                   child: fadeSlide(
                     name,
-                    Text(
-                      item.name,
-                      maxLines: 2,
-                      textAlign: TextAlign.center,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 24 * sy,
-                        height: 29 / 24,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
+                    _AchievementPopupOneLine(text: item.name, style: nameStyle),
                   ),
                 ),
                 _CssPos(
                   left: 47,
                   top: 483,
                   width: 296,
-                  height: bodyTwoLines ? 44 : 31,
+                  height: 31,
                   sx: sx,
                   sy: sy,
                   child: fadeSlide(
                     bodyIn,
-                    Text(
-                      bodyText,
-                      maxLines: 2,
-                      textAlign: TextAlign.center,
-                      overflow: TextOverflow.clip,
-                      style: bodyStyle,
-                    ),
+                    _AchievementPopupOneLine(text: body, style: bodyStyle),
                   ),
                 ),
                 _CssPos(
                   left: 47,
-                  top: 530 + rewardShift,
+                  top: 530,
                   width: 296,
                   height: 31,
                   sx: sx,
@@ -436,7 +416,7 @@ class _AchievementUnlockPopupState extends State<_AchievementUnlockPopup>
                 // Line 7 / Line 6: brightest next to the label, fade to the edges.
                 _CssPos(
                   left: 67,
-                  top: 541 + rewardShift,
+                  top: 541,
                   width: 86,
                   height: 2,
                   sx: sx,
@@ -452,7 +432,7 @@ class _AchievementUnlockPopupState extends State<_AchievementUnlockPopup>
                 ),
                 _CssPos(
                   left: 236,
-                  top: 541 + rewardShift,
+                  top: 541,
                   width: 86,
                   height: 2,
                   sx: sx,
@@ -468,7 +448,7 @@ class _AchievementUnlockPopupState extends State<_AchievementUnlockPopup>
                 ),
                 _CssPos(
                   left: (390 - 24) / 2,
-                  top: 561 + rewardShift,
+                  top: 561,
                   width: 24,
                   height: 24,
                   sx: sx,
@@ -487,7 +467,7 @@ class _AchievementUnlockPopupState extends State<_AchievementUnlockPopup>
                 ),
                 _CssPos(
                   left: 47,
-                  top: 604 + rewardShift,
+                  top: 604,
                   width: 296,
                   height: 31,
                   sx: sx,
@@ -537,41 +517,28 @@ class _AchievementUnlockPopupState extends State<_AchievementUnlockPopup>
   }
 }
 
-/// Keep a one-line body when it fits [maxWidth]. Otherwise split at the
-/// first comma so the two clauses sit on two centered lines.
-String _layoutAchievementPopupBody({
-  required String text,
-  required TextStyle style,
-  required double maxWidth,
-  TextScaler textScaler = TextScaler.noScaling,
-}) {
-  final trimmed = text.trim();
-  if (trimmed.isEmpty) return trimmed;
-  final painter = TextPainter(
-    text: TextSpan(text: trimmed, style: style),
-    maxLines: 1,
-    textDirection: TextDirection.ltr,
-    textScaler: textScaler,
-  );
-  painter.layout(maxWidth: maxWidth);
-  final fitsOneLine = !painter.didExceedMaxLines;
-  painter.dispose();
-  if (fitsOneLine) return trimmed;
+/// Name and body stay on one CSS line. Long copy scales down instead of
+/// wrapping or overflowing the 296-wide slot.
+class _AchievementPopupOneLine extends StatelessWidget {
+  const _AchievementPopupOneLine({required this.text, required this.style});
 
-  const marks = ['，', ',', '、'];
-  var breakAt = -1;
-  for (final mark in marks) {
-    final index = trimmed.indexOf(mark);
-    if (index > 0 && index < trimmed.length - 1) {
-      breakAt = index;
-      break;
-    }
+  final String text;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.center,
+      child: Text(
+        text.trim(),
+        maxLines: 1,
+        softWrap: false,
+        textAlign: TextAlign.center,
+        style: style,
+      ),
+    );
   }
-  if (breakAt < 0) return trimmed;
-  final first = trimmed.substring(0, breakAt).trim();
-  final second = trimmed.substring(breakAt + 1).trim();
-  if (first.isEmpty || second.isEmpty) return trimmed;
-  return '$first\n$second';
 }
 
 double _popupInterval(double t, double start, double end, Curve curve) {
