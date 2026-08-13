@@ -155,22 +155,18 @@ class _AchievementStatCard extends StatelessWidget {
           Row(
             children: [
               _AchievementStatIcon(glyph: glyph, tint: tint),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
-                child: FittedBox(
-                  alignment: Alignment.centerLeft,
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    value,
-                    style: TextStyle(
-                      color: isDark ? AppColors.text : const Color(0xFF151719),
-                      fontSize: 20,
-                      height: 1,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.4,
-                      decoration: TextDecoration.none,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
+                child: _AchievementStatValue(
+                  value: value,
+                  style: TextStyle(
+                    color: isDark ? AppColors.text : const Color(0xFF151719),
+                    fontSize: 20,
+                    height: 1,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.5,
+                    decoration: TextDecoration.none,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ),
@@ -184,14 +180,48 @@ class _AchievementStatCard extends StatelessWidget {
 
 enum _AchievementStatGlyph { unlocked, weekly, score }
 
-/// 32pt well + 16pt white glyph. Weather uses 48/24; this is the same 2:1
-/// ratio scaled to the 3-up tile. Well color is the contrast-safe pill tint
-/// so the white glyph stays readable on every level.
+/// Shared value type for the 3-up strip. A 5-digit probe owns the FittedBox
+/// width so "18", "0", and "14500" all render at the same size; score can
+/// reach five digits without shrinking only that one card.
+class _AchievementStatValue extends StatelessWidget {
+  const _AchievementStatValue({required this.value, required this.style});
+
+  static const _fiveDigitProbe = '00000';
+
+  final String value;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+      alignment: Alignment.centerLeft,
+      fit: BoxFit.scaleDown,
+      child: Stack(
+        alignment: Alignment.centerLeft,
+        children: [
+          Visibility(
+            visible: false,
+            maintainSize: true,
+            maintainAnimation: true,
+            maintainState: true,
+            child: Text(_fiveDigitProbe, style: style),
+          ),
+          Text(value, maxLines: 1, style: style),
+        ],
+      ),
+    );
+  }
+}
+
+/// 24pt well + 12pt white glyph. Weather uses 48/24; this is the same 2:1
+/// ratio, sized so five tabular digits still fit beside the well on a
+/// 3-up tile. Well color is the contrast-safe pill tint so the white
+/// glyph stays readable on every level.
 class _AchievementStatIcon extends StatelessWidget {
   const _AchievementStatIcon({required this.glyph, required this.tint});
 
-  static const _diameter = 32.0;
-  static const _glyphSize = 16.0;
+  static const _diameter = 24.0;
+  static const _glyphSize = 12.0;
 
   final _AchievementStatGlyph glyph;
   final Color tint;
