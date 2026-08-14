@@ -1,24 +1,18 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'achievement_copy_fixtures.dart';
 
-/// Mirrors `_AchievementPopupOneLine` in achievement_feedback.dart: one line,
-/// scale down to the CSS slot instead of wrapping or overflowing.
+/// Mirrors `_AchievementPopupOneLine`: one line at the Figma font size,
+/// clipped instead of wrapping or shrinking.
 Widget _popupOneLine({required String text, required TextStyle style}) {
-  return FittedBox(
-    fit: BoxFit.scaleDown,
-    alignment: Alignment.center,
-    child: Text(
-      text.trim(),
-      maxLines: 1,
-      softWrap: false,
-      textAlign: TextAlign.center,
-      style: style,
-    ),
+  return Text(
+    text.trim(),
+    maxLines: 1,
+    textAlign: TextAlign.center,
+    overflow: TextOverflow.clip,
+    style: style,
   );
 }
 
@@ -61,93 +55,65 @@ Future<void> _pumpColumn(
   );
 }
 
-void _expectOneLineFits({
-  required List<String> copies,
-  required List<RenderBox> slots,
-  required List<RenderParagraph> paragraphs,
-  required double maxWidth,
-  required double maxHeight,
-  required double minScale,
-}) {
-  expect(slots.length, copies.length);
-  expect(paragraphs.length, copies.length);
-  for (var i = 0; i < copies.length; i++) {
-    final parent = slots[i].size;
-    final child = paragraphs[i].size;
-    expect(parent.width, lessThanOrEqualTo(maxWidth + 0.01), reason: copies[i]);
-    expect(
-      parent.height,
-      lessThanOrEqualTo(maxHeight + 0.01),
-      reason: copies[i],
-    );
-    expect(paragraphs[i].maxLines, 1, reason: copies[i]);
-    expect(paragraphs[i].didExceedMaxLines, isFalse, reason: copies[i]);
-    final scale = math.min(
-      1.0,
-      math.min(parent.width / child.width, parent.height / child.height),
-    );
-    expect(
-      child.width * scale,
-      lessThanOrEqualTo(parent.width + 0.5),
-      reason: copies[i],
-    );
-    expect(scale, greaterThanOrEqualTo(minScale), reason: copies[i]);
-  }
-}
-
 void main() {
-  testWidgets('all popup body copy stays on one 296pt line', (tester) async {
+  testWidgets('popup body copy stays one 18px line without shrinking', (
+    tester,
+  ) async {
+    const style = TextStyle(
+      fontSize: 18,
+      height: 22 / 18,
+      fontWeight: FontWeight.w700,
+    );
     await _pumpColumn(
       tester,
-      width: 296,
+      width: 358,
       height: 31,
       copies: kAchievementPopupCopy,
-      style: const TextStyle(
-        fontSize: 18,
-        height: 22 / 18,
-        fontWeight: FontWeight.w700,
-      ),
+      style: style,
     );
     expect(tester.takeException(), isNull);
-    _expectOneLineFits(
-      copies: kAchievementPopupCopy,
-      slots: tester
-          .renderObjectList<RenderBox>(find.byType(FittedBox))
-          .toList(),
-      paragraphs: tester
-          .renderObjectList<RenderParagraph>(find.byType(RichText))
-          .toList(),
-      maxWidth: 296,
-      maxHeight: 31,
-      minScale: 0.65,
-    );
+    expect(find.byType(FittedBox), findsNothing);
+
+    final paragraphs = tester
+        .renderObjectList<RenderParagraph>(find.byType(RichText))
+        .toList();
+    expect(paragraphs.length, kAchievementPopupCopy.length);
+    for (var i = 0; i < paragraphs.length; i++) {
+      expect(paragraphs[i].maxLines, 1, reason: kAchievementPopupCopy[i]);
+      expect(paragraphs[i].text.style?.fontSize, 18, reason: kAchievementPopupCopy[i]);
+    }
   });
 
-  testWidgets('all achievement names stay on one 296pt line', (tester) async {
+  testWidgets('all achievement names stay on one 24px line', (tester) async {
+    const width = 358.0;
+    const style = TextStyle(
+      fontSize: 24,
+      height: 29 / 24,
+      fontWeight: FontWeight.w700,
+    );
     await _pumpColumn(
       tester,
-      width: 296,
+      width: width,
       height: 47,
       copies: kAchievementNames,
-      style: const TextStyle(
-        fontSize: 24,
-        height: 29 / 24,
-        fontWeight: FontWeight.w700,
-      ),
+      style: style,
     );
     expect(tester.takeException(), isNull);
-    _expectOneLineFits(
-      copies: kAchievementNames,
-      slots: tester
-          .renderObjectList<RenderBox>(find.byType(FittedBox))
-          .toList(),
-      paragraphs: tester
-          .renderObjectList<RenderParagraph>(find.byType(RichText))
-          .toList(),
-      maxWidth: 296,
-      maxHeight: 47,
-      minScale: 0.85,
-    );
+    expect(find.byType(FittedBox), findsNothing);
+
+    final paragraphs = tester
+        .renderObjectList<RenderParagraph>(find.byType(RichText))
+        .toList();
+    expect(paragraphs.length, kAchievementNames.length);
+    for (var i = 0; i < paragraphs.length; i++) {
+      expect(paragraphs[i].maxLines, 1, reason: kAchievementNames[i]);
+      expect(paragraphs[i].text.style?.fontSize, 24, reason: kAchievementNames[i]);
+      expect(
+        paragraphs[i].getMaxIntrinsicWidth(double.infinity),
+        lessThanOrEqualTo(width + 0.5),
+        reason: kAchievementNames[i],
+      );
+    }
   });
 
   testWidgets('card copy stays on one line in a 140pt tile', (tester) async {

@@ -197,6 +197,10 @@ class _AchievementDetailOverlayState extends State<_AchievementDetailOverlay>
   }
 }
 
+/// Symmetric side inset on the 390 CSS artboard (was Figma 47/296).
+/// Use left+right, not left+width, so the slot stays on the screen center.
+const _kPopupCopyInset = 16.0;
+
 /// Full-screen unlock popup. Positions are the 390×844 CSS from
 /// 微光成就弹框, scaled independently on X/Y so the cluster sits
 /// where Figma put it instead of being stretched by Spacer.
@@ -364,10 +368,9 @@ class _AchievementUnlockPopupState extends State<_AchievementUnlockPopup>
                     dy: 10,
                   ),
                 ),
-                _CssPos(
-                  left: 47,
+                _CssHPad(
+                  inset: _kPopupCopyInset,
                   top: 436,
-                  width: 296,
                   height: 47,
                   sx: sx,
                   sy: sy,
@@ -376,10 +379,9 @@ class _AchievementUnlockPopupState extends State<_AchievementUnlockPopup>
                     _AchievementPopupOneLine(text: item.name, style: nameStyle),
                   ),
                 ),
-                _CssPos(
-                  left: 47,
+                _CssHPad(
+                  inset: _kPopupCopyInset,
                   top: 483,
-                  width: 296,
                   height: 31,
                   sx: sx,
                   sy: sy,
@@ -388,10 +390,9 @@ class _AchievementUnlockPopupState extends State<_AchievementUnlockPopup>
                     _AchievementPopupOneLine(text: body, style: bodyStyle),
                   ),
                 ),
-                _CssPos(
-                  left: 47,
+                _CssHPad(
+                  inset: _kPopupCopyInset,
                   top: 530,
-                  width: 296,
                   height: 31,
                   sx: sx,
                   sy: sy,
@@ -465,25 +466,26 @@ class _AchievementUnlockPopupState extends State<_AchievementUnlockPopup>
                     dy: 8,
                   ),
                 ),
-                _CssPos(
-                  left: 47,
+                _CssHPad(
+                  inset: _kPopupCopyInset,
                   top: 604,
-                  width: 296,
                   height: 31,
                   sx: sx,
                   sy: sy,
                   child: fadeSlide(
                     reward,
-                    Text(
-                      '积分+${item.score}',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14 * sy,
-                        height: 17 / 14,
-                        fontWeight: FontWeight.w400,
-                        letterSpacing: 0,
-                        decoration: TextDecoration.none,
+                    Center(
+                      child: Text(
+                        '积分+${item.score}',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14 * sy,
+                          height: 17 / 14,
+                          fontWeight: FontWeight.w400,
+                          letterSpacing: 0,
+                          decoration: TextDecoration.none,
+                        ),
                       ),
                     ),
                     dy: 8,
@@ -517,24 +519,33 @@ class _AchievementUnlockPopupState extends State<_AchievementUnlockPopup>
   }
 }
 
-/// Name and body stay on one CSS line. Long copy scales down instead of
-/// wrapping or overflowing the 296-wide slot.
+/// Name and body stay on one CSS line at the Figma font size.
+/// Long copy is clipped instead of wrapping or shrinking.
 class _AchievementPopupOneLine extends StatelessWidget {
   const _AchievementPopupOneLine({required this.text, required this.style});
 
   final String text;
   final TextStyle style;
 
+  static final _trailingCjkPunct = RegExp(r'[！？～。，、…]');
+
   @override
   Widget build(BuildContext context) {
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      alignment: Alignment.center,
+    final t = text.trim();
+    final fontSize = style.fontSize ?? 18;
+    // Trailing fullwidth punct sits in the left of its em-box, so advance-width
+    // centering looks left-heavy. Left pad shifts the visual midpoint back.
+    final opticalNudge =
+        t.isNotEmpty && _trailingCjkPunct.hasMatch(t[t.length - 1])
+        ? fontSize * 0.32
+        : 0.0;
+    return Padding(
+      padding: EdgeInsets.only(left: opticalNudge * 2),
       child: Text(
-        text.trim(),
+        t,
         maxLines: 1,
-        softWrap: false,
         textAlign: TextAlign.center,
+        overflow: TextOverflow.clip,
         style: style,
       ),
     );
@@ -572,6 +583,36 @@ class _CssPos extends StatelessWidget {
       left: left * sx,
       top: top * sy,
       width: width * sx,
+      height: height * sy,
+      child: child,
+    );
+  }
+}
+
+/// Full-width row with equal left/right inset so text sits on the screen center.
+class _CssHPad extends StatelessWidget {
+  const _CssHPad({
+    required this.inset,
+    required this.top,
+    required this.height,
+    required this.sx,
+    required this.sy,
+    required this.child,
+  });
+
+  final double inset;
+  final double top;
+  final double height;
+  final double sx;
+  final double sy;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: inset * sx,
+      right: inset * sx,
+      top: top * sy,
       height: height * sy,
       child: child,
     );
