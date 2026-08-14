@@ -1360,6 +1360,13 @@ class CompanionApi {
     return GamePointConvertResult.fromJson(json);
   }
 
+  Future<StoreCatalogStatus> getStoreCatalog() async {
+    final json =
+        await _request('GET', '/store/catalog', debugLabel: 'store.catalog')
+            as Map<String, dynamic>;
+    return StoreCatalogStatus.fromJson(json);
+  }
+
   Future<StoreInventoryResponse> listStoreInventory() async {
     final json =
         await _request('GET', '/store/inventory', debugLabel: 'store.inventory')
@@ -1379,6 +1386,24 @@ class CompanionApi {
             )
             as Map<String, dynamic>;
     return StoreExchangeResponse.fromJson(json);
+  }
+
+  Future<StoreBundlePurchaseResponse> purchaseStoreBundle({
+    required String bundleKind,
+    String? tierId,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/store/bundles',
+              body: {
+                'bundle_kind': bundleKind,
+                if (tierId != null) 'tier_id': tierId,
+              },
+              debugLabel: 'store.bundle',
+            )
+            as Map<String, dynamic>;
+    return StoreBundlePurchaseResponse.fromJson(json);
   }
 
   Future<RemindersResponse> listReminders({

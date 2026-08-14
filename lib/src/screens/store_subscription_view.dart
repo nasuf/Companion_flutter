@@ -24,7 +24,7 @@ class _SubscriptionStoreView extends StatefulWidget {
 }
 
 class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
-  static const double _planCardWidth = 132;
+  static const double _planCardWidth = 124;
   static const double _planGap = 12;
 
   late final ScrollController _planController;
@@ -91,11 +91,11 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
       padding: EdgeInsets.fromLTRB(20, 8, 20, widget.bottomSpace),
       children: [
         const _VipHeroCard(),
-        const SizedBox(height: 18),
+        const SizedBox(height: 16),
         const _MemberBenefitGrid(),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         SizedBox(
-          height: 158,
+          height: 148,
           child: ListView.separated(
             controller: _planController,
             scrollDirection: Axis.horizontal,
@@ -121,11 +121,9 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
         Text(
           '到期按所选周期自动续费，可随时取消',
           style: TextStyle(
-            color: AppColors.isDark(context)
-                ? AppColors.muted
-                : const Color(0xFF53616E),
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
+            color: _W2b.resolve(context).inkSoft,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
             letterSpacing: 0,
             decoration: TextDecoration.none,
           ),
@@ -175,9 +173,7 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
                   child: Text(
                     '已阅读同意《会员协议与续费条款》',
                     style: TextStyle(
-                      color: AppColors.isDark(context)
-                          ? AppColors.muted
-                          : const Color(0xFF66727E),
+                      color: _W2b.resolve(context).inkSoft,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0,

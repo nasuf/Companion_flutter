@@ -1,55 +1,19 @@
 part of 'package:companion_flutter/main.dart';
 
-class _StoreItemIconPainter extends CustomPainter {
-  const _StoreItemIconPainter({required this.kind, required this.accent});
+// ignore_for_file: unused_element
 
-  final _StoreItemKind kind;
+class _StoreItemIconPainter extends CustomPainter {
+  const _StoreItemIconPainter({
+    required this.accent,
+    this.icon = CupertinoIcons.gift_fill,
+  });
+
   final Color accent;
+  final IconData icon;
 
   @override
   void paint(Canvas canvas, Size size) {
-    switch (kind) {
-      case _StoreItemKind.tea:
-        _paintCup(canvas, size, const Color(0xFFFFB45E), 'T');
-      case _StoreItemKind.cake:
-        _paintCake(canvas, size);
-      case _StoreItemKind.coffee:
-        _paintCup(canvas, size, const Color(0xFF7A4B34), 'C');
-      case _StoreItemKind.cola:
-        _paintBottle(canvas, size);
-      case _StoreItemKind.flower:
-        _paintFlower(canvas, size);
-      case _StoreItemKind.plush:
-        _paintPlush(canvas, size);
-      case _StoreItemKind.capsuleSkin:
-        _paintCapsule(canvas, size);
-      case _StoreItemKind.chatFrame:
-        _paintFrame(canvas, size);
-      case _StoreItemKind.bubble:
-        _paintBubble(canvas, size);
-      case _StoreItemKind.backdrop:
-        _paintBackdrop(canvas, size);
-      case _StoreItemKind.theme:
-        _paintTheme(canvas, size);
-      case _StoreItemKind.stationery:
-        _paintStationery(canvas, size);
-      case _StoreItemKind.checkinSkin:
-        _paintCheckin(canvas, size);
-      case _StoreItemKind.signCard:
-        _paintCard(canvas, size, CupertinoIcons.check_mark);
-      case _StoreItemKind.musicCoupon:
-        _paintCard(canvas, size, CupertinoIcons.music_note_2);
-      case _StoreItemKind.gameCoupon:
-        _paintCard(canvas, size, CupertinoIcons.gamecontroller_fill);
-      case _StoreItemKind.movieCoupon:
-        _paintCard(canvas, size, CupertinoIcons.film_fill);
-      case _StoreItemKind.musicBundle:
-        _paintBundle(canvas, size, CupertinoIcons.music_note_2);
-      case _StoreItemKind.gameBundle:
-        _paintBundle(canvas, size, CupertinoIcons.gamecontroller_fill);
-      case _StoreItemKind.movieBundle:
-        _paintBundle(canvas, size, CupertinoIcons.film_fill);
-    }
+    _paintBundle(canvas, size, icon);
   }
 
   void _paintCup(Canvas canvas, Size size, Color color, String mark) {
@@ -494,6 +458,6 @@ class _StoreItemIconPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _StoreItemIconPainter oldDelegate) {
-    return oldDelegate.kind != kind || oldDelegate.accent != accent;
+    return oldDelegate.accent != accent || oldDelegate.icon != icon;
   }
 }

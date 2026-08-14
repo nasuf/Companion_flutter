@@ -5,24 +5,26 @@ class _StoreBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
-    final isDark = AppColors.isDark(context);
+    final w = _W2b.resolve(context);
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: isDark
+          colors: w.isDark
               ? [
-                  Color.lerp(colors.page, const Color(0xFF0E2338), 0.40)!,
-                  colors.page,
-                  Color.lerp(colors.page, const Color(0xFF251322), 0.24)!,
+                  const Color(0xFF0B1522),
+                  w.base,
+                  const Color(0xFF0A1018),
                 ]
-              : const [Color(0xFFEAF7FF), Color(0xFFF7FAFF), Color(0xFFFFF7FB)],
-          stops: const [0, 0.58, 1],
+              : const [
+                  Color(0xFFE9F0FB),
+                  Color(0xFFF4F7FC),
+                  Color(0xFFE7EEF8),
+                ],
         ),
       ),
-      child: CustomPaint(painter: _StoreBackgroundPainter(isDark: isDark)),
+      child: CustomPaint(painter: _StoreBackgroundPainter(isDark: w.isDark)),
     );
   }
 }
@@ -35,18 +37,22 @@ class _StoreBackgroundPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..style = PaintingStyle.fill;
-    paint.color = AppColors.accent.withValues(alpha: isDark ? 0.12 : 0.055);
+    paint.color = const Color(0xFF4B9AFF).withValues(alpha: isDark ? 0.16 : 0.10);
     canvas.drawCircle(
-      Offset(size.width * 0.82, size.height * 0.12),
+      Offset(size.width * 0.82, size.height * 0.10),
+      140,
+      paint,
+    );
+    paint.color = const Color(0xFF8ABAFF).withValues(alpha: isDark ? 0.10 : 0.12);
+    canvas.drawCircle(
+      Offset(size.width * 0.08, size.height * 0.42),
       120,
       paint,
     );
-    paint.color = const Color(
-      0xFFFF9EB6,
-    ).withValues(alpha: isDark ? 0.08 : 0.055);
+    paint.color = const Color(0xFFFFB020).withValues(alpha: isDark ? 0.06 : 0.05);
     canvas.drawCircle(
-      Offset(size.width * 0.10, size.height * 0.70),
-      150,
+      Offset(size.width * 0.92, size.height * 0.72),
+      110,
       paint,
     );
   }

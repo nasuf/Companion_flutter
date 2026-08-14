@@ -1,19 +1,20 @@
 part of 'package:companion_flutter/main.dart';
 
-enum _BundleBillingCycle {
-  monthly('月付', '/月'),
-  yearly('年付', '/年');
-
-  const _BundleBillingCycle(this.label, this.suffix);
-
-  final String label;
-  final String suffix;
-}
-
 class _BundleStoreView extends StatefulWidget {
-  const _BundleStoreView({required this.onBuy, required this.bottomSpace});
+  const _BundleStoreView({
+    required this.ticketBalance,
+    required this.vipTrialAvailable,
+    required this.onBuy,
+    required this.isBuying,
+    required this.onRechargeTickets,
+    required this.bottomSpace,
+  });
 
-  final void Function(_StoreProduct product, _BundleBillingCycle cycle) onBuy;
+  final int ticketBalance;
+  final bool vipTrialAvailable;
+  final void Function(_BundleOffer offer, _BundleTier? tier) onBuy;
+  final bool Function(_BundleOffer offer) isBuying;
+  final VoidCallback onRechargeTickets;
   final double bottomSpace;
 
   @override
@@ -21,38 +22,44 @@ class _BundleStoreView extends StatefulWidget {
 }
 
 class _BundleStoreViewState extends State<_BundleStoreView> {
-  late final List<_BundleBillingCycle> _selectedCycles;
+  late final List<int> _selectedTiers;
 
   @override
   void initState() {
     super.initState();
-    _selectedCycles = List.filled(
-      _bundleProducts.length,
-      _BundleBillingCycle.yearly,
-    );
-  }
-
-  void _selectCycle(int index, _BundleBillingCycle cycle) {
-    setState(() {
-      _selectedCycles[index] = cycle;
-    });
+    _selectedTiers = [for (final _ in _bundleOffers) 0];
   }
 
   @override
   Widget build(BuildContext context) {
+    final offers = [
+      for (final offer in _bundleOffers)
+        if (!offer.isVipTrial || widget.vipTrialAvailable) offer,
+    ];
     return ListView.separated(
       physics: const BouncingScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(18, 18, 18, widget.bottomSpace),
-      itemCount: _bundleProducts.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 14),
+      padding: EdgeInsets.fromLTRB(18, 12, 18, widget.bottomSpace),
+      itemCount: offers.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
-        final product = _bundleProducts[index];
-        final cycle = _selectedCycles[index];
+        final offer = offers[index];
+        final sourceIndex = _bundleOffers.indexOf(offer);
+        final tierIndex = offer.tiers.isEmpty
+            ? 0
+            : _selectedTiers[sourceIndex].clamp(0, offer.tiers.length - 1);
+        final tier = offer.tiers.isEmpty ? null : offer.tiers[tierIndex];
         return _BundleCard(
-          product: product,
-          selectedCycle: cycle,
-          onCycleChanged: (value) => _selectCycle(index, value),
-          onBuy: () => widget.onBuy(product, cycle),
+          offer: offer,
+          selectedTier: tier,
+          ticketBalance: widget.ticketBalance,
+          onTierChanged: (value) {
+            setState(() {
+              _selectedTiers[sourceIndex] = offer.tiers.indexOf(value);
+            });
+          },
+          onBuy: () => widget.onBuy(offer, tier),
+          onRechargeTickets: widget.onRechargeTickets,
+          busy: widget.isBuying(offer),
         );
       },
     );
@@ -61,560 +68,246 @@ class _BundleStoreViewState extends State<_BundleStoreView> {
 
 class _BundleCard extends StatelessWidget {
   const _BundleCard({
-    required this.product,
-    required this.selectedCycle,
-    required this.onCycleChanged,
+    required this.offer,
+    required this.selectedTier,
+    required this.ticketBalance,
+    required this.onTierChanged,
     required this.onBuy,
+    required this.onRechargeTickets,
+    required this.busy,
   });
 
-  final _StoreProduct product;
-  final _BundleBillingCycle selectedCycle;
-  final ValueChanged<_BundleBillingCycle> onCycleChanged;
+  final _BundleOffer offer;
+  final _BundleTier? selectedTier;
+  final int ticketBalance;
+  final ValueChanged<_BundleTier> onTierChanged;
   final VoidCallback onBuy;
+  final VoidCallback onRechargeTickets;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
-    final accent = _bundleAccent(product.kind);
-    final yearly = product.yearlyPrice ?? product.price;
-    final selectedPrice = selectedCycle == _BundleBillingCycle.monthly
-        ? product.price
-        : yearly;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: accent.withValues(alpha: 0.12),
-            blurRadius: 30,
-            offset: const Offset(0, 18),
-          ),
-        ],
-      ),
-      child: _GlassCard(
-        padding: EdgeInsets.zero,
-        radius: 28,
-        child: Stack(
-          children: [
-            Positioned(
-              right: -42,
-              top: -54,
-              child: Container(
-                width: 150,
-                height: 150,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: accent.withValues(alpha: 0.10),
+    final w = _W2b.resolve(context);
+    final accent = offer.accent;
+    final affordable =
+        offer.isVipTrial ||
+        (selectedTier != null && selectedTier!.ticketPrice <= ticketBalance);
+    return _GlassCard(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      radius: 22,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _BundleThumb(offer: offer, accent: accent),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      offer.title,
+                      style: TextStyle(
+                        color: w.ink,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      offer.subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: w.inkSoft,
+                        fontSize: 11,
+                        height: 1.35,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-            Positioned(
-              left: 0,
-              top: 20,
-              bottom: 20,
-              child: _BundleAccentRail(color: accent),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-              child: Row(
-                children: [
-                  _BundleIconMedallion(product: product, accent: accent),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: double.infinity,
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              product.title,
-                              maxLines: 1,
-                              style: TextStyle(
-                                color: AppColors.text,
-                                fontSize: 21,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0,
-                                decoration: TextDecoration.none,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 7),
-                        Text(
-                          product.subtitle,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: AppColors.isDark(context)
-                                ? AppColors.muted
-                                : const Color(0xFF61707C),
-                            fontSize: 12,
-                            height: 1.34,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                        const SizedBox(height: 13),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _BundleCycleButton(
-                                label: '月',
-                                price: product.price,
-                                suffix: _BundleBillingCycle.monthly.suffix,
-                                selected:
-                                    selectedCycle ==
-                                    _BundleBillingCycle.monthly,
-                                color: accent,
-                                onTap: () =>
-                                    onCycleChanged(_BundleBillingCycle.monthly),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: _BundleCycleButton(
-                                label: '年',
-                                price: yearly,
-                                suffix: _BundleBillingCycle.yearly.suffix,
-                                selected:
-                                    selectedCycle == _BundleBillingCycle.yearly,
-                                color: accent,
-                                onTap: () =>
-                                    onCycleChanged(_BundleBillingCycle.yearly),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  _BundleBuyButton(
-                    price: selectedPrice,
-                    suffix: selectedCycle.suffix,
-                    onPressed: onBuy,
-                  ),
-                ],
-              ),
+            ],
+          ),
+          if (offer.tiers.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _BundleTierSelector(
+              tiers: offer.tiers,
+              selected: selectedTier,
+              onSelected: onTierChanged,
             ),
           ],
-        ),
+          const SizedBox(height: 12),
+          _BundleBuyButton(
+            offer: offer,
+            tier: selectedTier,
+            affordable: affordable,
+            busy: busy,
+            onPressed: affordable ? onBuy : onRechargeTickets,
+          ),
+        ],
       ),
     );
   }
 }
 
-class _BundleIconMedallion extends StatelessWidget {
-  const _BundleIconMedallion({required this.product, required this.accent});
+class _BundleThumb extends StatelessWidget {
+  const _BundleThumb({required this.offer, required this.accent});
 
-  final _StoreProduct product;
+  final _BundleOffer offer;
   final Color accent;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
-    return SizedBox(
-      width: 104,
-      height: 104,
-      child: Stack(
-        alignment: Alignment.center,
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            width: 96,
-            height: 96,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  isDark
-                      ? AppColors.surfaceMuted.withValues(alpha: 0.88)
-                      : Colors.white.withValues(alpha: 0.98),
-                  accent.withValues(alpha: isDark ? 0.14 : 0.06),
-                ],
+    final w = _W2b.resolve(context);
+    return Container(
+      width: 58,
+      height: 58,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: w.isDark
+            ? accent.withValues(alpha: 0.16)
+            : const Color(0xFFF4F7FC),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: offer.imageAsset == null
+            ? Icon(CupertinoIcons.sparkles, color: accent, size: 26)
+            : Image.asset(
+                offer.imageAsset!,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.medium,
+                errorBuilder: (_, __, ___) =>
+                    Icon(CupertinoIcons.gift_fill, color: accent, size: 24),
               ),
-              border: Border.all(color: accent.withValues(alpha: 0.18)),
-              boxShadow: [
-                BoxShadow(
-                  color: accent.withValues(alpha: 0.13),
-                  blurRadius: 24,
-                  offset: const Offset(0, 12),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            width: 88,
-            height: 88,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  isDark
-                      ? AppColors.surface.withValues(alpha: 0.88)
-                      : Colors.white.withValues(alpha: 0.98),
-                  accent.withValues(alpha: isDark ? 0.16 : 0.08),
-                ],
-              ),
-            ),
-            child: _BundleIconPlate(product: product, accent: accent),
-          ),
-          Positioned(
-            right: 6,
-            top: 11,
-            child: Container(
-              width: 18,
-              height: 18,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.elevatedSurface(context, light: 0.92),
-                border: Border.all(color: accent.withValues(alpha: 0.22)),
-              ),
-              child: Icon(
-                product.kind == _StoreItemKind.musicBundle
-                    ? CupertinoIcons.music_note_2
-                    : product.kind == _StoreItemKind.gameBundle
-                    ? CupertinoIcons.game_controller_solid
-                    : CupertinoIcons.film_fill,
-                size: 10,
-                color: accent,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
 }
 
-class _BundleCycleButton extends StatelessWidget {
-  const _BundleCycleButton({
-    required this.label,
-    required this.price,
-    required this.suffix,
+class _BundleTierSelector extends StatelessWidget {
+  const _BundleTierSelector({
+    required this.tiers,
     required this.selected,
-    required this.color,
-    required this.onTap,
+    required this.onSelected,
   });
 
-  final String label;
-  final int price;
-  final String suffix;
-  final bool selected;
-  final Color color;
-  final VoidCallback onTap;
+  final List<_BundleTier> tiers;
+  final _BundleTier? selected;
+  final ValueChanged<_BundleTier> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
-    return CupertinoButton(
-      minimumSize: Size.zero,
-      padding: EdgeInsets.zero,
-      onPressed: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-        decoration: BoxDecoration(
-          color: selected
-              ? color.withValues(alpha: 0.16)
-              : AppColors.subtleFill(context, light: 0.70),
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(
-            color: selected
-                ? color.withValues(alpha: 0.50)
-                : AppColors.glassBorder(context),
-            width: selected ? 1.2 : 1,
-          ),
-        ),
-        child: Center(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: selected
-                        ? color
-                        : (isDark ? AppColors.muted : const Color(0xFF6B7580)),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-                const SizedBox(width: 3),
-                Text(
-                  '¥$price$suffix',
-                  style: TextStyle(
-                    color: selected
-                        ? color
-                        : (isDark ? AppColors.text : const Color(0xFF4B5660)),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    return _StoreSegmentedLabelBar<_BundleTier>(
+      values: tiers,
+      selected: selected ?? tiers.first,
+      labelFor: (tier) => tier.label,
+      onSelected: onSelected,
+      height: 36,
+      fontSize: 13,
     );
   }
 }
 
 class _BundleBuyButton extends StatelessWidget {
   const _BundleBuyButton({
-    required this.price,
-    required this.suffix,
+    required this.offer,
+    required this.tier,
+    required this.affordable,
+    required this.busy,
     required this.onPressed,
   });
 
-  final int price;
-  final String suffix;
+  final _BundleOffer offer;
+  final _BundleTier? tier;
+  final bool affordable;
+  final bool busy;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
+    final label = offer.isVipTrial ? '¥${offer.yuanPrice} 立即体验' : '购买';
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
-      onPressed: onPressed,
+      onPressed: busy ? null : onPressed,
       child: Container(
-        width: 72,
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0D141B),
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.text.withValues(alpha: 0.18),
-              blurRadius: 14,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              '购买',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0,
-                decoration: TextDecoration.none,
+        height: 44,
+        decoration: affordable
+            ? _storeAccentButtonDecoration(radius: 16)
+            : BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                color: w.isDark
+                    ? const Color(0x14FFFFFF)
+                    : const Color(0xFFEAF1F8),
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              '¥$price$suffix',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.66),
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BundleAccentRail extends StatelessWidget {
-  const _BundleAccentRail({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 16,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.centerLeft,
-        children: [
-          Positioned(
-            left: 0,
-            top: 8,
-            bottom: 8,
-            child: Container(
-              width: 2.5,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(999),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    color.withValues(alpha: 0.08),
-                    color.withValues(alpha: 0.62),
-                    color.withValues(alpha: 0.08),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 2,
-            top: 0,
-            bottom: 0,
-            child: Container(
-              width: 12,
-              decoration: BoxDecoration(
-                borderRadius: const BorderRadius.horizontal(
-                  right: Radius.circular(18),
-                ),
-                gradient: LinearGradient(
-                  colors: [
-                    color.withValues(alpha: 0.10),
-                    color.withValues(alpha: 0.00),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 2,
-            top: 34,
-            child: Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.92),
-                border: Border.all(color: color.withValues(alpha: 0.34)),
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.22),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
+        child: Center(
+          child: busy
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CupertinoActivityIndicator(color: Colors.white),
+                )
+              : offer.isVipTrial
+              ? Text(
+                  affordable ? label : '去充值',
+                  style: TextStyle(
+                    color: affordable ? Colors.white : w.inkFaint,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
                   ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BundleIconPlate extends StatelessWidget {
-  const _BundleIconPlate({required this.product, required this.accent});
-
-  final _StoreProduct product;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final imageAsset = product.imageAsset;
-    final isDark = AppColors.isDark(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            isDark
-                ? AppColors.surfaceMuted.withValues(alpha: 0.92)
-                : Colors.white.withValues(alpha: 0.96),
-            Color.lerp(
-              accent,
-              isDark ? AppColors.surfaceMuted : Colors.white,
-              0.72,
-            )!.withValues(alpha: isDark ? 0.62 : 0.58),
-          ],
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      affordable ? '购买' : '去充值',
+                      style: TextStyle(
+                        color: affordable ? Colors.white : w.inkFaint,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    if (affordable && tier != null) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 1,
+                        height: 12,
+                        color: Colors.white.withValues(alpha: 0.35),
+                      ),
+                      const SizedBox(width: 8),
+                      const _CurrencyIcon(
+                        currency: _StoreCurrency.ticket,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${tier!.ticketPrice}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
         ),
-        border: Border.all(color: AppColors.glassBorder(context)),
-        boxShadow: [
-          BoxShadow(
-            color: accent.withValues(alpha: 0.16),
-            blurRadius: 18,
-            offset: const Offset(0, 9),
-          ),
-          if (!isDark)
-            BoxShadow(
-              color: Colors.white.withValues(alpha: 0.72),
-              blurRadius: 8,
-              offset: const Offset(-3, -3),
-            ),
-        ],
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Positioned(
-            right: -8,
-            top: -8,
-            child: Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.10)
-                    : Colors.white.withValues(alpha: 0.34),
-              ),
-            ),
-          ),
-          if (imageAsset == null)
-            _BundleIconFallback(product: product, accent: accent)
-          else
-            SizedBox(
-              width: 58,
-              height: 58,
-              child: Image.asset(
-                imageAsset,
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.medium,
-                errorBuilder: (_, __, ___) =>
-                    _BundleIconFallback(product: product, accent: accent),
-              ),
-            ),
-        ],
       ),
     );
   }
-}
-
-class _BundleIconFallback extends StatelessWidget {
-  const _BundleIconFallback({required this.product, required this.accent});
-
-  final _StoreProduct product;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      size: const Size(58, 58),
-      painter: _StoreItemIconPainter(
-        kind: product.kind,
-        accent: Color.lerp(accent, const Color(0xFF26384A), 0.10)!,
-      ),
-    );
-  }
-}
-
-Color _bundleAccent(_StoreItemKind kind) {
-  return switch (kind) {
-    _StoreItemKind.musicBundle => const Color(0xFF20B5FF),
-    _StoreItemKind.gameBundle => const Color(0xFF6E83FF),
-    _StoreItemKind.movieBundle => const Color(0xFFFF6CA8),
-    _ => AppColors.accent,
-  };
 }

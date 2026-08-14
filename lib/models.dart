@@ -1400,6 +1400,48 @@ class GameCatalogEntry {
   }
 }
 
+class StoreCatalogStatus {
+  const StoreCatalogStatus({
+    required this.isVip,
+    required this.vipTrialAvailable,
+  });
+
+  final bool isVip;
+  final bool vipTrialAvailable;
+
+  factory StoreCatalogStatus.fromJson(Map<String, dynamic> json) {
+    return StoreCatalogStatus(
+      isVip: json['is_vip'] == true,
+      vipTrialAvailable: json['vip_trial_available'] != false,
+    );
+  }
+}
+
+class StoreBundlePurchaseResponse {
+  const StoreBundlePurchaseResponse({
+    required this.wallet,
+    this.inventoryItem,
+    this.gameBalance,
+  });
+
+  final WalletBalance wallet;
+  final StoreInventoryItem? inventoryItem;
+  final int? gameBalance;
+
+  factory StoreBundlePurchaseResponse.fromJson(Map<String, dynamic> json) {
+    final inventory = json['inventory_item'];
+    return StoreBundlePurchaseResponse(
+      wallet: WalletBalance.fromJson(
+        Map<String, dynamic>.from(json['wallet'] as Map? ?? const {}),
+      ),
+      inventoryItem: inventory is Map
+          ? StoreInventoryItem.fromJson(Map<String, dynamic>.from(inventory))
+          : null,
+      gameBalance: (json['game_balance'] as num?)?.round(),
+    );
+  }
+}
+
 class StoreInventoryItem {
   const StoreInventoryItem({
     required this.productKind,

@@ -2035,7 +2035,7 @@ class _SettingsBackpackCard extends StatelessWidget {
                 ),
                 SizedBox(height: 2),
                 Text(
-                  '查看已获得的道具',
+                  '查看已兑换的礼物、盲盒和装扮',
                   style: TextStyle(
                     color: _SettingsColors.tertiary,
                     fontSize: 12,
@@ -3082,8 +3082,15 @@ class _BackpackPageState extends State<_BackpackPage> {
               item.productKind: item,
         };
         final ownedProducts = [
-          for (final product in _exchangeProducts)
-            if (inventory.containsKey(product.kind.name)) product,
+          for (final kind in inventory.keys)
+            _productForKind(kind) ??
+                _StoreProduct(
+                  title: kind,
+                  subtitle: '已下架',
+                  productKind: kind,
+                  memberPrice: 0,
+                  listPrice: 0,
+                ),
         ];
         final visibleProducts = _selectedFilter.category == null
             ? ownedProducts
@@ -3092,7 +3099,7 @@ class _BackpackPageState extends State<_BackpackPage> {
                   .toList();
         final totalCount = ownedProducts.fold<int>(
           0,
-          (sum, product) => sum + inventory[product.kind.name]!.quantity,
+          (sum, product) => sum + inventory[product.productKind]!.quantity,
         );
         return _SettingsSubScaffold(
           title: '我的背包',
@@ -3183,7 +3190,7 @@ class _BackpackPageState extends State<_BackpackPage> {
                           ),
                       itemBuilder: (context, index) {
                         final product = visibleProducts[index];
-                        final item = inventory[product.kind.name]!;
+                        final item = inventory[product.productKind]!;
                         return _ExchangeProductCard(
                           product: product,
                           affordable: true,
@@ -3206,8 +3213,8 @@ class _BackpackPageState extends State<_BackpackPage> {
 enum _BackpackFilter {
   all('全部', null),
   gift('礼物', _ExchangeCategory.gift),
-  outfit('装扮', _ExchangeCategory.outfit),
-  tool('道具', _ExchangeCategory.tool);
+  blind('盲盒', _ExchangeCategory.blind),
+  outfit('装扮', _ExchangeCategory.outfit);
 
   const _BackpackFilter(this.label, this.category);
 

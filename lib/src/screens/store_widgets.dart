@@ -54,50 +54,55 @@ class _StoreTopBar extends StatelessWidget {
 }
 
 class _StoreBalancePill extends StatelessWidget {
-  const _StoreBalancePill({required this.points, required this.onTap});
+  const _StoreBalancePill({
+    required this.amount,
+    required this.currency,
+    required this.onTap,
+  });
 
-  final int points;
+  final int amount;
+  final _StoreCurrency currency;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
       onPressed: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Container(
-            height: 30,
-            constraints: const BoxConstraints(minWidth: 44),
-            padding: const EdgeInsets.only(left: 7, right: 5),
-            decoration: BoxDecoration(
-              color: AppColors.subtleFill(context, light: 0.70),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.glassBorder(context)),
+      child: Container(
+        height: 30,
+        constraints: const BoxConstraints(minWidth: 44),
+        padding: const EdgeInsets.only(left: 7, right: 5),
+        decoration: BoxDecoration(
+          color: w.glass,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: w.glassBorder),
+          boxShadow: [w.pillShadow],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _CurrencyIcon(currency: currency, size: 18),
+            const SizedBox(width: 5),
+            Text(
+              '$amount',
+              style: TextStyle(
+                color: w.ink,
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0,
+                decoration: TextDecoration.none,
+              ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const _CurrencyIcon(currency: _StoreCurrency.point, size: 18),
-                const SizedBox(width: 5),
-                Text(
-                  '$points',
-                  style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-                const SizedBox(width: 3),
-                const Icon(CupertinoIcons.add_circled_solid, size: 18),
-              ],
+            const SizedBox(width: 3),
+            Icon(
+              CupertinoIcons.add_circled_solid,
+              size: 18,
+              color: w.ink,
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -112,76 +117,63 @@ class _StoreBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
     final values = _StoreSection.values;
     final selectedIndex = values.indexOf(selected);
-    final isDark = AppColors.isDark(context);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(30),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-        child: Container(
-          height: 68,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.elevatedSurface(context, light: 0.68),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: AppColors.glassBorder(context)),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.shadow.withValues(alpha: isDark ? 0.72 : 0.12),
-                blurRadius: 28,
-                offset: const Offset(0, 14),
-              ),
-            ],
-          ),
-          child: Stack(
-            children: [
-              AnimatedAlign(
-                alignment: Alignment(
-                  -1 + (selectedIndex * 2 / (values.length - 1)),
-                  0,
-                ),
-                duration: const Duration(milliseconds: 260),
-                curve: Curves.easeOutCubic,
-                child: FractionallySizedBox(
-                  widthFactor: 1 / values.length,
-                  heightFactor: 1,
-                  child: Center(
-                    child: Container(
-                      width: 58,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(26),
-                        color: isDark
-                            ? AppColors.surfaceMuted.withValues(alpha: 0.92)
-                            : Colors.white.withValues(alpha: 0.94),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.accent.withValues(alpha: 0.15),
-                            blurRadius: 16,
-                            offset: const Offset(0, 7),
-                          ),
-                        ],
+    return Container(
+      height: 68,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+      decoration: BoxDecoration(
+        color: w.isDark ? const Color(0xFF121A26) : Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: w.panelShadow,
+      ),
+      child: Stack(
+        children: [
+          AnimatedAlign(
+            alignment: Alignment(
+              -1 + (selectedIndex * 2 / (values.length - 1)),
+              0,
+            ),
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            child: FractionallySizedBox(
+              widthFactor: 1 / values.length,
+              heightFactor: 1,
+              child: Center(
+                child: Container(
+                  width: 58,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(26),
+                    color: w.isDark
+                        ? const Color(0x24FFFFFF)
+                        : Colors.white.withValues(alpha: 0.94),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0x474E9BFF),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ),
-              Row(
-                children: [
-                  for (final item in values)
-                    Expanded(
-                      child: _StoreNavItem(
-                        item: item,
-                        selected: item == selected,
-                        onTap: () => onSelected(item),
-                      ),
-                    ),
-                ],
-              ),
+            ),
+          ),
+          Row(
+            children: [
+              for (final item in values)
+                Expanded(
+                  child: _StoreNavItem(
+                    item: item,
+                    selected: item == selected,
+                    onTap: () => onSelected(item),
+                  ),
+                ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
@@ -200,10 +192,8 @@ class _StoreNavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
-    final inactive = isDark
-        ? AppColors.muted.withValues(alpha: 0.68)
-        : const Color(0xFF1B2733).withValues(alpha: 0.42);
+    final w = _W2b.resolve(context);
+    final inactive = w.inkSoft;
     return Tooltip(
       message: item.label,
       child: InkResponse(
@@ -216,7 +206,7 @@ class _StoreNavItem extends StatelessWidget {
               Icon(
                 item.icon,
                 size: 23,
-                color: selected ? AppColors.accent : inactive,
+                color: selected ? const Color(0xFF4B9AFF) : inactive,
               ),
               const SizedBox(height: 4),
               Text(
@@ -224,7 +214,7 @@ class _StoreNavItem extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: selected ? AppColors.text : inactive,
+                  color: selected ? w.ink : inactive,
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0,
@@ -252,27 +242,15 @@ class _StorePrimaryButton extends StatelessWidget {
       padding: EdgeInsets.zero,
       onPressed: onPressed,
       child: Container(
-        height: 58,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: const LinearGradient(
-            colors: [Color(0xFF55D7FF), Color(0xFF0A84FF)],
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.accent.withValues(alpha: 0.24),
-              blurRadius: 18,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
+        height: 50,
+        decoration: _storeAccentButtonDecoration(),
         child: Center(
           child: Text(
             label,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 21,
-              fontWeight: FontWeight.w900,
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
               letterSpacing: 0,
               decoration: TextDecoration.none,
             ),
@@ -281,6 +259,24 @@ class _StorePrimaryButton extends StatelessWidget {
       ),
     );
   }
+}
+
+BoxDecoration _storeAccentButtonDecoration({double radius = 20}) {
+  return BoxDecoration(
+    borderRadius: BorderRadius.circular(radius),
+    gradient: const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [Color(0xFF4B9AFF), Color(0xFF8ABAFF)],
+    ),
+    boxShadow: const [
+      BoxShadow(
+        color: Color(0x474E9BFF),
+        blurRadius: 16,
+        offset: Offset(0, 8),
+      ),
+    ],
+  );
 }
 
 class _GlassCard extends StatelessWidget {
@@ -296,52 +292,50 @@ class _GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: AppColors.elevatedSurface(context, light: 0.70),
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: AppColors.glassBorder(context)),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.shadow.withValues(alpha: isDark ? 0.62 : 0.10),
-                blurRadius: 22,
-                offset: const Offset(0, 12),
-              ),
-            ],
-          ),
-          child: child,
-        ),
+    final w = _W2b.resolve(context);
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: w.glass,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: w.glassBorder),
+        boxShadow: w.panelShadow,
       ),
+      child: child,
     );
   }
 }
 
 class _CircleIcon extends StatelessWidget {
-  const _CircleIcon({required this.icon, required this.color});
+  const _CircleIcon({required this.icon, this.size = _diameter});
+
+  static const _diameter = 48.0;
+  static const _fill = Color(0xFF4C9BFF);
 
   final IconData icon;
-  final Color color;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
+    final dark = _W2b.resolve(context).isDark;
     return Container(
-      width: 36,
-      height: 36,
+      width: size,
+      height: size,
+      alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color.lerp(color, Colors.white, 0.24)!, color],
-        ),
+        color: _fill,
+        boxShadow: dark
+            ? null
+            : [
+                BoxShadow(
+                  color: _fill.withValues(alpha: 0.30),
+                  blurRadius: 9,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
-      child: Icon(icon, color: Colors.white, size: 19),
+      child: Icon(icon, color: Colors.white, size: size * 0.5),
     );
   }
 }

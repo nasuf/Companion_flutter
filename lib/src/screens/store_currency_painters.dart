@@ -215,30 +215,3 @@ class _PointCrystalPainter extends CustomPainter {
         oldDelegate.glowColor != glowColor;
   }
 }
-
-class _RechargePatternPainter extends CustomPainter {
-  const _RechargePatternPainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color.withValues(alpha: 0.08);
-    for (var y = 18.0; y < size.height; y += 44) {
-      for (var x = 8.0; x < size.width; x += 44) {
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(x, y, 24, 30),
-            const Radius.circular(8),
-          ),
-          paint,
-        );
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _RechargePatternPainter oldDelegate) {
-    return oldDelegate.color != color;
-  }
-}

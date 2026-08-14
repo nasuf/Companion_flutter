@@ -13,10 +13,14 @@ class StorePage extends StatefulWidget {
 class _StorePageState extends State<StorePage> {
   _StoreSection _section = _StoreSection.subscription;
   _ExchangeCategory _exchangeCategory = _ExchangeCategory.gift;
+  _GiftSubcategory _giftSubcategory = _GiftSubcategory.drink;
   _StoreCurrency _rechargeCurrency = _StoreCurrency.ticket;
   int _selectedPlan = 1;
   int _selectedRecharge = 0;
-  final Set<_StoreItemKind> _exchangingKinds = {};
+  bool _isVip = false;
+  bool _vipTrialAvailable = true;
+  final Set<String> _exchangingKinds = {};
+  final Set<_BundleKind> _buyingBundles = {};
   late final PageController _sectionController;
   late Future<WalletBalance> _walletFuture;
 
@@ -25,6 +29,7 @@ class _StorePageState extends State<StorePage> {
     super.initState();
     _sectionController = PageController(initialPage: _sectionIndex(_section));
     _walletFuture = _loadWallet();
+    _loadCatalog();
   }
 
   @override
@@ -35,6 +40,27 @@ class _StorePageState extends State<StorePage> {
 
   Future<WalletBalance> _loadWallet() {
     return widget.api.getWallet(agentId: widget.session.agentId);
+  }
+
+  Future<void> _loadCatalog() async {
+    try {
+      final catalog = await widget.api.getStoreCatalog();
+      if (!mounted) return;
+      setState(() {
+        _isVip = catalog.isVip;
+        _vipTrialAvailable = catalog.vipTrialAvailable;
+      });
+    } catch (_) {
+      // Local catalog still renders; prices default to non-member until retry.
+    }
+  }
+
+  void _openRechargeTickets() {
+    setState(() {
+      _rechargeCurrency = _StoreCurrency.ticket;
+      _selectedRecharge = 0;
+    });
+    _selectSection(_StoreSection.recharge);
   }
 
   void _openRechargePoints() {
@@ -137,7 +163,7 @@ class _StorePageState extends State<StorePage> {
     if (!mounted) return;
     final convertible = wallet.convertible;
     if (convertible <= 0) {
-      showCupertinoDialog<void>(
+      await showCupertinoDialog<void>(
         context: context,
         builder: (context) {
           return CupertinoAlertDialog(
@@ -160,48 +186,53 @@ class _StorePageState extends State<StorePage> {
     }
 
     final controller = TextEditingController(text: '$convertible');
-    final amount = await showCupertinoDialog<int>(
-      context: context,
-      builder: (context) {
-        return CupertinoAlertDialog(
-          title: const Text('游戏积分兑换积分'),
-          content: Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  '当前游戏积分 ${wallet.balance}，可兑换 $convertible。\n'
-                  '按 1:1 兑换为商城积分，兑换不可逆。',
-                  style: const TextStyle(fontSize: 13),
-                ),
-                const SizedBox(height: 12),
-                CupertinoTextField(
-                  controller: controller,
-                  keyboardType: TextInputType.number,
-                  placeholder: '兑换数量',
-                  autofocus: true,
-                ),
-              ],
+    final int? amount;
+    try {
+      amount = await showCupertinoDialog<int>(
+        context: context,
+        builder: (context) {
+          return CupertinoAlertDialog(
+            title: const Text('游戏积分兑换积分'),
+            content: Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '当前游戏积分 ${wallet.balance}，可兑换 $convertible。\n'
+                    '按 1:1 兑换为商城积分，兑换不可逆。',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  CupertinoTextField(
+                    controller: controller,
+                    keyboardType: TextInputType.number,
+                    placeholder: '兑换数量',
+                    autofocus: true,
+                  ),
+                ],
+              ),
             ),
-          ),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('取消'),
-            ),
-            CupertinoDialogAction(
-              isDefaultAction: true,
-              onPressed: () {
-                final value = int.tryParse(controller.text.trim());
-                Navigator.of(context).pop(value);
-              },
-              child: const Text('兑换'),
-            ),
-          ],
-        );
-      },
-    );
+            actions: [
+              CupertinoDialogAction(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('取消'),
+              ),
+              CupertinoDialogAction(
+                isDefaultAction: true,
+                onPressed: () {
+                  final value = int.tryParse(controller.text.trim());
+                  Navigator.of(context).pop(value);
+                },
+                child: const Text('兑换'),
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      controller.dispose();
+    }
     if (!mounted || amount == null) return;
     if (amount <= 0 || amount > convertible) {
       _showToast('请输入 1 - $convertible 之间的数量');
@@ -234,7 +265,7 @@ class _StorePageState extends State<StorePage> {
             CupertinoDialogAction(
               onPressed: () {
                 Navigator.of(context).pop();
-                setState(() => _rechargeCurrency = _StoreCurrency.ticket);
+                _openRechargeTickets();
               },
               child: const Text('去充值'),
             ),
@@ -264,7 +295,8 @@ class _StorePageState extends State<StorePage> {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
-      backgroundColor: AppColors.page,
+      backgroundColor: _W2b.resolve(context).base,
+      resizeToAvoidBottomInset: false,
       body: FutureBuilder<WalletBalance>(
         future: _walletFuture,
         builder: (context, snapshot) {
@@ -288,8 +320,15 @@ class _StorePageState extends State<StorePage> {
                           : '商城',
                       trailing: _section == _StoreSection.exchange
                           ? _StoreBalancePill(
-                              points: wallet.pointBalance,
+                              amount: wallet.pointBalance,
+                              currency: _StoreCurrency.point,
                               onTap: _openRechargePoints,
+                            )
+                          : _section == _StoreSection.bundle
+                          ? _StoreBalancePill(
+                              amount: wallet.ticketBalance,
+                              currency: _StoreCurrency.ticket,
+                              onTap: _openRechargeTickets,
                             )
                           : null,
                     ),
@@ -345,18 +384,25 @@ class _StorePageState extends State<StorePage> {
         bottomSpace: bottomSpace,
       ),
       _StoreSection.bundle => _BundleStoreView(
-        onBuy: (product, cycle) => _showComingSoon(
-          '${product.title}${cycle == _BundleBillingCycle.monthly ? '月付' : '年付'}',
-        ),
+        ticketBalance: wallet.ticketBalance,
+        vipTrialAvailable: _vipTrialAvailable,
+        onBuy: _handleBuyBundle,
+        isBuying: (offer) => _buyingBundles.contains(offer.kind),
+        onRechargeTickets: _openRechargeTickets,
         bottomSpace: bottomSpace,
       ),
       _StoreSection.exchange => _ExchangeStoreView(
         points: wallet.pointBalance,
+        isVip: _isVip,
         selectedCategory: _exchangeCategory,
+        selectedGiftSubcategory: _giftSubcategory,
         onCategoryChanged: (value) => setState(() => _exchangeCategory = value),
+        onGiftSubcategoryChanged: (value) =>
+            setState(() => _giftSubcategory = value),
         onRechargePoints: _openRechargePoints,
         onExchange: _handleExchangeProduct,
-        isExchanging: (product) => _exchangingKinds.contains(product.kind),
+        isExchanging: (product) =>
+            _exchangingKinds.contains(product.productKind),
         bottomSpace: bottomSpace,
       ),
       _StoreSection.recharge => _RechargeStoreView(
@@ -379,14 +425,99 @@ class _StorePageState extends State<StorePage> {
     };
   }
 
-  Future<void> _handleExchangeProduct(_StoreProduct product) async {
-    if (_exchangingKinds.contains(product.kind)) {
+  Future<void> _handleBuyBundle(_BundleOffer offer, _BundleTier? tier) async {
+    if (offer.isVipTrial) {
+      showCupertinoDialog<void>(
+        context: context,
+        builder: (context) {
+          return CupertinoAlertDialog(
+            title: const Text('微信支付待接入'),
+            content: const Text(
+              '月度 VIP 体验 ¥1，账号终身限购 1 次。\n\n支付接口接好后会按月度会员权益发放，并立刻按会员积分计价。',
+            ),
+            actions: [
+              CupertinoDialogAction(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('好的'),
+              ),
+            ],
+          );
+        },
+      );
       return;
     }
-    setState(() => _exchangingKinds.add(product.kind));
+    if (tier == null) {
+      return;
+    }
+    if (_buyingBundles.contains(offer.kind)) return;
+    setState(() => _buyingBundles.add(offer.kind));
+    try {
+      final result = await widget.api.purchaseStoreBundle(
+        bundleKind: offer.kind == _BundleKind.music
+            ? 'music_coupon'
+            : 'game_points',
+        tierId: tier.id,
+      );
+      if (!mounted) return;
+      setState(() => _walletFuture = Future.value(result.wallet));
+      if (offer.kind == _BundleKind.music) {
+        _showToast(
+          '已放入背包：音乐畅听券 x${result.inventoryItem?.quantity ?? tier.grantAmount}',
+        );
+      } else {
+        _showToast('已发放 ${tier.grantAmount} 游戏积分');
+      }
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      if (error.statusCode == 409) {
+        _showInsufficientTickets();
+        return;
+      }
+      _showToast('购买失败：${error.message}');
+    } finally {
+      if (mounted) {
+        setState(() => _buyingBundles.remove(offer.kind));
+      }
+    }
+  }
+
+  Future<void> _handleExchangeProduct(_StoreProduct product) async {
+    if (_exchangingKinds.contains(product.productKind)) {
+      return;
+    }
+    final price = product.priceFor(isVip: _isVip);
+    final priceLine = _isVip
+        ? '将消耗会员价 $price 积分（原价 ${product.listPrice}）'
+        : '将消耗 $price 积分（会员价 ${product.memberPrice}）';
+    final contents = product.contents;
+    final body = contents == null || contents.isEmpty
+        ? priceLine
+        : '${_previewBlindContents(contents)}\n\n$priceLine';
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) {
+        return CupertinoAlertDialog(
+          title: Text(product.title),
+          content: Text(body),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('兑换'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _exchangingKinds.add(product.productKind));
     try {
       final result = await widget.api.exchangeStoreProduct(
-        productKind: product.kind.name,
+        productKind: product.productKind,
       );
       if (!mounted) return;
       setState(() => _walletFuture = Future.value(result.wallet));
@@ -401,8 +532,20 @@ class _StorePageState extends State<StorePage> {
       _showToast('兑换失败：${error.message}');
     } finally {
       if (mounted) {
-        setState(() => _exchangingKinds.remove(product.kind));
+        setState(() => _exchangingKinds.remove(product.productKind));
       }
     }
   }
+}
+
+String _previewBlindContents(String raw) {
+  final parts = raw
+      .split('、')
+      .map((item) => item.trim())
+      .where((item) => item.isNotEmpty)
+      .toList();
+  if (parts.length <= 4) {
+    return '随机开出一份：$raw';
+  }
+  return '随机开出一份：${parts.take(4).join('、')} 等${parts.length}种';
 }

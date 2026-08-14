@@ -14,59 +14,94 @@ enum _StoreSection {
 
 enum _ExchangeCategory {
   gift('礼物'),
+  blind('盲盒'),
   outfit('装扮'),
-  tool('道具');
+  bundle('礼包');
 
   const _ExchangeCategory(this.label);
 
   final String label;
 }
 
+enum _GiftSubcategory {
+  luxury('奢享'),
+  digital('数码'),
+  life('生活'),
+  food('美食'),
+  accessory('配饰'),
+  drink('饮品'),
+  jewelry('饰品'),
+  flower('鲜花');
+
+  const _GiftSubcategory(this.label);
+
+  final String label;
+}
+
+enum _BundleKind { music, game, vip }
+
 enum _StoreCurrency { ticket, point }
 
-enum _StoreItemKind {
-  tea,
-  cake,
-  coffee,
-  cola,
-  flower,
-  plush,
-  capsuleSkin,
-  chatFrame,
-  bubble,
-  backdrop,
-  theme,
-  stationery,
-  checkinSkin,
-  signCard,
-  musicCoupon,
-  gameCoupon,
-  movieCoupon,
-  musicBundle,
-  gameBundle,
-  movieBundle,
+class _BundleTier {
+  const _BundleTier({
+    required this.id,
+    required this.label,
+    required this.ticketPrice,
+    required this.grantAmount,
+  });
+
+  final String id;
+  final String label;
+  final int ticketPrice;
+  final int grantAmount;
+}
+
+class _BundleOffer {
+  const _BundleOffer({
+    required this.kind,
+    required this.title,
+    required this.subtitle,
+    required this.accent,
+    this.imageAsset,
+    this.tiers = const [],
+    this.yuanPrice,
+  });
+
+  final _BundleKind kind;
+  final String title;
+  final String subtitle;
+  final Color accent;
+  final String? imageAsset;
+  final List<_BundleTier> tiers;
+  final int? yuanPrice;
+
+  bool get isVipTrial => kind == _BundleKind.vip;
 }
 
 class _StoreProduct {
   const _StoreProduct({
     required this.title,
     required this.subtitle,
-    required this.price,
-    required this.kind,
-    this.yearlyPrice,
+    required this.productKind,
+    required this.memberPrice,
+    required this.listPrice,
     this.imageAsset,
-    this.badge,
     this.category,
+    this.giftSubcategory,
+    this.contents,
   });
 
   final String title;
   final String subtitle;
-  final int price;
-  final _StoreItemKind kind;
-  final int? yearlyPrice;
+  final String productKind;
+  final int memberPrice;
+  final int listPrice;
   final String? imageAsset;
-  final String? badge;
   final _ExchangeCategory? category;
+  final _GiftSubcategory? giftSubcategory;
+  final String? contents;
+
+  int priceFor({required bool isVip}) => isVip ? memberPrice : listPrice;
 }
 
 class _RechargePack {

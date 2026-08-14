@@ -1,259 +1,120 @@
 part of 'package:companion_flutter/main.dart';
 
-class _VipHeroCard extends StatefulWidget {
+class _VipHeroCard extends StatelessWidget {
   const _VipHeroCard();
 
   @override
-  State<_VipHeroCard> createState() => _VipHeroCardState();
-}
-
-class _VipHeroCardState extends State<_VipHeroCard>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _breathController;
-
-  @override
-  void initState() {
-    super.initState();
-    _breathController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2800),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _breathController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _breathController,
-      builder: (context, child) {
-        final breath = Curves.easeInOut.transform(_breathController.value);
-        final isDark = AppColors.isDark(context);
-        return Container(
-          height: 236,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(34),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.accent.withValues(alpha: 0.10 + breath * 0.04),
-                blurRadius: 32 + breath * 10,
-                offset: Offset(0, 16 + breath * 4),
+    final w = _W2b.resolve(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 20, 16, 18),
+      decoration: BoxDecoration(
+        color: w.glass,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: w.glassBorder),
+        boxShadow: w.panelShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'VIP PASS',
+                      style: TextStyle(
+                        color: w.inkSoft,
+                        fontSize: 12,
+                        height: 1,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      '更完整的陪伴体验',
+                      style: TextStyle(
+                        color: w.ink,
+                        fontSize: 20,
+                        height: 1.2,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '畅聊、赠礼、装扮和活动券统一升级',
+                      style: TextStyle(
+                        color: w.inkSoft,
+                        fontSize: 13,
+                        height: 1.45,
+                        fontWeight: FontWeight.w400,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              BoxShadow(
-                color: const Color(
-                  0xFF7CE7D8,
-                ).withValues(alpha: 0.12 + breath * 0.04),
-                blurRadius: 50 + breath * 12,
-                offset: const Offset(-22, 34),
-              ),
+              const SizedBox(width: 4),
+              const _VipHaloMark(),
             ],
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(34),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: AppColors.elevatedSurface(context, light: 0.72),
-                        border: Border.all(
-                          color: AppColors.glassBorder(context),
-                        ),
-                        borderRadius: BorderRadius.circular(34),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    right: -44,
-                    top: -50 - breath * 8,
-                    child: Container(
-                      width: 190,
-                      height: 190,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: const Color(
-                          0xFF72D6FF,
-                        ).withValues(alpha: 0.16 + breath * 0.04),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: -34,
-                    bottom: -66 + breath * 7,
-                    child: Container(
-                      width: 230,
-                      height: 150,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(50),
-                        color: const Color(
-                          0xFF7BE7D8,
-                        ).withValues(alpha: 0.13 + breath * 0.04),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    right: 24,
-                    top: 44 - breath * 9,
-                    child: Transform.rotate(
-                      angle: -0.018 + breath * 0.036,
-                      child: Transform.scale(
-                        scale: 0.985 + breath * 0.025,
-                        child: _VipFloatingShape(breath: breath),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: 28,
-                    top: 28,
-                    right: 160,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ShaderMask(
-                          shaderCallback: (rect) {
-                            return const LinearGradient(
-                              colors: [Color(0xFF0A84FF), Color(0xFF16C6D4)],
-                            ).createShader(rect);
-                          },
-                          child: const Text(
-                            'VIP PASS',
-                            maxLines: 1,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 30,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0,
-                              decoration: TextDecoration.none,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Text(
-                          '更完整的陪伴体验',
-                          style: TextStyle(
-                            color: isDark
-                                ? AppColors.text
-                                : const Color(0xFF0B2237),
-                            fontSize: 20,
-                            height: 1.15,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '畅聊、赠礼、装扮和活动券统一升级',
-                          style: TextStyle(
-                            color: isDark
-                                ? AppColors.muted
-                                : const Color(0xFF6B7A86),
-                            fontSize: 13,
-                            height: 1.35,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Positioned(
-                    left: 28,
-                    right: 28,
-                    bottom: 24,
-                    child: Row(
-                      children: const [
-                        _VipMetric(label: '畅聊', value: '∞'),
-                        SizedBox(width: 10),
-                        _VipMetric(label: '赠票/月', value: '39'),
-                        SizedBox(width: 10),
-                        _VipMetric(label: '通话+', value: '30m'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          const SizedBox(height: 16),
+          const Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _VipMetric(label: '畅聊', value: '∞'),
+              _VipMetric(label: '赠票/月', value: '39'),
+              _VipMetric(label: '通话+', value: '30m'),
+            ],
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
 
-class _VipFloatingShape extends StatelessWidget {
-  const _VipFloatingShape({required this.breath});
-
-  final double breath;
+class _VipHaloMark extends StatelessWidget {
+  const _VipHaloMark();
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
     return SizedBox(
-      width: 128,
-      height: 128,
+      width: 120,
+      height: 120,
       child: Stack(
-        clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: [
-          Transform.rotate(
-            angle: -0.16,
-            child: Container(
-              width: 96,
-              height: 108,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(30),
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFF8CEBFF),
-                    Color(0xFF35B8FF),
-                    Color(0xFF0A84FF),
-                  ],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.accent.withValues(
-                      alpha: 0.24 + breath * 0.08,
-                    ),
-                    blurRadius: 26 + breath * 8,
-                    offset: Offset(0, 14 + breath * 5),
-                  ),
-                  BoxShadow(
-                    color: Colors.white.withValues(alpha: 0.50),
-                    blurRadius: 10,
-                    offset: const Offset(-5, -5),
-                  ),
-                ],
+          DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [w.heroHalo, w.heroHalo.withValues(alpha: 0)],
               ),
             ),
+            child: const SizedBox.expand(),
           ),
-          Transform.translate(
-            offset: Offset(16 + breath * 2, -18 - breath * 3),
-            child: Container(
-              width: 58,
-              height: 58,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.56),
-                  width: 1.4,
-                ),
-                gradient: RadialGradient(
-                  colors: [
-                    Colors.white.withValues(alpha: 0.34 + breath * 0.10),
-                    Colors.white.withValues(alpha: 0.04),
+          Icon(
+            CupertinoIcons.star_fill,
+            size: 56,
+            color: const Color(0xFF4B9AFF),
+            shadows: w.isDark
+                ? null
+                : const [
+                    Shadow(
+                      color: Color(0x4D4C9BFF),
+                      blurRadius: 12,
+                      offset: Offset(0, 4),
+                    ),
                   ],
-                ),
-              ),
-            ),
           ),
         ],
       ),
@@ -269,46 +130,30 @@ class _VipMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
-    return Expanded(
-      child: Container(
-        height: 50,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
-          color: AppColors.subtleFill(context, light: 0.58),
-          borderRadius: BorderRadius.circular(17),
-          border: Border.all(color: AppColors.glassBorder(context)),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: AppColors.text,
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0,
-                decoration: TextDecoration.none,
-              ),
+    final w = _W2b.resolve(context);
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: w.heroChipBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: w.heroChipBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$value  $label',
+            style: TextStyle(
+              color: w.ink,
+              fontSize: 12,
+              height: 1,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+              decoration: TextDecoration.none,
             ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: isDark ? AppColors.muted : const Color(0xFF6D7984),
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -319,11 +164,11 @@ class _MemberBenefitGrid extends StatelessWidget {
 
   static const _benefits = [
     ('对话畅聊', '不限次对话', CupertinoIcons.chat_bubble_2_fill),
-    ('秒票赠礼', '每月赠送39秒票', Icons.extension),
-    ('免广告', '无广告流畅体验', CupertinoIcons.rectangle_badge_xmark),
-    ('活动券赠礼', '每月赠游戏&电影券', CupertinoIcons.phone_fill),
-    ('更长通话', '每日时长+30分钟', CupertinoIcons.textformat_abc),
-    ('VIP专属装扮', '解锁专属聊天皮肤', Icons.palette),
+    ('秒票赠礼', '每月39秒票', CupertinoIcons.tickets_fill),
+    ('免广告', '无广告更流畅', CupertinoIcons.rectangle_badge_xmark),
+    ('活动券赠礼', '每月活动券', CupertinoIcons.gift_fill),
+    ('更长通话', '每日+30分钟', CupertinoIcons.phone_fill),
+    ('VIP专属装扮', '专属聊天皮肤', Icons.palette),
   ];
 
   @override
@@ -336,57 +181,86 @@ class _MemberBenefitGrid extends StatelessWidget {
         crossAxisCount: 2,
         mainAxisSpacing: 10,
         crossAxisSpacing: 10,
-        childAspectRatio: 2.48,
+        mainAxisExtent: 88,
       ),
       itemBuilder: (context, index) {
         final item = _benefits[index];
-        final isDark = AppColors.isDark(context);
-        return _GlassCard(
-          padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
-          radius: 20,
-          child: Row(
-            children: [
-              _CircleIcon(icon: item.$3, color: AppColors.accent),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      item.$1,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: AppColors.text,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      item.$2,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: isDark
-                            ? AppColors.muted
-                            : const Color(0xFF5D6873),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+        return _BenefitMetricCard(
+          title: item.$1,
+          caption: item.$2,
+          icon: item.$3,
         );
       },
+    );
+  }
+}
+
+class _BenefitMetricCard extends StatelessWidget {
+  const _BenefitMetricCard({
+    required this.title,
+    required this.caption,
+    required this.icon,
+  });
+
+  final String title;
+  final String caption;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
+    return Container(
+      height: 88,
+      padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
+      decoration: BoxDecoration(
+        color: w.glass,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: w.glassBorder),
+        boxShadow: w.panelShadow,
+      ),
+      child: Row(
+        children: [
+          _CircleIcon(icon: icon, size: 40),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.fade,
+                  style: TextStyle(
+                    color: w.ink,
+                    fontSize: 15,
+                    height: 1.15,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  caption,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.fade,
+                  style: TextStyle(
+                    color: w.inkSoft,
+                    fontSize: 12,
+                    height: 1.2,
+                    fontWeight: FontWeight.w400,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

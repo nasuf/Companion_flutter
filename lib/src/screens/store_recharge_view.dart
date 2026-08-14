@@ -32,25 +32,35 @@ class _RechargeStoreView extends StatelessWidget {
         : pointBalance;
     return ListView(
       physics: const BouncingScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(20, 0, 20, bottomSpace),
+      padding: EdgeInsets.fromLTRB(20, 8, 20, bottomSpace),
       children: [
-        _RechargeTabs(currency: currency, onChanged: onCurrencyChanged),
-        const SizedBox(height: 16),
-        _RechargeHero(
-          currency: currency,
-          balance: balance,
-          onAdRewardTap: currency == _StoreCurrency.ticket ? () {} : null,
+        _StoreSegmentedLabelBar<_StoreCurrency>(
+          values: const [_StoreCurrency.ticket, _StoreCurrency.point],
+          selected: currency,
+          labelFor: (value) =>
+              value == _StoreCurrency.ticket ? '我的钞票' : '我的积分',
+          onSelected: onCurrencyChanged,
         ),
         const SizedBox(height: 14),
+        _RechargeBalanceCard(currency: currency, balance: balance),
+        if (currency == _StoreCurrency.ticket) ...[
+          const SizedBox(height: 10),
+          _StoreActionRow(
+            icon: CupertinoIcons.play_rectangle_fill,
+            label: '看广告得免费钞票',
+            onTap: () {},
+          ),
+        ],
+        const SizedBox(height: 16),
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: packs.length,
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 1.28,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 1.12,
           ),
           itemBuilder: (context, index) {
             final pack = packs[index];
@@ -61,328 +71,152 @@ class _RechargeStoreView extends StatelessWidget {
             );
           },
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 22),
         _StorePrimaryButton(
           label: currency == _StoreCurrency.ticket ? '立即充值' : '立即兑换',
           onPressed: onSubmit,
         ),
         if (currency == _StoreCurrency.point && onConvertGamePoints != null) ...[
-          const SizedBox(height: 12),
-          _GamePointConvertRow(onTap: onConvertGamePoints!),
+          const SizedBox(height: 10),
+          _StoreActionRow(
+            icon: CupertinoIcons.gamecontroller_fill,
+            label: '用游戏积分兑换积分',
+            onTap: onConvertGamePoints!,
+          ),
         ],
       ],
     );
   }
 }
 
-class _GamePointConvertRow extends StatelessWidget {
-  const _GamePointConvertRow({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
-    return CupertinoButton(
-      minimumSize: Size.zero,
-      padding: EdgeInsets.zero,
-      onPressed: onTap,
-      child: Container(
-        height: 54,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: AppColors.elevatedSurface(context, light: 0.72),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.glassBorder(context)),
-        ),
-        child: Row(
-          children: [
-            _CircleIcon(
-              icon: CupertinoIcons.gamecontroller_fill,
-              color: AppColors.accent,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                '用游戏积分兑换积分',
-                style: TextStyle(
-                  color: AppColors.text,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-            ),
-            Icon(
-              CupertinoIcons.chevron_right,
-              color: isDark ? AppColors.muted : const Color(0xFF7E8891),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RechargeTabs extends StatelessWidget {
-  const _RechargeTabs({required this.currency, required this.onChanged});
-
-  final _StoreCurrency currency;
-  final ValueChanged<_StoreCurrency> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _RechargeTabLabel(
-          label: '我的钞票',
-          selected: currency == _StoreCurrency.ticket,
-          onTap: () => onChanged(_StoreCurrency.ticket),
-        ),
-        const SizedBox(width: 36),
-        _RechargeTabLabel(
-          label: '我的积分',
-          selected: currency == _StoreCurrency.point,
-          onTap: () => onChanged(_StoreCurrency.point),
-        ),
-      ],
-    );
-  }
-}
-
-class _RechargeTabLabel extends StatelessWidget {
-  const _RechargeTabLabel({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Column(
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: AppColors.text,
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-              decoration: TextDecoration.none,
-            ),
-          ),
-          const SizedBox(height: 8),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: selected ? 42 : 0,
-            height: 3,
-            decoration: BoxDecoration(
-              color: AppColors.text,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RechargeHero extends StatelessWidget {
-  const _RechargeHero({
-    required this.currency,
-    required this.balance,
-    this.onAdRewardTap,
-  });
+class _RechargeBalanceCard extends StatelessWidget {
+  const _RechargeBalanceCard({required this.currency, required this.balance});
 
   final _StoreCurrency currency;
   final int balance;
-  final VoidCallback? onAdRewardTap;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
+    final w = _W2b.resolve(context);
     final accent = currency == _StoreCurrency.ticket
         ? const Color(0xFFFFC83D)
         : AppColors.accent;
     final label = currency == _StoreCurrency.ticket ? '钞票余额' : '积分余额';
-    final detailColor = isDark
-        ? AppColors.muted.withValues(alpha: 0.86)
-        : const Color(0xFF8B938F);
-    return SizedBox(
-      height: 300,
-      child: Stack(
+    return _GlassCard(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      radius: 22,
+      child: Row(
         children: [
-          Positioned.fill(
-            child: CustomPaint(painter: _RechargePatternPainter(color: accent)),
+          Container(
+            width: 64,
+            height: 64,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: accent.withValues(alpha: w.isDark ? 0.16 : 0.12),
+            ),
+            child: SizedBox(
+              width: 42,
+              height: 42,
+              child: CustomPaint(
+                painter: currency == _StoreCurrency.ticket
+                    ? _TicketStackPainter(
+                        labelColor: w.isDark ? w.ink : null,
+                        glowColor: accent,
+                      )
+                    : _PointCrystalPainter(
+                        sizeScale: 1.05,
+                        labelColor: w.isDark ? w.ink : null,
+                        glowColor: accent,
+                      ),
+              ),
+            ),
           ),
-          Align(
-            alignment: Alignment(0, onAdRewardTap == null ? 0.02 : -0.10),
+          const SizedBox(width: 14),
+          Expanded(
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _RechargeBalanceBadge(currency: currency, accent: accent),
-                const SizedBox(height: 14),
                 Text(
                   label,
                   style: TextStyle(
-                    color: isDark
-                        ? AppColors.text.withValues(alpha: 0.82)
-                        : AppColors.text,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    color: w.inkSoft,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
                     letterSpacing: 0,
                     decoration: TextDecoration.none,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Text(
                   '$balance',
                   style: TextStyle(
-                    color: isDark ? AppColors.text : Colors.black,
-                    fontSize: 44,
+                    color: w.ink,
+                    fontSize: 32,
+                    height: 1.05,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 0,
                     decoration: TextDecoration.none,
                   ),
                 ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.06)
-                        : Colors.white.withValues(alpha: 0.36),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.08)
-                          : Colors.white.withValues(alpha: 0.52),
-                    ),
-                  ),
-                  child: Text(
-                    '明细清单 ›',
-                    style: TextStyle(
-                      color: detailColor,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
-                      decoration: TextDecoration.none,
-                    ),
+                const SizedBox(height: 4),
+                Text(
+                  '明细清单 ›',
+                  style: TextStyle(
+                    color: w.inkFaint,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
                   ),
                 ),
               ],
             ),
           ),
-          if (onAdRewardTap != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: _AdRewardRow(onTap: onAdRewardTap!),
-            ),
         ],
       ),
     );
   }
 }
 
-class _RechargeBalanceBadge extends StatelessWidget {
-  const _RechargeBalanceBadge({required this.currency, required this.accent});
+class _StoreActionRow extends StatelessWidget {
+  const _StoreActionRow({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
-  final _StoreCurrency currency;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
-    return Container(
-      width: 128,
-      height: 96,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [
-            accent.withValues(alpha: isDark ? 0.18 : 0.13),
-            accent.withValues(alpha: 0),
-          ],
-        ),
-      ),
-      child: SizedBox(
-        width: 104,
-        height: 82,
-        child: CustomPaint(
-          painter: currency == _StoreCurrency.ticket
-              ? _TicketStackPainter(
-                  labelColor: isDark ? AppColors.text : null,
-                  glowColor: accent,
-                )
-              : _PointCrystalPainter(
-                  sizeScale: 1.16,
-                  labelColor: isDark ? AppColors.text : null,
-                  glowColor: accent,
-                ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AdRewardRow extends StatelessWidget {
-  const _AdRewardRow({required this.onTap});
-
+  final IconData icon;
+  final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
+    final w = _W2b.resolve(context);
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
       onPressed: onTap,
-      child: Container(
-        height: 54,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: AppColors.elevatedSurface(context, light: 0.72),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.glassBorder(context)),
-        ),
+      child: _GlassCard(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        radius: 18,
         child: Row(
           children: [
-            _CircleIcon(
-              icon: CupertinoIcons.play_rectangle_fill,
-              color: AppColors.accent,
-            ),
-            SizedBox(width: 12),
+            _CircleIcon(icon: icon, size: 36),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
-                '看广告得免费钞票',
+                label,
                 style: TextStyle(
-                  color: AppColors.text,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
+                  color: w.ink,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
                   letterSpacing: 0,
                   decoration: TextDecoration.none,
                 ),
               ),
             ),
-            Icon(
-              CupertinoIcons.chevron_right,
-              color: isDark ? AppColors.muted : const Color(0xFF7E8891),
-            ),
+            Icon(CupertinoIcons.chevron_right, color: w.inkFaint, size: 16),
           ],
         ),
       ),
@@ -403,14 +237,14 @@ class _RechargePackCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
+    final w = _W2b.resolve(context);
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
       onPressed: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
         decoration: BoxDecoration(
           color: selected
               ? AppColors.elevatedSurface(context, light: 0.96)
@@ -427,16 +261,16 @@ class _RechargePackCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _CurrencyIcon(currency: pack.currency, size: 20),
-                const SizedBox(width: 6),
+                _CurrencyIcon(currency: pack.currency, size: 16),
+                const SizedBox(width: 4),
                 Flexible(
                   child: Text(
                     '${pack.amount}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: isDark ? AppColors.text : const Color(0xFF3A4350),
-                      fontSize: 21,
+                      color: w.ink,
+                      fontSize: 18,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 0,
                       decoration: TextDecoration.none,
@@ -446,27 +280,17 @@ class _RechargePackCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 6),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (pack.currency == _StoreCurrency.point)
-                  const _CurrencyIcon(
-                    currency: _StoreCurrency.ticket,
-                    size: 14,
-                  ),
-                Text(
-                  pack.currency == _StoreCurrency.ticket
-                      ? '¥${pack.cost}'
-                      : '${pack.cost}',
-                  style: TextStyle(
-                    color: isDark ? AppColors.muted : const Color(0xFF7C858F),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-              ],
+            Text(
+              pack.currency == _StoreCurrency.ticket
+                  ? '¥${pack.cost}'
+                  : '${pack.cost} 钞票',
+              style: TextStyle(
+                color: selected ? const Color(0xFF4B9AFF) : w.inkSoft,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+                decoration: TextDecoration.none,
+              ),
             ),
           ],
         ),

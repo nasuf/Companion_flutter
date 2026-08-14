@@ -1,10 +1,21 @@
 part of 'package:companion_flutter/main.dart';
 
+const _exchangeTabs = [
+  _ExchangeCategory.gift,
+  _ExchangeCategory.blind,
+  _ExchangeCategory.outfit,
+];
+
+const _storeListFade = 28.0;
+
 class _ExchangeStoreView extends StatelessWidget {
   const _ExchangeStoreView({
     required this.points,
+    required this.isVip,
     required this.selectedCategory,
+    required this.selectedGiftSubcategory,
     required this.onCategoryChanged,
+    required this.onGiftSubcategoryChanged,
     required this.onRechargePoints,
     required this.onExchange,
     required this.isExchanging,
@@ -12,8 +23,11 @@ class _ExchangeStoreView extends StatelessWidget {
   });
 
   final int points;
+  final bool isVip;
   final _ExchangeCategory selectedCategory;
+  final _GiftSubcategory selectedGiftSubcategory;
   final ValueChanged<_ExchangeCategory> onCategoryChanged;
+  final ValueChanged<_GiftSubcategory> onGiftSubcategoryChanged;
   final VoidCallback onRechargePoints;
   final ValueChanged<_StoreProduct> onExchange;
   final bool Function(_StoreProduct product) isExchanging;
@@ -21,39 +35,85 @@ class _ExchangeStoreView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final products = _exchangeProducts
-        .where((item) => item.category == selectedCategory)
-        .toList();
-    return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
-      slivers: [
-        SliverPersistentHeader(
-          pinned: true,
-          delegate: _ExchangeCategoryHeaderDelegate(
-            selected: selectedCategory,
-            onSelected: onCategoryChanged,
+    final products = _exchangeProducts.where((item) {
+      if (item.category != selectedCategory) return false;
+      if (selectedCategory == _ExchangeCategory.gift) {
+        return item.giftSubcategory == selectedGiftSubcategory;
+      }
+      return true;
+    }).toList();
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: Column(
+              children: [
+                _ExchangeCategoryBar(
+                  selected: selectedCategory,
+                  onSelected: onCategoryChanged,
+                ),
+                if (selectedCategory == _ExchangeCategory.gift) ...[
+                  const SizedBox(height: 8),
+                  _GiftSubcategoryScroller(
+                    key: const ValueKey('gift-subs'),
+                    selected: selectedGiftSubcategory,
+                    onSelected: onGiftSubcategoryChanged,
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
-        SliverPadding(
-          padding: EdgeInsets.fromLTRB(20, 8, 20, bottomSpace),
-          sliver: SliverGrid.builder(
-            itemCount: products.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 14,
-              crossAxisSpacing: 14,
-              childAspectRatio: 0.78,
-            ),
-            itemBuilder: (context, index) {
-              final product = products[index];
-              return _ExchangeProductCard(
-                product: product,
-                affordable: product.price <= points,
-                onTap: () => onExchange(product),
-                onRechargePoints: onRechargePoints,
-                busy: isExchanging(product),
-              );
-            },
+        Expanded(
+          child: _StoreEdgeFade(
+            top: _storeListFade,
+            child: products.isEmpty
+                ? SizedBox.expand(
+                    child: Center(
+                      child: Text(
+                        '这个分类还没有商品',
+                        style: TextStyle(
+                          color: _W2b.resolve(context).inkSoft,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                  )
+                : GridView.builder(
+                    physics: const BouncingScrollPhysics(),
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      8,
+                      20,
+                      bottomSpace,
+                    ),
+                    itemCount: products.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          mainAxisSpacing: 14,
+                          crossAxisSpacing: 14,
+                          childAspectRatio: 0.70,
+                        ),
+                    itemBuilder: (context, index) {
+                      final product = products[index];
+                      final price = product.priceFor(isVip: isVip);
+                      return _ExchangeProductCard(
+                        product: product,
+                        isVip: isVip,
+                        affordable: price <= points,
+                        onTap: () => onExchange(product),
+                        onRechargePoints: onRechargePoints,
+                        busy: isExchanging(product),
+                      );
+                    },
+                  ),
           ),
         ),
       ],
@@ -73,7 +133,7 @@ class _ExchangeCategoryBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _StoreSegmentedLabelBar<_ExchangeCategory>(
-      values: _ExchangeCategory.values,
+      values: _exchangeTabs,
       selected: selected,
       labelFor: (category) => category.label,
       onSelected: onSelected,
@@ -87,88 +147,84 @@ class _StoreSegmentedLabelBar<T> extends StatelessWidget {
     required this.selected,
     required this.labelFor,
     required this.onSelected,
+    this.height = 46,
+    this.fontSize = 16,
   });
 
   final List<T> values;
   final T selected;
   final String Function(T value) labelFor;
   final ValueChanged<T> onSelected;
+  final double height;
+  final double fontSize;
 
   @override
   Widget build(BuildContext context) {
     final selectedIndex = math.max(0, values.indexOf(selected));
-    final isDark = AppColors.isDark(context);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(23),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          height: 46,
-          decoration: BoxDecoration(
-            color: AppColors.subtleFill(context, light: 0.64),
-            borderRadius: BorderRadius.circular(23),
-            border: Border.all(color: AppColors.glassBorder(context)),
-          ),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final width = constraints.maxWidth / values.length;
-              return Stack(
-                children: [
-                  AnimatedPositioned(
-                    duration: const Duration(milliseconds: 230),
-                    curve: Curves.easeOutCubic,
-                    left: selectedIndex * width + 3,
-                    top: 3,
-                    bottom: 3,
-                    width: width - 6,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? AppColors.surfaceMuted.withValues(alpha: 0.94)
-                            : Colors.white.withValues(alpha: 0.98),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.accent.withValues(alpha: 0.16),
-                            blurRadius: 14,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
+    final w = _W2b.resolve(context);
+    final radius = height / 2;
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: w.glass,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: w.glassBorder),
+        boxShadow: [w.pillShadow],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth / values.length;
+          return Stack(
+            children: [
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 230),
+                curve: Curves.easeOutCubic,
+                left: selectedIndex * width + 3,
+                top: 3,
+                bottom: 3,
+                width: width - 6,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: w.isDark
+                        ? const Color(0x24FFFFFF)
+                        : Colors.white.withValues(alpha: 0.98),
+                    borderRadius: BorderRadius.circular(radius - 3),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x474E9BFF),
+                        blurRadius: 14,
+                        offset: Offset(0, 6),
                       ),
-                    ),
+                    ],
                   ),
-                  Row(
-                    children: [
-                      for (final value in values)
-                        Expanded(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => onSelected(value),
-                            child: Center(
-                              child: Text(
-                                labelFor(value),
-                                style: TextStyle(
-                                  color: value == selected
-                                      ? AppColors.text
-                                      : (isDark
-                                            ? AppColors.muted
-                                            : const Color(0xFF596979)),
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 0,
-                                  decoration: TextDecoration.none,
-                                ),
-                              ),
+                ),
+              ),
+              Row(
+                children: [
+                  for (final value in values)
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => onSelected(value),
+                        child: Center(
+                          child: Text(
+                            labelFor(value),
+                            style: TextStyle(
+                              color: value == selected ? w.ink : w.inkSoft,
+                              fontSize: fontSize,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0,
+                              decoration: TextDecoration.none,
                             ),
                           ),
                         ),
-                    ],
-                  ),
+                      ),
+                    ),
                 ],
-              );
-            },
-          ),
-        ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -178,6 +234,7 @@ class _ExchangeProductCard extends StatelessWidget {
   const _ExchangeProductCard({
     required this.product,
     required this.affordable,
+    this.isVip = false,
     this.onTap,
     this.onRechargePoints,
     this.busy = false,
@@ -188,6 +245,7 @@ class _ExchangeProductCard extends StatelessWidget {
 
   final _StoreProduct product;
   final bool affordable;
+  final bool isVip;
   final VoidCallback? onTap;
   final VoidCallback? onRechargePoints;
   final bool busy;
@@ -197,53 +255,56 @@ class _ExchangeProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
+    final w = _W2b.resolve(context);
+    final price = product.priceFor(isVip: isVip);
     final priceBackground = affordable
-        ? (isDark
-              ? Color.lerp(AppColors.surfaceMuted, AppColors.accent, 0.18)!
-              : AppColors.text)
-        : (isDark
-              ? AppColors.surfaceMuted.withValues(alpha: 0.72)
+        ? (w.isDark
+              ? Color.lerp(const Color(0xFF1A2430), const Color(0xFF4B9AFF), 0.28)!
+              : const Color(0xFF12283F))
+        : (w.isDark
+              ? const Color(0x14FFFFFF)
               : const Color(0xFFEAF1F8));
-    final priceBorder = isDark
+    final priceBorder = w.isDark
         ? (affordable
-              ? AppColors.accent.withValues(alpha: 0.38)
-              : Colors.white.withValues(alpha: 0.10))
+              ? const Color(0xFF4B9AFF).withValues(alpha: 0.38)
+              : w.glassBorder)
         : Colors.transparent;
     final priceTextColor = affordable
-        ? (isDark ? AppColors.text : Colors.white)
-        : (isDark
-              ? AppColors.muted.withValues(alpha: 0.76)
-              : const Color(0xFF7B8792));
-    final iconHaloSize = compact ? 58.0 : 100.0;
-    final iconSize = compact ? 42.0 : 76.0;
+        ? (w.isDark ? w.ink : Colors.white)
+        : w.inkFaint;
+    final iconHaloSize = compact ? 58.0 : 88.0;
+    final iconPad = compact ? 8.0 : 12.0;
     return _GlassCard(
       padding: compact
           ? const EdgeInsets.fromLTRB(10, 12, 10, 10)
           : const EdgeInsets.fromLTRB(12, 14, 12, 12),
-      radius: compact ? 16 : 18,
+      radius: compact ? 16 : 22,
       child: Column(
         children: [
           Expanded(
             child: Stack(
-              clipBehavior: Clip.none,
               alignment: Alignment.center,
               children: [
                 Container(
                   width: iconHaloSize,
                   height: iconHaloSize,
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: AppColors.subtleFill(context, light: 0.82),
-                    border: Border.all(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.10)
-                          : AppColors.accent.withValues(alpha: 0.12),
+                    color: w.isDark
+                        ? const Color(0x14FFFFFF)
+                        : const Color(0xFFF4F7FC),
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.all(iconPad),
+                    child: _ExchangeProductIcon(
+                      product: product,
+                      size: iconHaloSize - iconPad * 2,
                     ),
                   ),
                 ),
-                _ExchangeProductIcon(product: product, size: iconSize),
-                if (product.badge != null && !compact)
+                if (!compact &&
+                    product.giftSubcategory == _GiftSubcategory.luxury)
                   Positioned(
                     top: 4,
                     left: 6,
@@ -256,9 +317,9 @@ class _ExchangeProductCard extends StatelessWidget {
                         color: const Color(0xFFFF8A8A),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(
-                        product.badge!,
-                        style: const TextStyle(
+                      child: const Text(
+                        '奢享',
+                        style: TextStyle(
                           color: Colors.white,
                           fontSize: 11,
                           fontWeight: FontWeight.w900,
@@ -271,13 +332,13 @@ class _ExchangeProductCard extends StatelessWidget {
               ],
             ),
           ),
-          SizedBox(height: compact ? 8 : 10),
+          SizedBox(height: compact ? 8 : 8),
           Text(
             product.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: AppColors.text,
+              color: w.ink,
               fontSize: compact ? 13 : 15,
               fontWeight: FontWeight.w900,
               letterSpacing: 0,
@@ -285,18 +346,34 @@ class _ExchangeProductCard extends StatelessWidget {
             ),
           ),
           SizedBox(height: compact ? 3 : 4),
-          Text(
-            compact && quantity != null ? 'x$quantity' : product.subtitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: isDark ? AppColors.muted : const Color(0xFF6A7784),
-              fontSize: compact ? 12 : 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0,
-              decoration: TextDecoration.none,
+          if (compact && quantity != null)
+            Text(
+              'x$quantity',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: w.inkSoft,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+                decoration: TextDecoration.none,
+              ),
+            )
+          else if (showPrice)
+            _ExchangePriceCaption(product: product, isVip: isVip)
+          else
+            Text(
+              product.subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: w.inkSoft,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+                decoration: TextDecoration.none,
+              ),
             ),
-          ),
           if (showPrice) ...[
             const SizedBox(height: 10),
             CupertinoButton(
@@ -311,19 +388,17 @@ class _ExchangeProductCard extends StatelessWidget {
                   border: Border.all(color: priceBorder),
                   boxShadow: [
                     if (affordable)
-                      BoxShadow(
-                        color: AppColors.accent.withValues(
-                          alpha: isDark ? 0.18 : 0.10,
-                        ),
+                      const BoxShadow(
+                        color: Color(0x334B9AFF),
                         blurRadius: 14,
-                        offset: const Offset(0, 7),
+                        offset: Offset(0, 7),
                       ),
                   ],
                 ),
                 child: Center(
                   child: busy
                       ? CupertinoActivityIndicator(color: priceTextColor)
-                      : product.price == 0
+                      : price == 0
                       ? Text(
                           '免费',
                           style: TextStyle(
@@ -343,7 +418,7 @@ class _ExchangeProductCard extends StatelessWidget {
                             ),
                             const SizedBox(width: 5),
                             Text(
-                              '${product.price}',
+                              '$price',
                               style: TextStyle(
                                 color: priceTextColor,
                                 fontSize: 15,
@@ -364,47 +439,293 @@ class _ExchangeProductCard extends StatelessWidget {
   }
 }
 
-class _ExchangeCategoryHeaderDelegate extends SliverPersistentHeaderDelegate {
-  const _ExchangeCategoryHeaderDelegate({
+class _ExchangePriceCaption extends StatelessWidget {
+  const _ExchangePriceCaption({required this.product, required this.isVip});
+
+  final _StoreProduct product;
+  final bool isVip;
+
+  @override
+  Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
+    if (product.memberPrice == product.listPrice) {
+      return Text(
+        product.subtitle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: w.inkSoft,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0,
+          decoration: TextDecoration.none,
+        ),
+      );
+    }
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          isVip ? '会员' : '会员价',
+          style: TextStyle(
+            color: const Color(0xFF4B9AFF),
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0,
+            decoration: TextDecoration.none,
+          ),
+        ),
+        const SizedBox(width: 3),
+        Text(
+          '${product.memberPrice}',
+          style: TextStyle(
+            color: isVip ? w.ink : const Color(0xFF4B9AFF),
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0,
+            decoration: TextDecoration.none,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '${product.listPrice}',
+          style: TextStyle(
+            color: w.inkFaint,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0,
+            decoration: TextDecoration.lineThrough,
+            decorationColor: w.inkFaint,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StoreEdgeFade extends StatelessWidget {
+  const _StoreEdgeFade({required this.child, required this.top});
+
+  final Widget child;
+  final double top;
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      blendMode: BlendMode.dstIn,
+      shaderCallback: (rect) {
+        final height = math.max(rect.height, 1.0);
+        final t = (top / height).clamp(0.0, 0.45);
+        return LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: const [
+            Color(0x00000000),
+            Color(0x59000000),
+            Color(0xFF000000),
+            Color(0xFF000000),
+          ],
+          stops: [0, t * 0.45, t, 1],
+        ).createShader(rect);
+      },
+      child: child,
+    );
+  }
+}
+
+class _GiftSubcategoryScroller extends StatefulWidget {
+  const _GiftSubcategoryScroller({
+    super.key,
     required this.selected,
     required this.onSelected,
   });
 
-  final _ExchangeCategory selected;
-  final ValueChanged<_ExchangeCategory> onSelected;
+  final _GiftSubcategory selected;
+  final ValueChanged<_GiftSubcategory> onSelected;
 
   @override
-  double get minExtent => 64;
+  State<_GiftSubcategoryScroller> createState() =>
+      _GiftSubcategoryScrollerState();
+}
+
+class _GiftSubcategoryScrollerState extends State<_GiftSubcategoryScroller> {
+  final _controller = ScrollController();
+  late final List<GlobalKey> _itemKeys;
 
   @override
-  double get maxExtent => 64;
+  void initState() {
+    super.initState();
+    _itemKeys = [
+      for (var i = 0; i < _GiftSubcategory.values.length; i++) GlobalKey(),
+    ];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncScroll(peekNeighbors: true);
+    });
+  }
 
   @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    final isDark = AppColors.isDark(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Color.lerp(
-          AppColors.page,
-          AppColors.accent,
-          isDark ? 0.08 : 0.05,
-        )!.withValues(alpha: isDark ? 0.94 : 0.86),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
-        child: _ExchangeCategoryBar(selected: selected, onSelected: onSelected),
-      ),
+  void didUpdateWidget(covariant _GiftSubcategoryScroller oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selected != widget.selected) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _syncScroll(peekNeighbors: true);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _syncScroll({required bool peekNeighbors}) {
+    if (!mounted || !_controller.hasClients) return;
+    final position = _controller.position;
+    if (!position.hasViewportDimension) return;
+
+    final listBox = context.findRenderObject() as RenderBox?;
+    if (listBox == null) return;
+
+    final viewport = position.viewportDimension;
+    final n = _GiftSubcategory.values.length;
+    final starts = List<double?>.filled(n, null);
+    final widths = List<double?>.filled(n, null);
+    for (var i = 0; i < n; i++) {
+      final box = _itemKeys[i].currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) continue;
+      final dx = box.localToGlobal(Offset.zero, ancestor: listBox).dx;
+      starts[i] = position.pixels + dx;
+      widths[i] = box.size.width;
+    }
+
+    bool mostlyVisible(int i) {
+      final start = starts[i];
+      final width = widths[i];
+      if (start == null || width == null || width <= 0) return false;
+      final localStart = start - position.pixels;
+      final localEnd = localStart + width;
+      final visible = math.min(localEnd, viewport) - math.max(localStart, 0);
+      return visible >= width * 0.55;
+    }
+
+    int? firstVisible;
+    int? lastVisible;
+    for (var i = 0; i < n; i++) {
+      if (!mostlyVisible(i)) continue;
+      firstVisible ??= i;
+      lastVisible = i;
+    }
+
+    final index = _GiftSubcategory.values.indexOf(widget.selected);
+    if (index < 0 || starts[index] == null || widths[index] == null) return;
+
+    final localStart = starts[index]! - position.pixels;
+    int? revealIndex;
+    var alignEnd = false;
+    if (!mostlyVisible(index)) {
+      final clippedLeft = localStart < 0;
+      if (clippedLeft) {
+        revealIndex = peekNeighbors && index > 0 ? index - 1 : index;
+        alignEnd = false;
+      } else {
+        revealIndex = peekNeighbors && index < n - 1 ? index + 1 : index;
+        alignEnd = true;
+      }
+    } else if (peekNeighbors) {
+      if (lastVisible != null && index >= lastVisible && index < n - 1) {
+        revealIndex = index + 1;
+        alignEnd = true;
+      } else if (firstVisible != null && index <= firstVisible && index > 0) {
+        revealIndex = index - 1;
+        alignEnd = false;
+      }
+    }
+    if (revealIndex == null) return;
+    final start = starts[revealIndex];
+    final width = widths[revealIndex];
+    if (start == null || width == null) return;
+
+    const leadingPad = 10.0;
+    const trailingPad = 10.0;
+    final target = alignEnd
+        ? start + width + trailingPad - viewport
+        : start - leadingPad;
+    _controller.animateTo(
+      target.clamp(position.minScrollExtent, position.maxScrollExtent),
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
     );
   }
 
   @override
-  bool shouldRebuild(_ExchangeCategoryHeaderDelegate oldDelegate) {
-    return selected != oldDelegate.selected ||
-        onSelected != oldDelegate.onSelected;
+  Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
+    return SizedBox(
+      height: 38,
+      child: SingleChildScrollView(
+        controller: _controller,
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        clipBehavior: Clip.none,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var index = 0; index < _GiftSubcategory.values.length; index++) ...[
+              if (index > 0) const SizedBox(width: 8),
+              GestureDetector(
+                key: _itemKeys[index],
+                onTap: () =>
+                    widget.onSelected(_GiftSubcategory.values[index]),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    gradient: _GiftSubcategory.values[index] == widget.selected
+                        ? const LinearGradient(
+                            colors: [Color(0xFF4B9AFF), Color(0xFF8ABAFF)],
+                          )
+                        : LinearGradient(
+                            colors: [w.hourPillTop, w.hourPillBottom],
+                          ),
+                    border: Border.all(
+                      color: _GiftSubcategory.values[index] == widget.selected
+                          ? Colors.transparent
+                          : w.hourPillBorder,
+                    ),
+                    boxShadow: _GiftSubcategory.values[index] == widget.selected
+                        ? const [
+                            BoxShadow(
+                              color: Color(0x474E9BFF),
+                              blurRadius: 12,
+                              offset: Offset(0, 6),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Center(
+                    child: Text(
+                      _GiftSubcategory.values[index].label,
+                      style: TextStyle(
+                        color:
+                            _GiftSubcategory.values[index] == widget.selected
+                            ? Colors.white
+                            : w.inkSoft,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -418,18 +739,16 @@ class _ExchangeProductIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final asset = product.imageAsset;
     if (asset == null) {
-      return _ExchangeProductIconFallback(product: product);
+      return _ExchangeProductIconFallback(product: product, size: size);
     }
-    return SizedBox(
+    return Image.asset(
+      asset,
       width: size,
       height: size,
-      child: Image.asset(
-        asset,
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.medium,
-        errorBuilder: (_, __, ___) =>
-            _ExchangeProductIconFallback(product: product, size: size),
-      ),
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (_, __, ___) =>
+          _ExchangeProductIconFallback(product: product, size: size),
     );
   }
 }
@@ -445,8 +764,13 @@ class _ExchangeProductIconFallback extends StatelessWidget {
     return CustomPaint(
       size: Size(size, size),
       painter: _StoreItemIconPainter(
-        kind: product.kind,
         accent: AppColors.accent,
+        icon: switch (product.category) {
+          _ExchangeCategory.blind => CupertinoIcons.cube_box_fill,
+          _ExchangeCategory.outfit => CupertinoIcons.paintbrush_fill,
+          _ExchangeCategory.bundle => CupertinoIcons.music_note_2,
+          _ => CupertinoIcons.gift_fill,
+        },
       ),
     );
   }

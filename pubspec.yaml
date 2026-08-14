@@ -118,6 +118,10 @@ flutter:
     - assets/weather/
     - assets/capsule/
     - assets/store/icons/
+    - assets/store/gifts/
+    - assets/store/blinds/
+    - assets/store/outfits/
+    - assets/store/bundles/
     - assets/legal/
     - assets/data/china_regions.json
 
