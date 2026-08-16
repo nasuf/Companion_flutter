@@ -372,29 +372,32 @@ class _WeatherHome extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final today = forecast.days.first;
-    return ListView(
-      padding: EdgeInsets.fromLTRB(20, 18, 20, bottomPadding + 34),
-      physics: const BouncingScrollPhysics(),
-      children: [
-        _WeatherTopBar(
-          location: forecast.location,
-          agentName: agentName,
-          isRefreshing: isRefreshing,
-          onBack: onBack,
-        ),
-        const SizedBox(height: 28),
-        _WeatherHeroCard(
-          day: today,
-          current: forecast.current,
-          progress: progress,
-        ),
-        const SizedBox(height: 36),
-        _WeatherMetricGrid(day: today, current: forecast.current),
-        const SizedBox(height: 36),
-        _TodayHourlyHeader(onShowFuture: onShowFuture),
-        const SizedBox(height: 16),
-        _HourlyWeatherStrip(day: today),
-      ],
+    // 整屏不滚动：Column 填满可视区，各区块之间用弹性 Spacer 分配剩余空间，
+    // 屏幕越高越透气、越矮越紧凑，保证所有元素同屏、互不重叠。
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 12, 20, bottomPadding + 20),
+      child: Column(
+        children: [
+          _WeatherTopBar(
+            location: forecast.location,
+            agentName: agentName,
+            isRefreshing: isRefreshing,
+            onBack: onBack,
+          ),
+          const Spacer(flex: 3),
+          _WeatherHeroCard(
+            day: today,
+            current: forecast.current,
+            progress: progress,
+          ),
+          const Spacer(flex: 3),
+          _WeatherMetricGrid(day: today, current: forecast.current),
+          const Spacer(flex: 2),
+          _TodayHourlyHeader(onShowFuture: onShowFuture),
+          const SizedBox(height: 14),
+          _HourlyWeatherStrip(day: today),
+        ],
+      ),
     );
   }
 }
@@ -855,15 +858,17 @@ class _WeatherHeroCard extends StatelessWidget {
         '${day.minTemperature.round()}–${day.maxTemperature.round()}°';
 
     // Spec 2b「大背景模式」：不再包蓝色卡片，内容直接落在柔光渐层上。
+    // mainAxisSize.min：作为外层 Column 的非弹性子项，只占内容高度。
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          width: 150,
-          height: 150,
+          width: 124,
+          height: 124,
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // design 稿里图标背后的 150px 柔光（浅色=白，深色=蓝）。
+              // 图标背后的柔光（浅色=白，深色=蓝）。
               Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
@@ -877,14 +882,14 @@ class _WeatherHeroCard extends StatelessWidget {
                 child: _AnimatedWeatherIcon(
                   weatherCode: snapshot.weatherCode,
                   hour: DateTime.now().hour,
-                  size: 124,
+                  size: 102,
                   progress: progress,
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 2),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -893,19 +898,19 @@ class _WeatherHeroCard extends StatelessWidget {
               '$temp',
               style: TextStyle(
                 color: w.ink,
-                fontSize: 96,
+                fontSize: 80,
                 height: 0.8,
                 fontWeight: FontWeight.w200,
-                letterSpacing: -5,
+                letterSpacing: -4,
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(top: 10, left: 4),
+              padding: const EdgeInsets.only(top: 8, left: 4),
               child: Text(
                 '°',
                 style: TextStyle(
                   color: w.ink,
-                  fontSize: 30,
+                  fontSize: 26,
                   height: 1,
                   fontWeight: FontWeight.w200,
                 ),
@@ -913,7 +918,7 @@ class _WeatherHeroCard extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
         Wrap(
           alignment: WrapAlignment.center,
           spacing: 8,
@@ -924,7 +929,7 @@ class _WeatherHeroCard extends StatelessWidget {
             _WeatherHeroChip(label: range),
           ],
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 14),
         Text(
           mood.replaceAll('\n', ''),
           textAlign: TextAlign.center,
