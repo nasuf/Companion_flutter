@@ -202,10 +202,10 @@ class _RechargeBalanceBadge extends StatelessWidget {
             )
           : Image.asset(
               'assets/store/icons/point_coin.png',
-              width: 66,
-              height: 66,
+              width: 53,
+              height: 53,
               fit: BoxFit.contain,
-              filterQuality: FilterQuality.medium,
+              filterQuality: FilterQuality.high,
             ),
     );
   }

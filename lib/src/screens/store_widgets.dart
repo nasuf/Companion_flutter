@@ -29,12 +29,9 @@ class _StoreTopBar extends StatelessWidget {
                 ),
               ),
             ),
-            Align(
+            const Align(
               alignment: Alignment.centerLeft,
-              child: _AppNavCircleButton(
-                icon: CupertinoIcons.chevron_left,
-                onPressed: () => Navigator.of(context).maybePop(),
-              ),
+              child: _StoreBackButton(),
             ),
             Align(
               alignment: Alignment.centerRight,
@@ -48,6 +45,33 @@ class _StoreTopBar extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _StoreBackButton extends StatelessWidget {
+  const _StoreBackButton();
+
+  @override
+  Widget build(BuildContext context) {
+    // Same chevron as weather: ink at 20pt inside a 36 glass circle.
+    final w = _W2b.resolve(context);
+    return CupertinoButton(
+      minimumSize: Size.zero,
+      padding: EdgeInsets.zero,
+      onPressed: () => Navigator.of(context).maybePop(),
+      child: Container(
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: w.glass,
+          shape: BoxShape.circle,
+          border: Border.all(color: w.glassBorder),
+          boxShadow: [w.pillShadow],
+        ),
+        child: Icon(CupertinoIcons.chevron_left, color: w.ink, size: 20),
       ),
     );
   }
@@ -370,7 +394,7 @@ class _CurrencyIcon extends StatelessWidget {
         width: size,
         height: size,
         fit: BoxFit.contain,
-        filterQuality: FilterQuality.medium,
+        filterQuality: FilterQuality.high,
       );
     }
     return CustomPaint(
