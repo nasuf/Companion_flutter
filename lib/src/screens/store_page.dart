@@ -15,7 +15,7 @@ class _StorePageState extends State<StorePage> {
   _ExchangeCategory _exchangeCategory = _ExchangeCategory.gift;
   _GiftSubcategory _giftSubcategory = _GiftSubcategory.drink;
   _StoreCurrency _rechargeCurrency = _StoreCurrency.ticket;
-  int _selectedPlan = 1;
+  int _selectedPlan = 0; // 默认选中「连续包月（特惠推荐）」
   int _selectedRecharge = 0;
   bool _isVip = false;
   bool _vipTrialAvailable = true;
@@ -260,9 +260,14 @@ class _StorePageState extends State<StorePage> {
       builder: (context) {
         return CupertinoAlertDialog(
           title: const Text('钞票不足'),
-          content: const Text('请先在“我的钞票”里充值，再兑换积分。'),
+          content: const Text('当前钞票余额不足，去充值后即可购买。'),
           actions: [
             CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
               onPressed: () {
                 Navigator.of(context).pop();
                 _openRechargeTickets();
@@ -315,9 +320,8 @@ class _StorePageState extends State<StorePage> {
                 child: Column(
                   children: [
                     _StoreTopBar(
-                      title: _section == _StoreSection.subscription
-                          ? '会员中心'
-                          : '商城',
+                      // 标题即当前底部 tab 的名字（订阅 / 礼包 / 兑换 / 充值）。
+                      title: _section.label,
                       trailing: _section == _StoreSection.exchange
                           ? _StoreBalancePill(
                               amount: wallet.pointBalance,
@@ -335,7 +339,8 @@ class _StorePageState extends State<StorePage> {
                     Expanded(
                       child: PageView(
                         controller: _sectionController,
-                        physics: const BouncingScrollPhysics(),
+                        // 分区只能靠底部 tab 点击切换，禁止左右滑动。
+                        physics: const NeverScrollableScrollPhysics(),
                         onPageChanged: (index) {
                           final section = _StoreSection.values[index];
                           if (_section != section) {
@@ -388,7 +393,7 @@ class _StorePageState extends State<StorePage> {
         vipTrialAvailable: _vipTrialAvailable,
         onBuy: _handleBuyBundle,
         isBuying: (offer) => _buyingBundles.contains(offer.kind),
-        onRechargeTickets: _openRechargeTickets,
+        onInsufficientTickets: _showInsufficientTickets,
         bottomSpace: bottomSpace,
       ),
       _StoreSection.exchange => _ExchangeStoreView(
@@ -453,19 +458,26 @@ class _StorePageState extends State<StorePage> {
     setState(() => _buyingBundles.add(offer.kind));
     try {
       final result = await widget.api.purchaseStoreBundle(
-        bundleKind: offer.kind == _BundleKind.music
-            ? 'music_coupon'
-            : 'game_points',
+        bundleKind: switch (offer.kind) {
+          _BundleKind.music => 'music_coupon',
+          _BundleKind.makeup => 'makeup_card',
+          _ => 'game_points',
+        },
         tierId: tier.id,
       );
       if (!mounted) return;
       setState(() => _walletFuture = Future.value(result.wallet));
-      if (offer.kind == _BundleKind.music) {
-        _showToast(
-          '已放入背包：音乐畅听券 x${result.inventoryItem?.quantity ?? tier.grantAmount}',
-        );
-      } else {
-        _showToast('已发放 ${tier.grantAmount} 游戏积分');
+      switch (offer.kind) {
+        case _BundleKind.music:
+          _showToast(
+            '已放入背包：音乐畅听券 x${result.inventoryItem?.quantity ?? tier.grantAmount}',
+          );
+        case _BundleKind.makeup:
+          _showToast(
+            '已放入背包：补签卡 x${result.inventoryItem?.quantity ?? tier.grantAmount}',
+          );
+        default:
+          _showToast('已发放 ${tier.grantAmount} 游戏积分');
       }
     } on ApiException catch (error) {
       if (!mounted) return;

@@ -18,6 +18,11 @@ const _gameBundleTiers = [
   _BundleTier(id: '500', label: '500点', ticketPrice: 80, grantAmount: 500),
 ];
 
+// 补签卡：单档，1 张 30 钞票。单档礼包不显示分段选择器。
+const _makeupBundleTiers = [
+  _BundleTier(id: 'makeup_1', label: '1张', ticketPrice: 30, grantAmount: 1),
+];
+
 const _bundleOffers = [
   _BundleOffer(
     kind: _BundleKind.music,
@@ -34,6 +39,14 @@ const _bundleOffers = [
     imageAsset: '$_storeBundlePath/game.png',
     accent: Color(0xFF6E83FF),
     tiers: _gameBundleTiers,
+  ),
+  _BundleOffer(
+    kind: _BundleKind.makeup,
+    title: '补签卡',
+    subtitle: '使用补签卡，即可补回遗漏的连续互动天数。',
+    imageAsset: '$_storeBundlePath/makeup.png',
+    accent: Color(0xFFE0A73C),
+    tiers: _makeupBundleTiers,
   ),
   _BundleOffer(
     kind: _BundleKind.vip,

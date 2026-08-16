@@ -30,152 +30,200 @@ class _RechargeStoreView extends StatelessWidget {
     final balance = currency == _StoreCurrency.ticket
         ? ticketBalance
         : pointBalance;
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(20, 8, 20, bottomSpace),
+    // 钞票黄 / 积分蓝：背景方块网格与余额徽标都跟随它。
+    final accent = currency == _StoreCurrency.ticket
+        ? const Color(0xFFFFC83D)
+        : _kStoreBlue;
+    return Stack(
       children: [
-        _StoreSegmentedLabelBar<_StoreCurrency>(
-          values: const [_StoreCurrency.ticket, _StoreCurrency.point],
-          selected: currency,
-          labelFor: (value) =>
-              value == _StoreCurrency.ticket ? '我的钞票' : '我的积分',
-          onSelected: onCurrencyChanged,
+        // 铺满整页的方块网格背景，按当前币种上色（回归改版前风格）。
+        Positioned.fill(
+          child: CustomPaint(painter: _RechargePatternPainter(color: accent)),
         ),
-        const SizedBox(height: 14),
-        _RechargeBalanceCard(currency: currency, balance: balance),
-        if (currency == _StoreCurrency.ticket) ...[
-          const SizedBox(height: 10),
-          _StoreActionRow(
-            icon: CupertinoIcons.play_rectangle_fill,
-            label: '看广告得免费钞票',
-            onTap: () {},
-          ),
-        ],
-        const SizedBox(height: 16),
-        GridView.builder(
-          shrinkWrap: true,
+        ListView(
+          // 内容收紧到一屏容纳，禁止整页滚动。
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: packs.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childAspectRatio: 1.12,
-          ),
-          itemBuilder: (context, index) {
-            final pack = packs[index];
-            return _RechargePackCard(
-              pack: pack,
-              selected: selectedIndex == index,
-              onTap: () => onSelectPack(index),
-            );
-          },
+          padding: EdgeInsets.fromLTRB(20, 6, 20, bottomSpace),
+          children: [
+            _StoreSegmentedLabelBar<_StoreCurrency>(
+              values: const [_StoreCurrency.ticket, _StoreCurrency.point],
+              selected: currency,
+              labelFor: (value) =>
+                  value == _StoreCurrency.ticket ? '我的钞票' : '我的积分',
+              onSelected: onCurrencyChanged,
+            ),
+            const SizedBox(height: 6),
+            // 余额：大标题 + 加粗数字，居中，不再包卡片。
+            _RechargeBalance(
+              currency: currency,
+              balance: balance,
+              accent: accent,
+            ),
+            const SizedBox(height: 10),
+            // 两个入口都固定在套餐上方，位置在两个 tab 之间保持一致。
+            if (currency == _StoreCurrency.ticket)
+              _StoreActionRow(
+                icon: CupertinoIcons.play_rectangle_fill,
+                label: '看广告得免费钞票',
+                onTap: () {},
+              )
+            else if (onConvertGamePoints != null)
+              _StoreActionRow(
+                icon: CupertinoIcons.gamecontroller_fill,
+                label: '用游戏积分兑换积分',
+                onTap: onConvertGamePoints!,
+              ),
+            const SizedBox(height: 12),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: packs.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 1.24,
+              ),
+              itemBuilder: (context, index) {
+                final pack = packs[index];
+                return _RechargePackCard(
+                  pack: pack,
+                  selected: selectedIndex == index,
+                  onTap: () => onSelectPack(index),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            _StorePrimaryButton(
+              label: currency == _StoreCurrency.ticket ? '立即充值' : '立即兑换',
+              onPressed: onSubmit,
+            ),
+          ],
         ),
-        const SizedBox(height: 22),
-        _StorePrimaryButton(
-          label: currency == _StoreCurrency.ticket ? '立即充值' : '立即兑换',
-          onPressed: onSubmit,
-        ),
-        if (currency == _StoreCurrency.point && onConvertGamePoints != null) ...[
-          const SizedBox(height: 10),
-          _StoreActionRow(
-            icon: CupertinoIcons.gamecontroller_fill,
-            label: '用游戏积分兑换积分',
-            onTap: onConvertGamePoints!,
-          ),
-        ],
       ],
     );
   }
 }
 
-class _RechargeBalanceCard extends StatelessWidget {
-  const _RechargeBalanceCard({required this.currency, required this.balance});
+/// 居中的余额区：大徽标 + 「余额」标题 + 加粗数字 + 明细清单药丸。不用卡片。
+class _RechargeBalance extends StatelessWidget {
+  const _RechargeBalance({
+    required this.currency,
+    required this.balance,
+    required this.accent,
+  });
 
   final _StoreCurrency currency;
   final int balance;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
     final w = _W2b.resolve(context);
-    final accent = currency == _StoreCurrency.ticket
-        ? const Color(0xFFFFC83D)
-        : AppColors.accent;
     final label = currency == _StoreCurrency.ticket ? '钞票余额' : '积分余额';
-    return _GlassCard(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      radius: 22,
-      child: Row(
-        children: [
-          Container(
-            width: 64,
-            height: 64,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: accent.withValues(alpha: w.isDark ? 0.16 : 0.12),
-            ),
-            child: SizedBox(
-              width: 42,
-              height: 42,
-              child: CustomPaint(
-                painter: currency == _StoreCurrency.ticket
-                    ? _TicketStackPainter(
-                        labelColor: w.isDark ? w.ink : null,
-                        glowColor: accent,
-                      )
-                    : _PointCrystalPainter(
-                        sizeScale: 1.05,
-                        labelColor: w.isDark ? w.ink : null,
-                        glowColor: accent,
-                      ),
-              ),
-            ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _RechargeBalanceBadge(currency: currency, accent: accent),
+        const SizedBox(height: 10),
+        Text(
+          label,
+          style: TextStyle(
+            color: w.isDark ? w.ink : const Color(0xFF16181C),
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0,
+            decoration: TextDecoration.none,
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: w.inkSoft,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '$balance',
-                  style: TextStyle(
-                    color: w.ink,
-                    fontSize: 32,
-                    height: 1.05,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '明细清单 ›',
-                  style: TextStyle(
-                    color: w.inkFaint,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-              ],
-            ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '$balance',
+          style: TextStyle(
+            color: w.isDark ? w.ink : Colors.black,
+            fontSize: 44,
+            height: 1.05,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0,
+            decoration: TextDecoration.none,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
-        ],
-      ),
+        ),
+      ],
     );
+  }
+}
+
+/// 余额上方的大徽标：柔光圆底 + 大图标（钞票堆叠 / 积分金币）。
+class _RechargeBalanceBadge extends StatelessWidget {
+  const _RechargeBalanceBadge({required this.currency, required this.accent});
+
+  final _StoreCurrency currency;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
+    return Container(
+      width: 116,
+      height: 80,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [
+            accent.withValues(alpha: w.isDark ? 0.18 : 0.13),
+            accent.withValues(alpha: 0),
+          ],
+        ),
+      ),
+      child: currency == _StoreCurrency.ticket
+          ? SizedBox(
+              width: 92,
+              height: 72,
+              child: CustomPaint(
+                painter: _TicketStackPainter(
+                  labelColor: w.isDark ? w.ink : null,
+                  glowColor: accent,
+                ),
+              ),
+            )
+          : Image.asset(
+              'assets/store/icons/point_coin.png',
+              width: 66,
+              height: 66,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.medium,
+            ),
+    );
+  }
+}
+
+/// 改版前的方块网格背景，按币种上色（钞票黄 / 积分蓝）。
+class _RechargePatternPainter extends CustomPainter {
+  const _RechargePatternPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color.withValues(alpha: 0.08);
+    for (var y = 18.0; y < size.height; y += 44) {
+      for (var x = 8.0; x < size.width; x += 44) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(x, y, 24, 30),
+            const Radius.circular(8),
+          ),
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _RechargePatternPainter oldDelegate) {
+    return oldDelegate.color != color;
   }
 }
 
@@ -245,15 +293,15 @@ class _RechargePackCard extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        // 与其它页一致的玻璃卡：中性玻璃底 + 玻璃描边 + 面板投影；选中改深蓝描边。
         decoration: BoxDecoration(
-          color: selected
-              ? AppColors.elevatedSurface(context, light: 0.96)
-              : AppColors.subtleFill(context, light: 0.62),
+          color: w.glass,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: selected ? AppColors.accent : AppColors.glassBorder(context),
+            color: selected ? _kStoreBlue : w.glassBorder,
             width: selected ? 2.3 : 1,
           ),
+          boxShadow: w.panelShadow,
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -285,7 +333,8 @@ class _RechargePackCard extends StatelessWidget {
                   ? '¥${pack.cost}'
                   : '${pack.cost} 钞票',
               style: TextStyle(
-                color: selected ? const Color(0xFF4B9AFF) : w.inkSoft,
+                // 选中只改边框，金额/价格颜色保持不变。
+                color: w.inkSoft,
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0,

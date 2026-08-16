@@ -38,39 +38,6 @@ class _TicketMiniPainter extends CustomPainter {
   bool shouldRepaint(covariant _TicketMiniPainter oldDelegate) => false;
 }
 
-class _PointMiniPainter extends CustomPainter {
-  const _PointMiniPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final path = Path()
-      ..moveTo(center.dx, size.height * 0.04)
-      ..lineTo(size.width * 0.90, size.height * 0.34)
-      ..lineTo(size.width * 0.70, size.height * 0.92)
-      ..lineTo(size.width * 0.24, size.height * 0.86)
-      ..lineTo(size.width * 0.08, size.height * 0.30)
-      ..close();
-    canvas.drawPath(
-      path,
-      Paint()
-        ..shader = const LinearGradient(
-          colors: [Color(0xFFFF8ABB), Color(0xFF8DEBFF), Color(0xFFFFD6EA)],
-        ).createShader(Offset.zero & size),
-    );
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.70)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _PointMiniPainter oldDelegate) => false;
-}
-
 class _TicketStackPainter extends CustomPainter {
   const _TicketStackPainter({this.labelColor, this.glowColor});
 
@@ -134,84 +101,6 @@ class _TicketStackPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _TicketStackPainter oldDelegate) {
     return oldDelegate.labelColor != labelColor ||
-        oldDelegate.glowColor != glowColor;
-  }
-}
-
-class _PointCrystalPainter extends CustomPainter {
-  const _PointCrystalPainter({
-    this.sizeScale = 1,
-    this.labelColor,
-    this.glowColor,
-  });
-
-  final double sizeScale;
-  final Color? labelColor;
-  final Color? glowColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (glowColor != null) {
-      final glowRect = Rect.fromCenter(
-        center: Offset(size.width / 2, size.height / 2),
-        width: size.width,
-        height: size.height,
-      );
-      canvas.drawOval(
-        glowRect,
-        Paint()
-          ..shader = RadialGradient(
-            colors: [
-              glowColor!.withValues(alpha: 0.18),
-              glowColor!.withValues(alpha: 0),
-            ],
-          ).createShader(glowRect),
-      );
-    }
-    canvas.save();
-    canvas.translate(
-      size.width * (1 - sizeScale) / 2,
-      size.height * (1 - sizeScale) / 2,
-    );
-    canvas.scale(sizeScale);
-    if (labelColor == null) {
-      const mini = _PointMiniPainter();
-      mini.paint(canvas, size);
-    } else {
-      final center = Offset(size.width / 2, size.height / 2);
-      final path = Path()
-        ..moveTo(center.dx, size.height * 0.04)
-        ..lineTo(size.width * 0.90, size.height * 0.34)
-        ..lineTo(size.width * 0.70, size.height * 0.92)
-        ..lineTo(size.width * 0.24, size.height * 0.86)
-        ..lineTo(size.width * 0.08, size.height * 0.30)
-        ..close();
-      canvas.drawPath(
-        path,
-        Paint()
-          ..shader = LinearGradient(
-            colors: [
-              Color.lerp(labelColor!, const Color(0xFFFF8ABB), 0.34)!,
-              const Color(0xFF8DEBFF),
-              Color.lerp(labelColor!, const Color(0xFFFFD6EA), 0.30)!,
-            ],
-          ).createShader(Offset.zero & size),
-      );
-      canvas.drawPath(
-        path,
-        Paint()
-          ..color = labelColor!.withValues(alpha: 0.70)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.2,
-      );
-    }
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _PointCrystalPainter oldDelegate) {
-    return oldDelegate.sizeScale != sizeScale ||
-        oldDelegate.labelColor != labelColor ||
         oldDelegate.glowColor != glowColor;
   }
 }

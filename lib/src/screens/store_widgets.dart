@@ -8,43 +8,43 @@ class _StoreTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 用 Stack 让标题相对整条栏真正居中：左右两侧控件宽度不同（返回键 vs
+    // 记录/余额），放在 Row 里居中会被挤偏。
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 10, 18, 6),
       child: SizedBox(
         height: 46,
-        child: Row(
+        child: Stack(
+          alignment: Alignment.center,
           children: [
-            _AppNavCircleButton(
-              icon: CupertinoIcons.chevron_left,
-              onPressed: () => Navigator.of(context).maybePop(),
-            ),
-            Expanded(
-              child: Center(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
-                  ),
+            Center(
+              child: Text(
+                title,
+                style: TextStyle(
+                  color: AppColors.text,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0,
+                  decoration: TextDecoration.none,
                 ),
               ),
             ),
-            ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 58),
-              child: Align(
-                alignment: Alignment.centerRight,
-                widthFactor: 1,
-                child:
-                    trailing ??
-                    Icon(
-                      CupertinoIcons.doc_text,
-                      color: AppColors.text,
-                      size: 27,
-                    ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _AppNavCircleButton(
+                icon: CupertinoIcons.chevron_left,
+                onPressed: () => Navigator.of(context).maybePop(),
               ),
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child:
+                  trailing ??
+                  Icon(
+                    CupertinoIcons.doc_text,
+                    color: AppColors.text,
+                    size: 27,
+                  ),
             ),
           ],
         ),
@@ -73,7 +73,8 @@ class _StoreBalancePill extends StatelessWidget {
       onPressed: onTap,
       child: Container(
         height: 30,
-        constraints: const BoxConstraints(minWidth: 44),
+        // 固定宽度：钞票 / 积分两个药丸宽度一致，且默认容得下 6 位数不变形。
+        width: 108,
         padding: const EdgeInsets.only(left: 7, right: 5),
         decoration: BoxDecoration(
           color: w.glass,
@@ -82,21 +83,27 @@ class _StoreBalancePill extends StatelessWidget {
           boxShadow: [w.pillShadow],
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
             _CurrencyIcon(currency: currency, size: 18),
-            const SizedBox(width: 5),
-            Text(
-              '$amount',
-              style: TextStyle(
-                color: w.ink,
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0,
-                decoration: TextDecoration.none,
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  '$amount',
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: w.ink,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
               ),
             ),
-            const SizedBox(width: 3),
             Icon(
               CupertinoIcons.add_circled_solid,
               size: 18,
@@ -151,7 +158,7 @@ class _StoreBottomBar extends StatelessWidget {
                         : Colors.white.withValues(alpha: 0.94),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0x474E9BFF),
+                        color: _kStoreBlue.withValues(alpha: 0.28),
                         blurRadius: 16,
                         offset: const Offset(0, 8),
                       ),
@@ -206,7 +213,7 @@ class _StoreNavItem extends StatelessWidget {
               Icon(
                 item.icon,
                 size: 23,
-                color: selected ? const Color(0xFF4B9AFF) : inactive,
+                color: selected ? _kStoreBlue : inactive,
               ),
               const SizedBox(height: 4),
               Text(
@@ -230,10 +237,15 @@ class _StoreNavItem extends StatelessWidget {
 }
 
 class _StorePrimaryButton extends StatelessWidget {
-  const _StorePrimaryButton({required this.label, required this.onPressed});
+  const _StorePrimaryButton({
+    required this.label,
+    required this.onPressed,
+    this.height = 50,
+  });
 
   final String label;
   final VoidCallback onPressed;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
@@ -242,7 +254,7 @@ class _StorePrimaryButton extends StatelessWidget {
       padding: EdgeInsets.zero,
       onPressed: onPressed,
       child: Container(
-        height: 50,
+        height: height,
         decoration: _storeAccentButtonDecoration(),
         child: Center(
           child: Text(
@@ -261,19 +273,22 @@ class _StorePrimaryButton extends StatelessWidget {
   }
 }
 
+/// 会员/商城主蓝。玻璃改版一度把它调浅成 #4B9AFF，这里回到改版前的深蓝
+/// （= AppColors.accent），图标 / 边框 / 角标 / 渐变深端都用它。
+const Color _kStoreBlue = Color(0xFF0A84FF);
+
 BoxDecoration _storeAccentButtonDecoration({double radius = 20}) {
   return BoxDecoration(
     borderRadius: BorderRadius.circular(radius),
+    // 回到改版前的按钮渐变：青 → 深蓝，从左到右（LinearGradient 默认方向）。
     gradient: const LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [Color(0xFF4B9AFF), Color(0xFF8ABAFF)],
+      colors: [Color(0xFF55D7FF), _kStoreBlue],
     ),
-    boxShadow: const [
+    boxShadow: [
       BoxShadow(
-        color: Color(0x474E9BFF),
+        color: _kStoreBlue.withValues(alpha: 0.32),
         blurRadius: 16,
-        offset: Offset(0, 8),
+        offset: const Offset(0, 8),
       ),
     ],
   );
@@ -310,7 +325,7 @@ class _CircleIcon extends StatelessWidget {
   const _CircleIcon({required this.icon, this.size = _diameter});
 
   static const _diameter = 48.0;
-  static const _fill = Color(0xFF4C9BFF);
+  static const _fill = _kStoreBlue;
 
   final IconData icon;
   final double size;
@@ -348,11 +363,19 @@ class _CurrencyIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 积分统一用金币素材（右上角药丸 / 兑换卡片 / 充值页都走这里）；钞票仍用画的。
+    if (currency == _StoreCurrency.point) {
+      return Image.asset(
+        'assets/store/icons/point_coin.png',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.medium,
+      );
+    }
     return CustomPaint(
       size: Size.square(size),
-      painter: currency == _StoreCurrency.ticket
-          ? const _TicketMiniPainter()
-          : const _PointMiniPainter(),
+      painter: const _TicketMiniPainter(),
     );
   }
 }

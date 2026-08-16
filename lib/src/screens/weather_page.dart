@@ -89,8 +89,9 @@ class _W2b {
     hourPillBottom: Color(0xF0D6E4F8), // #D6E4F8 @ .94
     hourPillBorder: Color(0xD9FFFFFF),
     hourHalo: Color(0x2E4B9AFF), // #4B9AFF @ .18
-    todayA: Color(0xFFAACDFF),
-    todayB: Color(0xFF4B9AFF),
+    // 「今天」行高亮加深到商城深蓝：浅端 #4A9BFF → 深端 #0A84FF。
+    todayA: Color(0xFF4A9BFF),
+    todayB: Color(0xFF0A84FF),
     forecastMin: Color(0xFF4193FD),
     forecastMax: Color(0xFFFE9D0B),
   );
@@ -1048,7 +1049,7 @@ class _WeatherIconAuraPainter extends CustomPainter {
     final center = Offset(size.width * 0.54, size.height * 0.54);
     final pulse = (math.sin(progress * math.pi * 2) + 1) / 2;
     final auraPaint = Paint()
-      ..color = const Color(0xFF4B9AFF).withValues(alpha: 0.16 + 0.10 * pulse)
+      ..color = const Color(0xFF0A84FF).withValues(alpha: 0.16 + 0.10 * pulse)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18);
     canvas.drawOval(
       Rect.fromCenter(
@@ -1266,7 +1267,8 @@ class _WeatherMetricIcon extends StatelessWidget {
 
   static const _diameter = 48.0;
   static const _glyphSize = 24.0;
-  static const _fill = Color(0xFF4C9BFF);
+  // 与商城/订阅页加深后的主蓝统一（#0A84FF）。
+  static const _fill = Color(0xFF0A84FF);
 
   final _WeatherGlyph glyph;
 
@@ -1507,10 +1509,11 @@ class _HourlyWeatherPill extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
         gradient: selected
+            // 选中的天气圆柱：商城同款深蓝渐变（#0A84FF→#1F6FFF）。
             ? const LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Color(0xFF4B9AFF), Color(0xFF8ABAFF)],
+                colors: [Color(0xFF0A84FF), Color(0xFF1F6FFF)],
               )
             : LinearGradient(
                 begin: Alignment.topCenter,
@@ -1523,7 +1526,7 @@ class _HourlyWeatherPill extends StatelessWidget {
         boxShadow: selected
             ? [
                 const BoxShadow(
-                  color: Color(0x474E9BFF), // #4E9BFF @ .28
+                  color: Color(0x520A84FF), // #0A84FF @ .32
                   blurRadius: 16,
                   offset: Offset(0, 8),
                 ),
@@ -1635,7 +1638,7 @@ class _FutureWeatherRow extends StatelessWidget {
         boxShadow: highlight
             ? [
                 BoxShadow(
-                  color: const Color(0xFF509AFD).withValues(alpha: 0.28),
+                  color: const Color(0xFF0A84FF).withValues(alpha: 0.28),
                   blurRadius: 16,
                   offset: const Offset(0, 8),
                 ),
@@ -1705,7 +1708,7 @@ class _FutureWeatherRow extends StatelessWidget {
                       CupertinoIcons.drop,
                       color: highlight
                           ? Colors.white.withValues(alpha: 0.85)
-                          : const Color(0xFF4B9AFF).withValues(alpha: 0.70),
+                          : const Color(0xFF0A84FF).withValues(alpha: 0.70),
                       size: 10,
                     ),
                     Text(
@@ -1722,7 +1725,7 @@ class _FutureWeatherRow extends StatelessWidget {
                       CupertinoIcons.wind,
                       color: highlight
                           ? Colors.white.withValues(alpha: 0.85)
-                          : const Color(0xFF4B9AFF).withValues(alpha: 0.70),
+                          : const Color(0xFF0A84FF).withValues(alpha: 0.70),
                       size: 10,
                     ),
                     Flexible(

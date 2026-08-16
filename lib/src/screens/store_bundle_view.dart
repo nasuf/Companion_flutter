@@ -6,7 +6,7 @@ class _BundleStoreView extends StatefulWidget {
     required this.vipTrialAvailable,
     required this.onBuy,
     required this.isBuying,
-    required this.onRechargeTickets,
+    required this.onInsufficientTickets,
     required this.bottomSpace,
   });
 
@@ -14,7 +14,7 @@ class _BundleStoreView extends StatefulWidget {
   final bool vipTrialAvailable;
   final void Function(_BundleOffer offer, _BundleTier? tier) onBuy;
   final bool Function(_BundleOffer offer) isBuying;
-  final VoidCallback onRechargeTickets;
+  final VoidCallback onInsufficientTickets;
   final double bottomSpace;
 
   @override
@@ -58,7 +58,7 @@ class _BundleStoreViewState extends State<_BundleStoreView> {
             });
           },
           onBuy: () => widget.onBuy(offer, tier),
-          onRechargeTickets: widget.onRechargeTickets,
+          onInsufficientTickets: widget.onInsufficientTickets,
           busy: widget.isBuying(offer),
         );
       },
@@ -73,7 +73,7 @@ class _BundleCard extends StatelessWidget {
     required this.ticketBalance,
     required this.onTierChanged,
     required this.onBuy,
-    required this.onRechargeTickets,
+    required this.onInsufficientTickets,
     required this.busy,
   });
 
@@ -82,7 +82,7 @@ class _BundleCard extends StatelessWidget {
   final int ticketBalance;
   final ValueChanged<_BundleTier> onTierChanged;
   final VoidCallback onBuy;
-  final VoidCallback onRechargeTickets;
+  final VoidCallback onInsufficientTickets;
   final bool busy;
 
   @override
@@ -135,7 +135,8 @@ class _BundleCard extends StatelessWidget {
               ),
             ],
           ),
-          if (offer.tiers.isNotEmpty) ...[
+          // 单档礼包（如补签卡）不显示分段选择器，只显示价格与购买按钮。
+          if (offer.tiers.length > 1) ...[
             const SizedBox(height: 12),
             _BundleTierSelector(
               tiers: offer.tiers,
@@ -147,9 +148,9 @@ class _BundleCard extends StatelessWidget {
           _BundleBuyButton(
             offer: offer,
             tier: selectedTier,
-            affordable: affordable,
             busy: busy,
-            onPressed: affordable ? onBuy : onRechargeTickets,
+            // 按钮始终可点；钞票不足在点击后弹「去充值」确认框，而不是禁用。
+            onPressed: affordable ? onBuy : onInsufficientTickets,
           ),
         ],
       ),
@@ -220,35 +221,27 @@ class _BundleBuyButton extends StatelessWidget {
   const _BundleBuyButton({
     required this.offer,
     required this.tier,
-    required this.affordable,
     required this.busy,
     required this.onPressed,
   });
 
   final _BundleOffer offer;
   final _BundleTier? tier;
-  final bool affordable;
   final bool busy;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final w = _W2b.resolve(context);
-    final label = offer.isVipTrial ? '¥${offer.yuanPrice} 立即体验' : '购买';
+    final tier = this.tier;
+    // 无论钞票是否足够，按钮都保持「购买」的高亮样式且可点击；钞票不足在点击后
+    // 由上层弹窗提示去充值。
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
       onPressed: busy ? null : onPressed,
       child: Container(
         height: 44,
-        decoration: affordable
-            ? _storeAccentButtonDecoration(radius: 16)
-            : BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                color: w.isDark
-                    ? const Color(0x14FFFFFF)
-                    : const Color(0xFFEAF1F8),
-              ),
+        decoration: _storeAccentButtonDecoration(radius: 16),
         child: Center(
           child: busy
               ? const SizedBox(
@@ -258,9 +251,9 @@ class _BundleBuyButton extends StatelessWidget {
                 )
               : offer.isVipTrial
               ? Text(
-                  affordable ? label : '去充值',
-                  style: TextStyle(
-                    color: affordable ? Colors.white : w.inkFaint,
+                  '¥${offer.yuanPrice} 立即体验',
+                  style: const TextStyle(
+                    color: Colors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 0,
@@ -270,17 +263,17 @@ class _BundleBuyButton extends StatelessWidget {
               : Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      affordable ? '购买' : '去充值',
+                    const Text(
+                      '购买',
                       style: TextStyle(
-                        color: affordable ? Colors.white : w.inkFaint,
+                        color: Colors.white,
                         fontSize: 15,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 0,
                         decoration: TextDecoration.none,
                       ),
                     ),
-                    if (affordable && tier != null) ...[
+                    if (tier != null) ...[
                       const SizedBox(width: 8),
                       Container(
                         width: 1,
@@ -294,7 +287,7 @@ class _BundleBuyButton extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '${tier!.ticketPrice}',
+                        '${tier.ticketPrice}',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 15,

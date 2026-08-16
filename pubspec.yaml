@@ -118,6 +118,7 @@ flutter:
     - assets/weather/
     - assets/capsule/
     - assets/store/icons/
+    - assets/store/vip/
     - assets/store/gifts/
     - assets/store/blinds/
     - assets/store/outfits/

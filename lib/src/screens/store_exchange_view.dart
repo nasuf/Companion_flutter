@@ -45,7 +45,8 @@ class _ExchangeStoreView extends StatelessWidget {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+          // top 与充值页的顶部 tab 对齐（同为 8），切换 tab 时第一级分段栏不上下跳。
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
           child: AnimatedSize(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOutCubic,
@@ -189,11 +190,14 @@ class _StoreSegmentedLabelBar<T> extends StatelessWidget {
                         ? const Color(0x24FFFFFF)
                         : Colors.white.withValues(alpha: 0.98),
                     borderRadius: BorderRadius.circular(radius - 3),
-                    boxShadow: const [
+                    // 纯白药丸，只留一层中性淡影提升，不再叠蓝色发光。
+                    boxShadow: [
                       BoxShadow(
-                        color: Color(0x474E9BFF),
-                        blurRadius: 14,
-                        offset: Offset(0, 6),
+                        color: w.isDark
+                            ? const Color(0x33000000)
+                            : const Color(0x14243040),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
                       ),
                     ],
                   ),
@@ -672,52 +676,51 @@ class _GiftSubcategoryScrollerState extends State<_GiftSubcategoryScroller> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             for (var index = 0; index < _GiftSubcategory.values.length; index++) ...[
-              if (index > 0) const SizedBox(width: 8),
+              if (index > 0) const SizedBox(width: 6),
               GestureDetector(
                 key: _itemKeys[index],
+                behavior: HitTestBehavior.opaque,
                 onTap: () =>
                     widget.onSelected(_GiftSubcategory.values[index]),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    gradient: _GiftSubcategory.values[index] == widget.selected
-                        ? const LinearGradient(
-                            colors: [Color(0xFF4B9AFF), Color(0xFF8ABAFF)],
-                          )
-                        : LinearGradient(
-                            colors: [w.hourPillTop, w.hourPillBottom],
-                          ),
-                    border: Border.all(
-                      color: _GiftSubcategory.values[index] == widget.selected
-                          ? Colors.transparent
-                          : w.hourPillBorder,
-                    ),
-                    boxShadow: _GiftSubcategory.values[index] == widget.selected
-                        ? const [
-                            BoxShadow(
-                              color: Color(0x474E9BFF),
-                              blurRadius: 12,
-                              offset: Offset(0, 6),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Center(
-                    child: Text(
-                      _GiftSubcategory.values[index].label,
-                      style: TextStyle(
-                        color:
-                            _GiftSubcategory.values[index] == widget.selected
-                            ? Colors.white
-                            : w.inkSoft,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0,
-                        decoration: TextDecoration.none,
+                // 二级子 tab：纯文字 + 底部横线高亮，不再用胶囊。选中黑字，
+                // 未选灰字；底下一条蓝色短横线标记当前项。
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        _GiftSubcategory.values[index].label,
+                        style: TextStyle(
+                          color:
+                              _GiftSubcategory.values[index] == widget.selected
+                              ? (w.isDark ? Colors.white : const Color(0xFF16181C))
+                              : w.inkSoft,
+                          fontSize: 15,
+                          height: 1,
+                          fontWeight:
+                              _GiftSubcategory.values[index] == widget.selected
+                              ? FontWeight.w900
+                              : FontWeight.w700,
+                          letterSpacing: 0,
+                          decoration: TextDecoration.none,
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 6),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeOutCubic,
+                        height: 3,
+                        width: 20,
+                        decoration: BoxDecoration(
+                          color:
+                              _GiftSubcategory.values[index] == widget.selected
+                              ? _kStoreBlue
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

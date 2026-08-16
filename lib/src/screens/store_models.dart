@@ -23,22 +23,23 @@ enum _ExchangeCategory {
   final String label;
 }
 
+// 子 tab 显示顺序 = 声明顺序：饮品-鲜花-生活-饰品-配饰-数码-美食-奢享。
 enum _GiftSubcategory {
-  luxury('奢享'),
-  digital('数码'),
-  life('生活'),
-  food('美食'),
-  accessory('配饰'),
   drink('饮品'),
+  flower('鲜花'),
+  life('生活'),
   jewelry('饰品'),
-  flower('鲜花');
+  accessory('配饰'),
+  digital('数码'),
+  food('美食'),
+  luxury('奢享');
 
   const _GiftSubcategory(this.label);
 
   final String label;
 }
 
-enum _BundleKind { music, game, vip }
+enum _BundleKind { music, game, makeup, vip }
 
 enum _StoreCurrency { ticket, point }
 

@@ -14,9 +14,10 @@ class _SubscriptionStoreView extends StatefulWidget {
   final double bottomSpace;
 
   static const _plans = [
-    ('月卡', '¥29', '¥39', null),
-    ('季卡', '¥79', '¥99', '特惠推荐'),
-    ('年卡', '¥249', '¥299', '最划算'),
+    ('连续包月', '¥29', '¥39', '特惠推荐'),
+    ('月卡', '¥39', '¥69', null),
+    ('季卡', '¥89', '¥165', null),
+    ('年卡', '¥249', '¥399', '最划算'),
   ];
 
   @override
@@ -26,6 +27,7 @@ class _SubscriptionStoreView extends StatefulWidget {
 class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
   static const double _planCardWidth = 124;
   static const double _planGap = 12;
+  static const double _planLeadPadding = 12;
 
   late final ScrollController _planController;
   bool _agreementChecked = false;
@@ -54,25 +56,25 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
         return;
       }
 
-      final cardStart = index * (_planCardWidth + _planGap);
-      final cardEnd = cardStart + _planCardWidth;
-      final visibleStart = position.pixels;
-      final visibleEnd = visibleStart + position.viewportDimension;
-      double? targetOffset;
+      // 把选中卡尽量居中：两侧自然露出相邻卡片的一角——选季卡能带出年卡，
+      // 选月卡能带出连续包月。末端用 clamp 收住，不会滚过头。
+      // _planLeadPadding 是横向列表的左内边距，卡片在滚动内容里的起点。
+      final cardCenter =
+          _planLeadPadding +
+          index * (_planCardWidth + _planGap) +
+          _planCardWidth / 2;
+      final target = (cardCenter - position.viewportDimension / 2).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
 
-      if (cardStart < visibleStart) {
-        targetOffset = cardStart;
-      } else if (cardEnd > visibleEnd) {
-        targetOffset = cardEnd - position.viewportDimension;
-      }
-
-      if (targetOffset == null) {
+      if ((_planController.offset - target).abs() < 0.5) {
         return;
       }
 
       _planController.animateTo(
-        targetOffset.clamp(position.minScrollExtent, position.maxScrollExtent),
-        duration: const Duration(milliseconds: 260),
+        target,
+        duration: const Duration(milliseconds: 280),
         curve: Curves.easeOutCubic,
       );
     });
@@ -86,14 +88,19 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
 
   @override
   Widget build(BuildContext context) {
+    // 页面左右留 8：让权益卡尽量贴近 design 的 182px 宽（副标题才放得下）。
+    // 其余元素用 _edge 包一层补回到 20 的观感。
+    const edge = EdgeInsets.symmetric(horizontal: 12);
     return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(20, 8, 20, widget.bottomSpace),
+      // 内容已能一屏容纳，禁止整页滚动（横向套餐条仍可滑动，见下方 _planController）。
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(8, 8, 8, widget.bottomSpace),
       children: [
-        const _VipHeroCard(),
+        const SizedBox(height: 4),
+        const Padding(padding: edge, child: _VipTitle()),
         const SizedBox(height: 16),
         const _MemberBenefitGrid(),
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
         SizedBox(
           height: 148,
           child: ListView.separated(
@@ -101,7 +108,7 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
             clipBehavior: Clip.none,
-            padding: const EdgeInsets.only(right: 24),
+            padding: const EdgeInsets.fromLTRB(12, 0, 24, 0),
             itemCount: _SubscriptionStoreView._plans.length,
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (context, index) {
@@ -117,25 +124,43 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
             },
           ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          '到期按所选周期自动续费，可随时取消',
-          style: TextStyle(
-            color: _W2b.resolve(context).inkSoft,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0,
-            decoration: TextDecoration.none,
+        const SizedBox(height: 14),
+        // 只有「连续包月」（index 0）是自动续费方案，续费提示也只在选中它时出现、
+        // 居中显示。用固定高度的占位槽承载：不显示时仍占同样高度，下方的「立即
+        // 开通」和勾选框位置不会因此上移。
+        SizedBox(
+          height: 20,
+          child: widget.selectedPlan == 0
+              ? Center(
+                  child: Text(
+                    '到期按所选周期自动续费，可随时取消',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: _W2b.resolve(context).inkSoft,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                )
+              : null,
+        ),
+        const SizedBox(height: 14),
+        Padding(
+          padding: edge,
+          child: _StorePrimaryButton(
+            label: '立即开通',
+            onPressed: widget.onSubscribe,
+            height: 56,
           ),
         ),
-        const SizedBox(height: 20),
-        _StorePrimaryButton(label: '立即开通', onPressed: widget.onSubscribe),
         const SizedBox(height: 8),
         GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: _toggleAgreement,
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
+            padding: edge.add(const EdgeInsets.symmetric(vertical: 6)),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
