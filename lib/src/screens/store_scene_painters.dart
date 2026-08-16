@@ -37,22 +37,18 @@ class _StoreBackgroundPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..style = PaintingStyle.fill;
+    // 右上角蓝色大圆：保持不变。
     paint.color = const Color(0xFF4B9AFF).withValues(alpha: isDark ? 0.16 : 0.10);
     canvas.drawCircle(
       Offset(size.width * 0.82, size.height * 0.10),
       140,
       paint,
     );
-    paint.color = const Color(0xFF8ABAFF).withValues(alpha: isDark ? 0.10 : 0.12);
+    // 原左侧蓝色圆 → 移到左侧偏下、改成淡粉色（保持在底部按钮上方，不贴到最底）。
+    paint.color = const Color(0xFFF3B8D2).withValues(alpha: isDark ? 0.12 : 0.16);
     canvas.drawCircle(
-      Offset(size.width * 0.08, size.height * 0.42),
+      Offset(size.width * 0.08, size.height * 0.72),
       120,
-      paint,
-    );
-    paint.color = const Color(0xFFFFB020).withValues(alpha: isDark ? 0.06 : 0.05);
-    canvas.drawCircle(
-      Offset(size.width * 0.92, size.height * 0.72),
-      110,
       paint,
     );
   }

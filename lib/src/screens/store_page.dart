@@ -280,6 +280,32 @@ class _StorePageState extends State<StorePage> {
     );
   }
 
+  void _showInsufficientPoints() {
+    showCupertinoDialog<void>(
+      context: context,
+      builder: (context) {
+        return CupertinoAlertDialog(
+          title: const Text('积分不足'),
+          content: const Text('当前积分余额不足，去充值后即可兑换。'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () {
+                Navigator.of(context).pop();
+                _openRechargePoints();
+              },
+              child: const Text('去充值'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showToast(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -404,7 +430,7 @@ class _StorePageState extends State<StorePage> {
         onCategoryChanged: (value) => setState(() => _exchangeCategory = value),
         onGiftSubcategoryChanged: (value) =>
             setState(() => _giftSubcategory = value),
-        onRechargePoints: _openRechargePoints,
+        onInsufficientPoints: _showInsufficientPoints,
         onExchange: _handleExchangeProduct,
         isExchanging: (product) =>
             _exchangingKinds.contains(product.productKind),
@@ -537,8 +563,8 @@ class _StorePageState extends State<StorePage> {
     } on ApiException catch (error) {
       if (!mounted) return;
       if (error.statusCode == 409) {
-        _showToast('积分不足，请先兑换积分');
-        _openRechargePoints();
+        // 客户端已预检余额，这里是服务端兜底：仍走同一个「去充值」确认框。
+        _showInsufficientPoints();
         return;
       }
       _showToast('兑换失败：${error.message}');

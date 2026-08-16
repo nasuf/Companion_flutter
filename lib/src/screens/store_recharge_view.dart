@@ -34,73 +34,85 @@ class _RechargeStoreView extends StatelessWidget {
     final accent = currency == _StoreCurrency.ticket
         ? const Color(0xFFFFC83D)
         : _kStoreBlue;
-    return Stack(
-      children: [
-        // 铺满整页的方块网格背景，按当前币种上色（回归改版前风格）。
-        Positioned.fill(
-          child: CustomPaint(painter: _RechargePatternPainter(color: accent)),
-        ),
-        ListView(
-          // 内容收紧到一屏容纳，禁止整页滚动。
-          physics: const NeverScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(20, 6, 20, bottomSpace),
-          children: [
-            _StoreSegmentedLabelBar<_StoreCurrency>(
-              values: const [_StoreCurrency.ticket, _StoreCurrency.point],
-              selected: currency,
-              labelFor: (value) =>
-                  value == _StoreCurrency.ticket ? '我的钞票' : '我的积分',
-              onSelected: onCurrencyChanged,
+    // 不滚动、一屏铺满、且按钮永远在底部导航栏之上：
+    // - 用 Column 填满可视高度，余额区放进 Expanded 吸收多余空间（内容不足时它变大、
+    //   显得更透气；内容偏多时它收缩，绝不把别的组件挤出屏幕）。
+    // - 余额再套 FittedBox(scaleDown)，极端窄屏也只会等比缩小、不会溢出重叠。
+    // - 底部留白 = bottomSpace - 16，让按钮落在导航栏上方约 16px 处。
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 6, 20, bottomSpace - 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _StoreSegmentedLabelBar<_StoreCurrency>(
+            values: const [_StoreCurrency.ticket, _StoreCurrency.point],
+            selected: currency,
+            labelFor: (value) =>
+                value == _StoreCurrency.ticket ? '我的钞票' : '我的积分',
+            onSelected: onCurrencyChanged,
+          ),
+          Expanded(
+            child: Stack(
+              children: [
+                // 方块网格只铺在余额区（跟随该区域高度）。
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: _RechargePatternPainter(color: accent),
+                  ),
+                ),
+                Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: _RechargeBalance(
+                      currency: currency,
+                      balance: balance,
+                      accent: accent,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 6),
-            // 余额：大标题 + 加粗数字，居中，不再包卡片。
-            _RechargeBalance(
-              currency: currency,
-              balance: balance,
-              accent: accent,
+          ),
+          // 两个入口都固定在套餐上方，位置在两个 tab 之间保持一致。
+          if (currency == _StoreCurrency.ticket)
+            _StoreActionRow(
+              icon: CupertinoIcons.play_rectangle_fill,
+              label: '看广告得免费钞票',
+              onTap: () {},
+            )
+          else if (onConvertGamePoints != null)
+            _StoreActionRow(
+              icon: CupertinoIcons.gamecontroller_fill,
+              label: '用游戏积分兑换积分',
+              onTap: onConvertGamePoints!,
             ),
-            const SizedBox(height: 10),
-            // 两个入口都固定在套餐上方，位置在两个 tab 之间保持一致。
-            if (currency == _StoreCurrency.ticket)
-              _StoreActionRow(
-                icon: CupertinoIcons.play_rectangle_fill,
-                label: '看广告得免费钞票',
-                onTap: () {},
-              )
-            else if (onConvertGamePoints != null)
-              _StoreActionRow(
-                icon: CupertinoIcons.gamecontroller_fill,
-                label: '用游戏积分兑换积分',
-                onTap: onConvertGamePoints!,
-              ),
-            const SizedBox(height: 12),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: packs.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childAspectRatio: 1.24,
-              ),
-              itemBuilder: (context, index) {
-                final pack = packs[index];
-                return _RechargePackCard(
-                  pack: pack,
-                  selected: selectedIndex == index,
-                  onTap: () => onSelectPack(index),
-                );
-              },
+          const SizedBox(height: 14),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: packs.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 1.32,
             ),
-            const SizedBox(height: 16),
-            _StorePrimaryButton(
-              label: currency == _StoreCurrency.ticket ? '立即充值' : '立即兑换',
-              onPressed: onSubmit,
-            ),
-          ],
-        ),
-      ],
+            itemBuilder: (context, index) {
+              final pack = packs[index];
+              return _RechargePackCard(
+                pack: pack,
+                selected: selectedIndex == index,
+                onTap: () => onSelectPack(index),
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+          _StorePrimaryButton(
+            label: currency == _StoreCurrency.ticket ? '立即充值' : '立即兑换',
+            onPressed: onSubmit,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -141,8 +153,8 @@ class _RechargeBalance extends StatelessWidget {
           '$balance',
           style: TextStyle(
             color: w.isDark ? w.ink : Colors.black,
-            fontSize: 44,
-            height: 1.05,
+            fontSize: 46,
+            height: 1.02,
             fontWeight: FontWeight.w900,
             letterSpacing: 0,
             decoration: TextDecoration.none,
@@ -165,8 +177,8 @@ class _RechargeBalanceBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final w = _W2b.resolve(context);
     return Container(
-      width: 116,
-      height: 80,
+      width: 112,
+      height: 84,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,

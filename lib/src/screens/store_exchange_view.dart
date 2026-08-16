@@ -16,7 +16,7 @@ class _ExchangeStoreView extends StatelessWidget {
     required this.selectedGiftSubcategory,
     required this.onCategoryChanged,
     required this.onGiftSubcategoryChanged,
-    required this.onRechargePoints,
+    required this.onInsufficientPoints,
     required this.onExchange,
     required this.isExchanging,
     required this.bottomSpace,
@@ -28,7 +28,7 @@ class _ExchangeStoreView extends StatelessWidget {
   final _GiftSubcategory selectedGiftSubcategory;
   final ValueChanged<_ExchangeCategory> onCategoryChanged;
   final ValueChanged<_GiftSubcategory> onGiftSubcategoryChanged;
-  final VoidCallback onRechargePoints;
+  final VoidCallback onInsufficientPoints;
   final ValueChanged<_StoreProduct> onExchange;
   final bool Function(_StoreProduct product) isExchanging;
   final double bottomSpace;
@@ -110,7 +110,7 @@ class _ExchangeStoreView extends StatelessWidget {
                         isVip: isVip,
                         affordable: price <= points,
                         onTap: () => onExchange(product),
-                        onRechargePoints: onRechargePoints,
+                        onInsufficient: onInsufficientPoints,
                         busy: isExchanging(product),
                       );
                     },
@@ -240,7 +240,7 @@ class _ExchangeProductCard extends StatelessWidget {
     required this.affordable,
     this.isVip = false,
     this.onTap,
-    this.onRechargePoints,
+    this.onInsufficient,
     this.busy = false,
     this.compact = false,
     this.showPrice = true,
@@ -251,7 +251,7 @@ class _ExchangeProductCard extends StatelessWidget {
   final bool affordable;
   final bool isVip;
   final VoidCallback? onTap;
-  final VoidCallback? onRechargePoints;
+  final VoidCallback? onInsufficient;
   final bool busy;
   final bool compact;
   final bool showPrice;
@@ -261,21 +261,14 @@ class _ExchangeProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final w = _W2b.resolve(context);
     final price = product.priceFor(isVip: isVip);
-    final priceBackground = affordable
-        ? (w.isDark
-              ? Color.lerp(const Color(0xFF1A2430), const Color(0xFF4B9AFF), 0.28)!
-              : const Color(0xFF12283F))
-        : (w.isDark
-              ? const Color(0x14FFFFFF)
-              : const Color(0xFFEAF1F8));
+    // 金额按钮始终保持「可兑换」的高亮样式且可点；积分不足在点击后弹去充值确认框。
+    final priceBackground = w.isDark
+        ? Color.lerp(const Color(0xFF1A2430), const Color(0xFF4B9AFF), 0.28)!
+        : const Color(0xFF12283F);
     final priceBorder = w.isDark
-        ? (affordable
-              ? const Color(0xFF4B9AFF).withValues(alpha: 0.38)
-              : w.glassBorder)
+        ? const Color(0xFF4B9AFF).withValues(alpha: 0.38)
         : Colors.transparent;
-    final priceTextColor = affordable
-        ? (w.isDark ? w.ink : Colors.white)
-        : w.inkFaint;
+    final priceTextColor = w.isDark ? w.ink : Colors.white;
     final iconHaloSize = compact ? 58.0 : 88.0;
     final iconPad = compact ? 8.0 : 12.0;
     return _GlassCard(
@@ -383,20 +376,19 @@ class _ExchangeProductCard extends StatelessWidget {
             CupertinoButton(
               minimumSize: Size.zero,
               padding: EdgeInsets.zero,
-              onPressed: busy ? null : (affordable ? onTap : onRechargePoints),
+              onPressed: busy ? null : (affordable ? onTap : onInsufficient),
               child: Container(
                 height: 36,
                 decoration: BoxDecoration(
                   color: priceBackground,
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: priceBorder),
-                  boxShadow: [
-                    if (affordable)
-                      const BoxShadow(
-                        color: Color(0x334B9AFF),
-                        blurRadius: 14,
-                        offset: Offset(0, 7),
-                      ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x334B9AFF),
+                      blurRadius: 14,
+                      offset: Offset(0, 7),
+                    ),
                   ],
                 ),
                 child: Center(
