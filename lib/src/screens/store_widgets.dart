@@ -55,7 +55,7 @@ class _StoreBackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Same chevron as weather: ink at 20pt inside a 36 glass circle.
+    // Same glass circle as weather; the chevron carries the store's blue theme.
     final w = _W2b.resolve(context);
     return CupertinoButton(
       minimumSize: Size.zero,
@@ -71,7 +71,11 @@ class _StoreBackButton extends StatelessWidget {
           border: Border.all(color: w.glassBorder),
           boxShadow: [w.pillShadow],
         ),
-        child: Icon(CupertinoIcons.chevron_left, color: w.ink, size: 20),
+        child: const Icon(
+          CupertinoIcons.chevron_left,
+          color: _kStoreBlue,
+          size: 20,
+        ),
       ),
     );
   }
@@ -128,11 +132,7 @@ class _StoreBalancePill extends StatelessWidget {
                 ),
               ),
             ),
-            Icon(
-              CupertinoIcons.add_circled_solid,
-              size: 18,
-              color: w.ink,
-            ),
+            Icon(CupertinoIcons.add_circled_solid, size: 18, color: w.ink),
           ],
         ),
       ),
@@ -305,9 +305,7 @@ BoxDecoration _storeAccentButtonDecoration({double radius = 20}) {
   return BoxDecoration(
     borderRadius: BorderRadius.circular(radius),
     // 回到改版前的按钮渐变：青 → 深蓝，从左到右（LinearGradient 默认方向）。
-    gradient: const LinearGradient(
-      colors: [Color(0xFF55D7FF), _kStoreBlue],
-    ),
+    gradient: const LinearGradient(colors: [Color(0xFF55D7FF), _kStoreBlue]),
     boxShadow: [
       BoxShadow(
         color: _kStoreBlue.withValues(alpha: 0.32),

@@ -133,7 +133,11 @@ class _CapsuleCircleButton extends StatelessWidget {
                     valueColor: AlwaysStoppedAnimation<Color>(_capsuleDanger),
                   ),
                 )
-              : Icon(icon, color: danger ? _capsuleDanger : w.ink, size: 20),
+              : Icon(
+                  icon,
+                  color: danger ? _capsuleDanger : _capsuleOrange,
+                  size: 20,
+                ),
         ),
       ),
     );

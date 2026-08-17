@@ -113,6 +113,7 @@ class _OpenedCapsulesPageState extends State<_OpenedCapsulesPage> {
                             left: 20,
                             child: _WeatherBackButton(
                               onTap: () => Navigator.of(context).maybePop(),
+                              iconColor: _capsuleOrange,
                             ),
                           ),
                         ],

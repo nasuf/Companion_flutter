@@ -119,7 +119,11 @@ class _CapsuleHomeHeader extends StatelessWidget {
               child: Image.asset(_capsuleAssetHomeHero, fit: BoxFit.contain),
             ),
           ),
-          Positioned(left: 0, top: 4, child: _WeatherBackButton(onTap: onBack)),
+          Positioned(
+            left: 0,
+            top: 4,
+            child: _WeatherBackButton(onTap: onBack, iconColor: _capsuleOrange),
+          ),
           const Positioned(
             left: 2,
             bottom: 28,

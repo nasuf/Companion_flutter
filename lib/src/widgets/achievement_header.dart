@@ -27,6 +27,7 @@ class _AchievementHeader extends StatelessWidget {
             children: [
               _AchievementTopBar(
                 onBack: () => Navigator.of(context).maybePop(),
+                tint: color,
               ),
               const SizedBox(height: 22),
               Row(
@@ -69,9 +70,10 @@ class _AchievementHeader extends StatelessWidget {
 }
 
 class _AchievementTopBar extends StatelessWidget {
-  const _AchievementTopBar({required this.onBack});
+  const _AchievementTopBar({required this.onBack, required this.tint});
 
   final VoidCallback onBack;
+  final Color tint;
 
   @override
   Widget build(BuildContext context) {
@@ -81,6 +83,7 @@ class _AchievementTopBar extends StatelessWidget {
         _AppNavCircleButton(
           icon: CupertinoIcons.chevron_left,
           onPressed: onBack,
+          iconColor: tint,
         ),
         const SizedBox(width: 14),
         Text(
