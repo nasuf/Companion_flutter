@@ -11,11 +11,11 @@ class _CapsuleSendChatButton extends StatelessWidget {
       padding: EdgeInsets.zero,
       onPressed: onTap,
       child: Container(
-        height: 44,
-        padding: const EdgeInsets.symmetric(horizontal: 18),
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 15),
         decoration: BoxDecoration(
           color: const Color(0xFF101922),
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
               color: const Color(0xFF101922).withValues(alpha: 0.16),
@@ -32,7 +32,7 @@ class _CapsuleSendChatButton extends StatelessWidget {
             '发聊天',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: FontWeight.w800,
               decoration: TextDecoration.none,
             ),
@@ -61,7 +61,7 @@ class _ReadOnlyCapsuleActions extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _CapsuleMiniActionButton(
+        _CapsuleCircleButton(
           icon: CupertinoIcons.delete,
           danger: true,
           loading: deleting,
@@ -70,56 +70,6 @@ class _ReadOnlyCapsuleActions extends StatelessWidget {
         const SizedBox(width: 8),
         _CapsuleSendChatButton(onTap: enabled ? onSend : null),
       ],
-    );
-  }
-}
-
-class _CapsuleMiniActionButton extends StatelessWidget {
-  const _CapsuleMiniActionButton({
-    required this.icon,
-    required this.onTap,
-    this.danger = false,
-    this.loading = false,
-  });
-
-  final IconData icon;
-  final VoidCallback? onTap;
-  final bool danger;
-  final bool loading;
-
-  @override
-  Widget build(BuildContext context) {
-    // Frosted glass, matching _CapsuleCircleButton at the 44pt read-only size.
-    final w = _W2b.resolve(context);
-    return CupertinoButton(
-      minimumSize: Size.zero,
-      padding: EdgeInsets.zero,
-      onPressed: onTap,
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 160),
-        opacity: onTap == null && !loading ? 0.5 : 1,
-        child: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: w.glass,
-            shape: BoxShape.circle,
-            border: Border.all(color: w.glassBorder),
-            boxShadow: [w.pillShadow],
-          ),
-          alignment: Alignment.center,
-          child: loading
-              ? const SizedBox(
-                  width: 17,
-                  height: 17,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(_capsuleDanger),
-                  ),
-                )
-              : Icon(icon, color: danger ? _capsuleDanger : w.ink, size: 21),
-        ),
-      ),
     );
   }
 }
@@ -151,61 +101,51 @@ class _CapsuleHomeHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final w = _W2b.resolve(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // The bottle floats big in the top-right (restored to its design size),
-        // the weather-page back button anchors the top-left. A short Stack band
-        // lets the bottle overhang the greeting below without pushing it down.
-        SizedBox(
-          height: 120,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned(
-                left: 0,
-                top: 4,
-                child: _WeatherBackButton(onTap: onBack),
+    // Restores the original hero: the bottle (with its clouds) floats big in the
+    // top-right, the greeting sits lower-left with the hand-drawn underline
+    // beneath it, and the weather-page back button anchors the top-left. A fixed
+    // Stack band lets the greeting overlap the bottle exactly like the design.
+    return SizedBox(
+      height: 148,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            right: -4,
+            top: -6,
+            child: SizedBox(
+              width: 172,
+              height: 140,
+              child: Image.asset(_capsuleAssetHomeHero, fit: BoxFit.contain),
+            ),
+          ),
+          Positioned(left: 0, top: 4, child: _WeatherBackButton(onTap: onBack)),
+          const Positioned(
+            left: 2,
+            bottom: 28,
+            child: Text(
+              'Hi，未来的自己',
+              style: TextStyle(
+                color: _capsuleOrange,
+                fontSize: 24,
+                height: 29 / 24,
+                fontWeight: FontWeight.w700,
+                decoration: TextDecoration.none,
               ),
-              Positioned(
-                right: -4,
-                top: -10,
-                child: SizedBox(
-                  width: 172,
-                  height: 140,
-                  child: Image.asset(
-                    _capsuleAssetHomeHero,
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Hi，未来的自己',
-          style: TextStyle(
-            color: _capsuleOrange,
-            fontSize: 24,
-            height: 29 / 24,
-            fontWeight: FontWeight.w700,
-            decoration: TextDecoration.none,
+          Positioned(
+            left: 62,
+            bottom: 8,
+            child: SvgPicture.asset(
+              _capsuleAssetHomeUnderline,
+              width: 80,
+              height: 15,
+              fit: BoxFit.fill,
+            ),
           ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          '这里存着你写给以后的话',
-          style: TextStyle(
-            color: w.inkSoft,
-            fontSize: 12.5,
-            height: 1.3,
-            fontWeight: FontWeight.w400,
-            decoration: TextDecoration.none,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

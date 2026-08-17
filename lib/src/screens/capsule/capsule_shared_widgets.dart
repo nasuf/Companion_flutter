@@ -88,6 +88,9 @@ class _CapsuleActionButton extends StatelessWidget {
   }
 }
 
+/// 36pt frosted-glass circle for the editor header close / delete — the same
+/// diameter and recipe as the home / weather back button, so the whole app's
+/// top-left control reads at one size.
 class _CapsuleCircleButton extends StatelessWidget {
   const _CapsuleCircleButton({
     required this.icon,
@@ -103,18 +106,17 @@ class _CapsuleCircleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Same frosted-glass recipe as the weather/home back button, so the editor
-    // header close / delete read as glass over the letter paper.
     final w = _W2b.resolve(context);
     return CupertinoButton(
+      minimumSize: Size.zero,
       padding: EdgeInsets.zero,
       onPressed: onTap,
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 160),
         opacity: onTap == null && !loading ? 0.55 : 1,
         child: Container(
-          width: 54,
-          height: 54,
+          width: 36,
+          height: 36,
           decoration: BoxDecoration(
             color: w.glass,
             shape: BoxShape.circle,
@@ -124,14 +126,14 @@ class _CapsuleCircleButton extends StatelessWidget {
           alignment: Alignment.center,
           child: loading
               ? const SizedBox(
-                  width: 19,
-                  height: 19,
+                  width: 15,
+                  height: 15,
                   child: CircularProgressIndicator(
-                    strokeWidth: 2.2,
+                    strokeWidth: 2,
                     valueColor: AlwaysStoppedAnimation<Color>(_capsuleDanger),
                   ),
                 )
-              : Icon(icon, color: danger ? _capsuleDanger : w.ink, size: 25),
+              : Icon(icon, color: danger ? _capsuleDanger : w.ink, size: 20),
         ),
       ),
     );

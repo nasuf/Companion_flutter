@@ -20,6 +20,7 @@ const _capsuleAssetDialogClose = 'assets/capsule/dialog-close.png';
 const _capsuleAssetHomeHero = 'assets/capsule/home-hero.png';
 const _capsuleAssetHomeStarLg = 'assets/capsule/home-star-lg.png';
 const _capsuleAssetHomeStarSm = 'assets/capsule/home-star-sm.png';
+const _capsuleAssetHomeUnderline = 'assets/capsule/home-underline.svg';
 const _capsuleAssetLastOpened = 'assets/capsule/last-opened.png';
 const _capsuleAssetOpenedStar = 'assets/capsule/opened-star.svg';
 const _capsuleAssetOpenedThumb = 'assets/capsule/opened-thumb.png';

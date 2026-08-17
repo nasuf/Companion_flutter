@@ -256,10 +256,7 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
                       ),
                       const Spacer(),
                       CupertinoButton(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
-                        ),
+                        padding: EdgeInsets.zero,
                         minimumSize: Size.zero,
                         borderRadius: BorderRadius.circular(999),
                         color: skin.accent.withValues(
@@ -269,14 +266,21 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
                           setState(() => _openDate = selected);
                           Navigator.of(context).pop();
                         },
-                        child: Text(
-                          '确定',
-                          style: TextStyle(
-                            color: skin.accent,
-                            fontSize: 15,
-                            height: 1,
-                            fontWeight: FontWeight.w900,
-                            decoration: TextDecoration.none,
+                        // Fixed-height pill with centred content: dropping the
+                        // Text's height:1 lets the CJK glyph sit on its natural
+                        // baseline, and the Container centres it top-to-bottom.
+                        child: Container(
+                          height: 34,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          alignment: Alignment.center,
+                          child: Text(
+                            '确定',
+                            style: TextStyle(
+                              color: skin.accent,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                              decoration: TextDecoration.none,
+                            ),
                           ),
                         ),
                       ),
@@ -785,57 +789,68 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 10, 18, 8),
-              child: Row(
-                children: [
-                  // The module's own circle buttons rather than the shared app
-                  // one, which is tinted with the app accent and clashes here.
-                  // Sized to whatever sits opposite it: the read-only header
-                  // carries 44pt mini actions, the editor a 54pt button or the
-                  // 54pt spacer standing in for one.
-                  if (isReadOnly)
-                    _CapsuleMiniActionButton(
-                      icon: CupertinoIcons.xmark,
-                      onTap: _saving || !_routeSettled
-                          ? null
-                          : () => unawaited(_closeEditor()),
-                    )
-                  else
-                    _CapsuleCircleButton(
-                      icon: CupertinoIcons.xmark,
-                      onTap: _saving || !_routeSettled
-                          ? null
-                          : () => unawaited(_closeEditor()),
-                    ),
-                  Expanded(
-                    child: Text(
-                      widget.readOnly ? '胶囊详情' : '写新胶囊',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: skin.text,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
+              child: SizedBox(
+                height: 44,
+                child: Stack(
+                  children: [
+                    // Centred on the whole header rather than the space left by
+                    // the buttons, so 胶囊详情's wider right actions can't shove
+                    // the title off-centre.
+                    Positioned.fill(
+                      child: Center(
+                        child: Text(
+                          widget.readOnly ? '胶囊详情' : '写新胶囊',
+                          style: TextStyle(
+                            color: skin.text,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                  if (isReadOnly)
-                    _ReadOnlyCapsuleActions(
-                      deleting: _savingStatus == 'delete',
-                      enabled: !_saving && _routeSettled,
-                      onDelete: _deleteCapsule,
-                      onSend: () => unawaited(
-                        _closeEditor(_draftForCapsule(widget.draft!)),
+                    // Left close — the same 36pt glass circle as the home back
+                    // button.
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: _CapsuleCircleButton(
+                          icon: CupertinoIcons.xmark,
+                          onTap: _saving || !_routeSettled
+                              ? null
+                              : () => unawaited(_closeEditor()),
+                        ),
                       ),
-                    )
-                  else if (widget.draft == null)
-                    const SizedBox(width: 54)
-                  else
-                    _CapsuleCircleButton(
-                      icon: CupertinoIcons.delete,
-                      danger: true,
-                      loading: _savingStatus == 'delete',
-                      onTap: _saving || !_routeSettled ? null : _deleteCapsule,
                     ),
-                ],
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: isReadOnly
+                            ? _ReadOnlyCapsuleActions(
+                                deleting: _savingStatus == 'delete',
+                                enabled: !_saving && _routeSettled,
+                                onDelete: _deleteCapsule,
+                                onSend: () => unawaited(
+                                  _closeEditor(_draftForCapsule(widget.draft!)),
+                                ),
+                              )
+                            : widget.draft == null
+                            ? const SizedBox.shrink()
+                            : _CapsuleCircleButton(
+                                icon: CupertinoIcons.delete,
+                                danger: true,
+                                loading: _savingStatus == 'delete',
+                                onTap: _saving || !_routeSettled
+                                    ? null
+                                    : _deleteCapsule,
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             Expanded(
