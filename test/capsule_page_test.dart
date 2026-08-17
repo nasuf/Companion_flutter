@@ -80,15 +80,28 @@ void _useDesignCanvas(WidgetTester tester) {
 
 /// Widget tests render `Image.asset` as a blank box unless the bytes are
 /// decoded on a real (async) frame, which would leave the goldens empty.
+///
+/// The home breathes on a perpetual `AnimationController`, so `pumpAndSettle`
+/// would spin forever waiting for a frame that never stops coming. Pump a
+/// bounded, fixed run of frames instead: 600ms clears any finite transition
+/// (bottom sheet ~250ms, Cupertino route ~400ms) while tolerating the endless
+/// background drift, and a fixed pumped duration keeps the captured frame — and
+/// therefore the goldens — deterministic.
+Future<void> _pumpFrames(WidgetTester tester) async {
+  for (var i = 0; i < 10; i++) {
+    await tester.pump(const Duration(milliseconds: 60));
+  }
+}
+
 Future<void> _settleWithImages(WidgetTester tester) async {
-  await tester.pumpAndSettle();
+  await _pumpFrames(tester);
   await tester.runAsync(() async {
     for (final element in find.byType(Image).evaluate()) {
       final image = element.widget as Image;
       await precacheImage(image.image, element);
     }
   });
-  await tester.pumpAndSettle();
+  await _pumpFrames(tester);
 }
 
 void main() {
@@ -110,9 +123,11 @@ void main() {
       expect(find.text('待解封'), findsOneWidget);
       expect(find.text('已解封'), findsOneWidget);
       expect(find.text('距上一个胶囊开启过去'), findsOneWidget);
-      // No capsules means no badges and a zeroed "days since" counter.
+      // Every shortcut now shows its count as a value (like the weather metric
+      // cards), so an empty vault reads "0" on all three shortcuts plus the
+      // zeroed "days since" counter — four zeros, and never a stray 1.
       expect(find.text('1'), findsNothing);
-      expect(find.text('0'), findsOneWidget);
+      expect(find.text('0'), findsNWidgets(4));
       expect(tester.takeException(), isNull);
 
       await expectLater(
@@ -189,8 +204,9 @@ void main() {
       expect(find.text('7月12日 编辑 · 8月20日 开启'), findsOneWidget);
       expect(find.text('7月12日 编辑 · 7月12日 开启'), findsOneWidget);
 
-      // One medallion per row plus the 草稿 shortcut card behind the sheet:
-      // the rows deliberately echo the card the tap came from.
+      // Drafts moved to line-glyph medallions to match the 草稿 shortcut the
+      // sheet grows from, so the old draft-icon PNG is gone everywhere. Each
+      // row now carries a doc-glyph medallion instead.
       expect(
         find.byWidgetPredicate(
           (widget) =>
@@ -199,7 +215,17 @@ void main() {
               (widget.image as AssetImage).assetName ==
                   'assets/capsule/draft-icon.png',
         ),
-        findsNWidgets(3),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Icon && widget.icon == CupertinoIcons.doc_text_fill,
+          ),
+        ),
+        findsNWidgets(2),
       );
 
       // The rows used to lead with a lavender square holding 1/2/3. Nothing in
@@ -453,11 +479,11 @@ void main() {
     // Route<Object?>. Hand-rolling the push somewhere else is how a narrower
     // route type slips back in, and that failure mode is a locked navigator
     // rather than a compile error.
-    expect(builders, ['lib/src/screens/capsule_page.dart']);
+    expect(builders, ['lib/src/screens/capsule/capsule_editor.dart']);
   });
 
   test('no capsule screen reaches for the app-wide purple', () {
-    final source = File('lib/src/screens/capsule_page.dart').readAsStringSync();
+    final source = _capsuleSource();
     // Covers the states a widget test never renders — the button's loading
     // spinner, the disabled pill — where the purple used to hide. The
     // 薰衣草信笺 skin keeps its own violet palette on purpose: that one is a
@@ -466,11 +492,10 @@ void main() {
   });
 
   test('every capsule artwork the page names is actually shipped', () {
-    final source = File('lib/src/screens/capsule_page.dart').readAsStringSync();
-    final referenced = RegExp(r"'(assets/[^']+)'")
-        .allMatches(source)
-        .map((match) => match.group(1)!)
-        .toSet();
+    final source = _capsuleSource();
+    final referenced = RegExp(
+      r"'(assets/[^']+)'",
+    ).allMatches(source).map((match) => match.group(1)!).toSet();
     expect(referenced, contains('assets/capsule/sealed-card.png'));
     // A renamed or dropped asset only shows up as an empty box at runtime,
     // and the sealed card is now one cut of the design rather than paint
@@ -479,6 +504,24 @@ void main() {
       expect(File(path).existsSync(), isTrue, reason: 'missing $path');
     }
   });
+}
+
+/// All capsule source: the home entry plus every split file under capsule/.
+/// The purple/asset guards must cover the whole feature, not just the slimmed
+/// entry file, after the module was split by component/page.
+String _capsuleSource() {
+  final buffer = StringBuffer(
+    File('lib/src/screens/capsule_page.dart').readAsStringSync(),
+  );
+  final dir = Directory('lib/src/screens/capsule');
+  if (dir.existsSync()) {
+    for (final file in dir.listSync().whereType<File>()) {
+      if (file.path.endsWith('.dart')) {
+        buffer.writeln(file.readAsStringSync());
+      }
+    }
+  }
+  return buffer.toString();
 }
 
 /// Size of the round button drawn behind a header icon.
