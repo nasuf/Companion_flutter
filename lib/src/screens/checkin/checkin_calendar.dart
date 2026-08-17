@@ -209,6 +209,7 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
             decoration: BoxDecoration(
               color: tokens.card,
               borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+              border: Border.all(color: tokens.glassBorder),
               boxShadow: tokens.cardShadow,
             ),
             child: ClipRRect(

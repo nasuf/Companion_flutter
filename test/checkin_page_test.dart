@@ -211,6 +211,26 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('the home renders as frosted glass over a blue glow', (
+      tester,
+    ) async {
+      _useDesignCanvas(tester);
+      await tester.pumpWidget(
+        _app(
+          _FakeReminderApi([
+            _once('a', '阅读30分钟'),
+            _habit('h', '晨跑', [_today.weekday]),
+          ]),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await expectLater(
+        find.byType(CheckinPage),
+        matchesGoldenFile('goldens/checkin_home.png'),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('a habit row is labelled with its weekdays', (tester) async {
       _useDesignCanvas(tester);
       // Whatever today is, the habit repeats on it.

@@ -205,6 +205,7 @@ class _CheckinReminderRow extends StatelessWidget {
         decoration: BoxDecoration(
           color: tokens.card,
           borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+          border: Border.all(color: tokens.glassBorder),
           boxShadow: tokens.cardShadow,
         ),
         child: Row(
@@ -293,6 +294,7 @@ class _CheckinWeekdayCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: tokens.card,
         borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+        border: Border.all(color: tokens.glassBorder),
         boxShadow: tokens.cardShadow,
       ),
       child: Column(
@@ -378,6 +380,7 @@ class _CheckinNoteCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: tokens.card,
         borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+        border: Border.all(color: tokens.glassBorder),
         boxShadow: tokens.cardShadow,
       ),
       child: Column(

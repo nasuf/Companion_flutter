@@ -73,6 +73,9 @@ class _CheckinPageState extends State<CheckinPage> {
           final loading = snapshot.connectionState == ConnectionState.waiting;
           return Stack(
             children: [
+              // Blue-glow glass ground so the frosted cards have colour behind
+              // them (static — see _CheckinBackground).
+              const Positioned.fill(child: _CheckinBackground()),
               SafeArea(
                 bottom: false,
                 child: Column(

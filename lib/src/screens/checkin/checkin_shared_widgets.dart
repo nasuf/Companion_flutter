@@ -23,6 +23,7 @@ class _CheckinNavButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: tokens.card,
           shape: BoxShape.circle,
+          border: Border.all(color: tokens.glassBorder),
           boxShadow: tokens.navShadow,
         ),
         child: Icon(
@@ -104,6 +105,7 @@ class _CheckinLoadingCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: tokens.card,
         borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+        border: Border.all(color: tokens.glassBorder),
         boxShadow: tokens.cardShadow,
       ),
       child: const CupertinoActivityIndicator(),
@@ -128,6 +130,7 @@ class _CheckinEmptyCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: tokens.card,
           borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+          border: Border.all(color: tokens.glassBorder),
           boxShadow: tokens.cardShadow,
         ),
         child: Text(

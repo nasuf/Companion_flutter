@@ -157,6 +157,7 @@ class _CheckinDetailSheet extends StatelessWidget {
       decoration: BoxDecoration(
         color: tokens.card,
         borderRadius: BorderRadius.circular(_kCheckinCardRadius),
+        border: Border.all(color: tokens.glassBorder),
         boxShadow: tokens.cardShadow,
       ),
       child: Column(

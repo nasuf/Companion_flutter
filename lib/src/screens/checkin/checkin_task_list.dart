@@ -325,7 +325,11 @@ class _SwipeTaskRowState extends State<_SwipeTaskRow>
       transform: Matrix4.translationValues(_offset, 0, 0),
       height: _kCheckinTaskRowHeight,
       padding: const EdgeInsets.symmetric(horizontal: _kCheckinMargin),
-      decoration: BoxDecoration(color: tokens.card, borderRadius: _cardRadius),
+      decoration: BoxDecoration(
+        color: tokens.cardSolid,
+        borderRadius: _cardRadius,
+        border: Border.all(color: tokens.glassBorder),
+      ),
       child: Row(
         children: [
           Container(

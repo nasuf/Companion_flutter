@@ -50,6 +50,8 @@ class _CheckinTokens {
   const _CheckinTokens({
     required this.page,
     required this.card,
+    required this.cardSolid,
+    required this.glassBorder,
     required this.accent,
     required this.accentSoft,
     required this.accentInk,
@@ -67,7 +69,18 @@ class _CheckinTokens {
   });
 
   final Color page;
+
+  /// Frosted-glass card fill (translucent), so cards pick up the page's blue
+  /// glow behind them — matches the weather / capsule glass surfaces.
   final Color card;
+
+  /// Opaque sibling of [card] for the one surface that slides over a coloured
+  /// layer — the swipe-to-act task row — where translucency would let the
+  /// amber/red action bleed through the closed card.
+  final Color cardSolid;
+
+  /// Hairline edge that gives the translucent [card] its glass rim.
+  final Color glassBorder;
   final Color accent;
   final Color accentSoft;
   final Color accentInk;
@@ -85,7 +98,9 @@ class _CheckinTokens {
 
   static const light = _CheckinTokens(
     page: Color(0xFFF0F3FF),
-    card: Color(0xFFFFFFFF),
+    card: Color(0x8CFFFFFF), // white .55 — frosted glass
+    cardSolid: Color(0xFFFCFDFF), // opaque near-white for the swipe row
+    glassBorder: Color(0xD9FFFFFF), // white .85
     accent: Color(0xFF496CFC),
     accentSoft: Color(0x33496CFC),
     accentInk: Color(0xFF434399),
@@ -104,7 +119,9 @@ class _CheckinTokens {
 
   static const dark = _CheckinTokens(
     page: Color(0xFF080D14),
-    card: Color(0xFF131C27),
+    card: Color(0xB3172231), // translucent slate — frosted glass on dark
+    cardSolid: Color(0xFF141E2B), // opaque slate for the swipe row
+    glassBorder: Color(0x33FFFFFF), // white .20
     accent: Color(0xFF6C8BFF),
     accentSoft: Color(0x386C8BFF),
     accentInk: Color(0xFFAEBBFF),
@@ -145,6 +162,67 @@ class _CheckinTokens {
       offset: const Offset(2, 8),
     ),
   ];
+}
+
+/// Static blue-glow ground for the check-in page: the page base + a few soft
+/// blue light blobs + fine grain, so the frosted cards have colour to sit over.
+///
+/// Deliberately still (no breathing controller): the check-in tests drive the
+/// page with `pumpAndSettle`, which never returns under a perpetual animation.
+/// It reuses the weather page's _WeatherGlowBlob / _WeatherGrain (same library).
+class _CheckinBackground extends StatelessWidget {
+  const _CheckinBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = AppColors.isDark(context);
+    final tokens = _CheckinTokens.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(color: tokens.page),
+      child: Stack(
+        children: [
+          Positioned(
+            left: -90,
+            top: -72,
+            child: _WeatherGlowBlob(
+              width: 262,
+              height: 232,
+              color: dark ? const Color(0xFF2B4A9E) : const Color(0xFFBAC8FF),
+              opacity: dark ? 0.5 : 0.9,
+            ),
+          ),
+          Positioned(
+            right: -96,
+            top: 70,
+            child: _WeatherGlowBlob(
+              width: 232,
+              height: 208,
+              color: dark ? const Color(0xFF244A86) : const Color(0xFFCFE0FF),
+              opacity: dark ? 0.42 : 0.82,
+            ),
+          ),
+          Positioned(
+            left: -74,
+            bottom: -84,
+            child: _WeatherGlowBlob(
+              width: 252,
+              height: 220,
+              color: dark ? const Color(0xFF3A3F86) : const Color(0xFFD9CEFF),
+              opacity: dark ? 0.36 : 0.64,
+            ),
+          ),
+          Positioned.fill(
+            child: _WeatherGrain(
+              dotColor: dark
+                  ? const Color(0x24FFFFFF)
+                  : const Color(0x59FFFFFF),
+              opacity: dark ? 0.6 : 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// A text field with no chrome of its own.
