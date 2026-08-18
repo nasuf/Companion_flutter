@@ -152,8 +152,11 @@ class _CheckinPageState extends State<CheckinPage> {
           Positioned(
             left: 24,
             top: 0,
-            child: _CheckinNavButton(
-              onPressed: () => Navigator.of(context).pop(),
+            // Exactly the weather back button (36 / 20 chevron / same weight),
+            // tinted with the check-in blue accent.
+            child: _WeatherBackButton(
+              onTap: () => Navigator.of(context).pop(),
+              iconColor: tokens.accent,
             ),
           ),
           Center(

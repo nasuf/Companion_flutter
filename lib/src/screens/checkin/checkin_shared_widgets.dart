@@ -1,41 +1,5 @@
 part of 'package:companion_flutter/main.dart';
 
-/// Round white back button in the check-in header.
-class _CheckinNavButton extends StatelessWidget {
-  const _CheckinNavButton({required this.onPressed});
-
-  static const double _size = 36;
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = _CheckinTokens.of(context);
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      minimumSize: const Size(_size, _size),
-      borderRadius: BorderRadius.circular(_size / 2),
-      onPressed: onPressed,
-      child: Container(
-        width: _size,
-        height: _size,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: tokens.card,
-          shape: BoxShape.circle,
-          border: Border.all(color: tokens.glassBorder),
-          boxShadow: tokens.navShadow,
-        ),
-        child: Icon(
-          CupertinoIcons.chevron_back,
-          size: 18,
-          color: tokens.accent,
-        ),
-      ),
-    );
-  }
-}
-
 /// The blue "add plan" button floating over the bottom-right corner.
 class _CheckinFab extends StatelessWidget {
   const _CheckinFab({required this.onPressed});

@@ -20,10 +20,12 @@ class _StoreTopBar extends StatelessWidget {
             Center(
               child: Text(
                 title,
+                // Matches the check-in "打卡" title: 24 / w700, centred.
                 style: TextStyle(
                   color: AppColors.text,
-                  fontSize: 19,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 24,
+                  height: 1.2,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 0,
                   decoration: TextDecoration.none,
                 ),

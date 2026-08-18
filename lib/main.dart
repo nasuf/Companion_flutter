@@ -271,11 +271,7 @@ class AppThemeScope extends InheritedNotifier<AppThemeController> {
 }
 
 class _AppNavCircleButton extends StatelessWidget {
-  const _AppNavCircleButton({
-    required this.icon,
-    required this.onPressed,
-    this.iconColor,
-  });
+  const _AppNavCircleButton({required this.icon, required this.onPressed});
 
   static const double _size = 38;
   static const double _iconSize = 17;
@@ -283,17 +279,12 @@ class _AppNavCircleButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onPressed;
 
-  /// Overrides the chevron tint. Callers on themed pages pass that page's
-  /// colour (e.g. the achievement level tint); default is the app accent.
-  final Color? iconColor;
-
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null;
     final colors = AppColors.of(context);
     final isDark = AppColors.isDark(context);
-    final resolvedIconColor =
-        iconColor ?? (isDark ? colors.accentDeep : colors.accent);
+    final iconColor = isDark ? colors.accentDeep : colors.accent;
     return CupertinoButton(
       padding: EdgeInsets.zero,
       minimumSize: const Size(_size, _size),
@@ -324,7 +315,7 @@ class _AppNavCircleButton extends StatelessWidget {
               ),
             ],
           ),
-          child: Icon(icon, color: resolvedIconColor, size: _iconSize),
+          child: Icon(icon, color: iconColor, size: _iconSize),
         ),
       ),
     );

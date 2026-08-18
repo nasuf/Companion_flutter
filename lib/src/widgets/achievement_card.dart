@@ -93,17 +93,30 @@ class _AchievementCardFront extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  item.popupText.isEmpty ? item.conditionText : item.popupText,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: isDark ? AppColors.muted : const Color(0xFF747C82),
-                    fontSize: 12,
-                    height: 1.34,
-                    fontWeight: FontWeight.w400,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
+                // Always reserve two lines (top-aligned) so a one-line copy and
+                // a two-line copy leave the trail row at the same height — the
+                // cards must not sit one higher than another.
+                SizedBox(
+                  height: 12 * 1.34 * 2,
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: Text(
+                      item.popupText.isEmpty
+                          ? item.conditionText
+                          : item.popupText,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isDark
+                            ? AppColors.muted
+                            : const Color(0xFF747C82),
+                        fontSize: 12,
+                        height: 1.34,
+                        fontWeight: FontWeight.w400,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),

@@ -78,25 +78,33 @@ class _AchievementTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = AppColors.isDark(context);
-    return Row(
-      children: [
-        _AppNavCircleButton(
-          icon: CupertinoIcons.chevron_left,
-          onPressed: onBack,
-          iconColor: tint,
-        ),
-        const SizedBox(width: 14),
-        Text(
-          '成就',
-          style: TextStyle(
-            color: isDark ? AppColors.text : const Color(0xFF151719),
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0,
-            decoration: TextDecoration.none,
+    // Title centred on the whole bar (the same 24/w700 as the check-in "打卡"),
+    // with the back button floating at the left.
+    return SizedBox(
+      height: 38,
+      child: Stack(
+        children: [
+          Center(
+            child: Text(
+              '成就',
+              style: TextStyle(
+                color: isDark ? AppColors.text : const Color(0xFF151719),
+                fontSize: 24,
+                height: 1.2,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+                decoration: TextDecoration.none,
+              ),
+            ),
           ),
-        ),
-      ],
+          Align(
+            alignment: Alignment.centerLeft,
+            // Exactly the weather page's back button (36 circle / 20 chevron /
+            // same weight), tinted with the achievement level colour.
+            child: _WeatherBackButton(onTap: onBack, iconColor: tint),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -124,8 +132,8 @@ class _AchievementStatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = AppColors.isDark(context);
     return Container(
-      height: 88,
-      padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
+      height: 94,
+      padding: const EdgeInsets.fromLTRB(13, 15, 13, 13),
       decoration: BoxDecoration(
         color: _achievementGlassFill(context),
         borderRadius: BorderRadius.circular(24),
@@ -145,11 +153,12 @@ class _AchievementStatCard extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
+            // Exactly the store VIP benefit-card title font: 14 / w800 / 1.2.
             style: TextStyle(
-              color: isDark ? AppColors.muted : const Color(0xFF8B9491),
-              fontSize: 12,
-              height: 1,
-              fontWeight: FontWeight.w400,
+              color: isDark ? AppColors.muted : Colors.black,
+              fontSize: 14,
+              height: 1.2,
+              fontWeight: FontWeight.w800,
               letterSpacing: 0,
               decoration: TextDecoration.none,
             ),
@@ -158,13 +167,13 @@ class _AchievementStatCard extends StatelessWidget {
           Row(
             children: [
               _AchievementStatIcon(glyph: glyph, tint: tint),
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               Expanded(
                 child: _AchievementStatValue(
                   value: value,
                   style: TextStyle(
-                    color: isDark ? AppColors.text : const Color(0xFF151719),
-                    fontSize: 20,
+                    color: isDark ? AppColors.text : Colors.black,
+                    fontSize: 24,
                     height: 1,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.5,
@@ -223,8 +232,8 @@ class _AchievementStatValue extends StatelessWidget {
 class _AchievementStatIcon extends StatelessWidget {
   const _AchievementStatIcon({required this.glyph, required this.tint});
 
-  static const _diameter = 24.0;
-  static const _glyphSize = 12.0;
+  static const _diameter = 34.0;
+  static const _glyphSize = 18.0;
 
   final _AchievementStatGlyph glyph;
   final Color tint;
