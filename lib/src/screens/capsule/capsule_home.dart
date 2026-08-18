@@ -154,7 +154,7 @@ class _CapsuleHomeHeader extends StatelessWidget {
   }
 }
 
-/// 写新胶囊：主玻璃卡 + 橙色线性徽章 + 右侧橙色圆箭头。
+/// 写新胶囊：主玻璃卡，文案靠左，橙色钢笔徽章在最右侧（尺寸与「草稿」入口图标一致）。
 class _CapsuleWriteEntryCard extends StatelessWidget {
   const _CapsuleWriteEntryCard({required this.onTap});
 
@@ -172,8 +172,6 @@ class _CapsuleWriteEntryCard extends StatelessWidget {
         decoration: _capsuleGlassCard(context),
         child: Row(
           children: [
-            const _CapsuleMedallion(icon: CupertinoIcons.pencil, size: 48),
-            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -203,27 +201,8 @@ class _CapsuleWriteEntryCard extends StatelessWidget {
                 ],
               ),
             ),
-            Container(
-              width: 26,
-              height: 26,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _capsuleOrange,
-                boxShadow: [
-                  BoxShadow(
-                    color: _capsuleOrange.withValues(alpha: 0.4),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                CupertinoIcons.chevron_forward,
-                color: Colors.white,
-                size: 14,
-              ),
-            ),
+            const SizedBox(width: 14),
+            const _CapsuleMedallion(icon: CupertinoIcons.pencil, size: 34),
           ],
         ),
       ),
@@ -237,7 +216,6 @@ class _CapsuleHomeShortcutGrid extends StatelessWidget {
     required this.pendingCount,
     required this.openedCount,
     required this.onDrafts,
-    required this.onPending,
     required this.onOpened,
   });
 
@@ -245,7 +223,6 @@ class _CapsuleHomeShortcutGrid extends StatelessWidget {
   final int pendingCount;
   final int openedCount;
   final VoidCallback? onDrafts;
-  final VoidCallback? onPending;
   final VoidCallback? onOpened;
 
   @override
@@ -263,19 +240,20 @@ class _CapsuleHomeShortcutGrid extends StatelessWidget {
         const SizedBox(width: 12),
         Expanded(
           child: _CapsuleHomeShortcutCard(
-            label: '待解封',
-            count: pendingCount,
-            icon: CupertinoIcons.lock_fill,
-            onTap: onPending,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _CapsuleHomeShortcutCard(
             label: '已解封',
             count: openedCount,
             icon: CupertinoIcons.envelope_open_fill,
             onTap: onOpened,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          // 待解封暂不可点击（灰显），仅作占位展示数量。
+          child: _CapsuleHomeShortcutCard(
+            label: '待解封',
+            count: pendingCount,
+            icon: CupertinoIcons.lock_fill,
+            onTap: null,
           ),
         ),
       ],
@@ -321,7 +299,8 @@ class _CapsuleHomeShortcutCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: w.inkSoft,
+                  // 与「写新胶囊」同色（w.ink，深墨近黑），不再用弱化的 inkSoft。
+                  color: w.ink,
                   fontSize: 12.5,
                   height: 1,
                   fontWeight: FontWeight.w400,

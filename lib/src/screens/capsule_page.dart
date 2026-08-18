@@ -196,9 +196,6 @@ class _CapsulePageState extends State<CapsulePage> {
                       onDrafts: drafts.isEmpty
                           ? null
                           : () => _openDrafts(drafts),
-                      onPending: pending.isEmpty
-                          ? null
-                          : () => _openPending(pending),
                       onOpened: arrived.isEmpty
                           ? null
                           : () => _openOpened(arrived),
@@ -278,6 +275,8 @@ class _CapsulePageState extends State<CapsulePage> {
     }
   }
 
+  // 待解封入口暂时禁用（见 _CapsuleHomeShortcutGrid）；保留导航逻辑以便日后恢复。
+  // ignore: unused_element
   Future<void> _openPending(List<TimeCapsule> pending) async {
     if (pending.isEmpty) return;
     await Navigator.of(context).push<void>(
