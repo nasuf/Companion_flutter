@@ -105,6 +105,14 @@ class _MainShellState extends State<MainShell> with RouteAware {
 
   void _setChatSidebarOpen(bool value) {
     if (_chatSidebarOpen == value) return;
+    if (value) {
+      // The sidebar overlay sits in the same Stack as the chat page (this
+      // Scaffold is resizeToAvoidBottomInset: false), so it doesn't get
+      // pushed up above the keyboard the way the composer does — the OS
+      // keyboard would otherwise render on top of it, covering its bottom
+      // portion. Dismiss whatever has focus before it opens.
+      FocusManager.instance.primaryFocus?.unfocus();
+    }
     setState(() => _chatSidebarOpen = value);
   }
 
