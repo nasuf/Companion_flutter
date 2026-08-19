@@ -587,13 +587,17 @@ class _WeatherLocationPill extends StatelessWidget {
 }
 
 class _WeatherBackButton extends StatelessWidget {
-  const _WeatherBackButton({required this.onTap, this.iconColor});
+  const _WeatherBackButton({required this.onTap, this.iconColor, this.icon});
 
   final VoidCallback onTap;
 
   /// Chevron tint. Defaults to the weather accent blue; other pages reusing
   /// this glass button pass their own theme colour (capsule → orange).
   final Color? iconColor;
+
+  /// Glyph override. Defaults to the back chevron; a page can reuse this exact
+  /// 36pt glass circle for a same-size close (X) control (e.g. an editor).
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -614,7 +618,7 @@ class _WeatherBackButton extends StatelessWidget {
           boxShadow: [w.pillShadow],
         ),
         child: Icon(
-          CupertinoIcons.chevron_left,
+          icon ?? CupertinoIcons.chevron_left,
           color: iconColor ?? const Color(0xFF0A84FF),
           size: 20,
         ),

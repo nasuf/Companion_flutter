@@ -49,6 +49,7 @@ class _LastWillEditorPageState extends State<_LastWillEditorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.of(context);
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     final safeBottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
@@ -64,12 +65,40 @@ class _LastWillEditorPageState extends State<_LastWillEditorPage> {
               padding: EdgeInsets.only(bottom: bottomInset),
               child: Column(
                 children: [
-                  _LegacyHeader(
-                    backIcon: CupertinoIcons.xmark,
-                    onBack: () => Navigator.of(context).maybePop(),
-                    trailing: widget.onDelete == null
-                        ? null
-                        : _LegacyEditorDeleteButton(onTap: _delete),
+                  // 与胶囊「写新胶囊」编辑页头部完全一致的几何：18/10/18/8 内边距、
+                  // 44 高、Positioned+Center 让按钮垂直居中——而不是贴边。
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 10, 18, 8),
+                    child: SizedBox(
+                      height: 44,
+                      child: Stack(
+                        children: [
+                          Positioned(
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            child: Center(
+                              child: _WeatherBackButton(
+                                onTap: () => Navigator.of(context).maybePop(),
+                                icon: CupertinoIcons.xmark,
+                                iconColor: w.ink,
+                              ),
+                            ),
+                          ),
+                          if (widget.onDelete != null)
+                            Positioned(
+                              right: 0,
+                              top: 0,
+                              bottom: 0,
+                              child: Center(
+                                child: _LegacyEditorDeleteButton(
+                                  onTap: _delete,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                   Expanded(
                     child: Padding(
@@ -86,16 +115,16 @@ class _LastWillEditorPageState extends State<_LastWillEditorPage> {
                           textAlignVertical: TextAlignVertical.top,
                           placeholder: '把想留下的话写在这里...',
                           padding: EdgeInsets.zero,
-                          cursorColor: Colors.white,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          cursorColor: w.ink,
+                          style: TextStyle(
+                            color: w.ink,
                             fontSize: 20,
                             height: 24 / 20,
                             fontWeight: FontWeight.w400,
                             decoration: TextDecoration.none,
                           ),
-                          placeholderStyle: const TextStyle(
-                            color: _legacyPlaceholderOnCard,
+                          placeholderStyle: TextStyle(
+                            color: w.inkFaint,
                             fontSize: 20,
                             height: 24 / 20,
                             fontWeight: FontWeight.w400,
@@ -184,26 +213,29 @@ class _LegacyEditorDeleteButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Same 36pt glass circle as the header's back/close button (_W2b is the
+    // weather page's shared token set, visible library-wide) — the header now
+    // sits on the bright page rather than the old dark background, so a bare
+    // white glyph with a drop shadow would no longer read.
+    final w = _W2b.of(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
       onPressed: onTap,
-      child: const SizedBox(
-        width: 40,
-        height: 40,
-        child: Center(
-          child: Icon(
-            CupertinoIcons.delete,
-            size: 26,
-            color: Colors.white,
-            shadows: [
-              Shadow(
-                color: Color(0x80000000),
-                blurRadius: 4,
-                offset: Offset(0, 4),
-              ),
-            ],
-          ),
+      child: Container(
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: w.glass,
+          shape: BoxShape.circle,
+          border: Border.all(color: w.glassBorder),
+          boxShadow: [w.pillShadow],
+        ),
+        child: const Icon(
+          CupertinoIcons.delete,
+          size: 20,
+          color: _legacyDanger,
         ),
       ),
     );

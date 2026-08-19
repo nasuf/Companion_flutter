@@ -60,7 +60,6 @@ class _LastWillPageState extends State<LastWillPage>
   String get _content => _current?.content ?? '';
   bool get _isTiming =>
       _current?.isActive == true && _current?.hasContent == true;
-  bool get _daysDirty => _savedDays != _pendingDays;
   bool get _canConvertToDraft =>
       _current?.hasContent == true && _current?.status != 'draft';
   bool get _canStartFromEditor =>
@@ -87,6 +86,7 @@ class _LastWillPageState extends State<LastWillPage>
             child: FutureBuilder<List<LastWill>>(
               future: _wills,
               builder: (context, snapshot) {
+                final w = _W2b.of(context);
                 final loading =
                     snapshot.connectionState == ConnectionState.waiting;
                 final safeBottom = MediaQuery.paddingOf(context).bottom;
@@ -101,7 +101,9 @@ class _LastWillPageState extends State<LastWillPage>
                         physics: const BouncingScrollPhysics(),
                         padding: EdgeInsets.fromLTRB(
                           _legacyGutter,
-                          0,
+                          // 头部收窄到 36pt 后补的呼吸间距（原来靠 84pt 高的头部
+                          // 自带间距）。
+                          20,
                           _legacyGutter,
                           math.max(24, safeBottom + 12),
                         ),
@@ -117,11 +119,10 @@ class _LastWillPageState extends State<LastWillPage>
                             animation: _glowController,
                             glowing: _isTiming,
                             days: _pendingDays,
-                            showConfirm: _daysDirty && !_busy,
                             onDaysChanged: (value) {
                               setState(() => _pendingDays = value);
                             },
-                            onConfirm: _confirmDays,
+                            onSettled: _autoConfirmDays,
                           ),
                           const SizedBox(height: 24),
                           _LegacyContactsCard(
@@ -145,10 +146,10 @@ class _LastWillPageState extends State<LastWillPage>
                           ],
                           if (loading) ...[
                             const SizedBox(height: 24),
-                            const Center(
-                              child: CupertinoActivityIndicator(
-                                color: Colors.white,
-                              ),
+                            // 直接铺在亮底页面上（不在卡片内），用 w.ink，
+                            // 否则白色指示器在亮底上几乎看不见。
+                            Center(
+                              child: CupertinoActivityIndicator(color: w.ink),
                             ),
                           ],
                         ],
@@ -164,16 +165,18 @@ class _LastWillPageState extends State<LastWillPage>
     );
   }
 
-  Future<void> _confirmDays() async {
-    final days = _pendingDays;
-    final confirmed = await _showLegacyConfirmDialog(
-      context,
-      title: '失联天数',
-      message: '系统将按时间约定，把未能说出口的话，悄悄送达你指定的人',
-      confirmLabel: '确认',
-    );
-    if (!confirmed || !mounted) return;
-    // Explicit confirmation, so create the record even at the default 30 days.
+  /// Fires once the ruler comes to rest on a whole day — no more explicit
+  /// "确认" button or dialog; scrolling to a value and stopping there IS the
+  /// confirmation now.
+  Future<void> _autoConfirmDays(int days) async {
+    // `days == _savedDays` covers the ruler catching up to an already-saved
+    // value — e.g. the animated hop from the default 30 to a loaded record's
+    // real day count — which is UI reflecting existing state, not a change to
+    // persist. `_busy` avoids overlapping saves if another one is in flight.
+    if (_busy || days == _savedDays) return;
+    // Still `force: true` — a user who explicitly scrolls to (or back to) 30
+    // on a brand-new record means it, the same as the old confirm button did
+    // regardless of which day was showing.
     await _persistDraftSettings(inactivityDays: days, force: true);
   }
 
@@ -192,12 +195,13 @@ class _LastWillPageState extends State<LastWillPage>
         ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 1),
-              end: Offset.zero,
-            ).animate(
-              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-            ),
+            position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
+                .animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  ),
+                ),
             child: child,
           );
         },
@@ -264,14 +268,28 @@ class _LastWillPageState extends State<LastWillPage>
   Future<bool> _deleteCurrentWill() async {
     final current = _current;
     if (current == null || !current.hasContent || _busy) return false;
-    final confirmed = await _showLegacyConfirmDialog(
-      context,
-      title: '删除遗言？',
-      message: '只会删除遗言内容，失联天数和联系人会保留。',
-      confirmLabel: '删除',
-      buttonHeight: 32,
+    // System dialog, not the module's custom blurred sheet — matches how
+    // capsule confirms its own deletes (_confirmDeleteCapsule) and how
+    // _LegacyContactSheet._remove now confirms contact deletion.
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('删除遗言？'),
+        content: const Text('只会删除遗言内容，失联天数和联系人会保留。'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
     );
-    if (!confirmed || !mounted) return false;
+    if (confirmed != true || !mounted) return false;
     setState(() => _busy = true);
     try {
       final saved = await widget.api.updateLastWill(
@@ -413,91 +431,94 @@ class _LastWillPageState extends State<LastWillPage>
 }
 
 /// 失联倒计时 card: big day readout, scrubbable day ruler and preset chips.
+/// The day count auto-confirms once the ruler settles (see
+/// _LegacyDayRulerState._onNotification) — there is no separate confirm step.
 class _LegacyCountdownCard extends StatelessWidget {
   const _LegacyCountdownCard({
     required this.animation,
     required this.glowing,
     required this.days,
-    required this.showConfirm,
     required this.onDaysChanged,
-    required this.onConfirm,
+    required this.onSettled,
   });
 
   final Animation<double> animation;
   final bool glowing;
   final int days;
-  final bool showConfirm;
   final ValueChanged<int> onDaysChanged;
-  final VoidCallback onConfirm;
+  final ValueChanged<int> onSettled;
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.of(context);
     final card = _LegacyCard(
-      child: Stack(
+      child: Column(
         children: [
-          Column(
-            children: [
-              const SizedBox(height: 20),
-              const Text(
-                '失联倒计时',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  height: 19 / 16,
-                  fontWeight: FontWeight.w700,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '$days',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 40,
-                  height: 48 / 40,
-                  fontWeight: FontWeight.w400,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-              const SizedBox(height: 8),
-              _LegacyDayRuler(value: days, onChanged: onDaysChanged),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 13),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    for (final preset in _legacyDayPresets)
-                      _LegacyChip(
-                        label: '$preset天',
-                        selected: preset == days,
-                        onTap: () => onDaysChanged(preset),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 13),
-            ],
-          ),
-          if (showConfirm)
-            Positioned(
-              right: _legacyGutter,
-              top: 16,
-              child: _LegacyCardAction(label: '确认', onTap: onConfirm),
+          const SizedBox(height: 20),
+          Text(
+            '失联倒计时',
+            style: TextStyle(
+              color: w.ink,
+              fontSize: 16,
+              height: 19 / 16,
+              fontWeight: FontWeight.w700,
+              decoration: TextDecoration.none,
             ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '$days',
+            style: TextStyle(
+              color: w.ink,
+              fontSize: 40,
+              height: 48 / 40,
+              fontWeight: FontWeight.w400,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _LegacyDayRuler(
+            value: days,
+            onChanged: onDaysChanged,
+            onSettled: onSettled,
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 13),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                for (final preset in _legacyDayPresets)
+                  _LegacyChip(
+                    label: '$preset天',
+                    selected: preset == days,
+                    onTap: () => onDaysChanged(preset),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 13),
         ],
       ),
     );
     if (!glowing) return card;
-    return AnimatedBuilder(
-      animation: animation,
-      child: card,
-      builder: (context, child) {
-        return CustomPaint(
-          foregroundPainter: _GlowBorderPainter(progress: animation.value),
-          child: child,
-        );
-      },
+    // Isolates the glow's per-frame repaint to its own compositor layer, so
+    // the animation (now cheap — see _GlowBorderPainter) never forces the
+    // surrounding list to repaint.
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: animation,
+        child: card,
+        builder: (context, child) {
+          return CustomPaint(
+            foregroundPainter: _GlowBorderPainter(
+              progress: animation.value,
+              color: Colors.white,
+            ),
+            child: child,
+          );
+        },
+      ),
     );
   }
 }
@@ -505,10 +526,19 @@ class _LegacyCountdownCard extends StatelessWidget {
 /// Horizontal day ruler. One tick every 32px; the tick under the marker is the
 /// selection, and emphasis falls off continuously to either side of it.
 class _LegacyDayRuler extends StatefulWidget {
-  const _LegacyDayRuler({required this.value, required this.onChanged});
+  const _LegacyDayRuler({
+    required this.value,
+    required this.onChanged,
+    required this.onSettled,
+  });
 
   final int value;
   final ValueChanged<int> onChanged;
+
+  /// Fired once the ruler comes to a full stop (whether from a drag/fling or
+  /// the animated hop a preset chip triggers) with whatever day it settled
+  /// on — the day count auto-confirms here instead of behind a button.
+  final ValueChanged<int> onSettled;
 
   @override
   State<_LegacyDayRuler> createState() => _LegacyDayRulerState();
@@ -574,8 +604,18 @@ class _LegacyDayRulerState extends State<_LegacyDayRuler> {
     );
     final day = _legacyMinDays + index;
     if (day != _centre) {
+      // One light click per day crossed — same feel as a native picker,
+      // whether the day changed from a drag or the animated hop a preset
+      // chip triggers.
+      HapticFeedback.selectionClick();
       setState(() => _centre = day);
       widget.onChanged(day);
+    }
+    // Fires once the ballistic simulation (or the preset chip's animateTo)
+    // has fully come to rest, i.e. always on a whole tick — the day count
+    // auto-confirms right here instead of waiting on a button tap.
+    if (notification is ScrollEndNotification) {
+      widget.onSettled(day);
     }
     return false;
   }
@@ -705,17 +745,17 @@ class _LegacyDayTick extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = Color.lerp(_legacyFaint, Colors.white, emphasis)!;
+    final w = _W2b.of(context);
+    // Colour is the only thing emphasis drives now — the tick height and label
+    // size used to grow toward the marker too, which read as jitter while
+    // scrolling rather than a clean highlight.
+    final color = Color.lerp(w.inkFaint, w.ink, emphasis)!;
     return Column(
       children: [
-        const SizedBox(height: _legacyRulerMarkerSize),
-        // Both slots keep a fixed height so growing a tick never nudges the
-        // labels off their shared centre line.
+        const SizedBox(height: _legacyRulerMarkerSize + _legacyRulerMarkerGap),
         SizedBox(
           height: 12,
-          child: Center(
-            child: Container(width: 2, height: 8 + 4 * emphasis, color: color),
-          ),
+          child: Center(child: Container(width: 2, height: 8, color: color)),
         ),
         SizedBox(
           height: 16,
@@ -725,7 +765,7 @@ class _LegacyDayTick extends StatelessWidget {
               key: Key('legacy-day-label-$day'),
               style: TextStyle(
                 color: color,
-                fontSize: 12 + 3 * emphasis,
+                fontSize: 13,
                 height: 1,
                 fontWeight: FontWeight.w500,
                 decoration: TextDecoration.none,
@@ -743,21 +783,19 @@ class _LegacyRulerMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.of(context);
     return Container(
       width: 20,
       height: 20,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.fromBorderSide(BorderSide(color: Colors.white)),
+        border: Border.fromBorderSide(BorderSide(color: w.ink)),
       ),
       alignment: Alignment.center,
       child: Container(
         width: 12,
         height: 12,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-        ),
+        decoration: BoxDecoration(color: w.ink, shape: BoxShape.circle),
       ),
     );
   }
@@ -777,18 +815,24 @@ class _LegacyContactsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.of(context);
     return _LegacyCard(
       child: Stack(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(_legacyGutter, 16, _legacyGutter, 24),
+            padding: const EdgeInsets.fromLTRB(
+              _legacyGutter,
+              16,
+              _legacyGutter,
+              24,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   '紧急联系人',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: w.ink,
                     fontSize: 16,
                     height: 19 / 16,
                     fontWeight: FontWeight.w700,
@@ -832,6 +876,7 @@ class _LegacyContactSlot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.of(context);
     final contact = this.contact;
     final label = contact == null
         ? '点击添加'
@@ -851,8 +896,8 @@ class _LegacyContactSlot extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: w.ink,
                 fontSize: 12,
                 height: 14 / 12,
                 fontWeight: FontWeight.w500,
@@ -882,6 +927,7 @@ class _LegacyWillCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.of(context);
     final body = content.trim();
     final empty = body.isEmpty;
     final headline = empty ? _legacyWillEmptyHeadline : _legacyWillHeadline;
@@ -889,7 +935,12 @@ class _LegacyWillCard extends StatelessWidget {
       child: Stack(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(_legacyGutter, 16, _legacyGutter, 18),
+            padding: const EdgeInsets.fromLTRB(
+              _legacyGutter,
+              16,
+              _legacyGutter,
+              18,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -899,8 +950,8 @@ class _LegacyWillCard extends StatelessWidget {
                     headline,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: w.ink,
                       fontSize: 16,
                       height: 19 / 16,
                       fontWeight: FontWeight.w700,
@@ -919,8 +970,8 @@ class _LegacyWillCard extends StatelessWidget {
                     padding: const EdgeInsets.only(left: 13),
                     child: Text(
                       _editedLabel(editedAt),
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: w.inkSoft,
                         fontSize: 10,
                         height: 12 / 10,
                         fontWeight: FontWeight.w500,
@@ -959,35 +1010,39 @@ class _LegacyWillEmptyPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 130,
-      width: double.infinity,
+    final w = _W2b.of(context);
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: _legacyPanelFill,
+        color: w.heroChipBg,
         borderRadius: _legacyCardBorderRadius,
+        border: Border.all(color: w.heroChipBorder),
       ),
-      child: Column(
-        children: [
-          const SizedBox(height: 24),
-          const SizedBox(
-            width: 24,
-            height: 24,
-            child: CustomPaint(painter: _LegacyDocPainter()),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            '尚未填写遗言内容',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              height: 14 / 12,
-              fontWeight: FontWeight.w500,
-              decoration: TextDecoration.none,
+      child: SizedBox(
+        height: 130,
+        width: double.infinity,
+        child: Column(
+          children: [
+            const SizedBox(height: 24),
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CustomPaint(painter: _LegacyDocPainter(color: w.ink)),
             ),
-          ),
-          const SizedBox(height: 12),
-          _LegacyChip(label: '去填写', selected: true, onTap: onTap),
-        ],
+            const SizedBox(height: 4),
+            Text(
+              '尚未填写遗言内容',
+              style: TextStyle(
+                color: w.inkSoft,
+                fontSize: 12,
+                height: 14 / 12,
+                fontWeight: FontWeight.w500,
+                decoration: TextDecoration.none,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _LegacyChip(label: '去填写', selected: true, onTap: onTap),
+          ],
+        ),
       ),
     );
   }
@@ -1001,28 +1056,32 @@ class _LegacyWillPreviewPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.of(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
       onPressed: onTap,
-      child: Container(
-        height: 108,
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(13, 21, 13, 14),
+      child: DecoratedBox(
         decoration: BoxDecoration(
-          color: _legacyPanelFill,
+          color: w.heroChipBg,
           borderRadius: _legacyCardBorderRadius,
+          border: Border.all(color: w.heroChipBorder),
         ),
-        child: Text(
-          body,
-          maxLines: 5,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            height: 14 / 12,
-            fontWeight: FontWeight.w500,
-            decoration: TextDecoration.none,
+        child: Container(
+          height: 108,
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(13, 21, 13, 14),
+          child: Text(
+            body,
+            maxLines: 5,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: w.ink,
+              fontSize: 12,
+              height: 14 / 12,
+              fontWeight: FontWeight.w500,
+              decoration: TextDecoration.none,
+            ),
           ),
         ),
       ),
@@ -1035,33 +1094,33 @@ class _LegacyLoadErrorNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(13, 10, 20, 10),
+    final w = _W2b.of(context);
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: _legacyBannerFill,
+        color: w.glass,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: w.glassBorder),
       ),
-      child: Row(
-        children: [
-          const Icon(
-            CupertinoIcons.exclamationmark_circle,
-            size: 20,
-            color: Colors.white,
-          ),
-          const SizedBox(width: 8),
-          const Expanded(
-            child: Text(
-              '没能读取到已保存的遗言，下面显示的可能不是最新内容，请检查网络后重新进入。',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                height: 14 / 12,
-                fontWeight: FontWeight.w500,
-                decoration: TextDecoration.none,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(13, 10, 20, 10),
+        child: Row(
+          children: [
+            Icon(CupertinoIcons.exclamationmark_circle, size: 20, color: w.ink),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '没能读取到已保存的遗言，下面显示的可能不是最新内容，请检查网络后重新进入。',
+                style: TextStyle(
+                  color: w.ink,
+                  fontSize: 12,
+                  height: 14 / 12,
+                  fontWeight: FontWeight.w500,
+                  decoration: TextDecoration.none,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1076,32 +1135,36 @@ class _LegacyGuardBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.of(context);
     final started = startedAt?.toLocal();
     final date = started == null ? '今天' : '${started.month}月${started.day}日';
-    return Container(
-      padding: const EdgeInsets.fromLTRB(13, 10, 32, 10),
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: _legacyBannerFill,
+        color: w.glass,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: w.glassBorder),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const Icon(CupertinoIcons.clock, size: 24, color: Colors.white),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              '遗言守护开启—$date起，连续$days日未登录，我们将替你把未曾说出口的心意，代为转告挂念之人。',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                height: 14 / 12,
-                fontWeight: FontWeight.w500,
-                decoration: TextDecoration.none,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(13, 10, 32, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(CupertinoIcons.clock, size: 24, color: w.ink),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                '遗言守护开启—$date起，连续$days日未登录，我们将替你把未曾说出口的心意，代为转告挂念之人。',
+                style: TextStyle(
+                  color: w.ink,
+                  fontSize: 12,
+                  height: 14 / 12,
+                  fontWeight: FontWeight.w500,
+                  decoration: TextDecoration.none,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1109,13 +1172,15 @@ class _LegacyGuardBanner extends StatelessWidget {
 
 /// Sheet-of-paper glyph for the empty 遗言 panel.
 class _LegacyDocPainter extends CustomPainter {
-  const _LegacyDocPainter();
+  const _LegacyDocPainter({required this.color});
+
+  final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
     final scale = size.width / 24;
     final stroke = Paint()
-      ..color = Colors.white
+      ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1 * scale
       ..strokeCap = StrokeCap.round;
@@ -1142,5 +1207,6 @@ class _LegacyDocPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _LegacyDocPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

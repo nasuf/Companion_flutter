@@ -16,13 +16,19 @@ const _legacyDayPresets = <int>[7, 10, 30, 60];
 const _legacyMinDays = 1;
 const _legacyMaxDays = 90;
 
-// 失联倒计时 ruler geometry. Marker band (20) + tick slot (12) + label slot (16).
+// 失联倒计时 ruler geometry. Marker band (20) + gap (4) + tick slot (12) +
+// label slot (16).
 const _legacyRulerPitch = 32.0;
 const _legacyRulerMarkerSize = 20.0;
-const _legacyRulerHeight = 48.0;
 
-/// How many ticks either side of the marker still get scaled up. The exponent
-/// keeps the peak narrow so the selected day stays clearly the largest one.
+/// Breathing room between the marker circle and the tick line under it — they
+/// used to sit flush against each other.
+const _legacyRulerMarkerGap = 4.0;
+const _legacyRulerHeight = 52.0;
+
+/// How many ticks either side of the marker still get highlighted. The
+/// exponent keeps the peak narrow so the selected day clearly reads as the
+/// darkest one.
 const _legacyRulerEmphasisSpan = 2.6;
 
 double _legacyRulerEmphasis(double ticksFromCentre) {
@@ -33,61 +39,126 @@ double _legacyRulerEmphasis(double ticksFromCentre) {
   return math.pow(falloff, 1.7).toDouble();
 }
 
-/// linear-gradient(104.7deg, #56575B 0%, #4D4D4D 100%)
-const _legacyCardGradient = LinearGradient(
-  begin: Alignment(-0.97, -0.26),
-  end: Alignment(0.97, 0.26),
-  colors: [Color(0xFF56575B), Color(0xFF4D4D4D)],
-);
+// 玻璃扁平重构（对齐天气/胶囊/商城/打卡）：不再有任何深色/黑色组件——卡片、
+// bottom sheet、弹框、三级页面全部直接复用 _W2b（天气页定义、同库私有可见）
+// 的中性浅色玻璃 token，跟天气/胶囊/商城像素级一致，而不是自成一套深色系统。
 
-/// The export paints the canvas flat #999999. A shallow vertical ramp keeps the
-/// same graphite identity while giving the white headline usable contrast.
-const _legacyPageGradient = LinearGradient(
-  begin: Alignment.topCenter,
-  end: Alignment.bottomCenter,
-  colors: [Color(0xFFA1A3A6), Color(0xFF75777B)],
-);
+/// 明亮的中性页面底——比旧版 #999999 灰底亮得多，但仍是石墨/银灰家族，不落到
+/// 任何其它页面的彩色（天气蓝/胶囊橙/打卡蓝）上，保持遗言页克制、庄重的气质。
+const _legacyPageBase = Color(0xFFF3F4F6);
 
-const _legacyCardShadow = BoxShadow(
-  color: Color(0x40000000),
-  blurRadius: 16,
-  offset: Offset(2, 8),
-);
+/// 三团呼吸光斑用的柔灰色（大圆形色块允许保留灰调，与其它页面的「光斑」手法
+/// 一致，只是配色换成银灰而非彩色）。
+const _legacyBlobSteel = Color(0xFFC7CCD6);
+const _legacyBlobDove = Color(0xFFD9D5DA);
+const _legacyBlobSlate = Color(0xFFB7BCC4);
 
-const _legacyPanelFill = Color(0xB36E7074); // #6E7074 @ 70%
-const _legacyGlassFill = Color(0x66FFFFFF); // rgba(255, 255, 255, 0.4)
-const _legacyChipFill = Color(0x0DFFFFFF);
-const _legacyChipFillActive = Color(0x1FFFFFFF);
-const _legacyChipBorder = Color(0x33FFFFFF);
-const _legacyFaint = Color(0x66FFFFFF);
-const _legacyDialogFill = Color(0xB3999999); // #999999 @ 70%
-const _legacyBannerFill = Color(0x66000000);
-const _legacyGlyph = Color(0xFFD9D9D9);
+/// 唯一保留的非中性色——仅用于删除/危险操作，跟胶囊页同值，属状态色而非
+/// 「组件底色」，不违反「不要黑色组件」的要求。
+const _legacyDanger = Color(0xFFE05555);
 
-/// Text on the 40% white glass fills (the design sets 存草稿 in #000000).
-const _legacyInk = Color(0xFF17181A);
-
-/// The export sets the field placeholders in #D3D3D3, which is invisible on the
-/// 40% white glass they sit on — darkened to stay in the graphite family.
-const _legacyPlaceholderOnGlass = Color(0xFF5F6266);
-const _legacyPlaceholderOnCard = Color(0xFFACACAC);
+/// 中性灰阶，用于放在浅玻璃卡上仍需要比 `w.glass` 更明显区分的小面（预设天数
+/// 胶囊未选中态、联系人表单内嵌面板）。都不透明度很低，读出来是「浅灰」而不是
+/// 「黑」。
+const _legacyChipFillIdle = Color(0x0A1B1C1F); // 黑 @ 4%
+const _legacyChipBorderIdle = Color(0x1A1B1C1F); // 黑 @ 10%
 
 BorderRadius get _legacyCardBorderRadius =>
     const BorderRadius.all(_legacyCardRadius);
 
-class _LegacyBackground extends StatelessWidget {
+/// 明亮呼吸背景：亮底 + 3 团银灰柔光 + 细噪点，复用天气/胶囊同款
+/// _WeatherGlowBlob/_WeatherGrain（同库私有，可见）——已验证的低开销方案，
+/// 不会重蹈 _GlowBorderPainter 的性能问题。
+class _LegacyBackground extends StatefulWidget {
   const _LegacyBackground();
 
   @override
+  State<_LegacyBackground> createState() => _LegacyBackgroundState();
+}
+
+class _LegacyBackgroundState extends State<_LegacyBackground>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 8600),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
-      decoration: BoxDecoration(gradient: _legacyPageGradient),
-      child: SizedBox.expand(),
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) => _LegacyBackgroundPaint(
+        progress: Curves.easeInOut.transform(_controller.value),
+      ),
     );
   }
 }
 
-/// The graphite card used by every surface in this flow.
+class _LegacyBackgroundPaint extends StatelessWidget {
+  const _LegacyBackgroundPaint({required this.progress});
+
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final drift = progress * 8;
+    return DecoratedBox(
+      decoration: const BoxDecoration(color: _legacyPageBase),
+      child: Stack(
+        children: [
+          Positioned(
+            left: -90,
+            top: -70 + drift,
+            child: const _WeatherGlowBlob(
+              width: 258,
+              height: 228,
+              color: _legacyBlobSteel,
+              opacity: 0.85,
+            ),
+          ),
+          Positioned(
+            right: -92,
+            top: 88 - drift,
+            child: const _WeatherGlowBlob(
+              width: 228,
+              height: 204,
+              color: _legacyBlobDove,
+              opacity: 0.78,
+            ),
+          ),
+          Positioned(
+            left: -72,
+            bottom: -82 + drift,
+            child: const _WeatherGlowBlob(
+              width: 248,
+              height: 214,
+              color: _legacyBlobSlate,
+              opacity: 0.6,
+            ),
+          ),
+          const Positioned.fill(
+            child: _WeatherGrain(dotColor: Color(0x59FFFFFF), opacity: 0.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 每个界面都用到的浅色玻璃卡：与天气/胶囊完全同款的 `w.glass` 半透明面 +
+/// `w.glassBorder` 描边 + `w.panelShadow` 柔化投影——不再有专属的深色系统。
 class _LegacyCard extends StatelessWidget {
   const _LegacyCard({required this.child, this.padding = EdgeInsets.zero});
 
@@ -96,99 +167,67 @@ class _LegacyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: padding,
+    final w = _W2b.of(context);
+    // DecoratedBox rather than Container.decoration: Container auto-insets its
+    // child by the border's width (via BoxDecoration.padding), which would
+    // shift every card's content by an extra 1px now that a border exists —
+    // DecoratedBox paints the border without touching layout.
+    return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: _legacyCardGradient,
+        color: w.glass,
         borderRadius: _legacyCardBorderRadius,
-        boxShadow: const [_legacyCardShadow],
+        border: Border.all(color: w.glassBorder),
+        boxShadow: w.panelShadow,
       ),
-      child: child,
+      child: Padding(padding: padding, child: child),
     );
   }
 }
 
-/// 36px translucent circle used for back / close in the header.
-class _LegacyCircleButton extends StatelessWidget {
-  const _LegacyCircleButton({required this.icon, required this.onPressed});
+/// Header band for the back-navigating screens (home + contacts manage — the
+/// editor builds its own header to match capsule's exactly instead, see
+/// _LastWillEditorPageState.build). Back button on the left (the exact
+/// weather-page glass circle, inset by the page's own gutter so it lines up
+/// with the cards below it — matching how every other page insets its back
+/// button rather than sitting flush against the screen edge), optional title
+/// centred on the SAME row.
+class _LegacyHeader extends StatelessWidget {
+  const _LegacyHeader({required this.onBack, this.title});
 
-  final IconData icon;
-  final VoidCallback? onPressed;
+  final VoidCallback onBack;
+  final String? title;
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      minimumSize: Size.zero,
-      onPressed: onPressed,
-      child: Container(
-        width: 36,
+    final w = _W2b.of(context);
+    final title = this.title;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: _legacyGutter),
+      child: SizedBox(
         height: 36,
-        decoration: const BoxDecoration(
-          color: _legacyGlassFill,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Color(0x40000000),
-              blurRadius: 4,
-              offset: Offset(0, 4),
+        child: Stack(
+          children: [
+            if (title != null)
+              Center(
+                child: Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: w.ink,
+                    fontSize: 24,
+                    height: 1.2,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ),
+            Align(
+              alignment: Alignment.centerLeft,
+              // 与天气页返回键完全一致的玻璃圆 + 箭头尺寸/粗细。
+              child: _WeatherBackButton(onTap: onBack, iconColor: w.ink),
             ),
           ],
         ),
-        alignment: Alignment.center,
-        child: Icon(icon, size: 20, color: Colors.white),
-      ),
-    );
-  }
-}
-
-/// Header band: back button at (24, 8) with the optional page title centered
-/// below it, matching the 84px gap the export leaves above the first card.
-class _LegacyHeader extends StatelessWidget {
-  const _LegacyHeader({
-    required this.onBack,
-    this.title,
-    this.trailing,
-    this.backIcon = CupertinoIcons.chevron_left,
-  });
-
-  final VoidCallback? onBack;
-  final String? title;
-  final Widget? trailing;
-  final IconData backIcon;
-
-  @override
-  Widget build(BuildContext context) {
-    final title = this.title;
-    return SizedBox(
-      height: title == null ? 54 : 84,
-      child: Stack(
-        children: [
-          Positioned(
-            left: 24,
-            top: 9,
-            child: _LegacyCircleButton(icon: backIcon, onPressed: onBack),
-          ),
-          if (trailing != null)
-            Positioned(right: 18, top: 9, child: trailing!),
-          if (title != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 39,
-              child: Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  height: 29 / 24,
-                  fontWeight: FontWeight.w700,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-            ),
-        ],
       ),
     );
   }
@@ -203,10 +242,11 @@ class _LegacyCardAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.of(context);
     final text = Text(
       label,
-      style: const TextStyle(
-        color: Colors.white,
+      style: TextStyle(
+        color: w.inkSoft,
         fontSize: 12,
         height: 14 / 12,
         fontWeight: FontWeight.w400,
@@ -223,57 +263,58 @@ class _LegacyCardAction extends StatelessWidget {
         children: [
           text,
           const SizedBox(width: 5),
-          const Icon(CupertinoIcons.chevron_right, size: 12, color: Colors.white),
+          Icon(CupertinoIcons.chevron_right, size: 12, color: w.inkSoft),
         ],
       ),
     );
   }
 }
 
-/// 20-radius pill button. `primary` renders the graphite gradient with a white
-/// hairline; otherwise the 40% white glass fill.
+/// 20-radius pill button. Neither state uses a dark fill any more — `primary`
+/// is the same light glass as `secondary` but with a bolder ink border and
+/// bold text, so the CTA still reads as the emphasized action through weight
+/// alone (this module has no chromatic accent to lean on for that instead).
 class _LegacyPillButton extends StatelessWidget {
   const _LegacyPillButton({
     required this.label,
     required this.onPressed,
     this.primary = false,
-    this.height = 56,
-    this.fontSize = 20,
-    this.textColor,
   });
 
   final String label;
   final VoidCallback? onPressed;
   final bool primary;
-  final double height;
-  final double fontSize;
-  final Color? textColor;
 
   @override
   Widget build(BuildContext context) {
-    final color = textColor ?? (primary ? Colors.white : _legacyInk);
+    final w = _W2b.of(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
       onPressed: onPressed,
-      child: Container(
-        height: height,
+      child: DecoratedBox(
         decoration: BoxDecoration(
-          gradient: primary ? _legacyCardGradient : null,
-          color: primary ? null : _legacyGlassFill,
+          color: w.glass,
           borderRadius: _legacyCardBorderRadius,
-          border: primary ? Border.all(color: Colors.white) : null,
-          boxShadow: const [_legacyCardShadow],
+          border: Border.all(
+            color: primary ? w.ink : w.glassBorder,
+            width: primary ? 1.4 : 1,
+          ),
+          boxShadow: w.panelShadow,
         ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          style: TextStyle(
-            color: color,
-            fontSize: fontSize,
-            height: 1.2,
-            fontWeight: FontWeight.w700,
-            decoration: TextDecoration.none,
+        child: SizedBox(
+          height: 56,
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: w.ink,
+                fontSize: 20,
+                height: 1.2,
+                fontWeight: primary ? FontWeight.w800 : FontWeight.w700,
+                decoration: TextDecoration.none,
+              ),
+            ),
           ),
         ),
       ),
@@ -281,7 +322,9 @@ class _LegacyPillButton extends StatelessWidget {
   }
 }
 
-/// 68x28 preset pill (7天 / 10天 / 30天 / 60天).
+/// 68x28 preset pill (7天 / 10天 / 30天 / 60天). Idle uses a faint dark wash
+/// (visible against the light glass card without introducing a dark fill);
+/// selected uses the same bordered-emphasis language as the primary button.
 class _LegacyChip extends StatelessWidget {
   const _LegacyChip({
     required this.label,
@@ -295,30 +338,34 @@ class _LegacyChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.of(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
       onPressed: onTap,
-      child: Container(
-        width: 68,
-        height: 28,
+      child: DecoratedBox(
         decoration: BoxDecoration(
-          color: selected ? _legacyChipFillActive : _legacyChipFill,
+          color: selected ? w.glass : _legacyChipFillIdle,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: selected ? Colors.white : _legacyChipBorder,
+            color: selected ? w.ink : _legacyChipBorderIdle,
+            width: selected ? 1.4 : 1,
           ),
-          boxShadow: selected ? const [_legacyCardShadow] : null,
         ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            height: 16 / 13,
-            fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
-            decoration: TextDecoration.none,
+        child: SizedBox(
+          width: 68,
+          height: 28,
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: selected ? w.ink : w.inkSoft,
+                fontSize: 13,
+                height: 16 / 13,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                decoration: TextDecoration.none,
+              ),
+            ),
           ),
         ),
       ),
@@ -327,55 +374,39 @@ class _LegacyChip extends StatelessWidget {
 }
 
 /// 48px contact bubble. Filled slots get a solid hairline plus the person
-/// glyph; empty slots get the dashed hairline over the frosted orb and a plus.
+/// glyph; empty slots get the dashed hairline over a plus. Both states carry
+/// their own solid light backing now (rather than relying on the dark card
+/// behind them for contrast, per the old design) — the glyph/ring stay legible
+/// regardless of what card colour surrounds them.
 class _LegacyContactAvatar extends StatelessWidget {
   const _LegacyContactAvatar({required this.filled});
+
+  static const _backing = Color(0xFFE4E7EB);
+  static const _ring = Color(0xFFAEB4BB);
+  static const _glyph = Color(0xFF7B8087);
 
   final bool filled;
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.of(context);
     return SizedBox(
       width: 48,
       height: 48,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (!filled)
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  radius: 0.74,
-                  colors: [
-                    Color(0xB3DCDCDC),
-                    Color(0x998C8C8C),
-                    Color(0x99404040),
-                  ],
-                  stops: [0, 0.6, 1],
-                ),
-              ),
-            ),
-          // inset 0 4px 10px 3px rgba(255,255,255,0.25) — approximated with a
-          // top-down white wash since Flutter has no inset box shadow.
           const DecoratedBox(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.center,
-                colors: [Color(0x3DFFFFFF), Color(0x00FFFFFF)],
-              ),
-            ),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: _backing),
           ),
           if (filled)
             const ClipOval(child: CustomPaint(painter: _LegacyPersonPainter()))
           else
-            const Center(
+            Center(
               child: Text(
                 '+',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: w.ink,
                   fontSize: 20,
                   height: 24 / 20,
                   fontWeight: FontWeight.w500,
@@ -388,7 +419,7 @@ class _LegacyContactAvatar extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.fromBorderSide(
-                  BorderSide(color: Colors.white, width: 1.5),
+                  BorderSide(color: _ring, width: 1.5),
                 ),
               ),
             )
@@ -406,12 +437,8 @@ class _LegacyPersonPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final scale = size.width / 48;
-    final paint = Paint()..color = _legacyGlyph;
-    canvas.drawCircle(
-      Offset(23.5 * scale, 18.5 * scale),
-      6.5 * scale,
-      paint,
-    );
+    final paint = Paint()..color = _LegacyContactAvatar._glyph;
+    canvas.drawCircle(Offset(23.5 * scale, 18.5 * scale), 6.5 * scale, paint);
     canvas.drawOval(
       Rect.fromLTWH(11.65 * scale, 27.07 * scale, 24.71 * scale, 24 * scale),
       paint,
@@ -440,7 +467,7 @@ class _LegacyDashedCirclePainter extends CustomPainter {
     final sweep = 2 * math.pi / count;
     final dashSweep = sweep * (_dash / step);
     final paint = Paint()
-      ..color = Colors.white
+      ..color = _LegacyContactAvatar._ring
       ..style = PaintingStyle.stroke
       ..strokeWidth = _strokeWidth
       ..strokeCap = StrokeCap.round;
@@ -454,152 +481,30 @@ class _LegacyDashedCirclePainter extends CustomPainter {
   bool shouldRepaint(covariant _LegacyDashedCirclePainter oldDelegate) => false;
 }
 
-/// 283px confirmation dialog shared by 失联天数确认 and 删除遗言.
-Future<bool> _showLegacyConfirmDialog(
-  BuildContext context, {
-  required String title,
-  required String message,
-  required String confirmLabel,
-  String cancelLabel = '取消',
-  double buttonHeight = 30,
-}) async {
-  final result = await showGeneralDialog<bool>(
-    context: context,
-    barrierDismissible: true,
-    barrierLabel: title,
-    barrierColor: Colors.transparent,
-    transitionDuration: const Duration(milliseconds: 180),
-    pageBuilder: (context, animation, secondaryAnimation) {
-      return _LegacyDialogShell(
-        title: title,
-        message: message,
-        confirmLabel: confirmLabel,
-        cancelLabel: cancelLabel,
-        buttonHeight: buttonHeight,
-      );
-    },
-    transitionBuilder: (context, animation, secondaryAnimation, child) {
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-      );
-      return FadeTransition(
-        opacity: curved,
-        child: ScaleTransition(
-          scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
-          child: child,
-        ),
-      );
-    },
-  );
-  return result ?? false;
-}
-
-class _LegacyDialogShell extends StatelessWidget {
-  const _LegacyDialogShell({
-    required this.title,
-    required this.message,
-    required this.confirmLabel,
-    required this.cancelLabel,
-    required this.buttonHeight,
-  });
-
-  final String title;
-  final String message;
-  final String confirmLabel;
-  final String cancelLabel;
-  final double buttonHeight;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => Navigator.of(context).pop(false),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
-              child: const ColoredBox(color: Color(0x1A000000)),
-            ),
-          ),
-        ),
-        Center(
-          child: GestureDetector(
-            onTap: () {},
-            child: Container(
-              width: 283,
-              padding: const EdgeInsets.fromLTRB(27, 20, 28, 13),
-              decoration: BoxDecoration(
-                color: _legacyDialogFill,
-                borderRadius: _legacyCardBorderRadius,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      height: 24 / 20,
-                      fontWeight: FontWeight.w700,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                  const SizedBox(height: 9),
-                  Text(
-                    message,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      height: 17 / 14,
-                      fontWeight: FontWeight.w700,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _LegacyPillButton(
-                          label: cancelLabel,
-                          height: buttonHeight,
-                          fontSize: 14,
-                          textColor: Colors.white,
-                          onPressed: () => Navigator.of(context).pop(false),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _LegacyPillButton(
-                          label: confirmLabel,
-                          height: buttonHeight,
-                          fontSize: 14,
-                          primary: true,
-                          onPressed: () => Navigator.of(context).pop(true),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Travelling halo around a card border. Kept from the previous revision — it
-/// is the "已计时" signal on the home screen.
+/// Travelling halo around a card border — the "已计时" signal on the home
+/// screen.
+///
+/// The previous revision drew this with 72 tail segments × 2 strokes each
+/// (144 `drawPath` calls a frame, ~73 of them carrying a Gaussian
+/// `MaskFilter.blur`), recomputed every frame at up to 60/120fps for as long
+/// as the countdown was running — that per-frame blur-heavy rasterization was
+/// the jank the user was seeing. Same visual language (soft blurred tail +
+/// bright travelling head), but the tail is now 8 segments, each with its own
+/// blurred-glow + crisp-core pair whose WIDTH and BLUR (not just alpha) taper
+/// segment to segment — that's what makes it read as one continuously
+/// narrowing tail rather than a flat-width line that merely fades. ~18 draw
+/// calls a frame, ~9 with blur — still roughly an 8x cut from the original.
 class _GlowBorderPainter extends CustomPainter {
-  const _GlowBorderPainter({required this.progress});
+  const _GlowBorderPainter({required this.progress, required this.color});
 
   final double progress;
+
+  /// The travelling highlight's colour — plain white. The card already has a
+  /// white glass border; this is meant to read as a brighter, moving segment
+  /// of that same border rather than an unrelated accent colour.
+  final Color color;
+
+  static const _segmentCount = 8;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -611,8 +516,9 @@ class _GlowBorderPainter extends CustomPainter {
     final metric = metrics.current;
     final length = metric.length;
     final head = (length * progress) % length;
-    const segmentCount = 72;
-    final tailLength = length * 0.105;
+    // Short and tightly tapered — a longer/gentler tail read as a smear
+    // rather than a travelling spark.
+    final tailLength = length * 0.07;
 
     Path tailSegment(double start, double end) {
       final normalizedStart = (start + length) % length;
@@ -631,28 +537,39 @@ class _GlowBorderPainter extends CustomPainter {
       return segment;
     }
 
-    for (var i = segmentCount - 1; i >= 0; i--) {
-      final from = head - tailLength * ((i + 1.46) / segmentCount);
-      final to = head - tailLength * (i / segmentCount);
-      final strength = math.pow(1 - i / segmentCount, 2.35).toDouble();
+    for (var i = _segmentCount - 1; i >= 0; i--) {
+      final from = head - tailLength * ((i + 1.15) / _segmentCount);
+      final to = head - tailLength * (i / _segmentCount);
+      // 1 right at the head, easing to 0 by the tail's far end — every visual
+      // property below rides on this one curve, which is what keeps the taper
+      // reading as one continuous line instead of stacked flat segments.
+      final strength = math.pow(1 - i / _segmentCount, 2.3).toDouble();
       final segment = tailSegment(from, to);
-      final coreWidth = 0.16 + strength * 4.6;
+      // Soft outer glow: wide and heavily blurred near the head, narrowing
+      // and going almost fully diffuse (blur > width) by the tail's end, the
+      // way a real light trail dissolves rather than just dims.
       canvas.drawPath(
         segment,
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.03 + strength * 0.26)
+          ..color = color.withValues(alpha: 0.06 + strength * 0.46)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.4 + strength * 9
-          ..strokeCap = StrokeCap.butt
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
+          ..strokeWidth = 0.8 + strength * 5.6
+          ..strokeCap = StrokeCap.round
+          ..maskFilter = MaskFilter.blur(
+            BlurStyle.normal,
+            3 + (1 - strength) * 6,
+          ),
       );
+      // Crisp inner core, narrower than the glow and unblurred, so the head
+      // end of the tail still has a defined bright line rather than reading
+      // as pure haze.
       canvas.drawPath(
         segment,
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.04 + strength * 0.46)
+          ..color = color.withValues(alpha: 0.08 + strength * 0.5)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = coreWidth
-          ..strokeCap = StrokeCap.butt,
+          ..strokeWidth = 0.4 + strength * 2.4
+          ..strokeCap = StrokeCap.round,
       );
     }
 
@@ -660,20 +577,16 @@ class _GlowBorderPainter extends CustomPainter {
     if (tangent == null) return;
     canvas.drawCircle(
       tangent.position,
-      5.6,
+      5.5,
       Paint()
-        ..color = Colors.white.withValues(alpha: 0.38)
+        ..color = color.withValues(alpha: 0.4)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
     );
-    canvas.drawCircle(
-      tangent.position,
-      1.9,
-      Paint()..color = Colors.white.withValues(alpha: 0.85),
-    );
+    canvas.drawCircle(tangent.position, 2, Paint()..color = color);
   }
 
   @override
   bool shouldRepaint(covariant _GlowBorderPainter oldDelegate) {
-    return oldDelegate.progress != progress;
+    return oldDelegate.progress != progress || oldDelegate.color != color;
   }
 }

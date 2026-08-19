@@ -43,7 +43,7 @@ class _LegacyContactsManagePageState extends State<_LegacyContactsManagePage> {
                     physics: const BouncingScrollPhysics(),
                     padding: EdgeInsets.fromLTRB(
                       _legacyGutter,
-                      21,
+                      24,
                       _legacyGutter,
                       math.max(24, safeBottom + 12),
                     ),
@@ -108,6 +108,7 @@ class _LegacyContactRowCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.of(context);
     final contact = this.contact;
     return CupertinoButton(
       padding: EdgeInsets.zero,
@@ -123,10 +124,10 @@ class _LegacyContactRowCard extends StatelessWidget {
               const SizedBox(width: 11),
               Expanded(
                 child: contact == null
-                    ? const Text(
+                    ? Text(
                         '点击添加',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: w.inkSoft,
                           fontSize: 14,
                           height: 17 / 14,
                           fontWeight: FontWeight.w500,
@@ -137,8 +138,8 @@ class _LegacyContactRowCard extends StatelessWidget {
                         _summary(contact),
                         maxLines: 4,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: w.ink,
                           fontSize: 14,
                           height: 20 / 14,
                           fontWeight: FontWeight.w900,
@@ -147,11 +148,7 @@ class _LegacyContactRowCard extends StatelessWidget {
                       ),
               ),
               const SizedBox(width: 8),
-              const Icon(
-                CupertinoIcons.chevron_right,
-                size: 20,
-                color: Colors.white,
-              ),
+              Icon(CupertinoIcons.chevron_right, size: 20, color: w.inkSoft),
             ],
           ),
         ),
@@ -225,16 +222,32 @@ class _LegacyContactSheetState extends State<_LegacyContactSheet> {
     // function of the inset, so it tracks the keyboard frame by frame. The
     // AnimatedPadding this replaces ran its own 200ms curve on top of the
     // system animation, which is the lag you could see on dismiss.
-    return Container(
+    final w = _W2b.of(context);
+    return DecoratedBox(
       key: const Key('legacy-contact-sheet'),
-      decoration: const BoxDecoration(
-        gradient: _legacyCardGradient,
-        borderRadius: BorderRadius.vertical(top: _legacyCardRadius),
-        boxShadow: [_legacyCardShadow],
+      // DecoratedBox, not Container.decoration — Container auto-insets its
+      // child by the border width (BoxDecoration.padding), which would throw
+      // off every geometry the keyboard-tracking tests pin against this key.
+      //
+      // Opaque page-tone fill, not translucent glass — matches how capsule's
+      // draft sheet and check-in's editor sheet do it: the outer sheet panel
+      // is a solid surface, and it's the CONTENT inside (the form's inset
+      // panel, the fields) that carries the glass treatment.
+      decoration: BoxDecoration(
+        color: _legacyPageBase,
+        borderRadius: const BorderRadius.vertical(top: _legacyCardRadius),
+        border: Border.all(color: w.glassBorder),
+        boxShadow: w.panelShadow,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Visual drag handle AND the thing that makes swipe-to-dismiss work
+          // at all while a keyboard is open: the scrollable form below claims
+          // every drag that starts inside it (to scroll instead of dismiss),
+          // so without a plain, non-scrollable strip up here there is no area
+          // left for the sheet's own drag-to-dismiss gesture to grab onto.
+          const _SheetGrabber(),
           // Flexible, not Expanded: the sheet stays content-height until the
           // keyboard squeezes it, and only then does the form scroll.
           Flexible(
@@ -250,13 +263,13 @@ class _LegacyContactSheetState extends State<_LegacyContactSheet> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 45),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 24),
+                    const SizedBox(height: 24),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Text(
                         '紧急联系人',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: w.ink,
                           fontSize: 20,
                           height: 24 / 20,
                           fontWeight: FontWeight.w700,
@@ -265,12 +278,12 @@ class _LegacyContactSheetState extends State<_LegacyContactSheet> {
                       ),
                     ),
                     const SizedBox(height: 13),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 24),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Text(
                         '最多$_legacyMaxContacts位，邮箱或者电话至少填写一个。',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: w.inkSoft,
                           fontSize: 12,
                           height: 14 / 12,
                           fontWeight: FontWeight.w500,
@@ -281,61 +294,64 @@ class _LegacyContactSheetState extends State<_LegacyContactSheet> {
                     const SizedBox(height: 38),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 32),
-                      child: Container(
-                        padding: const EdgeInsets.fromLTRB(16, 17, 16, 34),
+                      child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: _legacyPanelFill,
+                          color: w.heroChipBg,
                           borderRadius: _legacyCardBorderRadius,
+                          border: Border.all(color: w.heroChipBorder),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    '联系人${widget.index + 1}',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      height: 19 / 16,
-                                      fontWeight: FontWeight.w700,
-                                      decoration: TextDecoration.none,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 17, 16, 34),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      '联系人${widget.index + 1}',
+                                      style: TextStyle(
+                                        color: w.ink,
+                                        fontSize: 16,
+                                        height: 19 / 16,
+                                        fontWeight: FontWeight.w700,
+                                        decoration: TextDecoration.none,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                if (widget.initial != null)
-                                  CupertinoButton(
-                                    padding: EdgeInsets.zero,
-                                    minimumSize: Size.zero,
-                                    onPressed: _remove,
-                                    child: const Icon(
-                                      CupertinoIcons.delete,
-                                      size: 22,
-                                      color: Color(0xFFA5A3A3),
+                                  if (widget.initial != null)
+                                    CupertinoButton(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: Size.zero,
+                                      onPressed: _remove,
+                                      child: const Icon(
+                                        CupertinoIcons.delete,
+                                        size: 22,
+                                        color: _legacyDanger,
+                                      ),
                                     ),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 11),
-                            _LegacyGlassField(
-                              controller: _draft.name,
-                              placeholder: '名字',
-                              textCapitalization: TextCapitalization.words,
-                            ),
-                            const SizedBox(height: 12),
-                            _LegacyGlassField(
-                              controller: _draft.email,
-                              placeholder: '邮箱',
-                              keyboardType: TextInputType.emailAddress,
-                            ),
-                            const SizedBox(height: 12),
-                            _LegacyGlassField(
-                              controller: _draft.phone,
-                              placeholder: '电话',
-                              keyboardType: TextInputType.phone,
-                            ),
-                          ],
+                                ],
+                              ),
+                              const SizedBox(height: 11),
+                              _LegacyGlassField(
+                                controller: _draft.name,
+                                placeholder: '名字',
+                                textCapitalization: TextCapitalization.words,
+                              ),
+                              const SizedBox(height: 12),
+                              _LegacyGlassField(
+                                controller: _draft.email,
+                                placeholder: '邮箱',
+                                keyboardType: TextInputType.emailAddress,
+                              ),
+                              const SizedBox(height: 12),
+                              _LegacyGlassField(
+                                controller: _draft.phone,
+                                placeholder: '电话',
+                                keyboardType: TextInputType.phone,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -353,7 +369,7 @@ class _LegacyContactSheetState extends State<_LegacyContactSheet> {
               child: Text(
                 _error!,
                 style: const TextStyle(
-                  color: Color(0xFFFFD9D9),
+                  color: _legacyDanger,
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   decoration: TextDecoration.none,
@@ -403,14 +419,27 @@ class _LegacyContactSheetState extends State<_LegacyContactSheet> {
   }
 
   Future<void> _remove() async {
-    final confirmed = await _showLegacyConfirmDialog(
-      context,
-      title: '删除联系人？',
-      message: '删除后我们将不再把你的遗言转告这位联系人。',
-      confirmLabel: '删除',
-      buttonHeight: 32,
+    // System dialog, not the module's custom blurred sheet — matches how
+    // capsule confirms its own deletes (_confirmDeleteCapsule).
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('删除联系人？'),
+        content: const Text('删除后我们将不再把你的遗言转告这位联系人。'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
     );
-    if (!confirmed || !mounted) return;
+    if (confirmed != true || !mounted) return;
     Navigator.of(context).pop(const _LegacyContactResult.deleted());
   }
 }
@@ -431,27 +460,30 @@ class _LegacyGlassField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.of(context);
     return CupertinoTextField(
       controller: controller,
       placeholder: placeholder,
       keyboardType: keyboardType,
       textCapitalization: textCapitalization,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
-      cursorColor: _legacyInk,
+      cursorColor: w.ink,
+      // More opaque than the surrounding inset panel (w.heroChipBg) so the
+      // field still reads as its own control rather than blending into it.
       decoration: BoxDecoration(
-        color: _legacyGlassFill,
+        color: const Color(0xF2FFFFFF),
         borderRadius: _legacyCardBorderRadius,
-        border: Border.all(color: Colors.white),
+        border: Border.all(color: const Color(0xFFD8DCE0)),
       ),
-      style: const TextStyle(
-        color: _legacyInk,
+      style: TextStyle(
+        color: w.ink,
         fontSize: 16,
         height: 19 / 16,
         fontWeight: FontWeight.w700,
         decoration: TextDecoration.none,
       ),
       placeholderStyle: const TextStyle(
-        color: _legacyPlaceholderOnGlass,
+        color: Color(0xFF9AA0A8),
         fontSize: 16,
         height: 19 / 16,
         fontWeight: FontWeight.w700,
