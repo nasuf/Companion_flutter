@@ -1458,6 +1458,13 @@ class _ComponentCardBubble extends StatelessWidget {
         onTap: onTap,
       );
     }
+    if (card.type == 'red_packet') {
+      return _RedPacketComponentCard(
+        card: card,
+        isMine: isMine,
+        onTap: onTap,
+      );
+    }
     if (card.type == 'offline_activity') {
       return _OfflineActivityComponentCard(
         card: card,

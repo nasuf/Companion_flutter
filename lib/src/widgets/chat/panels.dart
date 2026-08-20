@@ -6,6 +6,7 @@ class _ChatPanel extends StatefulWidget {
     required this.onEmojiTap,
     required this.onPickPhoto,
     required this.onTakePhoto,
+    required this.onSendRedPacket,
     this.bottomInset = 0,
   });
 
@@ -13,6 +14,7 @@ class _ChatPanel extends StatefulWidget {
   final ValueChanged<String> onEmojiTap;
   final VoidCallback onPickPhoto;
   final VoidCallback onTakePhoto;
+  final VoidCallback onSendRedPacket;
 
   /// Bottom safe-area height. The panel docks to the screen bottom (like the
   /// keyboard), so it owns the home-indicator strip and keeps content above it.
@@ -82,6 +84,7 @@ class _ChatPanelState extends State<_ChatPanel> {
             ComposerPanel.more => _MorePanel(
               onPickPhoto: widget.onPickPhoto,
               onTakePhoto: widget.onTakePhoto,
+              onSendRedPacket: widget.onSendRedPacket,
             ),
             ComposerPanel.none => const SizedBox.shrink(),
           },
@@ -311,10 +314,15 @@ class _EmojiPanelState extends State<_EmojiPanel> {
 }
 
 class _MorePanel extends StatelessWidget {
-  const _MorePanel({required this.onPickPhoto, required this.onTakePhoto});
+  const _MorePanel({
+    required this.onPickPhoto,
+    required this.onTakePhoto,
+    required this.onSendRedPacket,
+  });
 
   final VoidCallback onPickPhoto;
   final VoidCallback onTakePhoto;
+  final VoidCallback onSendRedPacket;
 
   static const _tools = [
     _ToolSpec('图片', CupertinoIcons.photo, Color(0xFF1F6FFF), _ToolAction.photo),
@@ -324,7 +332,7 @@ class _MorePanel extends StatelessWidget {
       Color(0xFF18C6C0),
       _ToolAction.camera,
     ),
-    _ToolSpec('红包', CupertinoIcons.gift, Color(0xFFFF4D5F), _ToolAction.none),
+    _ToolSpec('红包', CupertinoIcons.gift, Color(0xFFFF4D5F), _ToolAction.redPacket),
     _ToolSpec(
       '位置',
       CupertinoIcons.location,
@@ -357,6 +365,7 @@ class _MorePanel extends StatelessWidget {
                     onTap: switch (tool.action) {
                       _ToolAction.photo => onPickPhoto,
                       _ToolAction.camera => onTakePhoto,
+                      _ToolAction.redPacket => onSendRedPacket,
                       _ToolAction.none => null,
                     },
                   ),
@@ -376,12 +385,14 @@ class _MorePanel extends StatelessWidget {
                   tools: _tools.take(3).toList(),
                   onPickPhoto: onPickPhoto,
                   onTakePhoto: onTakePhoto,
+                  onSendRedPacket: onSendRedPacket,
                 ),
                 const SizedBox(height: 26),
                 _ToolRow(
                   tools: _tools.skip(3).take(3).toList(),
                   onPickPhoto: onPickPhoto,
                   onTakePhoto: onTakePhoto,
+                  onSendRedPacket: onSendRedPacket,
                 ),
               ],
             ),
@@ -397,11 +408,13 @@ class _ToolRow extends StatelessWidget {
     required this.tools,
     required this.onPickPhoto,
     required this.onTakePhoto,
+    required this.onSendRedPacket,
   });
 
   final List<_ToolSpec> tools;
   final VoidCallback onPickPhoto;
   final VoidCallback onTakePhoto;
+  final VoidCallback onSendRedPacket;
 
   @override
   Widget build(BuildContext context) {
@@ -415,6 +428,7 @@ class _ToolRow extends StatelessWidget {
                 onTap: switch (tool.action) {
                   _ToolAction.photo => onPickPhoto,
                   _ToolAction.camera => onTakePhoto,
+                  _ToolAction.redPacket => onSendRedPacket,
                   _ToolAction.none => null,
                 },
               ),
@@ -480,4 +494,4 @@ class _ToolSpec {
   final _ToolAction action;
 }
 
-enum _ToolAction { photo, camera, none }
+enum _ToolAction { photo, camera, redPacket, none }

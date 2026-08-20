@@ -863,6 +863,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       return;
     }
+    if (card.type == 'red_packet') {
+      _dismissInputSurfaces();
+      await _showRedPacketSheet(
+        context: context,
+        api: widget.api,
+        card: card,
+      );
+      return;
+    }
     if (card.type == 'offline_activity') {
       final activityId = card.payload['activity_id']?.toString();
       if (activityId == null || activityId.isEmpty) return;
@@ -1576,6 +1585,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           });
         }
         break;
+      case 'red_packet':
+        _patchRedPacketCard(payload);
+        break;
       case 'message':
         _handleRealtimeMessageEvent(payload);
         break;
@@ -2033,6 +2045,198 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void sendComponentMessage(String text, ChatComponentCard componentCard) {
     _sendText(text.trim(), componentCard: componentCard, clearComposer: false);
+  }
+
+  void _patchRedPacketCard(Map<String, dynamic> payload) {
+    final messageId = payload['message_id']?.toString() ?? '';
+    final offeringId = payload['offering_id']?.toString() ?? '';
+    final rawCard = payload['component_card'] ?? payload['componentCard'];
+    if (rawCard is! Map) return;
+    final card = ChatComponentCard.fromJson(Map<String, dynamic>.from(rawCard));
+    setState(() {
+      for (var i = 0; i < _messages.length; i += 1) {
+        final message = _messages[i];
+        final currentId = message.componentCard?.payload['offering_id']
+            ?.toString();
+        final matchesMessage =
+            messageId.isNotEmpty &&
+            (message.id == messageId || message.clientId == messageId);
+        final matchesOffering =
+            offeringId.isNotEmpty && currentId == offeringId;
+        if (!matchesMessage && !matchesOffering) continue;
+        _messages[i] = message.copyWith(
+          metadata: {
+            ...?message.metadata,
+            'component_card': card.toJson(),
+          },
+        );
+        break;
+      }
+    });
+  }
+
+  bool _sendingRedPacket = false;
+
+  Future<void> _onSendRedPacket() async {
+    if (_sendingRedPacket) return;
+    _sendingRedPacket = true;
+    _dismissInputSurfaces();
+    try {
+      WalletBalance wallet;
+      try {
+        wallet = await widget.api.getWallet(agentId: widget.session.agentId);
+      } catch (error) {
+        if (!mounted) return;
+        _showRedPacketToast(_asMessage(error));
+        return;
+      }
+      if (!mounted) return;
+      if (wallet.ticketBalance <= 0) {
+        await _showInsufficientTicketsForRedPacket();
+        return;
+      }
+      final amount = await _askRedPacketAmount(wallet.ticketBalance);
+      if (!mounted || amount == null) return;
+      if (amount > wallet.ticketBalance) {
+        await _showInsufficientTicketsForRedPacket();
+        return;
+      }
+      final result = await widget.api.sendRedPacket(
+        conversationId: _conversationId,
+        ticketAmount: amount,
+      );
+      if (!mounted) return;
+      sendComponentMessage('', result.componentCard);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      if (error.statusCode == 409) {
+        await _showInsufficientTicketsForRedPacket();
+        return;
+      }
+      _showRedPacketToast('红包发送失败：${error.message}');
+    } catch (error) {
+      if (!mounted) return;
+      _showRedPacketToast(_asMessage(error));
+    } finally {
+      _sendingRedPacket = false;
+    }
+  }
+
+  Future<int?> _askRedPacketAmount(int balance) async {
+    final controller = TextEditingController();
+    try {
+      return await showCupertinoDialog<int>(
+        context: context,
+        builder: (dialogContext) {
+          var errorText = '';
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return CupertinoAlertDialog(
+                title: const Text('发红包'),
+                content: Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        '当前余额 $balance 钞票',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      const SizedBox(height: 12),
+                      CupertinoTextField(
+                        controller: controller,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        placeholder: '输入钞票数量',
+                        autofocus: true,
+                      ),
+                      if (errorText.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          errorText,
+                          style: const TextStyle(
+                            color: Color(0xFFFF4D5F),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                actions: [
+                  CupertinoDialogAction(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('取消'),
+                  ),
+                  CupertinoDialogAction(
+                    isDefaultAction: true,
+                    onPressed: () {
+                      final value = parseRedPacketTicketAmount(controller.text);
+                      if (value == null) {
+                        setDialogState(() {
+                          errorText = '请输入 1 到 1000000 的整数';
+                        });
+                        return;
+                      }
+                      Navigator.of(dialogContext).pop(value);
+                    },
+                    child: const Text('发送'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      controller.dispose();
+    }
+  }
+
+  Future<void> _showInsufficientTicketsForRedPacket() async {
+    final goRecharge = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return CupertinoAlertDialog(
+          title: const Text('钞票不足'),
+          content: const Text('当前钞票余额不足，去商城充值后再发红包。'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('去充值'),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted || goRecharge != true) return;
+    await Navigator.of(context).push<void>(
+      CupertinoPageRoute<void>(
+        builder: (_) => StorePage(
+          api: widget.api,
+          session: widget.session,
+          openTicketRecharge: true,
+        ),
+      ),
+    );
+  }
+
+  void _showRedPacketToast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(milliseconds: 1400),
+      ),
+    );
   }
 
   int? _payloadReplyIndex(Map<String, dynamic> payload) {
@@ -3062,6 +3266,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     unawaited(_pickChatImage(ImageSource.gallery)),
                 onTakePhoto: () =>
                     unawaited(_pickChatImage(ImageSource.camera)),
+                onSendRedPacket: () => unawaited(_onSendRedPacket()),
               ),
             ),
           ),

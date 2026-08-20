@@ -1074,6 +1074,88 @@ class AchievementsResponse {
   }
 }
 
+int? parseRedPacketTicketAmount(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return null;
+  final value = int.tryParse(trimmed);
+  if (value == null || value < 1 || value > 1000000) return null;
+  return value;
+}
+
+class RedPacketOffering {
+  const RedPacketOffering({
+    required this.id,
+    required this.kind,
+    required this.ticketAmount,
+    required this.agentValueYuan,
+    required this.status,
+    this.blessing,
+    this.conversationId,
+    this.messageId,
+    required this.agentId,
+    required this.createdAt,
+    this.receivedAt,
+  });
+
+  final String id;
+  final String kind;
+  final int ticketAmount;
+  final int agentValueYuan;
+  final String status;
+  final String? blessing;
+  final String? conversationId;
+  final String? messageId;
+  final String agentId;
+  final String createdAt;
+  final String? receivedAt;
+
+  bool get isReceived => status == 'received';
+
+  factory RedPacketOffering.fromJson(Map<String, dynamic> json) {
+    return RedPacketOffering(
+      id: json['id']?.toString() ?? '',
+      kind: json['kind']?.toString() ?? 'red_packet',
+      ticketAmount: (json['ticket_amount'] as num?)?.round() ?? 0,
+      agentValueYuan: (json['agent_value_yuan'] as num?)?.round() ?? 0,
+      status: json['status']?.toString() ?? 'sent',
+      blessing: json['blessing']?.toString(),
+      conversationId: json['conversation_id']?.toString(),
+      messageId: json['message_id']?.toString(),
+      agentId: json['agent_id']?.toString() ?? '',
+      createdAt: json['created_at']?.toString() ?? '',
+      receivedAt: json['received_at']?.toString(),
+    );
+  }
+}
+
+class RedPacketSendResult {
+  const RedPacketSendResult({
+    required this.offering,
+    required this.componentCard,
+    this.wallet,
+  });
+
+  final RedPacketOffering offering;
+  final ChatComponentCard componentCard;
+  final WalletBalance? wallet;
+
+  factory RedPacketSendResult.fromJson(Map<String, dynamic> json) {
+    final rawCard = json['component_card'];
+    final rawWallet = json['wallet'];
+    return RedPacketSendResult(
+      offering: RedPacketOffering.fromJson(
+        Map<String, dynamic>.from(json['offering'] as Map? ?? const {}),
+      ),
+      componentCard: ChatComponentCard.fromJson(
+        rawCard is Map ? rawCard : const {},
+      ),
+      wallet: rawWallet is Map
+          ? WalletBalance.fromJson(Map<String, dynamic>.from(rawWallet))
+          : null,
+    );
+  }
+}
+
 class WalletBalance {
   const WalletBalance({
     required this.ticketBalance,

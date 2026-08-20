@@ -1258,6 +1258,38 @@ class CompanionApi {
     return WalletBalance.fromJson(json);
   }
 
+  Future<RedPacketSendResult> sendRedPacket({
+    required String conversationId,
+    required int ticketAmount,
+    String? blessing,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/red-packets',
+              body: {
+                'conversation_id': conversationId,
+                'ticket_amount': ticketAmount,
+                if (blessing != null && blessing.trim().isNotEmpty)
+                  'blessing': blessing.trim(),
+              },
+              debugLabel: 'redPacket.send',
+            )
+            as Map<String, dynamic>;
+    return RedPacketSendResult.fromJson(json);
+  }
+
+  Future<RedPacketSendResult> getRedPacket(String offeringId) async {
+    final json =
+        await _request(
+              'GET',
+              '/red-packets/${Uri.encodeComponent(offeringId)}',
+              debugLabel: 'redPacket.get',
+            )
+            as Map<String, dynamic>;
+    return RedPacketSendResult.fromJson(json);
+  }
+
   Future<WalletBalance> exchangeTicketsToPoints({
     required int ticketAmount,
   }) async {

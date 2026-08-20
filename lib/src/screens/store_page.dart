@@ -1,10 +1,16 @@
 part of 'package:companion_flutter/main.dart';
 
 class StorePage extends StatefulWidget {
-  const StorePage({super.key, required this.api, required this.session});
+  const StorePage({
+    super.key,
+    required this.api,
+    required this.session,
+    this.openTicketRecharge = false,
+  });
 
   final CompanionApi api;
   final AuthSession session;
+  final bool openTicketRecharge;
 
   @override
   State<StorePage> createState() => _StorePageState();
@@ -27,6 +33,10 @@ class _StorePageState extends State<StorePage> {
   @override
   void initState() {
     super.initState();
+    if (widget.openTicketRecharge) {
+      _section = _StoreSection.recharge;
+      _rechargeCurrency = _StoreCurrency.ticket;
+    }
     _sectionController = PageController(initialPage: _sectionIndex(_section));
     _walletFuture = _loadWallet();
     _loadCatalog();
