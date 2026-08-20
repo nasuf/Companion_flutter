@@ -1,5 +1,22 @@
 part of 'package:companion_flutter/main.dart';
 
+/// Frosted chip matching weather / capsule cards: translucent fill + white-rim
+/// border from [_W2b]. No BackdropFilter — weather skipped it because a live
+/// blur on an animating surface is a per-frame full-screen GPU cost.
+BoxDecoration _composerGlassDecoration(
+  _W2b w, {
+  BorderRadius? borderRadius,
+  bool circle = false,
+}) {
+  return BoxDecoration(
+    color: w.glass,
+    shape: circle ? BoxShape.circle : BoxShape.rectangle,
+    borderRadius: circle ? null : borderRadius,
+    border: Border.all(color: w.glassBorder),
+    boxShadow: [w.pillShadow],
+  );
+}
+
 class _Composer extends StatelessWidget {
   const _Composer({
     required this.controller,
@@ -121,84 +138,69 @@ class _Composer extends StatelessWidget {
                         onEnd: onVoicePressEnd,
                         onCancel: onVoicePressCancel,
                       )
-                    : AnimatedBuilder(
-                        animation: focusNode,
-                        builder: (context, child) {
-                          final focused = focusNode.hasFocus;
-                          return AnimatedContainer(
-                            duration: const Duration(milliseconds: 150),
+                    : Builder(
+                        builder: (context) {
+                          final w = _W2b.resolve(context);
+                          return Container(
                             constraints: BoxConstraints(
                               minHeight: 36,
                               maxHeight: resolvingLink ? 36 : 86,
                             ),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              // 20 reads as a full pill while single-line
-                              // (~36 tall), but only a gentle rounded rect
-                              // once the field grows to multiple lines —
-                              // avoids the oversized curve on tall input.
+                            decoration: _composerGlassDecoration(
+                              w,
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: focused
-                                    ? chatVoiceAccent
-                                    : AppColors.hairline,
-                                width: focused ? 1.5 : 1,
+                            ),
+                            child: TextField(
+                              controller: controller,
+                              focusNode: focusNode,
+                              cursorColor: chatVoiceAccent,
+                              minLines: 1,
+                              maxLines: resolvingLink ? 1 : 3,
+                              keyboardType: TextInputType.multiline,
+                              textInputAction: TextInputAction.newline,
+                              onTap: onFocusInput,
+                              contextMenuBuilder: _buildContextMenu,
+                              decoration: InputDecoration(
+                                hintText: '发消息...',
+                                hintStyle: const TextStyle(
+                                  color: Color(0xFFBFBFBF),
+                                  fontSize: 12,
+                                ),
+                                // Glass container draws the only border
+                                // (weather/capsule card rim). Clear themed
+                                // borders too: `border` alone does not
+                                // override them and leaked a second outline.
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                filled: false,
+                                isDense: true,
+                                prefixIcon: resolvingLink
+                                    ? Center(
+                                        child: CupertinoActivityIndicator(
+                                          radius: 7,
+                                          color: AppColors.accent,
+                                        ),
+                                      )
+                                    : null,
+                                prefixIconConstraints: resolvingLink
+                                    ? const BoxConstraints(
+                                        minWidth: 34,
+                                        maxWidth: 34,
+                                        minHeight: 24,
+                                        maxHeight: 24,
+                                      )
+                                    : null,
+                                contentPadding: const EdgeInsets.fromLTRB(
+                                  14,
+                                  7,
+                                  14,
+                                  7,
+                                ),
                               ),
                             ),
-                            child: child,
                           );
                         },
-                        child: TextField(
-                          controller: controller,
-                          focusNode: focusNode,
-                          cursorColor: chatVoiceAccent,
-                          minLines: 1,
-                          maxLines: resolvingLink ? 1 : 3,
-                          keyboardType: TextInputType.multiline,
-                          textInputAction: TextInputAction.newline,
-                          onTap: onFocusInput,
-                          contextMenuBuilder: _buildContextMenu,
-                          decoration: InputDecoration(
-                            hintText: '发消息...',
-                            hintStyle: const TextStyle(
-                              color: Color(0xFFBFBFBF),
-                              fontSize: 12,
-                            ),
-                            // The surrounding AnimatedContainer draws the
-                            // only border (green when focused). Explicitly
-                            // clear the themed enabled/focused borders too:
-                            // `border` alone does not override them, which
-                            // leaked the global blue focusedBorder and
-                            // produced a second border layer.
-                            border: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            filled: false,
-                            isDense: true,
-                            prefixIcon: resolvingLink
-                                ? Center(
-                                    child: CupertinoActivityIndicator(
-                                      radius: 7,
-                                      color: AppColors.accent,
-                                    ),
-                                  )
-                                : null,
-                            prefixIconConstraints: resolvingLink
-                                ? const BoxConstraints(
-                                    minWidth: 34,
-                                    maxWidth: 34,
-                                    minHeight: 24,
-                                    maxHeight: 24,
-                                  )
-                                : null,
-                            contentPadding: const EdgeInsets.fromLTRB(
-                              14,
-                              7,
-                              14,
-                              7,
-                            ),
-                          ),
-                        ),
                       ),
               ),
               const SizedBox(width: 10),
@@ -208,7 +210,6 @@ class _Composer extends StatelessWidget {
                     ? CupertinoIcons.keyboard
                     : CupertinoIcons.smiley,
                 selected: activePanel == ComposerPanel.emoji,
-                green: activePanel == ComposerPanel.emoji,
                 onTap: voiceActive
                     ? null
                     : activePanel == ComposerPanel.emoji
@@ -259,8 +260,6 @@ class _Composer extends StatelessWidget {
                                 ? CupertinoIcons.xmark
                                 : CupertinoIcons.plus,
                             selected: activePanel == ComposerPanel.more,
-                            prominent: activePanel != ComposerPanel.more,
-                            green: true,
                             onTap: voiceActive ? null : onToggleMore,
                           ),
                   );
@@ -351,10 +350,9 @@ class _VoiceInputToggleButton extends StatelessWidget {
             width: 38,
             height: 38,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.surface,
-              border: Border.all(color: AppColors.hairline),
+            decoration: _composerGlassDecoration(
+              _W2b.resolve(context),
+              circle: true,
             ),
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 160),
@@ -415,15 +413,18 @@ class _VoiceHoldToTalkButton extends StatelessWidget {
           duration: const Duration(milliseconds: 120),
           height: 40,
           alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: recording ? chatVoiceAccentSoft : AppColors.surface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: recording
-                  ? chatVoiceAccent.withValues(alpha: 0.56)
-                  : AppColors.hairline,
-            ),
-          ),
+          decoration: recording
+              ? BoxDecoration(
+                  color: chatVoiceAccentSoft,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: chatVoiceAccent.withValues(alpha: 0.56),
+                  ),
+                )
+              : _composerGlassDecoration(
+                  _W2b.resolve(context),
+                  borderRadius: BorderRadius.circular(20),
+                ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -726,76 +727,32 @@ class _RoundIconButton extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.selected = false,
-    this.prominent = false,
-    this.green = false,
   });
 
   final String tooltip;
   final IconData icon;
   final VoidCallback? onTap;
   final bool selected;
-  final bool prominent;
-  final bool green;
 
   @override
   Widget build(BuildContext context) {
-    const figmaGreen = Color(0xFF06C893);
-    const figmaGreenLight = Color(0xFF24D7D3);
+    final w = _W2b.resolve(context);
     return Tooltip(
       message: tooltip,
       child: InkResponse(
         onTap: onTap,
         radius: 23,
         child: Container(
-          // Keep every round button the same 38px footprint (mic / emoji /
-          // keyboard / plus); `prominent` only changes the fill style, not the
-          // size, so the plus no longer looks smaller than its neighbours.
           width: 38,
           height: 38,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: selected
-                ? null
-                : prominent
-                ? (green ? figmaGreen : AppColors.accent)
-                : AppColors.surface,
-            gradient: selected && !prominent
-                ? LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: green
-                        ? [figmaGreen, figmaGreenLight]
-                        : [AppColors.accentDeep, AppColors.accentCyan],
-                  )
-                : null,
-            border: Border.all(
-              color: selected
-                  ? Colors.white.withValues(alpha: 0.28)
-                  : prominent
-                  ? Colors.transparent
-                  : AppColors.hairline,
-            ),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: (green ? figmaGreen : AppColors.accent).withValues(
-                        alpha: 0.18,
-                      ),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ]
-                : null,
-          ),
+          decoration: _composerGlassDecoration(w, circle: true),
           child: Icon(
             icon,
-            size: prominent ? 22 : 21,
+            size: 21,
             color: onTap == null
                 ? const Color(0xFFC8CECD)
                 : selected
-                ? Colors.white
-                : prominent
-                ? Colors.white
+                ? chatVoiceAccent
                 : AppColors.text,
           ),
         ),
