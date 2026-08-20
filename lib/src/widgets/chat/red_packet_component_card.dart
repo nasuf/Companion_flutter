@@ -100,15 +100,7 @@ class _RedPacketComponentCard extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            child: const Text(
-                              '封',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                height: 1,
-                              ),
-                            ),
+                            child: const _RedPacketIcon(size: 20),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -197,4 +189,61 @@ class _RedPacketComponentCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// White hongbao silhouette for the red gradient badge — a vertical envelope
+/// with a folded flap and gold seal, not the old 「封」 character.
+class _RedPacketIcon extends StatelessWidget {
+  const _RedPacketIcon({this.size = 20});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '红包',
+      child: CustomPaint(
+        key: const Key('red-packet-icon'),
+        size: Size.square(size),
+        painter: const _RedPacketIconPainter(),
+      ),
+    );
+  }
+}
+
+class _RedPacketIconPainter extends CustomPainter {
+  const _RedPacketIconPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.shortestSide;
+    final left = s * 0.18;
+    final right = s * 0.82;
+    final top = s * 0.08;
+    final bottom = s * 0.92;
+    final radius = Radius.circular(s * 0.12);
+    final body = RRect.fromLTRBR(left, top, right, bottom, radius);
+
+    final fill = Paint()..color = Colors.white;
+    canvas.drawRRect(body, fill);
+
+    canvas.save();
+    canvas.clipRRect(body);
+    final flap = Path()
+      ..moveTo(left, top)
+      ..lineTo(right, top)
+      ..lineTo(s * 0.5, top + s * 0.38)
+      ..close();
+    canvas.drawPath(flap, Paint()..color = const Color(0xFFFFE08A));
+    canvas.restore();
+
+    canvas.drawCircle(
+      Offset(s * 0.5, top + s * 0.38),
+      s * 0.12,
+      Paint()..color = const Color(0xFFE2B93A),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
