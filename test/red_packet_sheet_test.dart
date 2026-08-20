@@ -78,6 +78,10 @@ void main() {
     expect(find.byType(Scaffold), findsOneWidget);
     expect(find.text('红包'), findsWidgets);
     expect(find.byIcon(CupertinoIcons.xmark), findsOneWidget);
+    expect(
+      tester.widget<Icon>(find.byIcon(CupertinoIcons.xmark)).color,
+      const Color(0xFFFF4D5F),
+    );
     expect(find.text('好的'), findsNothing);
     expect(find.text('封'), findsNothing);
     expect(find.byKey(const Key('red-packet-icon')), findsOneWidget);

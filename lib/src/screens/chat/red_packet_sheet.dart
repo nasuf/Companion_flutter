@@ -1,5 +1,7 @@
 part of 'package:companion_flutter/main.dart';
 
+const _redPacketAccent = Color(0xFFFF4D5F);
+
 Future<void> _showRedPacketSheet({
   required BuildContext context,
   required CompanionApi api,
@@ -91,7 +93,7 @@ class _RedPacketSheetPageState extends State<RedPacketSheetPage> {
     final inkSoft = isDark
         ? const Color(0xB3FFD6DB)
         : const Color(0xFF8A5960);
-    const accent = Color(0xFFFF4D5F);
+    const accent = _redPacketAccent;
 
     return Scaffold(
       backgroundColor: isDark
@@ -307,7 +309,11 @@ class _RedPacketCloseButton extends StatelessWidget {
           boxShadow: [w.pillShadow],
         ),
         alignment: Alignment.center,
-        child: Icon(CupertinoIcons.xmark, color: _capsuleOrange, size: 20),
+        child: const Icon(
+          CupertinoIcons.xmark,
+          color: _redPacketAccent,
+          size: 20,
+        ),
       ),
     );
   }
