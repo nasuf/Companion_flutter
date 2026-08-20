@@ -244,12 +244,6 @@ class _ShopVipIconPainter extends CustomPainter {
       canvas,
       Offset(30 - textPainter.width / 2, 43.5 - textPainter.height / 2),
     );
-
-    canvas.drawCircle(
-      const Offset(52, 8),
-      4,
-      Paint()..color = const Color(0xFFFF4778),
-    );
   }
 
   @override
