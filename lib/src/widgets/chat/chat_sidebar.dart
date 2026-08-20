@@ -5,7 +5,8 @@ enum _SidebarDestination {
   capsule('胶囊', Color(0xFFFE9631)),
   legacy('遗言', Color(0xFF1C1E28)),
   mail('信箱', Color(0xFF7C3CFF)),
-  task('打卡', Color(0xFF1AB88D)),
+  // Keep in sync with _CheckinTokens.light.accent and sidebar-task.png.
+  task('打卡', Color(0xFF496CFC)),
   achievement('成就', Color(0xFFFD6846)),
   shop('商城', Color(0xFF124DB2));
 
