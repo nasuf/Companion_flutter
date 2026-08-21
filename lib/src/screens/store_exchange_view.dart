@@ -88,12 +88,7 @@ class _ExchangeStoreView extends StatelessWidget {
                   )
                 : GridView.builder(
                     physics: const BouncingScrollPhysics(),
-                    padding: EdgeInsets.fromLTRB(
-                      20,
-                      8,
-                      20,
-                      bottomSpace,
-                    ),
+                    padding: EdgeInsets.fromLTRB(20, 8, 20, bottomSpace),
                     itemCount: products.length,
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
@@ -142,6 +137,24 @@ class _ExchangeCategoryBar extends StatelessWidget {
   }
 }
 
+BoxDecoration _storeSegmentedSelectionDecoration(_W2b w, double height) {
+  final radius = height / 2;
+  return BoxDecoration(
+    color: w.isDark
+        ? const Color(0x24FFFFFF)
+        : Colors.white.withValues(alpha: 0.98),
+    borderRadius: BorderRadius.circular(radius - 3),
+    // Neutral pill lift — shared by fixed and scrollable store segment bars.
+    boxShadow: [
+      BoxShadow(
+        color: w.isDark ? const Color(0x33000000) : const Color(0x14243040),
+        blurRadius: 8,
+        offset: const Offset(0, 3),
+      ),
+    ],
+  );
+}
+
 class _StoreSegmentedLabelBar<T> extends StatelessWidget {
   const _StoreSegmentedLabelBar({
     required this.values,
@@ -158,6 +171,9 @@ class _StoreSegmentedLabelBar<T> extends StatelessWidget {
   final ValueChanged<T> onSelected;
   final double height;
   final double fontSize;
+
+  static const _segmentInset = 3.0;
+  static const _slideDuration = Duration(milliseconds: 230);
 
   @override
   Widget build(BuildContext context) {
@@ -178,29 +194,14 @@ class _StoreSegmentedLabelBar<T> extends StatelessWidget {
           return Stack(
             children: [
               AnimatedPositioned(
-                duration: const Duration(milliseconds: 230),
+                duration: _slideDuration,
                 curve: Curves.easeOutCubic,
-                left: selectedIndex * width + 3,
-                top: 3,
-                bottom: 3,
-                width: width - 6,
+                left: selectedIndex * width + _segmentInset,
+                top: _segmentInset,
+                bottom: _segmentInset,
+                width: width - _segmentInset * 2,
                 child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: w.isDark
-                        ? const Color(0x24FFFFFF)
-                        : Colors.white.withValues(alpha: 0.98),
-                    borderRadius: BorderRadius.circular(radius - 3),
-                    // 纯白药丸，只留一层中性淡影提升，不再叠蓝色发光。
-                    boxShadow: [
-                      BoxShadow(
-                        color: w.isDark
-                            ? const Color(0x33000000)
-                            : const Color(0x14243040),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
+                  decoration: _storeSegmentedSelectionDecoration(w, height),
                 ),
               ),
               Row(
@@ -229,6 +230,157 @@ class _StoreSegmentedLabelBar<T> extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _StoreScrollableSegmentedLabelBar<T> extends StatefulWidget {
+  const _StoreScrollableSegmentedLabelBar({
+    super.key,
+    required this.values,
+    required this.selected,
+    required this.labelFor,
+    required this.onSelected,
+    this.height = 46,
+    this.fontSize = 16,
+    this.itemWidth = 70,
+    this.scrollKey,
+    this.itemKeyFor,
+  });
+
+  final List<T> values;
+  final T selected;
+  final String Function(T value) labelFor;
+  final ValueChanged<T> onSelected;
+  final double height;
+  final double fontSize;
+  final double itemWidth;
+  final Key? scrollKey;
+  final Key? Function(T value)? itemKeyFor;
+
+  @override
+  State<_StoreScrollableSegmentedLabelBar<T>> createState() =>
+      _StoreScrollableSegmentedLabelBarState<T>();
+}
+
+class _StoreScrollableSegmentedLabelBarState<T>
+    extends State<_StoreScrollableSegmentedLabelBar<T>> {
+  final _controller = ScrollController();
+  late final List<GlobalKey> _itemKeys;
+
+  @override
+  void initState() {
+    super.initState();
+    _itemKeys = [for (final _ in widget.values) GlobalKey()];
+  }
+
+  @override
+  void didUpdateWidget(
+    covariant _StoreScrollableSegmentedLabelBar<T> oldWidget,
+  ) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selected != widget.selected) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _revealSelected());
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _revealSelected() {
+    if (!mounted) return;
+    final index = widget.values.indexOf(widget.selected);
+    if (index < 0) return;
+    final itemContext = _itemKeys[index].currentContext;
+    if (itemContext == null) return;
+    Scrollable.ensureVisible(
+      itemContext,
+      alignment: 0.5,
+      duration: _StoreSegmentedLabelBar._slideDuration,
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedIndex = math.max(0, widget.values.indexOf(widget.selected));
+    final w = _W2b.resolve(context);
+    final radius = widget.height / 2;
+    final inset = _StoreSegmentedLabelBar._segmentInset;
+    final trackWidth = widget.values.length * widget.itemWidth + inset * 2;
+    return Container(
+      height: widget.height,
+      decoration: BoxDecoration(
+        color: w.glass,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: w.glassBorder),
+        boxShadow: [w.pillShadow],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: SingleChildScrollView(
+          key: widget.scrollKey,
+          controller: _controller,
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: SizedBox(
+            width: trackWidth,
+            height: widget.height,
+            child: Stack(
+              children: [
+                AnimatedPositioned(
+                  duration: _StoreSegmentedLabelBar._slideDuration,
+                  curve: Curves.easeOutCubic,
+                  left: selectedIndex * widget.itemWidth + inset,
+                  top: inset,
+                  bottom: inset,
+                  width: widget.itemWidth - inset * 2,
+                  child: DecoratedBox(
+                    decoration: _storeSegmentedSelectionDecoration(
+                      w,
+                      widget.height,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.all(inset),
+                  child: Row(
+                    children: [
+                      for (var index = 0; index < widget.values.length; index++)
+                        GestureDetector(
+                          key: _itemKeys[index],
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => widget.onSelected(widget.values[index]),
+                          child: SizedBox(
+                            key: widget.itemKeyFor?.call(widget.values[index]),
+                            width: widget.itemWidth,
+                            child: Center(
+                              child: Text(
+                                widget.labelFor(widget.values[index]),
+                                style: TextStyle(
+                                  color: widget.values[index] == widget.selected
+                                      ? w.ink
+                                      : w.inkSoft,
+                                  fontSize: widget.fontSize,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0,
+                                  decoration: TextDecoration.none,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -667,13 +819,16 @@ class _GiftSubcategoryScrollerState extends State<_GiftSubcategoryScroller> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (var index = 0; index < _GiftSubcategory.values.length; index++) ...[
+            for (
+              var index = 0;
+              index < _GiftSubcategory.values.length;
+              index++
+            ) ...[
               if (index > 0) const SizedBox(width: 6),
               GestureDetector(
                 key: _itemKeys[index],
                 behavior: HitTestBehavior.opaque,
-                onTap: () =>
-                    widget.onSelected(_GiftSubcategory.values[index]),
+                onTap: () => widget.onSelected(_GiftSubcategory.values[index]),
                 // 二级子 tab：纯文字 + 底部横线高亮，不再用胶囊。选中黑字，
                 // 未选灰字；底下一条蓝色短横线标记当前项。
                 child: Padding(
@@ -686,7 +841,9 @@ class _GiftSubcategoryScrollerState extends State<_GiftSubcategoryScroller> {
                         style: TextStyle(
                           color:
                               _GiftSubcategory.values[index] == widget.selected
-                              ? (w.isDark ? Colors.white : const Color(0xFF16181C))
+                              ? (w.isDark
+                                    ? Colors.white
+                                    : const Color(0xFF16181C))
                               : w.inkSoft,
                           fontSize: 15,
                           height: 1,

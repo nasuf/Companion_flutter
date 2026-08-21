@@ -339,10 +339,9 @@ class _MorePanel extends StatelessWidget {
     ),
     _ToolSpec(
       '红包',
-      CupertinoIcons.gift,
+      CupertinoIcons.envelope,
       Color(0xFFFF4D5F),
       _ToolAction.redPacket,
-      hongbaoGlyph: true,
     ),
     _ToolSpec(
       '位置',
@@ -486,9 +485,7 @@ class _ToolButton extends StatelessWidget {
                 color: tool.color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(iconRadius),
               ),
-              child: tool.hongbaoGlyph
-                  ? _HongbaoGlyph(size: iconGlyphSize, bodyColor: tool.color)
-                  : Icon(tool.icon, color: tool.color, size: iconGlyphSize),
+              child: Icon(tool.icon, color: tool.color, size: iconGlyphSize),
             ),
             SizedBox(height: labelGap),
             Text(
@@ -505,19 +502,12 @@ class _ToolButton extends StatelessWidget {
 }
 
 class _ToolSpec {
-  const _ToolSpec(
-    this.label,
-    this.icon,
-    this.color,
-    this.action, {
-    this.hongbaoGlyph = false,
-  });
+  const _ToolSpec(this.label, this.icon, this.color, this.action);
 
   final String label;
   final IconData icon;
   final Color color;
   final _ToolAction action;
-  final bool hongbaoGlyph;
 }
 
 enum _ToolAction { photo, camera, redPacket, gift, none }

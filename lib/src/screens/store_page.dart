@@ -6,11 +6,13 @@ class StorePage extends StatefulWidget {
     required this.api,
     required this.session,
     this.openTicketRecharge = false,
+    this.openExchange = false,
   });
 
   final CompanionApi api;
   final AuthSession session;
   final bool openTicketRecharge;
+  final bool openExchange;
 
   @override
   State<StorePage> createState() => _StorePageState();
@@ -36,6 +38,9 @@ class _StorePageState extends State<StorePage> {
     if (widget.openTicketRecharge) {
       _section = _StoreSection.recharge;
       _rechargeCurrency = _StoreCurrency.ticket;
+    } else if (widget.openExchange) {
+      _section = _StoreSection.exchange;
+      _exchangeCategory = _ExchangeCategory.gift;
     }
     _sectionController = PageController(initialPage: _sectionIndex(_section));
     _walletFuture = _loadWallet();

@@ -2181,6 +2181,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         return;
       }
       if (!mounted) return;
+      if (wallet.ticketBalance <= 0) {
+        await _showInsufficientTicketsForRedPacket();
+        return;
+      }
       final amount = await _askRedPacketAmount(wallet.ticketBalance);
       if (!mounted || amount == null) return;
       final result = await widget.api.sendRedPacket(
