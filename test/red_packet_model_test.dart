@@ -31,7 +31,7 @@ void main() {
       'component_card': {
         'type': 'red_packet',
         'title': '红包',
-        'subtitle': '待领取',
+        'subtitle': '',
         'body': '给你的一点心意',
         'footer': '点击查看',
         'accent': '#FF4D5F',
@@ -71,7 +71,7 @@ void main() {
       'component_card': {
         'type': 'red_packet',
         'title': '红包',
-        'subtitle': '已领取',
+        'subtitle': '',
         'body': '给你的一点心意',
         'footer': '点击查看',
         'payload': {'offering_id': 'off-2', 'status': 'received'},

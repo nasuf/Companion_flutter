@@ -872,6 +872,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       return;
     }
+    if (card.type == 'gift') {
+      _dismissInputSurfaces();
+      await _showGiftSheet(
+        context: context,
+        api: widget.api,
+        card: card,
+      );
+      return;
+    }
     if (card.type == 'offline_activity') {
       final activityId = card.payload['activity_id']?.toString();
       if (activityId == null || activityId.isEmpty) return;
@@ -1586,7 +1595,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         }
         break;
       case 'red_packet':
-        _patchRedPacketCard(payload);
+      case 'gift':
+        _onOfferingEvent(payload);
         break;
       case 'message':
         _handleRealtimeMessageEvent(payload);
@@ -2044,10 +2054,89 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void sendComponentMessage(String text, ChatComponentCard componentCard) {
+    final offeringId = componentCard.payload['offering_id']?.toString() ?? '';
+    if (offeringId.isNotEmpty) {
+      ChatMessage? existing;
+      for (final message in _messages) {
+        final currentId = message.componentCard?.payload['offering_id']
+            ?.toString();
+        if (currentId == offeringId) {
+          existing = message;
+          break;
+        }
+      }
+      if (existing != null) {
+        final clientId = existing.clientId ?? existing.id;
+        final sent =
+            _socket?.sendMessage(
+              text.trim(),
+              clientId,
+              componentCard: componentCard,
+            ) ??
+            false;
+        if (!sent) {
+          _pendingSend = (
+            text: text.trim(),
+            clientId: clientId,
+            componentCard: componentCard,
+            attachments: const <ChatAttachment>[],
+          );
+          unawaited(_socket?.connect());
+        }
+        return;
+      }
+    }
     _sendText(text.trim(), componentCard: componentCard, clearComposer: false);
   }
 
-  void _patchRedPacketCard(Map<String, dynamic> payload) {
+  void _onOfferingEvent(Map<String, dynamic> payload) {
+    _patchOfferingCard(payload);
+    final notice = payload['notice'];
+    if (notice is! Map) return;
+    final text = notice['text']?.toString().trim() ?? '';
+    if (text.isEmpty) return;
+    final messageId = notice['message_id']?.toString() ?? '';
+    final createdAt = DateTime.tryParse(
+          notice['created_at']?.toString() ?? '',
+        ) ??
+        DateTime.now();
+    final offeringId = notice['offering_id']?.toString() ?? '';
+    final shouldAutoScroll = widget.isActive && _isNearBottomNow();
+    setState(() {
+      final alreadyShown = offeringId.isNotEmpty &&
+          _messages.any(
+            (message) =>
+                message.isOfferingReceived &&
+                message.metadata?['offering_id']?.toString() == offeringId,
+          );
+      if (alreadyShown) return;
+      _upsertServerMessage(
+        ChatMessage(
+          id: messageId.isNotEmpty
+              ? messageId
+              : 'offering-notice-${DateTime.now().microsecondsSinceEpoch}',
+          conversationId: _conversationId,
+          role: 'assistant',
+          content: text,
+          createdAt: createdAt,
+          metadata: {
+            'offering_received': true,
+            'offering_kind': notice['kind']?.toString() ?? '',
+            'offering_id': offeringId,
+            'agent_name': notice['agent_name']?.toString() ?? '',
+          },
+          read: true,
+        ),
+      );
+    });
+    if (shouldAutoScroll) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scrollToBottom(animated: true);
+      });
+    }
+  }
+
+  void _patchOfferingCard(Map<String, dynamic> payload) {
     final messageId = payload['message_id']?.toString() ?? '';
     final offeringId = payload['offering_id']?.toString() ?? '';
     final rawCard = payload['component_card'] ?? payload['componentCard'];
@@ -2076,6 +2165,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   bool _sendingRedPacket = false;
+  bool _sendingGift = false;
 
   Future<void> _onSendRedPacket() async {
     if (_sendingRedPacket) return;
@@ -2091,16 +2181,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         return;
       }
       if (!mounted) return;
-      if (wallet.ticketBalance <= 0) {
-        await _showInsufficientTicketsForRedPacket();
-        return;
-      }
       final amount = await _askRedPacketAmount(wallet.ticketBalance);
       if (!mounted || amount == null) return;
-      if (amount > wallet.ticketBalance) {
-        await _showInsufficientTicketsForRedPacket();
-        return;
-      }
       final result = await widget.api.sendRedPacket(
         conversationId: _conversationId,
         ticketAmount: amount,
@@ -2119,6 +2201,27 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _showRedPacketToast(_asMessage(error));
     } finally {
       _sendingRedPacket = false;
+    }
+  }
+
+  Future<void> _onSendGift() async {
+    if (_sendingGift) return;
+    _sendingGift = true;
+    _dismissInputSurfaces();
+    try {
+      final result = await GiftPickerPage.push(
+        context,
+        api: widget.api,
+        session: widget.session,
+        conversationId: _conversationId,
+      );
+      if (!mounted || result == null) return;
+      sendComponentMessage('', result.componentCard);
+    } catch (error) {
+      if (!mounted) return;
+      _showRedPacketToast('礼物发送失败：${_asMessage(error)}');
+    } finally {
+      _sendingGift = false;
     }
   }
 
@@ -3267,6 +3370,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 onTakePhoto: () =>
                     unawaited(_pickChatImage(ImageSource.camera)),
                 onSendRedPacket: () => unawaited(_onSendRedPacket()),
+                onSendGift: () => unawaited(_onSendGift()),
               ),
             ),
           ),

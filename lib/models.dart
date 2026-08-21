@@ -462,6 +462,9 @@ class ChatMessage {
   bool get isAchievement => role == 'achievement';
   bool get isMusicStatus => metadata?['music_status'] != null;
   bool get isGameStatus => metadata?['game_status'] != null;
+  bool get isOfferingReceived =>
+      metadata?['offering_received'] == true ||
+      metadata?['offering_received']?.toString() == 'true';
   bool get isChatMessage => role == 'user' || role == 'assistant';
   bool get isDraft => id.startsWith('draft-');
   bool get isVoiceTranscriptionPending =>
@@ -1095,6 +1098,10 @@ class RedPacketOffering {
     required this.agentId,
     required this.createdAt,
     this.receivedAt,
+    this.productKind,
+    this.productTitle,
+    this.productSubcategory,
+    this.productAssetKey,
   });
 
   final String id;
@@ -1108,6 +1115,10 @@ class RedPacketOffering {
   final String agentId;
   final String createdAt;
   final String? receivedAt;
+  final String? productKind;
+  final String? productTitle;
+  final String? productSubcategory;
+  final String? productAssetKey;
 
   bool get isReceived => status == 'received';
 
@@ -1124,6 +1135,10 @@ class RedPacketOffering {
       agentId: json['agent_id']?.toString() ?? '',
       createdAt: json['created_at']?.toString() ?? '',
       receivedAt: json['received_at']?.toString(),
+      productKind: json['product_kind']?.toString(),
+      productTitle: json['product_title']?.toString(),
+      productSubcategory: json['product_subcategory']?.toString(),
+      productAssetKey: json['product_asset_key']?.toString(),
     );
   }
 }
@@ -1151,6 +1166,40 @@ class RedPacketSendResult {
       ),
       wallet: rawWallet is Map
           ? WalletBalance.fromJson(Map<String, dynamic>.from(rawWallet))
+          : null,
+    );
+  }
+}
+
+class GiftSendResult {
+  const GiftSendResult({
+    required this.offering,
+    required this.componentCard,
+    this.wallet,
+    this.inventoryItem,
+  });
+
+  final RedPacketOffering offering;
+  final ChatComponentCard componentCard;
+  final WalletBalance? wallet;
+  final StoreInventoryItem? inventoryItem;
+
+  factory GiftSendResult.fromJson(Map<String, dynamic> json) {
+    final rawCard = json['component_card'];
+    final rawWallet = json['wallet'];
+    final inventory = json['inventory_item'];
+    return GiftSendResult(
+      offering: RedPacketOffering.fromJson(
+        Map<String, dynamic>.from(json['offering'] as Map? ?? const {}),
+      ),
+      componentCard: ChatComponentCard.fromJson(
+        rawCard is Map ? rawCard : const {},
+      ),
+      wallet: rawWallet is Map
+          ? WalletBalance.fromJson(Map<String, dynamic>.from(rawWallet))
+          : null,
+      inventoryItem: inventory is Map
+          ? StoreInventoryItem.fromJson(Map<String, dynamic>.from(inventory))
           : null,
     );
   }

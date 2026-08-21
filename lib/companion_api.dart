@@ -1279,6 +1279,35 @@ class CompanionApi {
     return RedPacketSendResult.fromJson(json);
   }
 
+  Future<GiftSendResult> sendGift({
+    required String conversationId,
+    required String productKind,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/gifts',
+              body: {
+                'conversation_id': conversationId,
+                'product_kind': productKind,
+              },
+              debugLabel: 'gift.send',
+            )
+            as Map<String, dynamic>;
+    return GiftSendResult.fromJson(json);
+  }
+
+  Future<GiftSendResult> getGift(String offeringId) async {
+    final json =
+        await _request(
+              'GET',
+              '/gifts/${Uri.encodeComponent(offeringId)}',
+              debugLabel: 'gift.get',
+            )
+            as Map<String, dynamic>;
+    return GiftSendResult.fromJson(json);
+  }
+
   Future<RedPacketSendResult> getRedPacket(String offeringId) async {
     final json =
         await _request(

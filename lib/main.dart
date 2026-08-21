@@ -161,10 +161,13 @@ part 'src/widgets/chat/inline_banner.dart';
 part 'src/widgets/chat/message_widgets.dart';
 part 'src/widgets/chat/meal_voucher_component_card.dart';
 part 'src/widgets/chat/red_packet_component_card.dart';
+part 'src/widgets/chat/gift_component_card.dart';
 part 'src/widgets/chat/offline_activity_component_card.dart';
 part 'src/widgets/chat/offline_gift_component_card.dart';
 part 'src/widgets/chat/panels.dart';
 part 'src/screens/chat/red_packet_sheet.dart';
+part 'src/screens/chat/gift_sheet.dart';
+part 'src/screens/chat/gift_picker_page.dart';
 
 final RouteObserver<PageRoute<dynamic>> appRouteObserver =
     RouteObserver<PageRoute<dynamic>>();

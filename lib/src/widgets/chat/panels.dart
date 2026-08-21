@@ -7,6 +7,7 @@ class _ChatPanel extends StatefulWidget {
     required this.onPickPhoto,
     required this.onTakePhoto,
     required this.onSendRedPacket,
+    required this.onSendGift,
     this.bottomInset = 0,
   });
 
@@ -15,6 +16,7 @@ class _ChatPanel extends StatefulWidget {
   final VoidCallback onPickPhoto;
   final VoidCallback onTakePhoto;
   final VoidCallback onSendRedPacket;
+  final VoidCallback onSendGift;
 
   /// Bottom safe-area height. The panel docks to the screen bottom (like the
   /// keyboard), so it owns the home-indicator strip and keeps content above it.
@@ -85,6 +87,7 @@ class _ChatPanelState extends State<_ChatPanel> {
               onPickPhoto: widget.onPickPhoto,
               onTakePhoto: widget.onTakePhoto,
               onSendRedPacket: widget.onSendRedPacket,
+              onSendGift: widget.onSendGift,
             ),
             ComposerPanel.none => const SizedBox.shrink(),
           },
@@ -318,11 +321,13 @@ class _MorePanel extends StatelessWidget {
     required this.onPickPhoto,
     required this.onTakePhoto,
     required this.onSendRedPacket,
+    required this.onSendGift,
   });
 
   final VoidCallback onPickPhoto;
   final VoidCallback onTakePhoto;
   final VoidCallback onSendRedPacket;
+  final VoidCallback onSendGift;
 
   static const _tools = [
     _ToolSpec('图片', CupertinoIcons.photo, Color(0xFF1F6FFF), _ToolAction.photo),
@@ -332,7 +337,13 @@ class _MorePanel extends StatelessWidget {
       Color(0xFF18C6C0),
       _ToolAction.camera,
     ),
-    _ToolSpec('红包', CupertinoIcons.gift, Color(0xFFFF4D5F), _ToolAction.redPacket),
+    _ToolSpec(
+      '红包',
+      CupertinoIcons.gift,
+      Color(0xFFFF4D5F),
+      _ToolAction.redPacket,
+      hongbaoGlyph: true,
+    ),
     _ToolSpec(
       '位置',
       CupertinoIcons.location,
@@ -340,7 +351,7 @@ class _MorePanel extends StatelessWidget {
       _ToolAction.none,
     ),
     _ToolSpec('查找', CupertinoIcons.search, Color(0xFF7C3CFF), _ToolAction.none),
-    _ToolSpec('电话', CupertinoIcons.phone, Color(0xFFFF8A3D), _ToolAction.none),
+    _ToolSpec('礼物', CupertinoIcons.gift, Color(0xFFFF8A3D), _ToolAction.gift),
   ];
 
   @override
@@ -366,6 +377,7 @@ class _MorePanel extends StatelessWidget {
                       _ToolAction.photo => onPickPhoto,
                       _ToolAction.camera => onTakePhoto,
                       _ToolAction.redPacket => onSendRedPacket,
+                      _ToolAction.gift => onSendGift,
                       _ToolAction.none => null,
                     },
                   ),
@@ -386,6 +398,7 @@ class _MorePanel extends StatelessWidget {
                   onPickPhoto: onPickPhoto,
                   onTakePhoto: onTakePhoto,
                   onSendRedPacket: onSendRedPacket,
+                  onSendGift: onSendGift,
                 ),
                 const SizedBox(height: 26),
                 _ToolRow(
@@ -393,6 +406,7 @@ class _MorePanel extends StatelessWidget {
                   onPickPhoto: onPickPhoto,
                   onTakePhoto: onTakePhoto,
                   onSendRedPacket: onSendRedPacket,
+                  onSendGift: onSendGift,
                 ),
               ],
             ),
@@ -409,12 +423,14 @@ class _ToolRow extends StatelessWidget {
     required this.onPickPhoto,
     required this.onTakePhoto,
     required this.onSendRedPacket,
+    required this.onSendGift,
   });
 
   final List<_ToolSpec> tools;
   final VoidCallback onPickPhoto;
   final VoidCallback onTakePhoto;
   final VoidCallback onSendRedPacket;
+  final VoidCallback onSendGift;
 
   @override
   Widget build(BuildContext context) {
@@ -429,6 +445,7 @@ class _ToolRow extends StatelessWidget {
                   _ToolAction.photo => onPickPhoto,
                   _ToolAction.camera => onTakePhoto,
                   _ToolAction.redPacket => onSendRedPacket,
+                  _ToolAction.gift => onSendGift,
                   _ToolAction.none => null,
                 },
               ),
@@ -469,7 +486,9 @@ class _ToolButton extends StatelessWidget {
                 color: tool.color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(iconRadius),
               ),
-              child: Icon(tool.icon, color: tool.color, size: iconGlyphSize),
+              child: tool.hongbaoGlyph
+                  ? _HongbaoGlyph(size: iconGlyphSize, bodyColor: tool.color)
+                  : Icon(tool.icon, color: tool.color, size: iconGlyphSize),
             ),
             SizedBox(height: labelGap),
             Text(
@@ -486,12 +505,19 @@ class _ToolButton extends StatelessWidget {
 }
 
 class _ToolSpec {
-  const _ToolSpec(this.label, this.icon, this.color, this.action);
+  const _ToolSpec(
+    this.label,
+    this.icon,
+    this.color,
+    this.action, {
+    this.hongbaoGlyph = false,
+  });
 
   final String label;
   final IconData icon;
   final Color color;
   final _ToolAction action;
+  final bool hongbaoGlyph;
 }
 
-enum _ToolAction { photo, camera, redPacket, none }
+enum _ToolAction { photo, camera, redPacket, gift, none }

@@ -196,6 +196,9 @@ class _MessageRow extends StatelessWidget {
     if (message.isGameStatus) {
       return _GameStatusTimelineRow(message: message);
     }
+    if (message.isOfferingReceived) {
+      return _OfferingReceivedTimelineRow(message: message);
+    }
 
     final avatar = _Avatar(
       size: _avatarSize,
@@ -349,6 +352,68 @@ class _GameStatusTimelineRow extends StatelessWidget {
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OfferingReceivedTimelineRow extends StatelessWidget {
+  const _OfferingReceivedTimelineRow({required this.message});
+
+  final ChatMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final kind = message.metadata?['offering_kind']?.toString() ?? '';
+    final isGift = kind == 'gift';
+    final label = message.content.trim().isNotEmpty
+        ? message.content.trim()
+        : (isGift ? '对方收下了你的礼物' : '对方领取了你的红包');
+    final isDark = AppColors.isDark(context);
+    final textColor = isDark
+        ? const Color(0xFF8B95A1)
+        : const Color(0xFF888888);
+    final iconColor = isGift
+        ? (isDark ? const Color(0xFFC48A62) : const Color(0xFFC47A3A))
+        : (isDark ? const Color(0xFFC97A82) : const Color(0xFFC45C66));
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.sizeOf(context).width - 72,
+          ),
+          child: Row(
+            key: const Key('offering-received-notice'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isGift)
+                Icon(CupertinoIcons.gift_fill, size: 13, color: iconColor)
+              else
+                SizedBox(
+                  width: 13,
+                  height: 13,
+                  child: _HongbaoGlyph(
+                    size: 13,
+                    bodyColor: iconColor,
+                  ),
+                ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 12,
+                    height: 1.25,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1460,6 +1525,13 @@ class _ComponentCardBubble extends StatelessWidget {
     }
     if (card.type == 'red_packet') {
       return _RedPacketComponentCard(
+        card: card,
+        isMine: isMine,
+        onTap: onTap,
+      );
+    }
+    if (card.type == 'gift') {
+      return _GiftComponentCard(
         card: card,
         isMine: isMine,
         onTap: onTap,

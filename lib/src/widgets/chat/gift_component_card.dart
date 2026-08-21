@@ -1,7 +1,9 @@
 part of 'package:companion_flutter/main.dart';
 
-class _RedPacketComponentCard extends StatelessWidget {
-  const _RedPacketComponentCard({
+const _giftAccent = Color(0xFFFF8A3D);
+
+class _GiftComponentCard extends StatelessWidget {
+  const _GiftComponentCard({
     required this.card,
     required this.isMine,
     required this.onTap,
@@ -13,9 +15,15 @@ class _RedPacketComponentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFFFF4D5F);
+    const accent = _giftAccent;
     final colors = AppColors.of(context);
     final isDark = AppColors.isDark(context);
+    final title = card.title.isEmpty
+        ? (card.payload['product_title']?.toString() ?? '礼物')
+        : card.title;
+    final body = card.body.isEmpty
+        ? (card.payload['product_subcategory']?.toString() ?? '心意')
+        : card.body;
     final radius = BorderRadius.only(
       topLeft: Radius.circular(isMine ? 20 : 5),
       topRight: Radius.circular(isMine ? 5 : 20),
@@ -23,8 +31,8 @@ class _RedPacketComponentCard extends StatelessWidget {
       bottomRight: const Radius.circular(20),
     );
     final background = isDark
-        ? const [Color(0xFF2A181C), Color(0xFF181214)]
-        : const [Color(0xFFFFF1F2), Color(0xFFFFFFFF)];
+        ? const [Color(0xFF2A1C14), Color(0xFF181410)]
+        : const [Color(0xFFFFF6EE), Color(0xFFFFFFFF)];
 
     return CupertinoButton(
       minimumSize: Size.zero,
@@ -33,7 +41,7 @@ class _RedPacketComponentCard extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 292),
         child: DecoratedBox(
-          key: const Key('red-packet-card'),
+          key: const Key('gift-card'),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -75,34 +83,14 @@ class _RedPacketComponentCard extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Container(
-                            width: 38,
-                            height: 38,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              gradient: const LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [Color(0xFFFF7A88), accent],
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: accent.withValues(alpha: 0.24),
-                                  blurRadius: 13,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: const _RedPacketIcon(size: 20),
-                          ),
+                          _GiftCardThumb(card: card, size: 38),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  card.title.isEmpty ? '红包' : card.title,
+                                  title,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
@@ -113,13 +101,13 @@ class _RedPacketComponentCard extends StatelessWidget {
                                   ),
                                 ),
                                 Text(
-                                  card.body.isEmpty ? '给你的一点心意' : card.body,
+                                  body,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     color: isDark
-                                        ? const Color(0xFFC9A8AD)
-                                        : const Color(0xFF9D6E74),
+                                        ? const Color(0xFFD0B49A)
+                                        : const Color(0xFF9D7A5E),
                                     fontSize: 10,
                                     fontWeight: FontWeight.w600,
                                     height: 1.35,
@@ -161,110 +149,45 @@ class _RedPacketComponentCard extends StatelessWidget {
   }
 }
 
-/// Hongbao silhouette: vertical envelope, folded flap, gold band + seal.
-class _RedPacketIcon extends StatelessWidget {
-  const _RedPacketIcon({this.size = 20});
+class _GiftCardThumb extends StatelessWidget {
+  const _GiftCardThumb({required this.card, this.size = 38});
 
+  final ChatComponentCard card;
   final double size;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      label: '红包',
-      child: CustomPaint(
-        key: const Key('red-packet-icon'),
-        size: Size.square(size),
-        painter: const _HongbaoIconPainter(
-          bodyColor: Colors.white,
-          flapColor: Color(0xFFFFE08A),
-          bandColor: Color(0xFFFFD56A),
-          sealColor: Color(0xFFE2B93A),
-        ),
+    final asset = _giftImageAsset(card);
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: _giftAccent.withValues(alpha: 0.12),
       ),
+      child: asset == null
+          ? Icon(CupertinoIcons.gift_fill, color: _giftAccent, size: size * 0.52)
+          : Padding(
+              padding: const EdgeInsets.all(4),
+              child: Image.asset(
+                asset,
+                width: size - 8,
+                height: size - 8,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Icon(
+                  CupertinoIcons.gift_fill,
+                  color: _giftAccent,
+                  size: size * 0.52,
+                ),
+              ),
+            ),
     );
   }
 }
 
-class _HongbaoGlyph extends StatelessWidget {
-  const _HongbaoGlyph({
-    this.size = 22,
-    this.bodyColor = const Color(0xFFFF4D5F),
-  });
-
-  final double size;
-  final Color bodyColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: '红包',
-      child: CustomPaint(
-        key: const Key('hongbao-tool-icon'),
-        size: Size.square(size),
-        painter: _HongbaoIconPainter(
-          bodyColor: bodyColor,
-          flapColor: const Color(0xFFFFE08A),
-          bandColor: const Color(0xFFFFD56A),
-          sealColor: const Color(0xFFE2B93A),
-        ),
-      ),
-    );
-  }
-}
-
-class _HongbaoIconPainter extends CustomPainter {
-  const _HongbaoIconPainter({
-    required this.bodyColor,
-    required this.flapColor,
-    required this.bandColor,
-    required this.sealColor,
-  });
-
-  final Color bodyColor;
-  final Color flapColor;
-  final Color bandColor;
-  final Color sealColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final s = size.shortestSide;
-    final left = s * 0.18;
-    final right = s * 0.82;
-    final top = s * 0.08;
-    final bottom = s * 0.92;
-    final radius = Radius.circular(s * 0.12);
-    final body = RRect.fromLTRBR(left, top, right, bottom, radius);
-
-    canvas.drawRRect(body, Paint()..color = bodyColor);
-
-    canvas.save();
-    canvas.clipRRect(body);
-    final flap = Path()
-      ..moveTo(left, top)
-      ..lineTo(right, top)
-      ..lineTo(s * 0.5, top + s * 0.34)
-      ..close();
-    canvas.drawPath(flap, Paint()..color = flapColor);
-
-    final bandTop = top + s * 0.40;
-    canvas.drawRect(
-      Rect.fromLTRB(left, bandTop, right, bandTop + s * 0.12),
-      Paint()..color = bandColor,
-    );
-    canvas.restore();
-
-    canvas.drawCircle(
-      Offset(s * 0.5, bandTop + s * 0.06),
-      s * 0.11,
-      Paint()..color = sealColor,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _HongbaoIconPainter oldDelegate) {
-    return oldDelegate.bodyColor != bodyColor ||
-        oldDelegate.flapColor != flapColor ||
-        oldDelegate.bandColor != bandColor ||
-        oldDelegate.sealColor != sealColor;
-  }
+String? _giftImageAsset(ChatComponentCard card) {
+  final key = card.payload['product_asset_key']?.toString().trim() ?? '';
+  if (key.isEmpty) return null;
+  return '$_storeGiftPath/$key.png';
 }
