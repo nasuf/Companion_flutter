@@ -3222,7 +3222,8 @@ enum _BackpackFilter {
   all('全部', null),
   gift('礼物', _ExchangeCategory.gift),
   blind('盲盒', _ExchangeCategory.blind),
-  outfit('装扮', _ExchangeCategory.outfit);
+  outfit('装扮', _ExchangeCategory.outfit),
+  bundle('礼包', _ExchangeCategory.bundle);
 
   const _BackpackFilter(this.label, this.category);
 
