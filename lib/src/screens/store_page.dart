@@ -496,6 +496,32 @@ class _StorePageState extends State<StorePage> {
       return;
     }
     if (_buyingBundles.contains(offer.kind)) return;
+    final grantLabel = switch (offer.kind) {
+      _BundleKind.music => '音乐畅听券 x${tier.grantAmount}',
+      _BundleKind.makeup => '补签卡 x${tier.grantAmount}',
+      _ => '${tier.grantAmount} 游戏积分',
+    };
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) {
+        return CupertinoAlertDialog(
+          title: Text(offer.title),
+          content: Text('将消耗 ${tier.ticketPrice} 钞票，获得 $grantLabel。'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('购买'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
     setState(() => _buyingBundles.add(offer.kind));
     try {
       final result = await widget.api.purchaseStoreBundle(
