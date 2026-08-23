@@ -361,6 +361,215 @@ class _AdminTicketGrantResult {
 }
 
 // ===========================================================================
+// Shared balance list widgets (Row + full-width button breaks layout)
+// ===========================================================================
+
+class _AdminWalletAdjustButton extends StatelessWidget {
+  const _AdminWalletAdjustButton({required this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AppColors.of(context).accent;
+    return CupertinoButton(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      minimumSize: Size.zero,
+      color: accent.withValues(alpha: 0.14),
+      borderRadius: BorderRadius.circular(12),
+      onPressed: onPressed,
+      child: Text(
+        '调整',
+        style: TextStyle(
+          color: accent,
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0,
+          decoration: TextDecoration.none,
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminWalletBalanceCard extends StatelessWidget {
+  const _AdminWalletBalanceCard({
+    required this.item,
+    required this.primaryLabel,
+    required this.primaryValue,
+    required this.secondaryLine,
+    required this.onAdjust,
+  });
+
+  final _AdminWalletBalanceItem item;
+  final String primaryLabel;
+  final int primaryValue;
+  final String secondaryLine;
+  final VoidCallback? onAdjust;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? AppColors.text : const Color(0xFF12171B);
+    final shortId = item.userId.length > 8
+        ? item.userId.substring(0, 8)
+        : item.userId;
+
+    return _AdminCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${item.username} · $shortId',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    primaryLabel,
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$primaryValue',
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            secondaryLine,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: AppColors.muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            '更新 ${_walletFormatTimestamp(item.updatedAt)}',
+            style: TextStyle(
+              color: AppColors.muted,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: _AdminWalletAdjustButton(onPressed: onAdjust),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Widget _adminWalletBalancePager({
+  required int page,
+  required int totalPages,
+  required int total,
+  required VoidCallback? onPrev,
+  required VoidCallback? onNext,
+}) {
+  return SafeArea(
+    top: false,
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(18, 6, 18, 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: _AdminGamesSecondaryButton(
+              label: '上一页',
+              onPressed: onPrev,
+            ),
+          ),
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Text(
+                '第 ${page + 1} / $totalPages 页 · 共 $total 人',
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: _AdminGamesSecondaryButton(
+              label: '下一页',
+              onPressed: onNext,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// ===========================================================================
 // Entry page: 钞票管理 / 钞票流水
 // ===========================================================================
 
@@ -529,7 +738,6 @@ class _WalletBalancesTabState extends State<_WalletBalancesTab> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         Expanded(
@@ -612,81 +820,14 @@ class _WalletBalancesTabState extends State<_WalletBalancesTab> {
                   )
                 else
                   for (final item in _items) ...[
-                    _AdminCard(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item.label,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: isDark
-                                        ? AppColors.text
-                                        : const Color(0xFF12171B),
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 0,
-                                    decoration: TextDecoration.none,
-                                  ),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  '${item.username} · ${item.userId.length > 8 ? item.userId.substring(0, 8) : item.userId}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: AppColors.muted,
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 0,
-                                    decoration: TextDecoration.none,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '钞票 ${item.ticketBalance} · 商城积分 ${item.pointBalance}',
-                                  style: TextStyle(
-                                    color: isDark
-                                        ? AppColors.text
-                                        : const Color(0xFF12171B),
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 0,
-                                    decoration: TextDecoration.none,
-                                  ),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  '更新 ${_walletFormatTimestamp(item.updatedAt)}',
-                                  style: TextStyle(
-                                    color: AppColors.muted,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 0,
-                                    decoration: TextDecoration.none,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          _AdminGamesSecondaryButton(
-                            label: '调整',
-                            onPressed: _loading
-                                ? null
-                                : () => _openGrant(item: item),
-                          ),
-                        ],
-                      ),
+                    _AdminWalletBalanceCard(
+                      item: item,
+                      primaryLabel: '钞票',
+                      primaryValue: item.ticketBalance,
+                      secondaryLine: '商城积分 ${item.pointBalance}',
+                      onAdjust: _loading
+                          ? null
+                          : () => _openGrant(item: item),
                     ),
                     const SizedBox(height: 8),
                   ],
@@ -694,50 +835,22 @@ class _WalletBalancesTabState extends State<_WalletBalancesTab> {
             ),
           ),
         ),
-        SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 6, 18, 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _AdminGamesSecondaryButton(
-                    label: '上一页',
-                    onPressed: (_page == 0 || _loading)
-                        ? null
-                        : () {
-                            setState(() => _page -= 1);
-                            _load();
-                          },
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: Text(
-                    '第 ${_page + 1} / $_totalPages 页 · 共 $_total 人',
-                    style: TextStyle(
-                      color: AppColors.muted,
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: _AdminGamesSecondaryButton(
-                    label: '下一页',
-                    onPressed: (_page + 1 >= _totalPages || _loading)
-                        ? null
-                        : () {
-                            setState(() => _page += 1);
-                            _load();
-                          },
-                  ),
-                ),
-              ],
-            ),
-          ),
+        _adminWalletBalancePager(
+          page: _page,
+          totalPages: _totalPages,
+          total: _total,
+          onPrev: (_page == 0 || _loading)
+              ? null
+              : () {
+                  setState(() => _page -= 1);
+                  _load();
+                },
+          onNext: (_page + 1 >= _totalPages || _loading)
+              ? null
+              : () {
+                  setState(() => _page += 1);
+                  _load();
+                },
         ),
       ],
     );
@@ -1153,7 +1266,6 @@ class _PointBalancesTabState extends State<_PointBalancesTab> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         Expanded(
@@ -1236,81 +1348,14 @@ class _PointBalancesTabState extends State<_PointBalancesTab> {
                   )
                 else
                   for (final item in _items) ...[
-                    _AdminCard(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item.label,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: isDark
-                                        ? AppColors.text
-                                        : const Color(0xFF12171B),
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 0,
-                                    decoration: TextDecoration.none,
-                                  ),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  '${item.username} · ${item.userId.length > 8 ? item.userId.substring(0, 8) : item.userId}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: AppColors.muted,
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 0,
-                                    decoration: TextDecoration.none,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '商城积分 ${item.pointBalance} · 钞票 ${item.ticketBalance}',
-                                  style: TextStyle(
-                                    color: isDark
-                                        ? AppColors.text
-                                        : const Color(0xFF12171B),
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 0,
-                                    decoration: TextDecoration.none,
-                                  ),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  '更新 ${_walletFormatTimestamp(item.updatedAt)}',
-                                  style: TextStyle(
-                                    color: AppColors.muted,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 0,
-                                    decoration: TextDecoration.none,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          _AdminGamesSecondaryButton(
-                            label: '调整',
-                            onPressed: _loading
-                                ? null
-                                : () => _openGrant(item: item),
-                          ),
-                        ],
-                      ),
+                    _AdminWalletBalanceCard(
+                      item: item,
+                      primaryLabel: '商城积分',
+                      primaryValue: item.pointBalance,
+                      secondaryLine: '钞票 ${item.ticketBalance}',
+                      onAdjust: _loading
+                          ? null
+                          : () => _openGrant(item: item),
                     ),
                     const SizedBox(height: 8),
                   ],
@@ -1318,50 +1363,22 @@ class _PointBalancesTabState extends State<_PointBalancesTab> {
             ),
           ),
         ),
-        SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 6, 18, 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _AdminGamesSecondaryButton(
-                    label: '上一页',
-                    onPressed: (_page == 0 || _loading)
-                        ? null
-                        : () {
-                            setState(() => _page -= 1);
-                            _load();
-                          },
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: Text(
-                    '第 ${_page + 1} / $_totalPages 页 · 共 $_total 人',
-                    style: TextStyle(
-                      color: AppColors.muted,
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: _AdminGamesSecondaryButton(
-                    label: '下一页',
-                    onPressed: (_page + 1 >= _totalPages || _loading)
-                        ? null
-                        : () {
-                            setState(() => _page += 1);
-                            _load();
-                          },
-                  ),
-                ),
-              ],
-            ),
-          ),
+        _adminWalletBalancePager(
+          page: _page,
+          totalPages: _totalPages,
+          total: _total,
+          onPrev: (_page == 0 || _loading)
+              ? null
+              : () {
+                  setState(() => _page -= 1);
+                  _load();
+                },
+          onNext: (_page + 1 >= _totalPages || _loading)
+              ? null
+              : () {
+                  setState(() => _page += 1);
+                  _load();
+                },
         ),
       ],
     );
