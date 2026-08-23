@@ -54,6 +54,7 @@ part 'src/screens/admin_dashboard_page.dart';
 part 'src/screens/admin_meal_page.dart';
 part 'src/screens/admin_games_page.dart';
 part 'src/screens/admin_models_page.dart';
+part 'src/screens/admin_payments_page.dart';
 part 'src/screens/agent_create_page.dart';
 part 'src/screens/avatar_crop_page.dart';
 part 'src/screens/achievement_page.dart';

@@ -604,6 +604,16 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     );
   }
 
+  void _openPaymentManagement() {
+    widget.api.authToken = widget.session.token;
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) =>
+            _AdminPaymentsPage(api: widget.api, session: widget.session),
+      ),
+    );
+  }
+
   void _openModelManagement() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
@@ -932,6 +942,22 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                               subtitle: '查看用户详情、对话记录与管理员权限',
                               accent: const Color(0xFF1FA97A),
                               onTap: _openUserManagement,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _ProfileSectionV6(
+                        title: '支付管理',
+                        trailing: '钞票钱包',
+                        child: Column(
+                          children: [
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.money_dollar_circle_fill,
+                              title: '支付管理',
+                              subtitle: '钞票 / 商城积分 · 余额 / 发放 / 流水',
+                              accent: const Color(0xFFE8A317),
+                              onTap: _openPaymentManagement,
                             ),
                           ],
                         ),
