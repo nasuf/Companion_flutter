@@ -5,6 +5,7 @@ const _storeBlindPath = 'assets/store/blinds';
 const _storeOutfitPath = 'assets/store/outfits';
 const _storeBundlePath = 'assets/store/bundles';
 const _musicCouponKind = 'music_hour_coupon';
+const _makeupCardKind = 'makeup_card';
 
 const _musicBundleTiers = [
   _BundleTier(id: '1', label: '1张', ticketPrice: 10, grantAmount: 1),
@@ -66,6 +67,16 @@ const _musicCouponProduct = _StoreProduct(
   listPrice: 0,
   category: _ExchangeCategory.bundle,
   imageAsset: '$_storeBundlePath/music.png',
+);
+
+const _makeupCardProduct = _StoreProduct(
+  title: '补签卡',
+  subtitle: '补回遗漏的连续互动天数',
+  productKind: _makeupCardKind,
+  memberPrice: 0,
+  listPrice: 0,
+  category: _ExchangeCategory.bundle,
+  imageAsset: '$_storeBundlePath/makeup.png',
 );
 
 const _exchangeProducts = [
@@ -927,5 +938,6 @@ _StoreProduct? _productForKind(String kind) {
     if (product.productKind == kind) return product;
   }
   if (kind == _musicCouponKind) return _musicCouponProduct;
+  if (kind == _makeupCardKind) return _makeupCardProduct;
   return null;
 }
