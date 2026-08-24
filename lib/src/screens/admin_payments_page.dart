@@ -281,6 +281,36 @@ extension _AdminWalletApi on CompanionApi {
             as Map<String, dynamic>;
     return _AdminVipSetResult.fromJson(json);
   }
+
+  Future<_AdminChatQuotaStatus> fetchChatQuotaStatus(String userId) async {
+    final path = Uri(
+      path: '/admin-api/chat-quota/status',
+      queryParameters: {'user_id': userId},
+    ).toString();
+    final json =
+        await _adminHttpRequest(this, 'GET', path) as Map<String, dynamic>;
+    return _AdminChatQuotaStatus.fromJson(json);
+  }
+
+  Future<_AdminChatQuotaStatus> resetChatQuota({
+    required String userId,
+    String? note,
+  }) async {
+    final body = <String, dynamic>{'user_id': userId};
+    final trimmedNote = note?.trim();
+    if (trimmedNote != null && trimmedNote.isNotEmpty) {
+      body['note'] = trimmedNote;
+    }
+    final json =
+        await _adminHttpRequest(
+              this,
+              'POST',
+              '/admin-api/chat-quota/reset',
+              body: body,
+            )
+            as Map<String, dynamic>;
+    return _AdminChatQuotaStatus.fromJson(json);
+  }
 }
 
 // ===========================================================================
@@ -358,6 +388,47 @@ class _AdminVipSetResult {
       userId: json['user_id']?.toString() ?? '',
       isVip: json['is_vip'] == true,
       vipUntil: json['vip_until']?.toString(),
+    );
+  }
+}
+
+class _AdminChatQuotaStatus {
+  const _AdminChatQuotaStatus({
+    required this.userId,
+    required this.isVip,
+    required this.periodScope,
+    required this.periodKey,
+    required this.used,
+    required this.limit,
+    required this.freeRemaining,
+    required this.mode,
+    required this.perMsgCost,
+    required this.spendableTickets,
+  });
+
+  final String userId;
+  final bool isVip;
+  final String periodScope; // 'day' | 'month'
+  final String periodKey;
+  final int used;
+  final int limit;
+  final int freeRemaining;
+  final String mode; // 'free' | 'paid' | 'blocked'
+  final num perMsgCost;
+  final num spendableTickets;
+
+  factory _AdminChatQuotaStatus.fromJson(Map<String, dynamic> json) {
+    return _AdminChatQuotaStatus(
+      userId: json['user_id']?.toString() ?? '',
+      isVip: json['is_vip'] == true,
+      periodScope: json['period_scope']?.toString() ?? '',
+      periodKey: json['period_key']?.toString() ?? '',
+      used: _adminInt(json['used']),
+      limit: _adminInt(json['limit']),
+      freeRemaining: _adminInt(json['free_remaining']),
+      mode: json['mode']?.toString() ?? '',
+      perMsgCost: (json['per_msg_cost'] as num?) ?? 0,
+      spendableTickets: (json['spendable_tickets'] as num?) ?? 0,
     );
   }
 }
@@ -678,7 +749,8 @@ Widget _adminWalletBalancePager({
 enum _PaymentResource {
   ticket('钞票'),
   point('积分'),
-  vip('会员');
+  vip('会员'),
+  quota('额度');
 
   const _PaymentResource(this.label);
   final String label;
@@ -710,7 +782,24 @@ class _AdminPaymentsPageState extends State<_AdminPaymentsPage> {
     _PaymentResource.ticket: '钞票余额 · 手动发放 · 流水审计',
     _PaymentResource.point: '商城积分余额 · 手动发放 · 流水审计',
     _PaymentResource.vip: 'VIP 状态 · 设置/延长/结束 · 限时钞票流水',
+    _PaymentResource.quota: '对话额度 · 查看用量 · 重置当前周期',
   };
+
+  // quota 没有"管理/流水"两种视图，只有一个统一页面 —— 与其为它硬凑一对
+  // 空的流水 tab，不如让视图选择器本身在这个资源下不出现。
+  bool get _resourceHasViews => _resource != _PaymentResource.quota;
+
+  // 沿用现有 IndexedStack 让已切换过的 tab 保留状态 (搜索词/翻页/已加载数据)
+  // 不因为切资源而重置; quota 没有 view 维度, 单独占最后一个位置, 不参与
+  // resource*2+view 的既有算式 (避免打乱 ticket/point/vip 现成的 0-5 下标)。
+  int get _stackIndex {
+    if (_resource == _PaymentResource.quota) {
+      // quota 是唯一没有 view 维度的资源，追加在既有 6 个 (3 资源 × 2 视图)
+      // 之后成为第 7 个 child，下标固定为 6。
+      return (_PaymentResource.values.length - 1) * _PaymentView.values.length;
+    }
+    return _resource.index * _PaymentView.values.length + _view.index;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -741,32 +830,32 @@ class _AdminPaymentsPageState extends State<_AdminPaymentsPage> {
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 6, 18, 4),
-            child: SizedBox(
-              width: double.infinity,
-              child: CupertinoSlidingSegmentedControl<_PaymentView>(
-                groupValue: _view,
-                onValueChanged: (value) {
-                  if (value != null) setState(() => _view = value);
-                },
-                children: {
-                  for (final view in _PaymentView.values)
-                    view: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 5),
-                      child: Text(
-                        view.label,
-                        style: const TextStyle(fontSize: 12.5),
+          if (_resourceHasViews)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 6, 18, 4),
+              child: SizedBox(
+                width: double.infinity,
+                child: CupertinoSlidingSegmentedControl<_PaymentView>(
+                  groupValue: _view,
+                  onValueChanged: (value) {
+                    if (value != null) setState(() => _view = value);
+                  },
+                  children: {
+                    for (final view in _PaymentView.values)
+                      view: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 5),
+                        child: Text(
+                          view.label,
+                          style: const TextStyle(fontSize: 12.5),
+                        ),
                       ),
-                    ),
-                },
+                  },
+                ),
               ),
             ),
-          ),
           Expanded(
             child: IndexedStack(
-              index: _resource.index * _PaymentView.values.length +
-                  _view.index,
+              index: _stackIndex,
               children: [
                 _WalletBalancesTab(api: widget.api, session: widget.session),
                 _WalletLedgerTab(api: widget.api, session: widget.session),
@@ -774,6 +863,7 @@ class _AdminPaymentsPageState extends State<_AdminPaymentsPage> {
                 _PointLedgerTab(api: widget.api, session: widget.session),
                 _VipBalancesTab(api: widget.api, session: widget.session),
                 _VipLedgerTab(api: widget.api, session: widget.session),
+                _ChatQuotaTab(api: widget.api, session: widget.session),
               ],
             ),
           ),
@@ -3332,6 +3422,423 @@ class _SetVipDialogState extends State<_SetVipDialog> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ===========================================================================
+// Tab · 对话额度重置
+// ===========================================================================
+
+const _chatQuotaModeLabels = {
+  'free': '免费额度内',
+  'paid': '已进入超额扣费',
+  'blocked': '已耗尽（钞票不足）',
+};
+
+class _ChatQuotaTab extends StatefulWidget {
+  const _ChatQuotaTab({required this.api, required this.session});
+
+  final CompanionApi api;
+  final AuthSession session;
+
+  @override
+  State<_ChatQuotaTab> createState() => _ChatQuotaTabState();
+}
+
+class _ChatQuotaTabState extends State<_ChatQuotaTab> {
+  final _queryCtrl = TextEditingController();
+  final _noteCtrl = TextEditingController();
+
+  Timer? _debounce;
+  int _searchSeq = 0;
+  List<_AdminUserSearchItem> _results = const [];
+  bool _searching = false;
+  _AdminUserSearchItem? _selected;
+  _AdminChatQuotaStatus? _status;
+  bool _loadingStatus = false;
+  bool _confirming = false;
+  bool _resetting = false;
+  String? _error;
+  String? _notice;
+
+  @override
+  void initState() {
+    super.initState();
+    _queryCtrl.addListener(_onQueryChanged);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _queryCtrl.dispose();
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onQueryChanged() {
+    if (_selected != null) return;
+    _debounce?.cancel();
+    final query = _queryCtrl.text.trim();
+    if (query.isEmpty) {
+      setState(() {
+        _results = const [];
+        _searching = false;
+      });
+      return;
+    }
+    setState(() => _searching = true);
+    _debounce = Timer(
+      const Duration(milliseconds: 300),
+      () => _runSearch(query),
+    );
+  }
+
+  Future<void> _runSearch(String query) async {
+    final seq = ++_searchSeq;
+    widget.api.authToken = widget.session.token;
+    try {
+      final rows = await widget.api.searchWalletUsers(query);
+      if (!mounted || seq != _searchSeq) return;
+      setState(() {
+        _results = rows;
+        _searching = false;
+      });
+    } catch (error) {
+      if (!mounted || seq != _searchSeq) return;
+      setState(() {
+        _error = _walletAdminErrorText(error);
+        _searching = false;
+      });
+    }
+  }
+
+  void _select(_AdminUserSearchItem item) {
+    setState(() {
+      _selected = item;
+      _results = const [];
+      _status = null;
+      _notice = null;
+      _error = null;
+      _confirming = false;
+      _noteCtrl.clear();
+      _loadingStatus = true;
+    });
+    widget.api.authToken = widget.session.token;
+    widget.api
+        .fetchChatQuotaStatus(item.userId)
+        .then((result) {
+          if (!mounted) return;
+          setState(() {
+            _status = result;
+            _loadingStatus = false;
+          });
+        })
+        .catchError((Object error) {
+          if (!mounted) return;
+          setState(() {
+            _error = _walletAdminErrorText(error);
+            _loadingStatus = false;
+          });
+        });
+  }
+
+  void _clearSelected() {
+    setState(() {
+      _selected = null;
+      _status = null;
+      _confirming = false;
+      _notice = null;
+      _queryCtrl.clear();
+      _noteCtrl.clear();
+      _results = const [];
+    });
+  }
+
+  Future<void> _reset() async {
+    final selected = _selected;
+    if (selected == null || _resetting) return;
+    setState(() {
+      _resetting = true;
+      _error = null;
+    });
+    widget.api.authToken = widget.session.token;
+    try {
+      final result = await widget.api.resetChatQuota(
+        userId: selected.userId,
+        note: _noteCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _status = result;
+        _confirming = false;
+        _resetting = false;
+        _notice = '已重置 ${selected.displayName} 当前周期的对话额度。';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _resetting = false;
+        _error = _walletAdminErrorText(error);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final danger = AppColors.of(context).danger;
+    final status = _status;
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 40),
+      children: [
+        Text(
+          '搜索用户后可查看其当前周期（非 VIP 按天 / VIP 按月）的对话额度使用'
+          '情况，并一键重置为未使用状态。仅清零已用条数，不影响已经产生的超额'
+          '扣费（钞票不退回）。',
+          style: TextStyle(
+            color: AppColors.muted,
+            fontSize: 11.5,
+            height: 1.5,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0,
+            decoration: TextDecoration.none,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _AdminCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_selected != null) ...[
+                _SelectedUserChip(item: _selected!, onClear: _clearSelected),
+              ] else ...[
+                _AdminGamesTextField(
+                  label: '搜索用户（用户名 / ID / 微信昵称 / 手机号）',
+                  controller: _queryCtrl,
+                ),
+                const SizedBox(height: 10),
+                _UserSearchResults(
+                  searching: _searching,
+                  results: _results,
+                  query: _queryCtrl.text.trim(),
+                  onSelect: _select,
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          _AdminGamesErrorText(_error!),
+        ],
+        if (_notice != null) ...[
+          const SizedBox(height: 12),
+          _AdminGamesNoticeText(_notice!),
+        ],
+        if (_selected != null) ...[
+          const SizedBox(height: 12),
+          if (_loadingStatus)
+            const Center(child: CupertinoActivityIndicator(radius: 14))
+          else if (status != null)
+            _AdminCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: status.isVip
+                              ? const Color(0xFFE8B54A).withValues(alpha: 0.18)
+                              : AppColors.muted.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          status.isVip ? 'VIP' : '非 VIP',
+                          style: TextStyle(
+                            color: status.isVip
+                                ? const Color(0xFFC08A1E)
+                                : AppColors.muted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        _chatQuotaModeLabels[status.mode] ?? status.mode,
+                        style: TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      Text(
+                        '周期：${status.periodScope == 'day' ? '按天' : '按月'} '
+                        '· ${status.periodKey}',
+                        style: TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 18,
+                    runSpacing: 8,
+                    children: [
+                      _ChatQuotaStat(
+                        label: '已用 / 免费额度',
+                        value: '${status.used} / ${status.limit}',
+                      ),
+                      _ChatQuotaStat(
+                        label: '剩余免费',
+                        value: '${status.freeRemaining}',
+                      ),
+                      _ChatQuotaStat(
+                        label: '超额单价',
+                        value: '${status.perMsgCost} 钞票/句',
+                      ),
+                      _ChatQuotaStat(
+                        label: '可用钞票',
+                        value: '${status.spendableTickets}',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _AdminGamesTextField(
+                    label: '备注（可选）',
+                    controller: _noteCtrl,
+                  ),
+                  const SizedBox(height: 12),
+                  if (_confirming) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8B54A).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '确定要将 ${_selected!.displayName} 当前周期已用的 '
+                            '${status.used} 条重置为 0 吗？',
+                            style: TextStyle(
+                              color: AppColors.text,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _AdminGamesPrimaryButton(
+                                  label: _resetting ? '重置中…' : '确认重置',
+                                  onPressed: _resetting ? null : _reset,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _AdminGamesSecondaryButton(
+                                  label: '取消',
+                                  onPressed: _resetting
+                                      ? null
+                                      : () =>
+                                          setState(() => _confirming = false),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else
+                    CupertinoButton(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      minimumSize: Size.zero,
+                      color: danger.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      onPressed: status.used == 0
+                          ? null
+                          : () => setState(() => _confirming = true),
+                      child: Text(
+                        '重置对话额度',
+                        style: TextStyle(
+                          color: danger,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ChatQuotaStat extends StatelessWidget {
+  const _ChatQuotaStat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: AppColors.muted,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0,
+            decoration: TextDecoration.none,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            color: AppColors.text,
+            fontSize: 13.5,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0,
+            decoration: TextDecoration.none,
+          ),
+        ),
+      ],
     );
   }
 }
