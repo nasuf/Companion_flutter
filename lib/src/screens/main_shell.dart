@@ -3205,6 +3205,8 @@ class _BackpackPageState extends State<_BackpackPage> {
                           compact: true,
                           showPrice: false,
                           quantity: item.quantity,
+                          expiresAt: item.expiresAt,
+                          isGift: item.isGift,
                         );
                       },
                     ),

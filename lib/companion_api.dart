@@ -1421,6 +1421,44 @@ class CompanionApi {
     return GamePointConvertResult.fromJson(json);
   }
 
+  /// 统一 VIP 状态（CLAUDE.md 权益项总览）。`MainShell` 启动时拉取一次并下发，
+  /// 商城/聊天/音乐/我的 都读同一份，避免每屏各查一遍。
+  Future<VipStatus> getVipStatus() async {
+    final json =
+        await _request('GET', '/me/vip', debugLabel: 'vip.status')
+            as Map<String, dynamic>;
+    return VipStatus.fromJson(json);
+  }
+
+  /// 发送前预检对话额度（权益项 1）：决定要不要弹"继续扣费/订阅VIP"确认框。
+  Future<ChatQuota> getChatQuota() async {
+    final json =
+        await _request('GET', '/chat/quota', debugLabel: 'chat.quota')
+            as Map<String, dynamic>;
+    return ChatQuota.fromJson(json);
+  }
+
+  /// 音乐陪伴时长上报（权益项 6）。播放中每 ~15s 调一次；返回的 action 决定
+  /// 是否要暂停播放弹"消耗钞票/买券/订阅VIP"框。`paidConfirmed=true` 时才会
+  /// 真正扣费，否则只返回预检结果。
+  Future<MusicQuotaReport> reportMusicQuota({
+    required int deltaSeconds,
+    bool paidConfirmed = false,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/music/quota/report',
+              body: {
+                'delta_seconds': deltaSeconds,
+                'paid_confirmed': paidConfirmed,
+              },
+              debugLabel: 'music.quota.report',
+            )
+            as Map<String, dynamic>;
+    return MusicQuotaReport.fromJson(json);
+  }
+
   Future<StoreCatalogStatus> getStoreCatalog() async {
     final json =
         await _request('GET', '/store/catalog', debugLabel: 'store.catalog')

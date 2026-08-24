@@ -35,6 +35,22 @@ class MusicPlaybackController extends ChangeNotifier {
   StreamSubscription<PlayerState>? _stateSub;
   StreamSubscription<void>? _completeSub;
 
+  // CLAUDE.md 权益项 6: 音乐陪伴时长计量。控制器是全局单例 (聊天里"一起听
+  // 音乐"和独立音乐页共用同一份播放状态), 计量逻辑放这里而不是某个屏幕,
+  // 才能覆盖两个入口。
+  CompanionApi? _quotaApi;
+  Timer? _quotaTimer;
+  int _quotaPendingSeconds = 0;
+  bool _quotaAwaitingResponse = false;
+  final StreamController<MusicQuotaReport> _quotaEvents =
+      StreamController<MusicQuotaReport>.broadcast();
+
+  /// 服务端要求"暂停并确认/去买/去订阅"时触发；订阅方 (当前可见的音乐 UI)
+  /// 负责弹框, 并在用户响应后调用 [resolveQuotaPrompt]。
+  Stream<MusicQuotaReport> get quotaEvents => _quotaEvents.stream;
+
+  /// 任何持有 [CompanionApi] 的音乐 UI 在进入时调用一次即可 (幂等)。
+
   MusicTrack? _track;
   Duration _position = Duration.zero;
   Duration _duration = const Duration(seconds: 238);
@@ -49,6 +65,70 @@ class MusicPlaybackController extends ChangeNotifier {
   bool get isPlaying => _isPlaying;
   bool get isLoading => _isLoading;
   Stream<void> get completed => _completed.stream;
+
+  void configureQuota(CompanionApi api) {
+    _quotaApi = api;
+    _quotaTimer ??= Timer.periodic(const Duration(seconds: 15), (_) {
+      if (_isPlaying && !_quotaAwaitingResponse) {
+        unawaited(_reportQuotaTick(15));
+      }
+    });
+  }
+
+  Future<void> _reportQuotaTick(int seconds, {bool paidConfirmed = false}) async {
+    final api = _quotaApi;
+    if (api == null || seconds <= 0) return;
+    MusicQuotaReport report;
+    try {
+      report = await api.reportMusicQuota(
+        deltaSeconds: seconds,
+        paidConfirmed: paidConfirmed,
+      );
+    } catch (_) {
+      // 网络抖动: 这次不计, 下一个 15s tick 再试, 不打断正在播放的音乐。
+      return;
+    }
+    if (report.action == MusicQuotaAction.none) return;
+    _quotaAwaitingResponse = true;
+    _quotaPendingSeconds = report.pendingSeconds;
+    if (_isPlaying) {
+      _isPlaying = false;
+      notifyListeners();
+      try {
+        await _player.pause();
+      } catch (_) {
+        // Best-effort; UI 状态已经翻转为暂停。
+      }
+    }
+    _quotaEvents.add(report);
+  }
+
+  /// 弹框结果回传。[confirmed]=true 时按之前挂起的秒数补报并扣钞票、恢复播放；
+  /// false 时保持暂停 —— 这一秒数就此放弃, 不会在下次播放时重新计费。
+  Future<void> resolveQuotaPrompt({required bool confirmed}) async {
+    final pending = _quotaPendingSeconds;
+    _quotaAwaitingResponse = false;
+    _quotaPendingSeconds = 0;
+    if (!confirmed) return;
+    if (pending > 0) {
+      await _reportQuotaTick(pending, paidConfirmed: true);
+    }
+    // 补报本身也可能又被拦截 (确认和实际扣费之间余额发生变化, 比如另一台
+    // 设备同时花掉了钞票): _reportQuotaTick 会把 _quotaAwaitingResponse 重新
+    // 置 true 并再发一个新事件。这种情况绝不能恢复播放 —— 钱没真正扣上,
+    // 播放要等这个新事件被解决, 否则等于免费听了这段时长。
+    if (_quotaAwaitingResponse) return;
+    if (_track != null && !_isPlaying) {
+      _isPlaying = true;
+      notifyListeners();
+      try {
+        await _player.resume();
+      } catch (_) {
+        _isPlaying = false;
+        notifyListeners();
+      }
+    }
+  }
 
   Source _sourceFor(MusicTrack track) {
     return UrlSource(track.url, mimeType: 'audio/mpeg');
@@ -162,6 +242,8 @@ class MusicPlaybackController extends ChangeNotifier {
     _stateSub?.cancel();
     _completeSub?.cancel();
     _completed.close();
+    _quotaTimer?.cancel();
+    _quotaEvents.close();
     _player.dispose();
     super.dispose();
   }

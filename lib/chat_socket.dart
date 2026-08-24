@@ -84,6 +84,7 @@ class ChatSocket {
     String clientId, {
     ChatComponentCard? componentCard,
     List<ChatAttachment> attachments = const [],
+    bool paidConfirmed = false,
   }) {
     return send({
       'type': 'message',
@@ -93,6 +94,9 @@ class ChatSocket {
         if (componentCard != null) 'component_card': componentCard.toJson(),
         if (attachments.isNotEmpty)
           'attachments': attachments.map((item) => item.toJson()).toList(),
+        // CLAUDE.md 权益项 1: 用户在额度确认框里点了"继续发送"才为 true；
+        // 服务端只在这个值为 true 时才真正扣钞票，否则超额消息会被拒绝。
+        if (paidConfirmed) 'paid_confirmed': true,
       },
     });
   }

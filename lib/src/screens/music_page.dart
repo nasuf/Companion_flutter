@@ -54,6 +54,7 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
   late final AnimationController _waveController;
   late final MusicPlaybackController _playback;
   StreamSubscription<void>? _completeSub;
+  StreamSubscription<MusicQuotaReport>? _quotaSub;
 
   List<MusicLibrary> _libraries = _fallbackLibraries;
   List<MusicTrack> _favoriteTracks = const [];
@@ -163,22 +164,58 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
     );
     _playback = MusicPlaybackController.instance;
     _playback.addListener(_handlePlaybackChanged);
+    _playback.configureQuota(widget.api);
     _completeSub = _playback.completed.listen((_) {
       if (mounted) {
         unawaited(_playRandom(refresh: true, changeSource: 'auto_next'));
       }
     });
+    _quotaSub = _playback.quotaEvents.listen(_handleMusicQuotaEvent);
     _load();
   }
 
   @override
   void dispose() {
     _completeSub?.cancel();
+    _quotaSub?.cancel();
     _playback.removeListener(_handlePlaybackChanged);
     _ambientController.dispose();
     _discController.dispose();
     _waveController.dispose();
     super.dispose();
+  }
+
+  /// CLAUDE.md 权益项 6: 控制器已暂停播放, 这里只负责按 action 弹对应的框
+  /// 并把结果回传给控制器决定是否恢复播放。
+  Future<void> _handleMusicQuotaEvent(MusicQuotaReport report) async {
+    if (!mounted) return;
+    switch (report.action) {
+      case MusicQuotaAction.confirmTicket:
+        final confirmed = await showMusicOverageConfirmDialog(
+          context,
+          ticketCost: report.ticketCost,
+        );
+        await _playback.resolveQuotaPrompt(confirmed: confirmed);
+      case MusicQuotaAction.buyCoupon:
+        await _playback.resolveQuotaPrompt(confirmed: false);
+        if (!mounted) return;
+        await showBuyMusicCouponDialog(
+          context,
+          api: widget.api,
+          session: widget.session,
+        );
+      case MusicQuotaAction.buyVip:
+        await _playback.resolveQuotaPrompt(confirmed: false);
+        if (!mounted) return;
+        await showVipUpsellDialog(
+          context,
+          api: widget.api,
+          session: widget.session,
+          content: '今日免费听歌时长已用完，订阅 VIP 可获得每月畅听券和更低价格，是否订阅？',
+        );
+      case MusicQuotaAction.none:
+        break;
+    }
   }
 
   void _handlePlaybackChanged() {

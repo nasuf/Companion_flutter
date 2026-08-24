@@ -397,6 +397,8 @@ class _ExchangeProductCard extends StatelessWidget {
     this.compact = false,
     this.showPrice = true,
     this.quantity,
+    this.expiresAt,
+    this.isGift = false,
   });
 
   final _StoreProduct product;
@@ -408,6 +410,12 @@ class _ExchangeProductCard extends StatelessWidget {
   final bool compact;
   final bool showPrice;
   final int? quantity;
+
+  /// 音乐畅听券/补签卡的最早到期时间；普通装扮/礼物为 null（背包卡片专用）。
+  final DateTime? expiresAt;
+
+  /// true 表示这份数量里含 VIP 赠送部分（背包卡片专用，随 VIP 过期失效）。
+  final bool isGift;
 
   @override
   Widget build(BuildContext context) {
@@ -523,6 +531,25 @@ class _ExchangeProductCard extends StatelessWidget {
                 decoration: TextDecoration.none,
               ),
             ),
+          if (compact && (expiresAt != null || isGift)) ...[
+            const SizedBox(height: 2),
+            Text(
+              [
+                if (isGift) '赠',
+                if (expiresAt != null)
+                  '${expiresAt!.month}/${expiresAt!.day}到期',
+              ].join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: w.inkSoft.withValues(alpha: 0.8),
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ],
           if (showPrice) ...[
             const SizedBox(height: 10),
             CupertinoButton(

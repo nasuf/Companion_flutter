@@ -150,6 +150,7 @@ part 'src/services/music_playback_controller.dart';
 part 'src/services/push_notification_service.dart';
 part 'src/theme/app_theme.dart';
 part 'src/theme/app_colors.dart';
+part 'src/dialogs/vip_quota_dialogs.dart';
 part 'src/widgets/achievement_card.dart';
 part 'src/widgets/achievement_feedback.dart';
 part 'src/widgets/achievement_header.dart';

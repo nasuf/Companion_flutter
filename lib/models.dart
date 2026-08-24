@@ -1210,11 +1210,19 @@ class WalletBalance {
     required this.ticketBalance,
     required this.pointBalance,
     required this.achievementPointsSynced,
+    this.giftTicketBalance = 0,
   });
 
   final int ticketBalance;
   final int pointBalance;
   final int achievementPointsSynced;
+
+  /// VIP 每月赠送的限时钞票（随 VIP 存续结转，过期即清零）。花费时优先扣
+  /// 这部分而非 [ticketBalance]，见 companion_api.dart:getVipStatus 附近说明。
+  final int giftTicketBalance;
+
+  /// 可花费的钞票总额 = 限时赠送 + 永久，跟商城/聊天/音乐超额提示保持一致。
+  int get spendableTickets => ticketBalance + giftTicketBalance;
 
   factory WalletBalance.fromJson(Map<String, dynamic> json) {
     return WalletBalance(
@@ -1222,6 +1230,7 @@ class WalletBalance {
       pointBalance: (json['point_balance'] as num?)?.round() ?? 0,
       achievementPointsSynced:
           (json['achievement_points_synced'] as num?)?.round() ?? 0,
+      giftTicketBalance: (json['gift_ticket_balance'] as num?)?.round() ?? 0,
     );
   }
 }
@@ -1548,6 +1557,149 @@ class StoreCatalogStatus {
   }
 }
 
+/// 统一 VIP 状态：`GET /me/vip`，供 Store/Profile/Chat/Music 共用一个来源，
+/// 避免各屏各自查一遍 (见后端 CLAUDE.md 权益项总览)。
+class VipStatus {
+  const VipStatus({
+    required this.isVip,
+    required this.vipUntil,
+    required this.vipTrialAvailable,
+    required this.giftTicketBalance,
+    required this.ticketBalance,
+    required this.pointBalance,
+    required this.spendableTickets,
+  });
+
+  final bool isVip;
+  final DateTime? vipUntil;
+  final bool vipTrialAvailable;
+  final int giftTicketBalance;
+  final int ticketBalance;
+  final int pointBalance;
+  final int spendableTickets;
+
+  factory VipStatus.fromJson(Map<String, dynamic> json) {
+    return VipStatus(
+      isVip: json['is_vip'] == true,
+      vipUntil: json['vip_until'] == null
+          ? null
+          : DateTime.tryParse(json['vip_until'].toString()),
+      vipTrialAvailable: json['vip_trial_available'] == true,
+      giftTicketBalance: (json['gift_ticket_balance'] as num?)?.round() ?? 0,
+      ticketBalance: (json['ticket_balance'] as num?)?.round() ?? 0,
+      pointBalance: (json['point_balance'] as num?)?.round() ?? 0,
+      spendableTickets: (json['spendable_tickets'] as num?)?.round() ?? 0,
+    );
+  }
+}
+
+/// 对话额度预检：`GET /chat/quota`。发送前用它判断要不要弹确认框。
+enum ChatQuotaMode { free, paid, blocked }
+
+class ChatQuota {
+  const ChatQuota({
+    required this.mode,
+    required this.freeRemaining,
+    required this.perMsgCost,
+    required this.spendableTickets,
+  });
+
+  final ChatQuotaMode mode;
+  final int freeRemaining;
+  final double perMsgCost;
+  final int spendableTickets;
+
+  factory ChatQuota.fromJson(Map<String, dynamic> json) {
+    return ChatQuota(
+      mode: _parseChatQuotaMode(json['mode']?.toString()),
+      freeRemaining: (json['free_remaining'] as num?)?.round() ?? 0,
+      perMsgCost: (json['per_msg_cost'] as num?)?.toDouble() ?? 0,
+      spendableTickets: (json['spendable_tickets'] as num?)?.round() ?? 0,
+    );
+  }
+}
+
+ChatQuotaMode _parseChatQuotaMode(String? value) {
+  switch (value) {
+    case 'paid':
+      return ChatQuotaMode.paid;
+    case 'blocked':
+      return ChatQuotaMode.blocked;
+    default:
+      return ChatQuotaMode.free;
+  }
+}
+
+/// 服务端对一次 WS 发送的拒绝：额度耗尽后未确认付费，或余额不足。
+enum ChatQuotaBlockReason { paidConfirm, noTicket }
+
+class ChatQuotaBlocked {
+  const ChatQuotaBlocked({
+    required this.reason,
+    required this.perMsgCost,
+    required this.spendableTickets,
+    this.clientId,
+  });
+
+  final ChatQuotaBlockReason reason;
+  final double perMsgCost;
+  final int spendableTickets;
+
+  /// 被拒消息的 client_id，用于精确摘掉对应草稿（用户连发多条时，"摘最后
+  /// 一条待发消息" 这个启发式可能摘错）。旧版服务端可能不带这个字段。
+  final String? clientId;
+
+  factory ChatQuotaBlocked.fromJson(Map<String, dynamic> json) {
+    return ChatQuotaBlocked(
+      reason: json['reason'] == 'no_ticket'
+          ? ChatQuotaBlockReason.noTicket
+          : ChatQuotaBlockReason.paidConfirm,
+      perMsgCost: (json['per_msg_cost'] as num?)?.toDouble() ?? 0,
+      spendableTickets: (json['spendable_tickets'] as num?)?.round() ?? 0,
+      clientId: json['client_id']?.toString(),
+    );
+  }
+}
+
+/// 音乐时长上报结果：`POST /music/quota/report`。
+enum MusicQuotaAction { none, confirmTicket, buyCoupon, buyVip }
+
+class MusicQuotaReport {
+  const MusicQuotaReport({
+    required this.action,
+    required this.acceptedSeconds,
+    required this.pendingSeconds,
+    required this.ticketCost,
+  });
+
+  final MusicQuotaAction action;
+  final int acceptedSeconds;
+  final int pendingSeconds;
+  final int ticketCost;
+
+  factory MusicQuotaReport.fromJson(Map<String, dynamic> json) {
+    return MusicQuotaReport(
+      action: _parseMusicQuotaAction(json['action']?.toString()),
+      acceptedSeconds: (json['accepted_seconds'] as num?)?.round() ?? 0,
+      pendingSeconds: (json['pending_seconds'] as num?)?.round() ?? 0,
+      ticketCost: (json['ticket_cost'] as num?)?.round() ?? 0,
+    );
+  }
+}
+
+MusicQuotaAction _parseMusicQuotaAction(String? value) {
+  switch (value) {
+    case 'confirm_ticket':
+      return MusicQuotaAction.confirmTicket;
+    case 'buy_coupon':
+      return MusicQuotaAction.buyCoupon;
+    case 'buy_vip':
+      return MusicQuotaAction.buyVip;
+    default:
+      return MusicQuotaAction.none;
+  }
+}
+
 class StoreBundlePurchaseResponse {
   const StoreBundlePurchaseResponse({
     required this.wallet,
@@ -1579,6 +1731,8 @@ class StoreInventoryItem {
     required this.quantity,
     this.acquiredAt,
     this.updatedAt,
+    this.expiresAt,
+    this.isGift = false,
   });
 
   final String productKind;
@@ -1586,12 +1740,20 @@ class StoreInventoryItem {
   final DateTime? acquiredAt;
   final DateTime? updatedAt;
 
+  /// 音乐畅听券/补签卡的最早到期时间；普通装扮/礼物永远为 null（无过期）。
+  final DateTime? expiresAt;
+
+  /// true 表示这份数量里含 VIP 每月赠送的部分（会随 VIP 过期失效，不结转）。
+  final bool isGift;
+
   factory StoreInventoryItem.fromJson(Map<String, dynamic> json) {
     return StoreInventoryItem(
       productKind: json['product_kind']?.toString() ?? '',
       quantity: (json['quantity'] as num?)?.round() ?? 0,
       acquiredAt: DateTime.tryParse(json['acquired_at']?.toString() ?? ''),
       updatedAt: DateTime.tryParse(json['updated_at']?.toString() ?? ''),
+      expiresAt: DateTime.tryParse(json['expires_at']?.toString() ?? ''),
+      isGift: json['is_gift'] == true,
     );
   }
 }

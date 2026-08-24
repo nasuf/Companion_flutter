@@ -171,10 +171,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _musicStation = ChatMusicStationState();
   final List<ChatMessage> _messages = [];
 
+  // CLAUDE.md 权益项 1: 本地缓存的额度预测, 避免每条消息都发一次 /chat/quota。
+  // 会有最多一条消息的滞后 (ack 后才刷新) —— 服务端在 ws.py 仍是权威闸门,
+  // 这里判断错了也只是"该弹确认框时没弹", quota_blocked 事件负责兜底。
+  ChatQuota? _chatQuota;
+
   ChatSocket? _socket;
   StreamSubscription<WsEnvelope>? _eventSub;
   StreamSubscription<ChatSocketState>? _stateSub;
   StreamSubscription<void>? _musicCompleteSub;
+  StreamSubscription<MusicQuotaReport>? _musicQuotaSub;
   StreamSubscription<List<SharedMediaFile>>? _shareIntentSub;
   ComposerPanel _panel = ComposerPanel.none;
   ComposerPanel _heldPanel = ComposerPanel.none;
@@ -208,6 +214,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     String clientId,
     ChatComponentCard? componentCard,
     List<ChatAttachment> attachments,
+    bool paidConfirmed,
   })?
   _pendingSend;
   final List<_PendingChatImage> _pendingImages = [];
@@ -256,6 +263,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _scrollController.addListener(_handleScroll);
     _inputController.addListener(_handleInputChanged);
     _playback.addListener(_handleStationPlaybackChanged);
+    _playback.configureQuota(widget.api);
     _musicCompleteSub = _playback.completed.listen((_) {
       if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? true)) return;
       final completedTrack = _playback.track;
@@ -265,7 +273,52 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
       unawaited(_playNextStationTrack(auto: true));
     });
+    _musicQuotaSub = _playback.quotaEvents.listen(_handleStationMusicQuotaEvent);
     _bootstrapChat();
+    unawaited(_refreshChatQuota());
+  }
+
+  /// CLAUDE.md 权益项 6: "一起听音乐" 走的是同一个 [MusicPlaybackController]
+  /// 单例, 跟独立音乐页 (music_page.dart) 共用计量, 这里只是另一处订阅方。
+  Future<void> _handleStationMusicQuotaEvent(MusicQuotaReport report) async {
+    if (!mounted) return;
+    switch (report.action) {
+      case MusicQuotaAction.confirmTicket:
+        final confirmed = await showMusicOverageConfirmDialog(
+          context,
+          ticketCost: report.ticketCost,
+        );
+        await _playback.resolveQuotaPrompt(confirmed: confirmed);
+      case MusicQuotaAction.buyCoupon:
+        await _playback.resolveQuotaPrompt(confirmed: false);
+        if (!mounted) return;
+        await showBuyMusicCouponDialog(
+          context,
+          api: widget.api,
+          session: widget.session,
+        );
+      case MusicQuotaAction.buyVip:
+        await _playback.resolveQuotaPrompt(confirmed: false);
+        if (!mounted) return;
+        await showVipUpsellDialog(
+          context,
+          api: widget.api,
+          session: widget.session,
+          content: '今日免费听歌时长已用完，订阅 VIP 可获得每月畅听券和更低价格，是否订阅？',
+        );
+      case MusicQuotaAction.none:
+        break;
+    }
+  }
+
+  Future<void> _refreshChatQuota() async {
+    try {
+      final quota = await widget.api.getChatQuota();
+      if (mounted) setState(() => _chatQuota = quota);
+    } catch (_) {
+      // 网络抖动: 保持旧值/null, 发送前判断按"未知则放行"处理, 服务端仍会
+      // 通过 quota_blocked 兜底拦截真正超额的消息。
+    }
   }
 
   @override
@@ -305,6 +358,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _conversationMetaTimer?.cancel();
     _stationPauseTimer?.cancel();
     _musicCompleteSub?.cancel();
+    _musicQuotaSub?.cancel();
     _shareIntentSub?.cancel();
     unawaited(_voiceRecorder.dispose());
     super.dispose();
@@ -448,6 +502,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               pending.clientId,
               componentCard: pending.componentCard,
               attachments: pending.attachments,
+              paidConfirmed: pending.paidConfirmed,
             );
             _pendingSend = null;
           }
@@ -1574,6 +1629,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           }
           _sending = false;
         });
+        unawaited(_refreshChatQuota());
+        break;
+      case 'quota_blocked':
+        unawaited(_handleChatQuotaBlocked(payload));
         break;
       case 'delay':
         setState(() => _agentTyping = true);
@@ -2080,6 +2139,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             clientId: clientId,
             componentCard: componentCard,
             attachments: const <ChatAttachment>[],
+            paidConfirmed: false,
           );
           unawaited(_socket?.connect());
         }
@@ -2353,8 +2413,37 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _sendMessage() {
+    unawaited(_sendMessageAsync());
+  }
+
+  /// CLAUDE.md 权益项 1: 发送前按本地缓存的额度判断是否要弹确认框。取消/未
+  /// 确认时必须在这里 return —— 绝不能调用 _sendText, 否则文本会被清空且
+  /// 消息已经"看起来发出去了", 违反"取消则消息留在输入框"的要求。
+  Future<void> _sendMessageAsync() async {
     final text = _inputController.text.trim();
     if (_uploadingImage) return;
+    if (text.isEmpty && _pendingImages.isEmpty && _pendingLinkPreview == null) {
+      return;
+    }
+    var paidConfirmed = false;
+    final quota = _chatQuota;
+    if (quota != null && quota.freeRemaining <= 0) {
+      if (quota.mode == ChatQuotaMode.blocked) {
+        await showVipUpsellDialog(
+          context,
+          api: widget.api,
+          session: widget.session,
+        );
+        return;
+      }
+      if (!mounted) return;
+      final confirmed = await showChatOverageConfirmDialog(
+        context,
+        perMsgCost: quota.perMsgCost,
+      );
+      if (!confirmed) return;
+      paidConfirmed = true;
+    }
     final attachments = _pendingImages.map((item) => item.attachment).toList();
     final linkPreview = _pendingLinkPreview;
     _sendText(
@@ -2362,7 +2451,58 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       componentCard: linkPreview?.preview.componentCard,
       attachments: attachments,
       clearComposer: true,
+      paidConfirmed: paidConfirmed,
     );
+  }
+
+  /// 服务端权威拒绝 (额度耗尽未确认 / 余额不足)。走 _sendMessage 之外的路径
+  /// (语音/卡片/多意图重试等) 没有预检时的兜底: 把被拒的草稿从会话里摘掉、
+  /// 文本还给输入框, 再弹跟预检同样的确认框, 确认后按 paidConfirmed 重发。
+  Future<void> _handleChatQuotaBlocked(Map<String, dynamic> payload) async {
+    final blocked = ChatQuotaBlocked.fromJson(payload);
+    ChatMessage? blockedDraft;
+    setState(() {
+      // 优先按 client_id 精确匹配 (用户连发多条时避免摘错草稿); 旧版服务端
+      // 不带 client_id 才退回"摘最后一条待发消息"的启发式。
+      for (var i = _messages.length - 1; i >= 0; i -= 1) {
+        final message = _messages[i];
+        if (!message.pending || !message.isDraft) continue;
+        final matches = blocked.clientId == null
+            ? true
+            : (message.clientId == blocked.clientId || message.id == blocked.clientId);
+        if (matches) {
+          blockedDraft = _messages.removeAt(i);
+          break;
+        }
+      }
+      _sending = false;
+      _agentTyping = false;
+    });
+    if (blockedDraft != null && _inputController.text.trim().isEmpty) {
+      _inputController.text = blockedDraft!.content;
+    }
+    unawaited(_refreshChatQuota());
+    if (!mounted) return;
+    if (blocked.reason == ChatQuotaBlockReason.noTicket) {
+      await showVipUpsellDialog(
+        context,
+        api: widget.api,
+        session: widget.session,
+      );
+      return;
+    }
+    final confirmed = await showChatOverageConfirmDialog(
+      context,
+      perMsgCost: blocked.perMsgCost,
+    );
+    if (!confirmed || !mounted) return;
+    final text = blockedDraft?.content ?? _inputController.text.trim();
+    if (text.isEmpty) return;
+    // 只在输入框里仍是"我们刚还回去的原文"时才清空它 —— 等确认框这段时间
+    // 用户完全可能已经改口打了别的内容, 那段新内容跟这次重发无关, 不能被
+    // 这次重发误清掉 (否则用户刚打的字会莫名其妙消失)。
+    final clearComposer = _inputController.text.trim() == text;
+    _sendText(text, clearComposer: clearComposer, paidConfirmed: true);
   }
 
   void _handleVoicePressStart(Offset position) {
@@ -2751,6 +2891,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     ChatComponentCard? componentCard,
     List<ChatAttachment> attachments = const [],
     bool clearComposer = true,
+    bool paidConfirmed = false,
   }) {
     if (text.isEmpty && componentCard == null && attachments.isEmpty) return;
     final clientId =
@@ -2800,6 +2941,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           clientId,
           componentCard: componentCard,
           attachments: attachments,
+          paidConfirmed: paidConfirmed,
         ) ??
         false;
     if (!sent) {
@@ -2808,6 +2950,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         clientId: clientId,
         componentCard: componentCard,
         attachments: attachments,
+        paidConfirmed: paidConfirmed,
       );
       unawaited(_socket?.connect());
     }
