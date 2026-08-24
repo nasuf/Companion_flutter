@@ -176,6 +176,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   // 这里判断错了也只是"该弹确认框时没弹", quota_blocked 事件负责兜底。
   ChatQuota? _chatQuota;
 
+  // 一个周期(非VIP按天/VIP按月)内, "继续扣费发送"和"钞票不足去订阅" 这两类
+  // 弹框各自只问一次, 问完就记下来, 后续同类情况不再打断发送——用户已经
+  // 表过态了, 每条消息都重复问是在制造疲劳。两个标记在观测到 mode 变回
+  // free 时清零 (意味着新的一天/月开始, 额度真的刷新了)。
+  bool _overageAcknowledged = false;
+  bool _vipUpsellAcknowledged = false;
+
   ChatSocket? _socket;
   StreamSubscription<WsEnvelope>? _eventSub;
   StreamSubscription<ChatSocketState>? _stateSub;
@@ -311,10 +318,29 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
+  /// 发送按钮上的免费额度倒计时角标: 只在还在免费额度内、且剩余量小到
+  /// "数得过来" (<=20, 对应非VIP每日额度) 时才显示——VIP 每月 5200 条
+  /// 这个量级天天顶着一个基本不掉的大数字毫无意义，不显示。
+  int? get _composerQuotaBadgeCount {
+    final quota = _chatQuota;
+    if (quota == null || quota.mode != ChatQuotaMode.free) return null;
+    if (quota.freeRemaining > 20) return null;
+    return quota.freeRemaining;
+  }
+
   Future<void> _refreshChatQuota() async {
     try {
       final quota = await widget.api.getChatQuota();
-      if (mounted) setState(() => _chatQuota = quota);
+      if (!mounted) return;
+      setState(() {
+        _chatQuota = quota;
+        // mode 回到 free 说明额度周期真的刷新了 (非VIP新的一天 / VIP新的
+        // 一月)，之前问过的"继续扣费"/"订阅VIP"不再适用，允许再问一次。
+        if (quota.mode == ChatQuotaMode.free) {
+          _overageAcknowledged = false;
+          _vipUpsellAcknowledged = false;
+        }
+      });
     } catch (_) {
       // 网络抖动: 保持旧值/null, 发送前判断按"未知则放行"处理, 服务端仍会
       // 通过 quota_blocked 兜底拦截真正超额的消息。
@@ -2429,6 +2455,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final quota = _chatQuota;
     if (quota != null && quota.freeRemaining <= 0) {
       if (quota.mode == ChatQuotaMode.blocked) {
+        if (_vipUpsellAcknowledged) {
+          // 这个周期已经告知过一次了, 不再用弹框打断——弹框和这里想解决
+          // 的"每条都问"是同一类疲劳, 换成不打断输入的轻提示。
+          _showRedPacketToast('钞票已用完，去商城订阅 VIP 或充值后即可继续发送');
+          return;
+        }
+        _vipUpsellAcknowledged = true;
         await showVipUpsellDialog(
           context,
           api: widget.api,
@@ -2436,13 +2469,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         );
         return;
       }
-      if (!mounted) return;
-      final confirmed = await showChatOverageConfirmDialog(
-        context,
-        perMsgCost: quota.perMsgCost,
-      );
-      if (!confirmed) return;
-      paidConfirmed = true;
+      if (_overageAcknowledged) {
+        // 本周期已经确认过一次"继续发送要扣钞票", 后续同一周期内不用再问,
+        // 直接按已同意处理。
+        paidConfirmed = true;
+      } else {
+        if (!mounted) return;
+        final confirmed = await showChatOverageConfirmDialog(
+          context,
+          perMsgCost: quota.perMsgCost,
+        );
+        if (!confirmed) return;
+        _overageAcknowledged = true;
+        paidConfirmed = true;
+      }
     }
     final attachments = _pendingImages.map((item) => item.attachment).toList();
     final linkPreview = _pendingLinkPreview;
@@ -2484,6 +2524,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     unawaited(_refreshChatQuota());
     if (!mounted) return;
     if (blocked.reason == ChatQuotaBlockReason.noTicket) {
+      if (_vipUpsellAcknowledged) {
+        _showRedPacketToast('钞票已用完，去商城订阅 VIP 或充值后即可继续发送');
+        return;
+      }
+      _vipUpsellAcknowledged = true;
       await showVipUpsellDialog(
         context,
         api: widget.api,
@@ -2491,16 +2536,27 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       return;
     }
+    // 只在输入框里仍是"我们刚还回去的原文"时才清空它 —— 等确认框这段时间
+    // 用户完全可能已经改口打了别的内容, 那段新内容跟这次重发无关, 不能被
+    // 这次重发误清掉 (否则用户刚打的字会莫名其妙消失)。
+    if (_overageAcknowledged) {
+      // 本周期已经同意过扣费——这次被拒大概率是走了没有预检的发送路径
+      // (语音转写自动发送 / 卡片 / 断线重连重发), 直接按已同意重发即可,
+      // 不用再问一遍 (问一遍就是本次要解决的"每条都问"疲劳)。
+      final text = blockedDraft?.content ?? _inputController.text.trim();
+      if (text.isEmpty) return;
+      final clearComposer = _inputController.text.trim() == text;
+      _sendText(text, clearComposer: clearComposer, paidConfirmed: true);
+      return;
+    }
     final confirmed = await showChatOverageConfirmDialog(
       context,
       perMsgCost: blocked.perMsgCost,
     );
     if (!confirmed || !mounted) return;
+    _overageAcknowledged = true;
     final text = blockedDraft?.content ?? _inputController.text.trim();
     if (text.isEmpty) return;
-    // 只在输入框里仍是"我们刚还回去的原文"时才清空它 —— 等确认框这段时间
-    // 用户完全可能已经改口打了别的内容, 那段新内容跟这次重发无关, 不能被
-    // 这次重发误清掉 (否则用户刚打的字会莫名其妙消失)。
     final clearComposer = _inputController.text.trim() == text;
     _sendText(text, clearComposer: clearComposer, paidConfirmed: true);
   }
@@ -3486,6 +3542,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               onRemoveLink: _removePendingLink,
               onPreviewLink: _openPendingLink,
               onPasteText: _handleComposerPasteText,
+              freeMessagesRemaining: _composerQuotaBadgeCount,
             ),
           ),
           AnimatedPositioned(

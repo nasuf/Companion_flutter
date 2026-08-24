@@ -30,6 +30,7 @@ class _Composer extends StatelessWidget {
     required this.onRemoveLink,
     required this.onPreviewLink,
     required this.onPasteText,
+    this.freeMessagesRemaining,
   });
 
   final TextEditingController controller;
@@ -60,6 +61,11 @@ class _Composer extends StatelessWidget {
   final VoidCallback onRemoveLink;
   final ValueChanged<_PendingLinkPreview> onPreviewLink;
   final Future<bool> Function(String text) onPasteText;
+
+  /// CLAUDE.md 权益项 1: 非 VIP 每日 20 句免费额度的剩余条数, 发一条减一条,
+  /// 用完就不再显示 (不需要额外变色/文案, 消失本身就是"进入正常发送"的信号)。
+  /// null 表示不在免费额度阶段 (VIP 月度 5200 太大, 不值得展示, 见调用侧)。
+  final int? freeMessagesRemaining;
 
   @override
   Widget build(BuildContext context) {
@@ -242,7 +248,11 @@ class _Composer extends StatelessWidget {
                               style: FilledButton.styleFrom(
                                 minimumSize: const Size(58, 38),
                                 fixedSize: const Size.fromHeight(38),
-                                padding: EdgeInsets.zero,
+                                padding: sending || freeMessagesRemaining == null
+                                    ? EdgeInsets.zero
+                                    : const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                      ),
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                 backgroundColor: chatVoiceAccent,
                                 foregroundColor: Colors.white,
@@ -250,7 +260,18 @@ class _Composer extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(19),
                                 ),
                               ),
-                              child: Text(sending ? '...' : '发送'),
+                              child: sending || freeMessagesRemaining == null
+                                  ? Text(sending ? '...' : '发送')
+                                  : Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Text('发送'),
+                                        const SizedBox(width: 5),
+                                        _ComposerQuotaBadge(
+                                          count: freeMessagesRemaining!,
+                                        ),
+                                      ],
+                                    ),
                             ),
                           )
                         : _RoundIconButton(
@@ -446,6 +467,39 @@ class _VoiceHoldToTalkButton extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 发送按钮上的免费额度倒计时角标 —— 纯数字而非圆环进度条: 20 以内的
+/// 离散整数变化，数字一眼就能看清剩几条，圆环对这么小的量级反而看不准。
+class _ComposerQuotaBadge extends StatelessWidget {
+  const _ComposerQuotaBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 18),
+      height: 18,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        // 单位数时 minWidth==height 天然就是正圆；两位数 (10-20) 时宽度撑开，
+        // 圆角保持"跑道形"而不是被 BoxShape.circle 强行压成椭圆截断。
+        borderRadius: BorderRadius.all(Radius.circular(9)),
+      ),
+      child: Text(
+        '$count',
+        style: const TextStyle(
+          color: chatVoiceAccent,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          height: 1,
         ),
       ),
     );
