@@ -130,6 +130,42 @@ class _StorePageState extends State<StorePage> {
   Future<void> _handleRecharge() async {
     final pack = _activeRechargePacks[_selectedRecharge];
     if (_rechargeCurrency == _StoreCurrency.point) {
+      // 兑换积分实际花的是永久钞票 (exchangeTicketsToPoints 服务端只查
+      // ticket_balance, 不含 VIP 限时赠送的那部分), 先按这个字段判断余额
+      // 是否够, 够就弹确认框, 不够直接弹"去充值" —— 之前这里完全没有确认
+      // 步骤, 点一下就真扣钞票了。
+      WalletBalance? wallet;
+      try {
+        wallet = await _walletFuture;
+      } catch (_) {
+        wallet = null; // 加载失败就跳过预检, 交给下面的 409 兜底
+      }
+      if (!mounted) return;
+      if (wallet != null && wallet.ticketBalance < pack.cost) {
+        _showInsufficientTickets();
+        return;
+      }
+      final confirmed = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (context) {
+          return CupertinoAlertDialog(
+            title: const Text('确认兑换'),
+            content: Text('将消耗 ${pack.cost} 钞票兑换 ${pack.amount} 积分，是否继续？'),
+            actions: [
+              CupertinoDialogAction(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('取消'),
+              ),
+              CupertinoDialogAction(
+                isDefaultAction: true,
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('确认兑换'),
+              ),
+            ],
+          );
+        },
+      );
+      if (confirmed != true || !mounted) return;
       try {
         final balance = await widget.api.exchangeTicketsToPoints(
           ticketAmount: pack.cost,
