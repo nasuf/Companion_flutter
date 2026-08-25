@@ -39,6 +39,9 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
       onChanged: () {
         if (mounted) setState(() {});
       },
+      onNeedPoints: () {
+        if (mounted) _showGameNoPointsDialog(context);
+      },
     );
     unawaited(_runtime.initialize());
   }

@@ -479,29 +479,33 @@ class _GamePageState extends State<GamePage>
     );
   }
 
-  void _showNoPointsDialog() {
-    showCupertinoDialog<void>(
-      context: context,
-      builder: (context) {
-        return CupertinoAlertDialog(
-          title: const Text('今日游戏积分已用完'),
-          content: const Text('明天会重新赠送游戏积分，到时候再来一起玩吧。'),
-          actions: [
-            CupertinoDialogAction(
-              isDefaultAction: true,
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('知道了'),
-            ),
-          ],
-        );
-      },
-    );
-  }
+  void _showNoPointsDialog() => _showGameNoPointsDialog(context);
 
   String _formatError(Object error) {
     if (error is ApiException) return error.message;
     return error.toString();
   }
+}
+
+/// Shared "today's game points are used up" dialog — shown both when opening a
+/// game from the hub and when starting from inside an individual game.
+void _showGameNoPointsDialog(BuildContext context) {
+  showCupertinoDialog<void>(
+    context: context,
+    builder: (context) {
+      return CupertinoAlertDialog(
+        title: const Text('今日游戏积分已用完'),
+        content: const Text('明天会重新赠送游戏积分，到时候再来一起玩吧。'),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 class _PrimaryGameButton extends StatelessWidget {

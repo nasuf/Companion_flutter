@@ -60,6 +60,9 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
       onChanged: () {
         if (mounted) setState(() {});
       },
+      onNeedPoints: () {
+        if (mounted) _showGameNoPointsDialog(context);
+      },
     );
     unawaited(_runtime.initialize());
   }

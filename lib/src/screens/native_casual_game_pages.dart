@@ -37,6 +37,9 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
       onChanged: () {
         if (mounted) setState(() {});
       },
+      onNeedPoints: () {
+        if (mounted) _showGameNoPointsDialog(context);
+      },
     );
     unawaited(_runtime.initialize());
   }
@@ -372,6 +375,9 @@ class _Match3GamePageState extends State<_Match3GamePage> {
       gameKey: _nativeMatch3GameKey,
       onChanged: () {
         if (mounted) setState(() {});
+      },
+      onNeedPoints: () {
+        if (mounted) _showGameNoPointsDialog(context);
       },
     );
     unawaited(_runtime.initialize());

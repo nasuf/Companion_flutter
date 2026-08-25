@@ -37,6 +37,9 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
       onChanged: () {
         if (mounted) setState(() {});
       },
+      onNeedPoints: () {
+        if (mounted) _showGameNoPointsDialog(context);
+      },
     );
     unawaited(_runtime.initialize());
   }

@@ -8,12 +8,18 @@ class _NativeGameRuntime {
     required this.authSession,
     required this.gameKey,
     required this.onChanged,
+    this.onNeedPoints,
   });
 
   final CompanionApi api;
   final AuthSession authSession;
   final String gameKey;
   final VoidCallback onChanged;
+
+  /// Invoked when a start is blocked because the daily game-point balance is
+  /// exhausted — the page shows the shared "no points" dialog. Without it the
+  /// start would fail on the server (403) and leave the screen stuck.
+  final VoidCallback? onNeedPoints;
   final DateTime _openedAt = DateTime.now().toUtc();
 
   GameSession? session;
@@ -28,6 +34,10 @@ class _NativeGameRuntime {
   // Global coin balance, shown in the in-game top-right badge — the same total
   // as the games hub (NOT the per-game score).
   int? pointsBalance;
+  // Whether the daily game-point balance still allows starting a game. Mirrors
+  // the games-hub gate; refreshed from the wallet (which applies the daily
+  // grant server-side) before every start.
+  bool canPlay = true;
   // This game's scoring rules, so result screens can show what the round was
   // worth. Read from the built-in table: the values are product constants, and
   // making the result screen wait on a round-trip only ever delayed the number.
@@ -154,6 +164,7 @@ class _NativeGameRuntime {
       final wallet = await api.getGameWallet(gameKey: gameKey);
       gamePoints = wallet.gamePointsForGame ?? wallet.balance;
       pointsBalance = wallet.balance;
+      canPlay = wallet.canPlay;
       _notify();
     } catch (_) {
       // Keep whatever value we last had; never block the game screen.
@@ -279,13 +290,27 @@ class _NativeGameRuntime {
       }
       return null;
     }
+    // Claim the start slot before the async gate below, so a double-tap during
+    // the wallet fetch can't slip a second start past the `starting` guard.
+    starting = true;
+    _notify();
+    // Points gate (all native games): refresh the wallet — which applies the
+    // daily grant server-side — then block with the shared "no points" dialog
+    // when the balance is exhausted. Otherwise the start fails on the server
+    // (403) mid-flow and leaves the screen stuck.
+    await loadGamePoints();
+    if (!canPlay) {
+      starting = false;
+      onNeedPoints?.call();
+      _notify();
+      return null;
+    }
     final previousSession = session;
     final previousStartedAt = startedAt;
     final previousCompleted = completed;
     final previousTerminalPayload = terminalPayload;
     final previousTerminalPresentedAt = terminalPresentedAt;
     final previousEventSequence = _eventSequence;
-    starting = true;
     error = null;
     syncNotice = null;
     session = null;
@@ -328,7 +353,15 @@ class _NativeGameRuntime {
         terminalPresentedAt = previousTerminalPresentedAt;
         _eventSequence = previousEventSequence;
       }
-      error = _formatError(caught);
+      // Backstop for a race (balance emptied between the check and the create):
+      // the server rejects with 403; surface the dialog instead of a banner.
+      if (caught is ApiException && caught.statusCode == 403) {
+        canPlay = false;
+        onNeedPoints?.call();
+        error = null;
+      } else {
+        error = _formatError(caught);
+      }
       _notify();
       return null;
     } finally {

@@ -36,6 +36,9 @@ class _GoGamePageState extends State<_GoGamePage> {
       onChanged: () {
         if (mounted) setState(() {});
       },
+      onNeedPoints: () {
+        if (mounted) _showGameNoPointsDialog(context);
+      },
     );
     unawaited(_runtime.initialize());
   }
