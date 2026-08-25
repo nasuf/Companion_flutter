@@ -447,6 +447,7 @@ class ChatMessage {
     this.metadata,
     this.pending = false,
     this.read = false,
+    this.failed = false,
   });
 
   final String id;
@@ -457,6 +458,11 @@ class ChatMessage {
   final Map<String, dynamic>? metadata;
   final bool pending;
   final bool read;
+
+  /// 发出去之后既没等到 ack/回复，也没被服务端拒绝 (quota_blocked)，而是
+  /// 客户端自己判定"等不到响应了" (发送超时 / socket 未连接 / error 事件) ——
+  /// 跟 [pending] 互斥: 一条消息不会同时"还在发送中"又"已确认失败"。
+  final bool failed;
 
   bool get isMine => role == 'user';
   bool get isAchievement => role == 'achievement';
@@ -566,6 +572,7 @@ class ChatMessage {
     Map<String, dynamic>? metadata,
     bool? pending,
     bool? read,
+    bool? failed,
   }) {
     return ChatMessage(
       id: id ?? this.id,
@@ -576,6 +583,7 @@ class ChatMessage {
       metadata: metadata ?? this.metadata,
       pending: pending ?? this.pending,
       read: read ?? this.read,
+      failed: failed ?? this.failed,
     );
   }
 }

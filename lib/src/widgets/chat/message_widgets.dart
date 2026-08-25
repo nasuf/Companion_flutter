@@ -28,6 +28,7 @@ class _MessageList extends StatelessWidget {
     this.userAvatarUrl,
     this.authToken,
     this.apiBaseUrl,
+    this.onRetryFailed,
   });
 
   final ScrollController controller;
@@ -57,6 +58,7 @@ class _MessageList extends StatelessWidget {
   final String? userAvatarUrl;
   final String? authToken;
   final String? apiBaseUrl;
+  final ValueChanged<ChatMessage>? onRetryFailed;
 
   @override
   Widget build(BuildContext context) {
@@ -120,6 +122,7 @@ class _MessageList extends StatelessWidget {
           isMusicBusy: isMusicBusy,
           authToken: authToken,
           apiBaseUrl: apiBaseUrl,
+          onRetryFailed: onRetryFailed,
         );
         final keyedRow = KeyedSubtree(
           key: ValueKey('chat-message-${message.id}'),
@@ -155,6 +158,7 @@ class _MessageRow extends StatelessWidget {
     this.userAvatarUrl,
     this.authToken,
     this.apiBaseUrl,
+    this.onRetryFailed,
   });
 
   final ChatMessage message;
@@ -177,6 +181,7 @@ class _MessageRow extends StatelessWidget {
   final String? userAvatarUrl;
   final String? authToken;
   final String? apiBaseUrl;
+  final ValueChanged<ChatMessage>? onRetryFailed;
   static const _avatarSize = 40.0;
   static const _avatarGap = 10.0;
 
@@ -235,6 +240,7 @@ class _MessageRow extends StatelessWidget {
             isMusicBusy: isMusicBusy,
             authToken: authToken,
             apiBaseUrl: apiBaseUrl,
+            onRetryFailed: onRetryFailed,
           ),
           if (message.isMine) ...[const SizedBox(width: _avatarGap), avatar],
         ],
@@ -550,6 +556,7 @@ class _Bubble extends StatelessWidget {
     required this.isMusicBusy,
     this.authToken,
     this.apiBaseUrl,
+    this.onRetryFailed,
   });
 
   final ChatMessage message;
@@ -569,6 +576,7 @@ class _Bubble extends StatelessWidget {
   final bool isMusicBusy;
   final String? authToken;
   final String? apiBaseUrl;
+  final ValueChanged<ChatMessage>? onRetryFailed;
 
   @override
   Widget build(BuildContext context) {
@@ -682,7 +690,13 @@ class _Bubble extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                _ReadStatusIndicator(read: message.read),
+                _SendStatusIndicator(
+                  read: message.read,
+                  failed: message.failed,
+                  onRetry: message.failed && onRetryFailed != null
+                      ? () => onRetryFailed!(message)
+                      : null,
+                ),
                 const SizedBox(width: 8),
                 bubbleColumn,
               ],
@@ -700,18 +714,29 @@ class _Bubble extends StatelessWidget {
   }
 }
 
-/// Read (checkmark-in-circle) / unread (empty circle) indicator shown to the
-/// left of the current user's own message bubbles. Matches Figma 281:1513.
-class _ReadStatusIndicator extends StatelessWidget {
-  const _ReadStatusIndicator({required this.read});
+/// Read (checkmark-in-circle) / unread (empty circle) / failed (red "!",
+/// tappable to retry) indicator shown to the left of the current user's own
+/// message bubbles. Read/unread matches Figma 281:1513; failed is a new
+/// state — a message the client gave up waiting a response for (send
+/// timeout / socket down / server error) — that previously had no visual
+/// distinction from "still sending" at all.
+class _SendStatusIndicator extends StatelessWidget {
+  const _SendStatusIndicator({
+    required this.read,
+    this.failed = false,
+    this.onRetry,
+  });
 
   final bool read;
+  final bool failed;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
+    final danger = AppColors.of(context).danger;
     const color = Color(0xFFA5A5A5);
-    return Semantics(
-      label: read ? '已读' : '未读',
+    final indicator = Semantics(
+      label: failed ? '发送失败，点击重试' : (read ? '已读' : '未读'),
       child: Container(
         width: 12,
         height: 12,
@@ -721,13 +746,17 @@ class _ReadStatusIndicator extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: color, width: 1),
+          border: Border.all(color: failed ? danger : color, width: 1),
         ),
-        child: read
-            ? const Icon(Icons.check_rounded, size: 8, color: color)
-            : null,
+        child: failed
+            ? Icon(Icons.priority_high_rounded, size: 8, color: danger)
+            : (read
+                  ? const Icon(Icons.check_rounded, size: 8, color: color)
+                  : null),
       ),
     );
+    if (!failed || onRetry == null) return indicator;
+    return GestureDetector(onTap: onRetry, child: indicator);
   }
 }
 

@@ -250,6 +250,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _openingMusicPage = false;
   bool _localUserCoListeningActive = false;
   Timer? _stationPauseTimer;
+  // 服务端在额度闸门/聚合调度批处理出异常时可能对某条消息彻底沉默 (既不
+  // ack, 也不 reply/quota_blocked/error) —— 没有这个兜底, 那条消息会永久
+  // 停在"发送中", AI 也永久停在"打字中", 界面看起来像死机。当前产品里
+  // 一次只会有一条未确认消息在途 (_sending 期间发送按钮本身是禁用的),
+  // 所以用单个 Timer/clientId 就够, 不需要引入按 key 管理多个 Timer 的
+  // 新模式。
+  Timer? _sendTimeoutTimer;
+  String? _inFlightClientId;
+  static const _sendTimeoutDuration = Duration(seconds: 20);
   final Set<String> _favoriteMusicTrackIds = {};
   final Set<String> _busyMusicFavoriteIds = {};
 
@@ -383,6 +392,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _capsuleScanTimer?.cancel();
     _conversationMetaTimer?.cancel();
     _stationPauseTimer?.cancel();
+    _sendTimeoutTimer?.cancel();
     _musicCompleteSub?.cancel();
     _musicQuotaSub?.cancel();
     _shareIntentSub?.cancel();
@@ -1637,6 +1647,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         final clientId = payload['client_id']?.toString() ?? '';
         final messageId = payload['message_id']?.toString() ?? '';
         if (clientId.isEmpty) return;
+        // 服务端已经确认收到并落库了这条消息 (哪怕 AI 回复还没生成完),
+        // 不再需要"发出去杳无音讯"的超时兜底。
+        if (clientId == _inFlightClientId) _clearSendTimeout();
         setState(() {
           for (var i = 0; i < _messages.length; i += 1) {
             final message = _messages[i];
@@ -1856,10 +1869,28 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         unawaited(_loadLatestMessages(showLoading: false));
         break;
       case 'error':
+        // 之前这里只清全局状态、完全不碰 _messages —— 那条草稿会永久停在
+        // "发送中", 用户只看到一条独立的错误横条, 分不清是哪句话没发出去、
+        // 也没法重试。现在把当前在途的那条草稿一并标成失败态。
+        final inFlightId = _inFlightClientId;
+        _clearSendTimeout();
         setState(() {
           _sending = false;
           _agentTyping = false;
           _historyError = payload['message']?.toString() ?? '聊天失败';
+          if (inFlightId != null) {
+            final index = _messages.indexWhere(
+              (message) =>
+                  message.pending &&
+                  (message.id == inFlightId || message.clientId == inFlightId),
+            );
+            if (index != -1) {
+              _messages[index] = _messages[index].copyWith(
+                pending: false,
+                failed: true,
+              );
+            }
+          }
         });
         break;
       case 'pong':
@@ -1918,6 +1949,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         (message) => message.id == clientId || message.clientId == clientId,
       );
       if (draftIndex != -1) {
+        if (clientId == _inFlightClientId) _clearSendTimeout();
         setState(() {
           _messages[draftIndex] = ChatMessage(
             id: messageId.isEmpty ? _messages[draftIndex].id : messageId,
@@ -2455,10 +2487,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final quota = _chatQuota;
     if (quota != null && quota.freeRemaining <= 0) {
       if (quota.mode == ChatQuotaMode.blocked) {
+        // 系统弹框不管键盘是否弹出都完整可见; 先收起键盘避免和弹框抢焦点
+        // (之前用底部 SnackBar 兜底提示时, 键盘弹出会把它整个盖住看不见)。
+        _dismissInputSurfaces();
         if (_vipUpsellAcknowledged) {
-          // 这个周期已经告知过一次了, 不再用弹框打断——弹框和这里想解决
-          // 的"每条都问"是同一类疲劳, 换成不打断输入的轻提示。
-          _showRedPacketToast('钞票已用完，去商城订阅 VIP 或充值后即可继续发送');
+          // 这个周期已经用推销弹框告知过一次了, 不再重复打断——但发送依然
+          // 被拦, 换成更轻量的"钞票用完"弹框, 保留去充值的入口。
+          await showTicketExhaustedDialog(
+            context,
+            api: widget.api,
+            session: widget.session,
+          );
           return;
         }
         _vipUpsellAcknowledged = true;
@@ -2500,6 +2539,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   /// 文本还给输入框, 再弹跟预检同样的确认框, 确认后按 paidConfirmed 重发。
   Future<void> _handleChatQuotaBlocked(Map<String, dynamic> payload) async {
     final blocked = ChatQuotaBlocked.fromJson(payload);
+    if (blocked.clientId == null || blocked.clientId == _inFlightClientId) {
+      _clearSendTimeout();
+    }
     ChatMessage? blockedDraft;
     setState(() {
       // 优先按 client_id 精确匹配 (用户连发多条时避免摘错草稿); 旧版服务端
@@ -2524,8 +2566,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     unawaited(_refreshChatQuota());
     if (!mounted) return;
     if (blocked.reason == ChatQuotaBlockReason.noTicket) {
+      _dismissInputSurfaces();
       if (_vipUpsellAcknowledged) {
-        _showRedPacketToast('钞票已用完，去商城订阅 VIP 或充值后即可继续发送');
+        await showTicketExhaustedDialog(
+          context,
+          api: widget.api,
+          session: widget.session,
+        );
         return;
       }
       _vipUpsellAcknowledged = true;
@@ -2987,6 +3034,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       // events keep it alive and the reply clears it.
       _agentTyping = true;
     });
+    _armSendTimeout(clientId);
     if (clearComposer && attachments.isEmpty && !panelOpen) {
       _inputFocus.requestFocus();
     }
@@ -3016,6 +3064,62 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
       _scrollToBottom(animated: true);
       _scheduleStationDockCheck();
+    });
+  }
+
+  void _armSendTimeout(String clientId) {
+    _sendTimeoutTimer?.cancel();
+    _inFlightClientId = clientId;
+    _sendTimeoutTimer = Timer(
+      _sendTimeoutDuration,
+      () => _handleSendTimeout(clientId),
+    );
+  }
+
+  /// 消息已经被 ack/回复匹配/quota_blocked/error 中任一条路径处理过后调用,
+  /// 让还没触发的超时兜底失效——避免在正常收到响应之后, 迟到的 Timer 又把
+  /// 一条其实已经成功的消息错误地标成失败。
+  void _clearSendTimeout() {
+    _sendTimeoutTimer?.cancel();
+    _sendTimeoutTimer = null;
+    _inFlightClientId = null;
+  }
+
+  /// 发送后 [_sendTimeoutDuration] 内既没有 ack, 也没有 reply/quota_blocked/
+  /// error 中任何一个事件把这条草稿摘掉或更新——服务端很可能对这条消息
+  /// (以及这条 WS 连接) 彻底沉默了。没有这个兜底, 草稿会永久停在"发送中",
+  /// AI 也永久停在"打字中", 界面看起来像卡死, 且用户没有任何重试的入口。
+  void _handleSendTimeout(String clientId) {
+    if (!mounted || _inFlightClientId != clientId) return;
+    final index = _messages.indexWhere(
+      (message) =>
+          message.pending &&
+          (message.id == clientId || message.clientId == clientId),
+    );
+    if (index == -1) {
+      _clearSendTimeout();
+      return;
+    }
+    setState(() {
+      _messages[index] = _messages[index].copyWith(
+        pending: false,
+        failed: true,
+      );
+      _sending = false;
+      _agentTyping = false;
+    });
+    _clearSendTimeout();
+  }
+
+  /// 点击失败消息后的重试入口: 拿回原文本 (还原到输入框, 而不是自动静默
+  /// 重发) 并移除这条失败草稿——跟额度弹框取消发送时的体验一致, 用户可以
+  /// 直接改口或原样再发一次。
+  void _retryFailedMessage(ChatMessage message) {
+    setState(() {
+      _messages.removeWhere((m) => m.id == message.id);
+      if (_inputController.text.trim().isEmpty) {
+        _inputController.text = message.content;
+      }
     });
   }
 
@@ -3482,6 +3586,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           userAvatarUrl: widget.session.userAvatarUrl,
                           authToken: widget.api.authToken,
                           apiBaseUrl: widget.api.baseUrl,
+                          onRetryFailed: _retryFailedMessage,
                         ),
                 ),
               ),
