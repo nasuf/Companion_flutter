@@ -119,49 +119,6 @@ Future<void> showVipUpsellDialog(
   );
 }
 
-/// 本周期已经用 [showVipUpsellDialog] 提示过一次订阅了 (`_vipUpsellAcknowledged`)，
-/// 后续同周期内不再用打断式弹框重复推销订阅，但发送仍会被拦——用户需要一个
-/// 明确的、不会被键盘挡住的入口去充值。系统弹框（而不是底部 SnackBar）能
-/// 保证不管键盘是否弹出都完整可见；调用方需先自行收起键盘，避免弹框和
-/// 键盘同时抢占视觉焦点。确认则打开商城「充值」tab。
-Future<void> showTicketExhaustedDialog(
-  BuildContext context, {
-  required CompanionApi api,
-  required AuthSession session,
-  String content = '钞票已用完，去商城订阅 VIP 或充值后即可继续发送',
-}) async {
-  final goRecharge = await showCupertinoDialog<bool>(
-    context: context,
-    builder: (dialogContext) {
-      return CupertinoAlertDialog(
-        title: const Text('钞票已用完'),
-        content: Text(content),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('去充值'),
-          ),
-        ],
-      );
-    },
-  );
-  if (goRecharge != true || !context.mounted) return;
-  await Navigator.of(context).push<void>(
-    CupertinoPageRoute<void>(
-      builder: (_) => StorePage(
-        api: api,
-        session: session,
-        openTicketRecharge: true,
-      ),
-    ),
-  );
-}
-
 /// VIP 用户钞票也不够听歌时询问是否去买音乐畅听券；确认则打开商城「礼包」tab。
 Future<void> showBuyMusicCouponDialog(
   BuildContext context, {

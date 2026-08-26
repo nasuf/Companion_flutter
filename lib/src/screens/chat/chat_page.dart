@@ -176,12 +176,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   // 这里判断错了也只是"该弹确认框时没弹", quota_blocked 事件负责兜底。
   ChatQuota? _chatQuota;
 
-  // 一个周期(非VIP按天/VIP按月)内, "继续扣费发送"和"钞票不足去订阅" 这两类
-  // 弹框各自只问一次, 问完就记下来, 后续同类情况不再打断发送——用户已经
-  // 表过态了, 每条消息都重复问是在制造疲劳。两个标记在观测到 mode 变回
-  // free 时清零 (意味着新的一天/月开始, 额度真的刷新了)。
+  // 一个周期(非VIP按天/VIP按月)内, "继续扣费发送"只问一次, 问完就记下来,
+  // 后续同一周期内不再打断发送——用户已经表过态了, 每条消息都重复问是在
+  // 制造疲劳。"钞票用光/不足"则不做这个降级: 每次都弹完整的取消/去充值/
+  // 去订阅选项, 因为这个场景用户随时可能改变主意(先充值/先订阅), 静默
+  // 拦截或降级成单选项弹框都会让用户摸不清当前状态。
   bool _overageAcknowledged = false;
-  bool _vipUpsellAcknowledged = false;
 
   ChatSocket? _socket;
   StreamSubscription<WsEnvelope>? _eventSub;
@@ -344,10 +344,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       setState(() {
         _chatQuota = quota;
         // mode 回到 free 说明额度周期真的刷新了 (非VIP新的一天 / VIP新的
-        // 一月)，之前问过的"继续扣费"/"订阅VIP"不再适用，允许再问一次。
+        // 一月)，之前问过的"继续扣费"不再适用，允许再问一次。
         if (quota.mode == ChatQuotaMode.free) {
           _overageAcknowledged = false;
-          _vipUpsellAcknowledged = false;
         }
       });
     } catch (_) {
@@ -2490,17 +2489,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         // 系统弹框不管键盘是否弹出都完整可见; 先收起键盘避免和弹框抢焦点
         // (之前用底部 SnackBar 兜底提示时, 键盘弹出会把它整个盖住看不见)。
         _dismissInputSurfaces();
-        if (_vipUpsellAcknowledged) {
-          // 这个周期已经用推销弹框告知过一次了, 不再重复打断——但发送依然
-          // 被拦, 换成更轻量的"钞票用完"弹框, 保留去充值的入口。
-          await showTicketExhaustedDialog(
-            context,
-            api: widget.api,
-            session: widget.session,
-          );
-          return;
-        }
-        _vipUpsellAcknowledged = true;
+        // 每次都弹完整的取消/去充值/去订阅选项, 不做"只问一次"降级——见
+        // 上面 _overageAcknowledged 声明处的说明。
         await showVipUpsellDialog(
           context,
           api: widget.api,
@@ -2567,15 +2557,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (!mounted) return;
     if (blocked.reason == ChatQuotaBlockReason.noTicket) {
       _dismissInputSurfaces();
-      if (_vipUpsellAcknowledged) {
-        await showTicketExhaustedDialog(
-          context,
-          api: widget.api,
-          session: widget.session,
-        );
-        return;
-      }
-      _vipUpsellAcknowledged = true;
       await showVipUpsellDialog(
         context,
         api: widget.api,
