@@ -69,14 +69,19 @@ Future<bool> showMusicOverageConfirmDialog(
   return confirmed == true;
 }
 
-/// 钞票也不够时询问是否跳转订阅 VIP；确认则打开商城「订阅」tab。
+enum _VipUpsellChoice { recharge, subscribe }
+
+/// 钞票也不够时询问是否订阅 VIP，同时给一个更直接的"去充值"选项——用户此刻
+/// 最迫切的诉求是"马上能继续发消息", 充值比先看订阅套餐介绍更直接; 订阅
+/// 仍保留 (且是默认高亮的那个) 因为它是长期更划算的方案, 只是不该是唯一
+/// 出口 (2026-08-26 用户反馈: 点开这个弹框却只能被导向订阅页, 体验不对)。
 Future<void> showVipUpsellDialog(
   BuildContext context, {
   required CompanionApi api,
   required AuthSession session,
   String content = '钞票余额不足，订阅 VIP 可获得更高免费额度和更低价格，是否订阅？',
 }) async {
-  final goSubscribe = await showCupertinoDialog<bool>(
+  final choice = await showCupertinoDialog<_VipUpsellChoice>(
     context: context,
     builder: (dialogContext) {
       return CupertinoAlertDialog(
@@ -84,22 +89,32 @@ Future<void> showVipUpsellDialog(
         content: Text(content),
         actions: [
           CupertinoDialogAction(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
+            onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('取消'),
           ),
           CupertinoDialogAction(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_VipUpsellChoice.recharge),
+            child: const Text('去充值'),
+          ),
+          CupertinoDialogAction(
             isDefaultAction: true,
-            onPressed: () => Navigator.of(dialogContext).pop(true),
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_VipUpsellChoice.subscribe),
             child: const Text('去订阅'),
           ),
         ],
       );
     },
   );
-  if (goSubscribe != true || !context.mounted) return;
+  if (choice == null || !context.mounted) return;
   await Navigator.of(context).push<void>(
     CupertinoPageRoute<void>(
-      builder: (_) => StorePage(api: api, session: session),
+      builder: (_) => StorePage(
+        api: api,
+        session: session,
+        openTicketRecharge: choice == _VipUpsellChoice.recharge,
+      ),
     ),
   );
 }
