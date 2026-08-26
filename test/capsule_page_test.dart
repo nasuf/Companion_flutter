@@ -489,6 +489,12 @@ void main() {
     // 薰衣草信笺 skin keeps its own violet palette on purpose: that one is a
     // letter paper the user picks, not chrome the module imposes.
     expect(source.contains('0xFF7C3CFF'), isFalse);
+    // Same purple, string-hex form — this is how ChatComponentCard.accent
+    // (a JSON-serializable field, e.g. the "发聊天" share draft) carries a
+    // color, and it slipped past the Color(0xFF...) check above once
+    // already: the shared time-capsule card's icon rendered purple while
+    // every other part of the card (via capsuleSkin) was already orange.
+    expect(source.toLowerCase().contains("'#7c3cff'"), isFalse);
   });
 
   test('every capsule artwork the page names is actually shipped', () {

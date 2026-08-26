@@ -172,7 +172,11 @@ CapsuleChatDraft _draftForCapsule(TimeCapsule capsule) {
     subtitle: '$open开启',
     body: capsule.content,
     footer: '时间胶囊 · 已开启',
-    accent: '#7C3CFF',
+    // 卡片主体（背景/边框/文字）都走 capsuleSkin 取色，但 message_widgets.dart
+    // 里的图标徽标（_ComponentCardIcon）没有 skin 可用，直接读这个 accent——
+    // 之前留着 ChatComponentCard 的默认紫色，跟胶囊在侧边栏/胶囊模块里统一
+    // 使用的橙色（_capsuleOrange = 0xFFFE9631）不一致。
+    accent: '#FE9631',
     payload: {
       'capsule_id': capsule.id,
       'created_date': _dateOnly(capsule.createdAt),
