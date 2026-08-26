@@ -245,6 +245,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   int _achievementDemoIndex = 0;
   bool _stationCardDocked = false;
   bool _stationDockActive = false;
+  bool _stationDockHideImmediately = false;
   bool _stationDockCheckScheduled = false;
   bool _advancingStation = false;
   bool _openingMusicPage = false;
@@ -1332,13 +1333,35 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void _activateStationDock() {
     _cancelStationPauseTimer();
     _stationDockActive = true;
+    // 先假定卡片不在视野内(展示精简控件),下面这行马上会用真实滚动位置核实。
     _stationCardDocked = true;
+    // 一次新的展示周期开始了,后续的自动隐藏(暂停超时)应该走正常的滑出动画,
+    // 除非用户在这一轮里又把它划走。
+    _stationDockHideImmediately = false;
+    _scheduleStationDockCheck();
   }
 
   void _clearStationDock() {
     _cancelStationPauseTimer();
     _stationDockActive = false;
     _stationCardDocked = false;
+  }
+
+  void _dismissStationDock() {
+    final shouldNotifyCoListeningExit = _isUserCoListening;
+    _stationDockHideImmediately = true;
+    unawaited(_playback.stop());
+    setState(_clearStationDock);
+    if (!shouldNotifyCoListeningExit) return;
+    final agentId = widget.session.agentId;
+    if (agentId == null || agentId.isEmpty) return;
+    unawaited(
+      widget.api.endMusicCoListening(
+        agentId: agentId,
+        conversationId: _conversationId,
+        reason: 'user_dismissed_dock',
+      ),
+    );
   }
 
   void _scheduleStationPauseExit() {
@@ -1593,21 +1616,25 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       return;
     }
     final context = _stationCardKey.currentContext;
+    if (context == null) {
+      // 拿不到卡片当前位置(这一帧还没挂上/滚动到很远被列表虚拟化掉了),
+      // 是"不知道"而不是"卡片不可见"——保留上一次的判定,交给下一次滚动/
+      // 帧回调重新核实,而不是武断地当作已滚出屏幕去顶掉顶部精简控件的
+      // 展示条件。
+      return;
+    }
     var shouldDock = false;
-    if (context != null) {
-      final renderObject = context.findRenderObject();
-      if (renderObject is RenderBox && renderObject.hasSize) {
-        final topLeft = renderObject.localToGlobal(Offset.zero);
-        final bottom = topLeft.dy + renderObject.size.height;
-        final screenHeight = MediaQuery.sizeOf(this.context).height;
-        final composerHeight = _composerHeightForWidth(
-          MediaQuery.sizeOf(this.context).width,
-        );
-        final bottomLimit =
-            screenHeight - composerHeight - _tabBarContentHeight;
-        const dockRevealLine = 144.0;
-        shouldDock = bottom < dockRevealLine || topLeft.dy > bottomLimit;
-      }
+    final renderObject = context.findRenderObject();
+    if (renderObject is RenderBox && renderObject.hasSize) {
+      final topLeft = renderObject.localToGlobal(Offset.zero);
+      final bottom = topLeft.dy + renderObject.size.height;
+      final screenHeight = MediaQuery.sizeOf(this.context).height;
+      final composerHeight = _composerHeightForWidth(
+        MediaQuery.sizeOf(this.context).width,
+      );
+      final bottomLimit = screenHeight - composerHeight - _tabBarContentHeight;
+      const dockRevealLine = 144.0;
+      shouldDock = bottom < dockRevealLine || topLeft.dy > bottomLimit;
     }
     if (_stationCardDocked != shouldDock) {
       setState(() => _stationCardDocked = shouldDock);
@@ -2524,6 +2551,29 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
+  /// 重发一条被服务端配额拦下的草稿，原样带上它的卡片/附件——不能只看
+  /// blockedDraft.content 是否为空: "发聊天"邀请卡这类消息文本本来就是空的,
+  /// 全部信息都在 componentCard 里，之前这里只重发文本, 空文本被当成"没什么
+  /// 好重发的"直接 return, 卡片就此从聊天记录里彻底消失, 静默得连一条错误
+  /// 提示都没有。
+  void _resendBlockedDraft(
+    ChatMessage? blockedDraft, {
+    required bool paidConfirmed,
+  }) {
+    final text = blockedDraft?.content ?? _inputController.text.trim();
+    final componentCard = blockedDraft?.componentCard;
+    final attachments = blockedDraft?.attachments ?? const <ChatAttachment>[];
+    if (text.isEmpty && componentCard == null && attachments.isEmpty) return;
+    final clearComposer = _inputController.text.trim() == text;
+    _sendText(
+      text,
+      componentCard: componentCard,
+      attachments: attachments,
+      clearComposer: clearComposer,
+      paidConfirmed: paidConfirmed,
+    );
+  }
+
   /// 服务端权威拒绝 (额度耗尽未确认 / 余额不足)。走 _sendMessage 之外的路径
   /// (语音/卡片/多意图重试等) 没有预检时的兜底: 把被拒的草稿从会话里摘掉、
   /// 文本还给输入框, 再弹跟预检同样的确认框, 确认后按 paidConfirmed 重发。
@@ -2571,10 +2621,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       // 本周期已经同意过扣费——这次被拒大概率是走了没有预检的发送路径
       // (语音转写自动发送 / 卡片 / 断线重连重发), 直接按已同意重发即可,
       // 不用再问一遍 (问一遍就是本次要解决的"每条都问"疲劳)。
-      final text = blockedDraft?.content ?? _inputController.text.trim();
-      if (text.isEmpty) return;
-      final clearComposer = _inputController.text.trim() == text;
-      _sendText(text, clearComposer: clearComposer, paidConfirmed: true);
+      _resendBlockedDraft(blockedDraft, paidConfirmed: true);
       return;
     }
     final confirmed = await showChatOverageConfirmDialog(
@@ -2583,10 +2630,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
     if (!confirmed || !mounted) return;
     _overageAcknowledged = true;
-    final text = blockedDraft?.content ?? _inputController.text.trim();
-    if (text.isEmpty) return;
-    final clearComposer = _inputController.text.trim() == text;
-    _sendText(text, clearComposer: clearComposer, paidConfirmed: true);
+    _resendBlockedDraft(blockedDraft, paidConfirmed: true);
   }
 
   void _handleVoicePressStart(Offset position) {
@@ -3483,7 +3527,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final inputSurfaceHeight = composerHeight + composerBottom;
     _syncComposerPanelVisibility(panelVisible);
     final stationTrack = _stationTrack;
-    final showStationDock = stationTrack != null && _stationDockActive;
+    // 消息列表里那张完整的音乐卡片(含共听功能)还在屏幕上时不要再叠一份顶部
+    // 精简控件——两者互斥,_stationCardDocked 就是"完整卡片是否已经滑出可
+    // 视区域"的实时判定,见 _updateStationCardDocked。
+    final showStationDock =
+        stationTrack != null && _stationDockActive && _stationCardDocked;
     final listBottomPadding = inputSurfaceHeight + 18;
     const listTopPadding = 10.0;
     final keyboardTransition = isKeyboardOpen || wasKeyboardOpen;
@@ -3686,15 +3734,25 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             ),
           ),
           Positioned(
-            top: safeTop + 74,
+            // 顶部间距 = header 自身高度 (safeTop + 76) 再留 12 的呼吸空间，
+            // 不要紧贴 header 底边缘。
+            top: safeTop + 76 + 12,
             left: 26,
             right: 24,
             child: AnimatedSlide(
-              duration: const Duration(milliseconds: 280),
+              // 手指滑走已经用 Dismissible 自己的位移动画划出屏幕了；这里再
+              // 叠一层默认的 280ms 上滑退场,会先把已经飞走的卡片按原位置重新
+              // 画出来再滑走,变成"原地闪现一下再往上消失"。划走触发的隐藏用
+              // 0 时长跳过这层动画;暂停超时之类的自动隐藏仍走原有的滑出效果。
+              duration: _stationDockHideImmediately
+                  ? Duration.zero
+                  : const Duration(milliseconds: 280),
               curve: Curves.easeOutCubic,
               offset: showStationDock ? Offset.zero : const Offset(0, -0.35),
               child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 220),
+                duration: _stationDockHideImmediately
+                    ? Duration.zero
+                    : const Duration(milliseconds: 220),
                 curve: Curves.easeOutCubic,
                 opacity: showStationDock ? 1 : 0,
                 child: IgnorePointer(
@@ -3713,6 +3771,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           onNext: () => unawaited(_playNextStationTrack()),
                           onTogglePlay: () =>
                               unawaited(_toggleStationPlayback()),
+                          onDismissed: _dismissStationDock,
                         ),
                 ),
               ),
@@ -3786,6 +3845,7 @@ class _StickyMusicDock extends StatefulWidget {
     required this.onPrevious,
     required this.onNext,
     required this.onTogglePlay,
+    required this.onDismissed,
   });
 
   final MusicTrack track;
@@ -3797,6 +3857,7 @@ class _StickyMusicDock extends StatefulWidget {
   final VoidCallback onPrevious;
   final VoidCallback onNext;
   final VoidCallback onTogglePlay;
+  final VoidCallback onDismissed;
 
   @override
   State<_StickyMusicDock> createState() => _StickyMusicDockState();
@@ -3805,6 +3866,14 @@ class _StickyMusicDock extends StatefulWidget {
 class _StickyMusicDockState extends State<_StickyMusicDock>
     with SingleTickerProviderStateMixin {
   late final AnimationController _discController;
+  // 每次真正划走后自增,拼进 Dismissible 的 key 里强制换一个全新实例——
+  // 划走后这个 dock 并不会被移出树(还得靠外层的 opacity/slide 隐藏它),
+  // 复用同一个 key 会让内部已经"划出去"的位移状态一直留着,下次这里再显示
+  // 音乐时它会带着上次划走的偏移量直接出现,而不是回到正常位置。
+  int _dismissGeneration = 0;
+  // 横向拖拽的实时进度,0=没动,1=已经完全划出容器(见 DismissUpdateDetails.
+  // progress);只用来给"播放中"的暂停按钮做过渡预览,不影响真正的播放状态。
+  double _dragProgress = 0;
 
   @override
   void initState() {
@@ -3843,138 +3912,161 @@ class _StickyMusicDockState extends State<_StickyMusicDock>
   @override
   Widget build(BuildContext context) {
     final accent = _musicAccentForTrack(widget.track);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: widget.onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(32),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            height: 64,
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F1A27).withValues(alpha: 0.90),
-              borderRadius: BorderRadius.circular(32),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.13)),
-              boxShadow: [
-                BoxShadow(
-                  color: accent.withValues(alpha: 0.20),
-                  blurRadius: 24,
-                  offset: const Offset(0, 12),
-                ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.only(right: 10),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 64,
-                    height: 64,
-                    child: RepaintBoundary(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: accent.withValues(alpha: 0.24),
-                              blurRadius: 18,
-                              spreadRadius: 1,
-                            ),
-                          ],
-                        ),
-                        child: AnimatedBuilder(
-                          animation: _discController,
-                          builder: (context, child) {
-                            return Transform.rotate(
-                              angle: _discController.value * math.pi * 2,
-                              child: child,
-                            );
-                          },
-                          child: _MusicDisc(track: widget.track, size: 64),
+    return Dismissible(
+      key: ValueKey('sticky-music-dock-$_dismissGeneration'),
+      direction: DismissDirection.horizontal,
+      // 不需要划走后再收缩尺寸的二段动画——它已经飞出屏幕了,父级的
+      // opacity/slide 紧接着会把它整个隐藏掉,没有"从列表移除"的场景要处理。
+      resizeDuration: null,
+      onUpdate: (details) {
+        final progress = details.progress.clamp(0.0, 1.0);
+        if (progress == _dragProgress) return;
+        setState(() => _dragProgress = progress);
+      },
+      onDismissed: (_) {
+        _dismissGeneration += 1;
+        _dragProgress = 0;
+        widget.onDismissed();
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(32),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: Container(
+              height: 64,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F1A27).withValues(alpha: 0.90),
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.13)),
+                boxShadow: [
+                  BoxShadow(
+                    color: accent.withValues(alpha: 0.20),
+                    blurRadius: 24,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 64,
+                      height: 64,
+                      child: RepaintBoundary(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: accent.withValues(alpha: 0.24),
+                                blurRadius: 18,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                          child: AnimatedBuilder(
+                            animation: _discController,
+                            builder: (context, child) {
+                              return Transform.rotate(
+                                angle: _discController.value * math.pi * 2,
+                                child: child,
+                              );
+                            },
+                            child: _MusicDisc(track: widget.track, size: 64),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _LoopingMarqueeText(
-                          text: widget.track.title,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            height: 1.12,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _LoopingMarqueeText(
+                            text: widget.track.title,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              height: 1.12,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                '${_musicLibraryTitle(widget.track.library)} 频道 · ${widget.track.artist}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                          const SizedBox(height: 3),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  '${_musicLibraryTitle(widget.track.library)} 频道 · ${widget.track.artist}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.62),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.12,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                ' · ',
                                 style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.62),
+                                  color: Colors.white.withValues(alpha: 0.48),
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
                                   height: 1.12,
                                 ),
                               ),
-                            ),
-                            Text(
-                              ' · ',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.48),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                height: 1.12,
+                              _MusicCountdownText(
+                                track: widget.track,
+                                isActiveCard: true,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.66),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.12,
+                                ),
                               ),
-                            ),
-                            _MusicCountdownText(
-                              track: widget.track,
-                              isActiveCard: true,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.66),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                height: 1.12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  _DockIconButton(
-                    icon: CupertinoIcons.backward_fill,
-                    enabled: widget.canGoPrevious && !widget.isBusy,
-                    accent: accent,
-                    onPressed: widget.onPrevious,
-                  ),
-                  _DockIconButton(
-                    icon: widget.isPlaying
-                        ? CupertinoIcons.pause_fill
-                        : CupertinoIcons.play_fill,
-                    emphasized: true,
-                    enabled: !widget.isBusy && !widget.isLoading,
-                    loading: widget.isLoading,
-                    accent: accent,
-                    onPressed: widget.onTogglePlay,
-                  ),
-                  _DockIconButton(
-                    icon: CupertinoIcons.forward_fill,
-                    enabled: !widget.isBusy,
-                    accent: accent,
-                    onPressed: widget.onNext,
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    _DockIconButton(
+                      icon: CupertinoIcons.backward_fill,
+                      enabled: widget.canGoPrevious && !widget.isBusy,
+                      accent: accent,
+                      onPressed: widget.onPrevious,
+                    ),
+                    _DockIconButton(
+                      icon: widget.isPlaying
+                          ? CupertinoIcons.pause_fill
+                          : CupertinoIcons.play_fill,
+                      // 播放中被划走时,暂停图标随拖拽进度慢慢过渡成播放图标,
+                      // 预告"划到底会停止播放"；没在播放或没在拖拽时不生效。
+                      morphToIcon: widget.isPlaying
+                          ? CupertinoIcons.play_fill
+                          : null,
+                      morphProgress: widget.isPlaying ? _dragProgress : 0,
+                      emphasized: true,
+                      enabled: !widget.isBusy && !widget.isLoading,
+                      loading: widget.isLoading,
+                      accent: accent,
+                      onPressed: widget.onTogglePlay,
+                    ),
+                    _DockIconButton(
+                      icon: CupertinoIcons.forward_fill,
+                      enabled: !widget.isBusy,
+                      accent: accent,
+                      onPressed: widget.onNext,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -3992,6 +4084,8 @@ class _DockIconButton extends StatelessWidget {
     required this.onPressed,
     this.emphasized = false,
     this.loading = false,
+    this.morphToIcon,
+    this.morphProgress = 0,
   });
 
   final IconData icon;
@@ -3999,11 +4093,35 @@ class _DockIconButton extends StatelessWidget {
   final Color accent;
   final bool emphasized;
   final bool loading;
+  // 拖拽划走时把 icon 慢慢过渡成 morphToIcon(如暂停→播放),预告松手后的
+  // 结果；progress 为 0 时纯粹显示 icon,不产生任何额外开销。
+  final IconData? morphToIcon;
+  final double morphProgress;
   final VoidCallback onPressed;
+
+  Widget _glyph(IconData glyph, Color color, double size) {
+    return Transform.translate(
+      offset: emphasized && glyph == CupertinoIcons.play_fill
+          ? const Offset(1.2, 0)
+          : Offset.zero,
+      child: Icon(glyph, color: color, size: size),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final boxSize = emphasized ? 40.0 : 32.0;
+    final color = enabled
+        ? (emphasized
+              ? _musicButtonForeground(accent)
+              : Colors.white.withValues(alpha: 0.72))
+        : Colors.white.withValues(alpha: 0.26);
+    final size = emphasized ? 18.0 : 15.0;
+    final morphing =
+        !loading &&
+        morphToIcon != null &&
+        morphToIcon != icon &&
+        morphProgress > 0;
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
@@ -4022,20 +4140,21 @@ class _DockIconButton extends StatelessWidget {
                     radius: 8,
                     color: Colors.white,
                   )
-                : Transform.translate(
-                    offset: emphasized && icon == CupertinoIcons.play_fill
-                        ? const Offset(1.2, 0)
-                        : Offset.zero,
-                    child: Icon(
-                      icon,
-                      color: enabled
-                          ? (emphasized
-                                ? _musicButtonForeground(accent)
-                                : Colors.white.withValues(alpha: 0.72))
-                          : Colors.white.withValues(alpha: 0.26),
-                      size: emphasized ? 18 : 15,
-                    ),
-                  ),
+                : morphing
+                ? Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Opacity(
+                        opacity: 1 - morphProgress,
+                        child: _glyph(icon, color, size),
+                      ),
+                      Opacity(
+                        opacity: morphProgress,
+                        child: _glyph(morphToIcon!, color, size),
+                      ),
+                    ],
+                  )
+                : _glyph(icon, color, size),
           ),
         ),
       ),
