@@ -23,7 +23,7 @@ Future<bool> showChatOverageConfirmDialog(
     builder: (dialogContext) {
       return CupertinoAlertDialog(
         title: const Text('免费额度已用完'),
-        content: Text('继续发送将消耗 $costLabel 钞票，是否继续？'),
+        content: Text('之后每句消息将消耗 $costLabel 钞票，是否继续发送？'),
         actions: [
           CupertinoDialogAction(
             onPressed: () => Navigator.of(dialogContext).pop(false),
