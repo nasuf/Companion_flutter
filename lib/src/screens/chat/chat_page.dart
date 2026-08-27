@@ -1816,7 +1816,23 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           if (status == 'started' && actor == 'user') {
             _localUserCoListeningActive = true;
           } else if (status == 'ended') {
-            _localUserCoListeningActive = false;
+            // 服务端对"优雅退出"原因(跟 music.py:_GRACEFUL_USER_EXIT_REASONS
+            // 保持同一份名单)先把用户这一侧标成 ended、隔了老半天等 agent 察
+            // 觉后才真正让 agent 退出并补一句话——这条用户自己的 ended 事件
+            // 不代表共听真的结束了，头像上的耳机徽标要跟着后面那条 agent 的
+            // ended 事件走，不能提前熄灭。其余场景(对方从没加入过 / 服务端
+            // 立即结束的其它退出原因，比如登出)没有后续的 agent ended 事件
+            // 会来，必须在这里就熄灭，否则会一直卡亮。
+            const gracefulUserExitReasons = {
+              'user_pause_timeout',
+              'user_dismissed_dock',
+            };
+            final reason = payload['reason']?.toString() ?? '';
+            final isWaitingForAgentNotice =
+                actor == 'user' && gracefulUserExitReasons.contains(reason);
+            if (!isWaitingForAgentNotice) {
+              _localUserCoListeningActive = false;
+            }
           }
           _upsertServerMessage(
             ChatMessage(
