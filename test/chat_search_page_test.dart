@@ -26,7 +26,7 @@ void _useDesignCanvas(WidgetTester tester) {
   addTearDown(tester.view.reset);
 }
 
-MessageSearchResult _textResult(String label) {
+MessageSearchResult _textResult(String label, {bool hasMore = false}) {
   return MessageSearchResult(
     text: [
       MessageSearchHit(
@@ -43,7 +43,7 @@ MessageSearchResult _textResult(String label) {
     ],
     cards: const [],
     images: const [],
-    hasMoreText: false,
+    hasMoreText: hasMore,
     hasMoreCards: false,
     hasMoreImages: false,
   );
@@ -180,7 +180,7 @@ void main() {
       expect(api.fullCalls, hasLength(1));
       expect(api.fullCalls.single.scope, 'card');
       expect(api.fullCalls.single.cardCategory, 'music');
-      expect(find.text('音乐'), findsOneWidget); // now the pushed page's _ScopeHeader
+      expect(find.text('音乐'), findsOneWidget); // now this same page's _ScopeHeader
       expect(tester.takeException(), isNull);
     },
   );
@@ -408,4 +408,81 @@ void main() {
     expect(focusNode.hasFocus, isFalse);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'submitting a new keyword while browsing a single category returns to an all-scope search',
+    (tester) async {
+      _useDesignCanvas(tester);
+      final api = _FakeSearchApi();
+      await tester.pumpWidget(_harness(api));
+      await tester.pump();
+
+      // Open the 音乐/card category view — same as tapping its "查看全部".
+      await tester.tap(find.text('音乐'));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(api.fullCalls.single.scope, 'card');
+      api.completerFor('').complete(_emptyResult);
+      await tester.pump();
+
+      // A brand new keyword typed at the top bar must search everything —
+      // not stay confined to the 音乐/card category the user happened to
+      // still be looking at.
+      await _submitSearch(tester, '新关键词');
+
+      expect(api.fullCalls.last.query, '新关键词');
+      expect(api.fullCalls.last.scope, 'all');
+      expect(api.fullCalls.last.cardCategory, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'the back arrow returns to the search home page from a still-open category view',
+    (tester) async {
+      _useDesignCanvas(tester);
+      final api = _FakeSearchApi();
+      await tester.pumpWidget(_harness(api));
+      await tester.pump();
+
+      // Search "A", then drill into its 聊天记录 (text) "查看全部" — only the
+      // text section has a hit, so its "查看全部" is the sole match.
+      await _submitSearch(tester, 'A');
+      api.completerFor('A').complete(_textResult('a-hit', hasMore: true));
+      await tester.pump();
+      await tester.tap(find.text('查看全部'));
+      // Same query "A" → the fake API's completer for it is already
+      // resolved from the first search, so no second .complete() call.
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('按类型查找'), findsNothing); // still in the category view
+
+      await tester.tap(find.byIcon(CupertinoIcons.chevron_left));
+      await tester.pump();
+
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.controller!.text, isEmpty);
+      expect(find.text('按类型查找'), findsOneWidget); // landing page's own label
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a new search clears the previous results immediately, before the response arrives',
+    (tester) async {
+      _useDesignCanvas(tester);
+      final api = _FakeSearchApi();
+      await tester.pumpWidget(_harness(api));
+      await tester.pump();
+
+      await _submitSearch(tester, 'A');
+      api.completerFor('A').complete(_textResult('a-hit'));
+      await tester.pump();
+      expect(find.text('a-hit'), findsOneWidget);
+
+      await _submitSearch(tester, 'B');
+      await tester.pump(); // one frame — B's response has not arrived yet
+
+      expect(find.text('a-hit'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

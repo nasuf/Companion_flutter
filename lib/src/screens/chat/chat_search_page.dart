@@ -4,9 +4,12 @@ part of 'package:companion_flutter/main.dart';
 ///
 /// `all` is the entry screen (search box + quick filters + recent
 /// searches + a small preview of each match kind). Tapping a quick filter
-/// or a section's "查看全部" re-pushes the *same* page class with a single
-/// non-`all` scope, which switches into a real paginated list/grid — one
-/// widget, two roles, no separate gallery page to build/maintain.
+/// or a section's "查看全部" switches this *same instance* in place to a
+/// single non-`all` scope's real paginated list/grid — one widget, two
+/// roles, no separate gallery page and no second page on the Navigator
+/// stack. Submitting a new keyword (see `_onSubmitted`) always resets back
+/// to `all` first, and the search bar's back arrow always lands on this
+/// `all`+empty-query landing state before it ever pops the page itself.
 enum ChatSearchScope { all, text, card, image }
 
 String _scopeQueryValue(ChatSearchScope scope) {
@@ -196,10 +199,19 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
   /// every IME candidate keystroke and then again when a candidate was
   /// committed, and even for plain ASCII input firing on every keystroke is
   /// more requests than a person tapping "search" once actually asked for.
+  ///
+  /// Always resets to scope=all first: submitting a new keyword is a brand
+  /// new search, not a further filter of whatever single-category "查看全部"
+  /// list happened to be open — the old results (of any scope) are gone the
+  /// moment a new keyword is submitted, never silently narrowed to them.
   Future<void> _onSubmitted(String value) async {
     final trimmed = value.trim();
     if (trimmed.isEmpty) return;
-    setState(() => _query = trimmed);
+    setState(() {
+      _scope = ChatSearchScope.all;
+      _cardCategory = null;
+      _query = trimmed;
+    });
     await _runSearch();
     final history = await _historyStore.add(widget.conversationId, trimmed);
     if (mounted) setState(() => _history = history);
@@ -213,6 +225,33 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
     if (_query.isEmpty) return;
     setState(() => _query = '');
     _runSearch();
+  }
+
+  /// The search bar's leading back arrow — always one hop back to the
+  /// search home page (quick filters + recent searches), no matter how the
+  /// current view was reached (a quick filter, "查看全部", or a still-open
+  /// scope left over from an earlier search). Only pops the whole search
+  /// feature once there is nowhere left to back out of, i.e. we're already
+  /// on the home page.
+  void _handleBack() {
+    if (_scope == ChatSearchScope.all && _query.isEmpty) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    _focusNode.unfocus();
+    _controller.clear();
+    _searchGeneration++; // invalidate any in-flight search for the old scope/query
+    setState(() {
+      _scope = ChatSearchScope.all;
+      _cardCategory = null;
+      _query = '';
+      _preview = null;
+      _pagedItems.clear();
+      _pagedOffset = 0;
+      _hasMorePaged = false;
+      _error = null;
+      _loading = false;
+    });
   }
 
   void _selectHistoryTerm(String term) {
@@ -344,22 +383,19 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
     };
   }
 
+  /// A quick-filter tile or a "查看全部" link — switches *this* page to the
+  /// single-category paginated view for the current query, in place. This
+  /// used to push a whole new [ChatSearchPage] instance, which left the
+  /// previous keyword's result page sitting underneath on the Navigator
+  /// stack: a later top-bar search or the back arrow landed on that stale
+  /// page instead of resetting to the search home page.
   void _openScope(ChatSearchScope scope, [String? cardCategory]) {
-    unawaited(
-      ChatSearchPage.push(
-        context,
-        api: widget.api,
-        session: widget.session,
-        conversationId: widget.conversationId,
-        agentAvatarUrl: widget.agentAvatarUrl,
-        userAvatarUrl: widget.userAvatarUrl,
-        onOpenComponentCard: widget.onOpenComponentCard,
-        onPreviewAttachment: widget.onPreviewAttachment,
-        initialScope: scope,
-        initialQuery: _query.isEmpty ? null : _query,
-        initialCardCategory: cardCategory,
-      ),
-    );
+    _focusNode.unfocus();
+    setState(() {
+      _scope = scope;
+      _cardCategory = cardCategory;
+    });
+    _runSearch();
   }
 
   void _openContext(MessageSearchHit hit) {
@@ -408,7 +444,7 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
                   focusNode: _focusNode,
                   autofocus: _scope == ChatSearchScope.all,
                   onSubmitted: _onSubmitted,
-                  onBack: () => Navigator.of(context).maybePop(),
+                  onBack: _handleBack,
                   onCancel: _cancelSearch,
                 ),
                 if (_scope != ChatSearchScope.all)
