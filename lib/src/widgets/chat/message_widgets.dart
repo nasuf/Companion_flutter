@@ -24,6 +24,8 @@ class _MessageList extends StatelessWidget {
     this.showTyping = false,
     this.stationMessageId,
     this.stationMessageKey,
+    this.highlightMessageId,
+    this.highlightMessageKey,
     this.agentAvatarUrl,
     this.userAvatarUrl,
     this.authToken,
@@ -54,6 +56,13 @@ class _MessageList extends StatelessWidget {
   final bool showTyping;
   final String? stationMessageId;
   final GlobalKey? stationMessageKey;
+
+  /// The message a search-result tap just jumped to — flashed via
+  /// [_Bubble]/[_MessageTextBubble] and, once, scrolled into view through
+  /// [highlightMessageKey] (same "conditionally attach a GlobalKey to
+  /// whichever row matches an id" idiom [stationMessageKey] already uses).
+  final String? highlightMessageId;
+  final GlobalKey? highlightMessageKey;
   final String? agentAvatarUrl;
   final String? userAvatarUrl;
   final String? authToken;
@@ -102,8 +111,11 @@ class _MessageList extends StatelessWidget {
           );
         }
         final message = messages[index - 1];
+        final highlighted =
+            highlightMessageId != null && message.id == highlightMessageId;
         final row = _MessageRow(
           message: message,
+          highlighted: highlighted,
           agentAvatarUrl: agentAvatarUrl,
           userAvatarUrl: userAvatarUrl,
           onComponentCardTap: onComponentCardTap,
@@ -128,6 +140,9 @@ class _MessageList extends StatelessWidget {
           key: ValueKey('chat-message-${message.id}'),
           child: row,
         );
+        if (highlighted && highlightMessageKey != null) {
+          return KeyedSubtree(key: highlightMessageKey, child: keyedRow);
+        }
         if (message.id == stationMessageId && stationMessageKey != null) {
           return KeyedSubtree(key: stationMessageKey, child: keyedRow);
         }
@@ -140,6 +155,7 @@ class _MessageList extends StatelessWidget {
 class _MessageRow extends StatelessWidget {
   const _MessageRow({
     required this.message,
+    this.highlighted = false,
     required this.onComponentCardTap,
     required this.onAchievementTap,
     required this.onResolveMusicTrack,
@@ -162,6 +178,10 @@ class _MessageRow extends StatelessWidget {
   });
 
   final ChatMessage message;
+
+  /// True for exactly the one message a search-result tap just jumped to —
+  /// flashes blue twice via [_Bubble]/[_MessageTextBubble], then clears.
+  final bool highlighted;
   final ValueChanged<ChatComponentCard> onComponentCardTap;
   final ValueChanged<AchievementItem> onAchievementTap;
   final Future<MusicTrack?> Function(MusicTrack track) onResolveMusicTrack;
@@ -225,6 +245,7 @@ class _MessageRow extends StatelessWidget {
           if (!message.isMine) ...[avatar, const SizedBox(width: _avatarGap)],
           _Bubble(
             message: message,
+            highlighted: highlighted,
             onComponentCardTap: onComponentCardTap,
             onResolveMusicTrack: onResolveMusicTrack,
             onMusicCardActivated: onMusicCardActivated,
@@ -541,6 +562,7 @@ class _MusicStatusTimelineRow extends StatelessWidget {
 class _Bubble extends StatelessWidget {
   const _Bubble({
     required this.message,
+    this.highlighted = false,
     required this.onComponentCardTap,
     required this.onResolveMusicTrack,
     required this.onMusicCardActivated,
@@ -560,6 +582,7 @@ class _Bubble extends StatelessWidget {
   });
 
   final ChatMessage message;
+  final bool highlighted;
   final ValueChanged<ChatComponentCard> onComponentCardTap;
   final Future<MusicTrack?> Function(MusicTrack track) onResolveMusicTrack;
   final void Function(ChatComponentCard card, String messageId)
@@ -611,7 +634,7 @@ class _Bubble extends StatelessWidget {
           : CrossAxisAlignment.start,
       children: [
         if (showTextWithCard) ...[
-          _MessageTextBubble(message: message),
+          _MessageTextBubble(message: message, highlighted: highlighted),
           const SizedBox(height: 8),
         ],
         if (message.isVoiceTranscriptionPending)
@@ -670,11 +693,28 @@ class _Bubble extends StatelessWidget {
           ),
           if (showTextWithAttachments) ...[
             const SizedBox(height: 8),
-            _MessageTextBubble(message: message),
+            _MessageTextBubble(message: message, highlighted: highlighted),
           ],
         ] else
-          _MessageTextBubble(message: message),
+          _MessageTextBubble(message: message, highlighted: highlighted),
       ],
+    );
+    final highlightedBubbleColumn = AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: highlighted
+            ? [
+                BoxShadow(
+                  color: AppColors.accent.withValues(alpha: 0.35),
+                  blurRadius: 16,
+                  spreadRadius: 2,
+                ),
+              ]
+            : const [],
+      ),
+      child: bubbleColumn,
     );
 
     return Flexible(
@@ -698,11 +738,11 @@ class _Bubble extends StatelessWidget {
                       : null,
                 ),
                 const SizedBox(width: 8),
-                bubbleColumn,
+                highlightedBubbleColumn,
               ],
             )
           else
-            bubbleColumn,
+            highlightedBubbleColumn,
           const SizedBox(height: 3),
           Text(
             _formatTime(message.createdAt),
@@ -903,9 +943,16 @@ class _TypingBubbleState extends State<_TypingBubble>
 }
 
 class _MessageTextBubble extends StatelessWidget {
-  const _MessageTextBubble({required this.message});
+  const _MessageTextBubble({required this.message, this.highlighted = false});
 
   final ChatMessage message;
+
+  /// True for the one message a search-result tap just jumped to — the
+  /// text itself flashes to the app's accent blue (matching the same
+  /// [AppColors.accent] used to highlight matched terms in search results)
+  /// instead of a background tint, since that reads clearly against both
+  /// the tinted "mine" bubble and the plain "theirs" one.
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
@@ -915,13 +962,17 @@ class _MessageTextBubble extends StatelessWidget {
         decoration: _bubbleDecoration(message.isMine),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          child: Text(
-            message.content,
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 150),
             style: TextStyle(
-              color: message.isMine ? Colors.white : AppColors.text,
+              color: highlighted
+                  ? AppColors.accent
+                  : (message.isMine ? Colors.white : AppColors.text),
               fontSize: 14,
+              fontWeight: highlighted ? FontWeight.w700 : FontWeight.normal,
               height: 1.42,
             ),
+            child: Text(message.content),
           ),
         ),
       ),

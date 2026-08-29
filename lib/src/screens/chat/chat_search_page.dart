@@ -60,6 +60,7 @@ class ChatSearchPage extends StatefulWidget {
     this.userAvatarUrl,
     required this.onOpenComponentCard,
     required this.onPreviewAttachment,
+    required this.onLocateMessage,
     this.initialScope = ChatSearchScope.all,
     this.initialQuery,
     this.initialCardCategory,
@@ -72,6 +73,13 @@ class ChatSearchPage extends StatefulWidget {
   final String? userAvatarUrl;
   final Future<void> Function(ChatComponentCard card) onOpenComponentCard;
   final Future<void> Function(ChatAttachment attachment) onPreviewAttachment;
+
+  /// Pops this page back to the live chat page and jumps it to the given
+  /// hit's message (scroll + flash-highlight) — see `_ChatPageState`'s
+  /// `_locateSearchHit`. Replaces the retired standalone
+  /// `ChatMessageContextPage`: a search result now opens the real chat
+  /// instead of a read-only copy of it.
+  final Future<void> Function(MessageSearchHit hit) onLocateMessage;
   final ChatSearchScope initialScope;
   final String? initialQuery;
   final String? initialCardCategory;
@@ -86,6 +94,7 @@ class ChatSearchPage extends StatefulWidget {
     required Future<void> Function(ChatComponentCard card) onOpenComponentCard,
     required Future<void> Function(ChatAttachment attachment)
     onPreviewAttachment,
+    required Future<void> Function(MessageSearchHit hit) onLocateMessage,
     ChatSearchScope initialScope = ChatSearchScope.all,
     String? initialQuery,
     String? initialCardCategory,
@@ -102,6 +111,7 @@ class ChatSearchPage extends StatefulWidget {
           userAvatarUrl: userAvatarUrl,
           onOpenComponentCard: onOpenComponentCard,
           onPreviewAttachment: onPreviewAttachment,
+          onLocateMessage: onLocateMessage,
           initialScope: initialScope,
           initialQuery: initialQuery,
           initialCardCategory: initialCardCategory,
@@ -398,21 +408,13 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
     _runSearch();
   }
 
-  void _openContext(MessageSearchHit hit) {
-    unawaited(
-      ChatMessageContextPage.push(
-        context,
-        api: widget.api,
-        session: widget.session,
-        conversationId: widget.conversationId,
-        targetMessageId: hit.message.id,
-        targetRank: hit.rank,
-        agentAvatarUrl: widget.agentAvatarUrl,
-        userAvatarUrl: widget.userAvatarUrl,
-        onOpenComponentCard: widget.onOpenComponentCard,
-        onPreviewAttachment: widget.onPreviewAttachment,
-      ),
-    );
+  /// Text-result rows, and a card-result row's non-card area, both land
+  /// here: pop straight back to the live chat page underneath (already
+  /// mounted — this page was pushed on top of it) and let it jump/highlight
+  /// the hit itself, instead of opening a separate read-only viewer.
+  void _locateMessage(MessageSearchHit hit) {
+    Navigator.of(context).pop();
+    unawaited(widget.onLocateMessage(hit));
   }
 
   void _openCard(MessageSearchHit hit) {
@@ -503,8 +505,9 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
         userAvatarUrl: widget.userAvatarUrl,
         authToken: widget.api.authToken,
         apiBaseUrl: widget.api.baseUrl,
-        onTextTap: _openContext,
+        onTextTap: _locateMessage,
         onCardTap: _openCard,
+        onCardRowTap: _locateMessage,
         onImageTap: _openImagePreview,
         onSeeAll: _openScope,
         highlightQuery: _query,
@@ -545,7 +548,8 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
                       ? SearchCardResultRow(
                           hit: hit,
                           agentName: _agentName,
-                          onTap: () => _openCard(hit),
+                          onCardTap: () => _openCard(hit),
+                          onRowTap: () => _locateMessage(hit),
                           authToken: widget.api.authToken,
                           apiBaseUrl: widget.api.baseUrl,
                           agentAvatarUrl: widget.agentAvatarUrl,
@@ -554,7 +558,7 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
                       : SearchTextResultRow(
                           hit: hit,
                           agentName: _agentName,
-                          onTap: () => _openContext(hit),
+                          onTap: () => _locateMessage(hit),
                           agentAvatarUrl: widget.agentAvatarUrl,
                           userAvatarUrl: widget.userAvatarUrl,
                           highlightQuery: _query,
@@ -951,6 +955,7 @@ class _AllResultsList extends StatelessWidget {
     required this.apiBaseUrl,
     required this.onTextTap,
     required this.onCardTap,
+    required this.onCardRowTap,
     required this.onImageTap,
     required this.onSeeAll,
     this.agentAvatarUrl,
@@ -966,8 +971,15 @@ class _AllResultsList extends StatelessWidget {
   final String? highlightQuery;
   final String? agentAvatarUrl;
   final String? userAvatarUrl;
+
+  /// Whole-row tap for a text result — jumps to it in chat.
   final ValueChanged<MessageSearchHit> onTextTap;
+
+  /// Tapping the card itself — opens the card, same as in live chat.
   final ValueChanged<MessageSearchHit> onCardTap;
+
+  /// Tapping a card row's non-card (header) area — jumps to it in chat.
+  final ValueChanged<MessageSearchHit> onCardRowTap;
   final ValueChanged<MessageSearchHit> onImageTap;
   final void Function(ChatSearchScope scope, [String? cardCategory]) onSeeAll;
 
@@ -1016,7 +1028,8 @@ class _AllResultsList extends StatelessWidget {
             SearchCardResultRow(
               hit: hit,
               agentName: agentName,
-              onTap: () => onCardTap(hit),
+              onCardTap: () => onCardTap(hit),
+              onRowTap: () => onCardRowTap(hit),
               authToken: authToken,
               apiBaseUrl: apiBaseUrl,
               agentAvatarUrl: agentAvatarUrl,

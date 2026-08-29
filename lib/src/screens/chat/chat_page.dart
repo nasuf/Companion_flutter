@@ -153,6 +153,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const _composerPanelHeight = 236.0;
   static const _messagePageSize = 100;
   static const _loadOlderThreshold = 80.0;
+  static const _jumpWindowRadius = 15;
+  static const _jumpExtendStep = 15;
   static const _maxVoiceSeconds = 60;
   static const _maxVoiceBytes = 2 * 1024 * 1024;
   static final _supportedSharedLinkPattern = RegExp(
@@ -168,8 +170,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final ValueNotifier<double> _voiceAmplitude = ValueNotifier(0.12);
   final _playback = MusicPlaybackController.instance;
   final _stationCardKey = GlobalKey(debugLabel: 'chat-station-card');
+  final _highlightMessageKey = GlobalKey(debugLabel: 'chat-highlight-message');
   final _musicStation = ChatMusicStationState();
   final List<ChatMessage> _messages = [];
+
+  // A search-result tap that landed outside the live tail replaces
+  // `_messages` with a fixed window around the target (mirrors the retired
+  // ChatMessageContextPage's own rank math) instead of trying to splice a
+  // possibly-huge gap back to "now". `_handleScroll` switches to the
+  // `*Jump` loaders below while this is true; tapping "回到最新" (or
+  // scrolling newer all the way back to rank 0) resolves it by just calling
+  // the existing `_loadLatestMessages`, so none of the live-tail invariants
+  // below ever need to understand a mid-history window.
+  bool _isJumpedToHistory = false;
+  int _jumpOldestRank = 0;
+  int _jumpNewestRank = 0;
+  bool _hasMoreOlderJump = false;
+  bool _hasMoreNewerJump = false;
+  bool _loadingOlderJump = false;
+  bool _loadingNewerJump = false;
+  String? _highlightMessageId;
 
   // CLAUDE.md 权益项 1: 本地缓存的额度预测, 避免每条消息都发一次 /chat/quota。
   // 会有最多一条消息的滞后 (ack 后才刷新) —— 服务端在 ws.py 仍是权威闸门,
@@ -1257,6 +1277,152 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         .length;
   }
 
+  /// Entry point for a chat-search result tap ([ChatSearchPage]'s
+  /// `onLocateMessage`, wired in `_openChatSearch`'s `ChatSearchPage.push`
+  /// call) — the search page pops itself back to this already-live page
+  /// first, so this only ever runs once we're back on top. Already-loaded
+  /// messages (the common case: a recent hit, or the user is already
+  /// looking at the window it belongs to) just scroll+flash; anything
+  /// older is a real jump.
+  Future<void> _locateSearchHit(MessageSearchHit hit) async {
+    if (_messages.any((message) => message.id == hit.message.id)) {
+      unawaited(_highlightAndScrollTo(hit.message.id));
+      return;
+    }
+    await _jumpToRank(hit.rank, hit.message.id);
+  }
+
+  Future<void> _jumpToRank(int rank, String focusMessageId) async {
+    if (_loadingInitial) return;
+    final start = math.max(0, rank - _jumpWindowRadius);
+    const take = _jumpWindowRadius * 2 + 1;
+    setState(() {
+      _loadingInitial = true;
+      _historyError = null;
+    });
+    try {
+      final newestFirst = await widget.api.loadMessages(
+        _conversationId,
+        limit: take,
+        offset: start,
+      );
+      if (!mounted) return;
+      final chronological = newestFirst.reversed.toList();
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(chronological);
+        _jumpNewestRank = start;
+        _jumpOldestRank = start + newestFirst.length - 1;
+        _hasMoreNewerJump = start > 0;
+        _hasMoreOlderJump = newestFirst.length == take;
+        _isJumpedToHistory = true;
+        _loadingInitial = false;
+      });
+      unawaited(_highlightAndScrollTo(focusMessageId));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadingInitial = false;
+        _historyError = _asMessage(error);
+      });
+    }
+  }
+
+  Future<void> _loadOlderJump() async {
+    if (_loadingOlderJump || !_hasMoreOlderJump) return;
+    setState(() => _loadingOlderJump = true);
+    try {
+      final nextOffset = _jumpOldestRank + 1;
+      final newestFirst = await widget.api.loadMessages(
+        _conversationId,
+        limit: _jumpExtendStep,
+        offset: nextOffset,
+      );
+      if (!mounted) return;
+      setState(() {
+        _messages.insertAll(0, newestFirst.reversed);
+        _jumpOldestRank = nextOffset + newestFirst.length - 1;
+        _hasMoreOlderJump = newestFirst.length == _jumpExtendStep;
+        _loadingOlderJump = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingOlderJump = false);
+    }
+  }
+
+  Future<void> _loadNewerJump() async {
+    if (_loadingNewerJump || !_hasMoreNewerJump) return;
+    setState(() => _loadingNewerJump = true);
+    try {
+      final take = math.min(_jumpExtendStep, _jumpNewestRank);
+      final nextOffset = _jumpNewestRank - take;
+      final newestFirst = await widget.api.loadMessages(
+        _conversationId,
+        limit: take,
+        offset: nextOffset,
+      );
+      if (!mounted) return;
+      setState(() {
+        _messages.addAll(newestFirst.reversed);
+        _jumpNewestRank = nextOffset;
+        _hasMoreNewerJump = nextOffset > 0;
+        _loadingNewerJump = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingNewerJump = false);
+    }
+  }
+
+  /// The "回到最新" pill's tap target — always a full resync via the
+  /// existing live-tail loader rather than trying to reconcile the jumped
+  /// window's rank bookkeeping back into `_loadedServerMessages`/
+  /// `_hasOlderMessages`, so those keep their original, already-relied-on
+  /// meaning untouched.
+  Future<void> _returnToLive() async {
+    setState(() => _isJumpedToHistory = false);
+    await _loadLatestMessages(showLoading: true);
+  }
+
+  Future<void> _highlightAndScrollTo(String messageId) async {
+    final completer = Completer<void>();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        completer.complete();
+        return;
+      }
+      final targetContext = _highlightMessageKey.currentContext;
+      if (targetContext != null) {
+        await Scrollable.ensureVisible(
+          targetContext,
+          alignment: 0.5,
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+        );
+      }
+      if (mounted) await _flashHighlight(messageId);
+      completer.complete();
+    });
+    return completer.future;
+  }
+
+  /// "文字变蓝色，然后闪烁两次就消失" — two on/off cycles of `highlighted`;
+  /// each toggle is a hard state flip, but `_MessageTextBubble`/`_Bubble`
+  /// ease the actual color/glow in and out (`AnimatedDefaultTextStyle` /
+  /// `AnimatedContainer`), so it reads as a smooth flash rather than a snap.
+  Future<void> _flashHighlight(String messageId) async {
+    const onDuration = Duration(milliseconds: 350);
+    const offDuration = Duration(milliseconds: 250);
+    for (var i = 0; i < 2; i++) {
+      if (!mounted) return;
+      setState(() => _highlightMessageId = messageId);
+      await Future.delayed(onDuration);
+      if (!mounted) return;
+      setState(() => _highlightMessageId = null);
+      if (i == 0) await Future.delayed(offDuration);
+    }
+  }
+
   bool _isMusicStationCard(ChatComponentCard? card) {
     return ChatMusicStationState.isMusicCard(card);
   }
@@ -1655,6 +1821,21 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void _handleScroll() {
     if (!_scrollController.hasClients) return;
+    if (_isJumpedToHistory) {
+      final position = _scrollController.position;
+      if (position.pixels <= _loadOlderThreshold &&
+          _hasMoreOlderJump &&
+          !_loadingOlderJump) {
+        unawaited(_loadOlderJump());
+      }
+      if (position.pixels >= position.maxScrollExtent - _loadOlderThreshold &&
+          _hasMoreNewerJump &&
+          !_loadingNewerJump) {
+        unawaited(_loadNewerJump());
+      }
+      _scheduleStationDockCheck();
+      return;
+    }
     if (_scrollController.position.pixels <= _loadOlderThreshold &&
         _hasOlderMessages &&
         !_loadingOlder) {
@@ -3267,6 +3448,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       userAvatarUrl: widget.session.userAvatarUrl,
       onOpenComponentCard: _openComponentCard,
       onPreviewAttachment: _previewAttachment,
+      onLocateMessage: _locateSearchHit,
     );
   }
 
@@ -3641,6 +3823,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           isMusicBusy: _advancingStation,
                           stationMessageId: _musicStation.messageId,
                           stationMessageKey: _stationCardKey,
+                          highlightMessageId: _highlightMessageId,
+                          highlightMessageKey: _highlightMessageKey,
                           agentAvatarUrl: agentAvatarUrl,
                           userAvatarUrl: widget.session.userAvatarUrl,
                           authToken: widget.api.authToken,
@@ -3750,16 +3934,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             duration: _animationDuration,
             curve: _animationCurve,
             child: IgnorePointer(
-              ignoring: _newMessageCount == 0,
+              ignoring: !_isJumpedToHistory && _newMessageCount == 0,
               child: AnimatedOpacity(
                 duration: const Duration(milliseconds: 180),
                 curve: Curves.easeOutCubic,
-                opacity: _newMessageCount > 0 ? 1 : 0,
+                opacity: (_isJumpedToHistory || _newMessageCount > 0) ? 1 : 0,
                 child: Center(
-                  child: _NewMessagesButton(
-                    count: _newMessageCount,
-                    onTap: () => scrollToLatest(),
-                  ),
+                  child: _isJumpedToHistory
+                      ? _ReturnToLiveButton(
+                          onTap: () => unawaited(_returnToLive()),
+                        )
+                      : _NewMessagesButton(
+                          count: _newMessageCount,
+                          onTap: () => scrollToLatest(),
+                        ),
                 ),
               ),
             ),
@@ -3851,6 +4039,59 @@ class _NewMessagesButton extends StatelessWidget {
               Text(
                 label,
                 style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown in the exact same floating-pill slot as [_NewMessagesButton]
+/// (mutually exclusive — a search jump and unread-new-messages never need
+/// to compete for it) whenever a chat-search tap has replaced the live tail
+/// with a historical window; tapping it resyncs via [_returnToLive].
+class _ReturnToLiveButton extends StatelessWidget {
+  const _ReturnToLiveButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.accent,
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.accent.withValues(alpha: 0.28),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 16, 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                CupertinoIcons.arrow_down_circle,
+                color: Colors.white,
+                size: 15,
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                '回到最新消息',
+                style: TextStyle(
                   color: Colors.white,
                   fontSize: 13,
                   fontWeight: FontWeight.w800,

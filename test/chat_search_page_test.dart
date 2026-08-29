@@ -49,6 +49,43 @@ MessageSearchResult _textResult(String label, {bool hasMore = false}) {
   );
 }
 
+MessageSearchResult _cardResult(String id) {
+  return MessageSearchResult(
+    text: const [],
+    cards: [
+      MessageSearchHit(
+        message: ChatMessage(
+          id: id,
+          conversationId: 'conv-1',
+          // Not "user": the header then shows agentName ("小芜") rather than
+          // "我", which would otherwise collide with the avatar's own "我"
+          // fallback-initials text and make `find.text('我')` ambiguous.
+          role: 'assistant',
+          content: '',
+          createdAt: DateTime(2026, 8, 1),
+          metadata: const {
+            'component_card': {
+              'type': 'gift',
+              'title': '美式咖啡',
+              'subtitle': '待接收',
+              'body': '饮品',
+              'footer': '点击查看',
+              'accent': '#FF8A3D',
+              'payload': <String, dynamic>{},
+            },
+          },
+        ),
+        matchType: 'card',
+        rank: 0,
+      ),
+    ],
+    images: const [],
+    hasMoreText: false,
+    hasMoreCards: false,
+    hasMoreImages: false,
+  );
+}
+
 const _emptyResult = MessageSearchResult(
   text: [],
   cards: [],
@@ -90,14 +127,45 @@ class _FakeSearchApi extends CompanionApi {
   }
 }
 
-Widget _harness(CompanionApi api) {
+Widget _harness(
+  CompanionApi api, {
+  Future<void> Function(MessageSearchHit hit)? onLocateMessage,
+  Future<void> Function(ChatComponentCard card)? onOpenComponentCard,
+}) {
   return MaterialApp(
     home: ChatSearchPage(
       api: api,
       session: _session,
       conversationId: 'conv-1',
-      onOpenComponentCard: (_) async {},
+      onOpenComponentCard: onOpenComponentCard ?? (_) async {},
       onPreviewAttachment: (_) async {},
+      onLocateMessage: onLocateMessage ?? (_) async {},
+    ),
+  );
+}
+
+/// A harness with an actual page underneath — for asserting that locating a
+/// message pops [ChatSearchPage] back to whatever pushed it (the live chat
+/// page, in the real app), not just that the callback fired.
+Widget _pushHarness(
+  CompanionApi api, {
+  required Future<void> Function(MessageSearchHit hit) onLocateMessage,
+  Future<void> Function(ChatComponentCard card)? onOpenComponentCard,
+}) {
+  return MaterialApp(
+    home: Builder(
+      builder: (context) => CupertinoButton(
+        onPressed: () => ChatSearchPage.push(
+          context,
+          api: api,
+          session: _session,
+          conversationId: 'conv-1',
+          onOpenComponentCard: onOpenComponentCard ?? (_) async {},
+          onPreviewAttachment: (_) async {},
+          onLocateMessage: onLocateMessage,
+        ),
+        child: const Text('open search'),
+      ),
     ),
   );
 }
@@ -312,6 +380,7 @@ void main() {
             initialScope: ChatSearchScope.text,
             onOpenComponentCard: (_) async {},
             onPreviewAttachment: (_) async {},
+            onLocateMessage: (_) async {},
           ),
         ),
       );
@@ -482,6 +551,105 @@ void main() {
       await tester.pump(); // one frame — B's response has not arrived yet
 
       expect(find.text('a-hit'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'tapping a text result pops back to the live chat and hands off the hit',
+    (tester) async {
+      _useDesignCanvas(tester);
+      final api = _FakeSearchApi();
+      final located = <MessageSearchHit>[];
+      await tester.pumpWidget(
+        _pushHarness(api, onLocateMessage: (hit) async => located.add(hit)),
+      );
+      await tester.pump();
+
+      await tester.tap(find.text('open search'));
+      await tester.pumpAndSettle();
+
+      await _submitSearch(tester, 'A');
+      api.completerFor('A').complete(_textResult('a-hit'));
+      await tester.pump();
+
+      await tester.tap(find.text('a-hit'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('open search'), findsOneWidget); // popped back
+      expect(located, hasLength(1));
+      expect(located.single.message.id, 'a-hit');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'tapping a card result opens the card without leaving the search page',
+    (tester) async {
+      _useDesignCanvas(tester);
+      final api = _FakeSearchApi();
+      final located = <MessageSearchHit>[];
+      final openedCards = <ChatComponentCard>[];
+      await tester.pumpWidget(
+        _pushHarness(
+          api,
+          onLocateMessage: (hit) async => located.add(hit),
+          onOpenComponentCard: (card) async => openedCards.add(card),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.text('open search'));
+      await tester.pumpAndSettle();
+
+      await _submitSearch(tester, 'A');
+      api.completerFor('A').complete(_cardResult('card-hit'));
+      await tester.pump();
+
+      // warnIfMissed: false — the raw text sits under an IgnorePointer, so
+      // the framework's own hit-test probe (aimed at the Text's exact
+      // RenderParagraph) reports a miss even though the tap correctly lands
+      // on the opaque GestureDetector wrapping it (asserted below).
+      await tester.tap(find.text('美式咖啡'), warnIfMissed: false);
+      await tester.pump();
+
+      expect(openedCards, hasLength(1));
+      expect(located, isEmpty);
+      expect(find.text('open search'), findsNothing); // still on search page
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'tapping a card row outside the card locates the message instead of opening it',
+    (tester) async {
+      _useDesignCanvas(tester);
+      final api = _FakeSearchApi();
+      final located = <MessageSearchHit>[];
+      final openedCards = <ChatComponentCard>[];
+      await tester.pumpWidget(
+        _pushHarness(
+          api,
+          onLocateMessage: (hit) async => located.add(hit),
+          onOpenComponentCard: (card) async => openedCards.add(card),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.text('open search'));
+      await tester.pumpAndSettle();
+
+      await _submitSearch(tester, 'A');
+      api.completerFor('A').complete(_cardResult('card-hit'));
+      await tester.pump();
+
+      await tester.tap(find.text('小芜')); // the row's header, not the card
+      await tester.pumpAndSettle();
+
+      expect(openedCards, isEmpty);
+      expect(located, hasLength(1));
+      expect(located.single.message.id, 'card-hit');
+      expect(find.text('open search'), findsOneWidget); // popped back
       expect(tester.takeException(), isNull);
     },
   );

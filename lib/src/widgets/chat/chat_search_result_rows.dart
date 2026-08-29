@@ -259,7 +259,8 @@ class SearchCardResultRow extends StatelessWidget {
     super.key,
     required this.hit,
     required this.agentName,
-    required this.onTap,
+    required this.onCardTap,
+    required this.onRowTap,
     this.authToken,
     this.apiBaseUrl,
     this.agentAvatarUrl,
@@ -268,7 +269,14 @@ class SearchCardResultRow extends StatelessWidget {
 
   final MessageSearchHit hit;
   final String agentName;
-  final VoidCallback onTap;
+
+  /// Tapping the card itself opens it — same as tapping this card in chat.
+  final VoidCallback onCardTap;
+
+  /// Tapping anywhere else in the row (the header) jumps to the card's
+  /// position in chat instead, mirroring [SearchTextResultRow]'s whole-row
+  /// behavior.
+  final VoidCallback onRowTap;
   final String? authToken;
   final String? apiBaseUrl;
   final String? agentAvatarUrl;
@@ -279,25 +287,31 @@ class SearchCardResultRow extends StatelessWidget {
     final card = hit.message.componentCard;
     if (card == null) return const SizedBox.shrink();
     final isMine = hit.message.isMine;
-    return CupertinoButton(
-      minimumSize: Size.zero,
-      padding: EdgeInsets.zero,
-      onPressed: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SearchResultHeader(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onRowTap,
+          child: _SearchResultHeader(
             isMine: isMine,
             createdAt: hit.message.createdAt,
             agentName: agentName,
             agentAvatarUrl: agentAvatarUrl,
             userAvatarUrl: userAvatarUrl,
           ),
-          // The card's own interactive bits (mini music player, favorite
-          // button, ...) only make sense in a live chat — IgnorePointer
-          // silences them so the outer CupertinoButton is the single "open"
-          // target for the whole row (header included).
-          IgnorePointer(
+        ),
+        // The card's own interactive bits (mini music player, favorite
+        // button, ...) only make sense in a live chat — IgnorePointer
+        // silences them so the GestureDetector below is the single "open
+        // this card" target; the header above jumps to chat instead.
+        // `opaque` is required here: IgnorePointer makes its subtree report
+        // no hit at all, and a GestureDetector's default `deferToChild`
+        // behavior would then see "no hit" too and never fire onCardTap.
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onCardTap,
+          child: IgnorePointer(
             child: _ComponentCardBubble(
               card: card,
               isMine: isMine,
@@ -317,8 +331,8 @@ class SearchCardResultRow extends StatelessWidget {
               apiBaseUrl: apiBaseUrl,
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
