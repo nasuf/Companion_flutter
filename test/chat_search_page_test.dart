@@ -86,6 +86,42 @@ MessageSearchResult _cardResult(String id) {
   );
 }
 
+MessageSearchResult _imageResult(String id, {bool hasMore = false}) {
+  final attachmentId = 'att-$id';
+  return MessageSearchResult(
+    text: const [],
+    cards: const [],
+    images: [
+      MessageSearchHit(
+        message: ChatMessage(
+          id: id,
+          conversationId: 'conv-1',
+          role: 'assistant',
+          content: '',
+          createdAt: DateTime(2026, 8, 1),
+          metadata: {
+            'attachments': [
+              {
+                'id': attachmentId,
+                'kind': 'image',
+                'mime': 'image/jpeg',
+                'size': 100,
+                'url': 'https://cdn.example.com/$id.jpg',
+              },
+            ],
+          },
+        ),
+        matchType: 'image',
+        rank: 0,
+        matchedAttachmentId: attachmentId,
+      ),
+    ],
+    hasMoreText: false,
+    hasMoreCards: false,
+    hasMoreImages: hasMore,
+  );
+}
+
 const _emptyResult = MessageSearchResult(
   text: [],
   cards: [],
@@ -659,6 +695,24 @@ void main() {
       expect(located, hasLength(1));
       expect(located.single.message.id, 'card-hit');
       expect(find.text('open search'), findsOneWidget); // popped back
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'the 图片 category list shows a sender+time header like text/card results',
+    (tester) async {
+      _useDesignCanvas(tester);
+      final api = _FakeSearchApi();
+      await tester.pumpWidget(_harness(api));
+      await tester.pump();
+
+      await tester.tap(find.text('图片'));
+      await tester.pump(const Duration(milliseconds: 400));
+      api.completerFor('').complete(_imageResult('img-hit'));
+      await tester.pump();
+
+      expect(find.text('小芜'), findsOneWidget); // the row's own header
       expect(tester.takeException(), isNull);
     },
   );

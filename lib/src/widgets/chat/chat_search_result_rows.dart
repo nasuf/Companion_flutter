@@ -337,8 +337,56 @@ class SearchCardResultRow extends StatelessWidget {
   }
 }
 
-/// Square image thumbnail used both in the "全部" section's horizontal
-/// preview strip and the dedicated image grid.
+/// A single image hit in the dedicated 图片 category list — same
+/// header-then-content shape as [SearchTextResultRow]/[SearchCardResultRow]
+/// (avatar + sender + date on top, the thumbnail below) so all three
+/// categories share one display pattern instead of images alone dropping
+/// into a header-less photo grid.
+class SearchImageResultRow extends StatelessWidget {
+  const SearchImageResultRow({
+    super.key,
+    required this.hit,
+    required this.agentName,
+    required this.onTap,
+    this.authToken,
+    this.agentAvatarUrl,
+    this.userAvatarUrl,
+  });
+
+  final MessageSearchHit hit;
+  final String agentName;
+  final VoidCallback onTap;
+  final String? authToken;
+  final String? agentAvatarUrl;
+  final String? userAvatarUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final attachment = matchedImageAttachment(hit);
+    if (attachment == null) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SearchResultHeader(
+          isMine: hit.message.isMine,
+          createdAt: hit.message.createdAt,
+          agentName: agentName,
+          agentAvatarUrl: agentAvatarUrl,
+          userAvatarUrl: userAvatarUrl,
+        ),
+        SearchImageThumb(
+          attachment: attachment,
+          authToken: authToken,
+          onTap: onTap,
+          size: 120,
+        ),
+      ],
+    );
+  }
+}
+
+/// Square image thumbnail used by [SearchImageResultRow] and the "全部"
+/// section's horizontal preview strip.
 class SearchImageThumb extends StatelessWidget {
   const SearchImageThumb({
     super.key,
@@ -352,17 +400,15 @@ class SearchImageThumb extends StatelessWidget {
   final VoidCallback onTap;
   final String? authToken;
 
-  /// Fixed square side length (used in the horizontal preview strip). Leave
-  /// null to fill the parent's own bounds instead (grid cells, which already
-  /// give a tight square constraint via [SliverGridDelegateWithFixedCrossAxisCount]).
-  final double? size;
+  /// Fixed square side length.
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     final headers = authToken?.isNotEmpty == true
         ? {'Authorization': 'Bearer $authToken'}
         : null;
-    final iconSize = size == null ? 24.0 : size! * 0.35;
+    final iconSize = size * 0.35;
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,

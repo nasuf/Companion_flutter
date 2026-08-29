@@ -520,16 +520,6 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
     if (_pagedItems.isEmpty) {
       return _EmptyResults(scheme: scheme);
     }
-    if (_scope == ChatSearchScope.image) {
-      return _ImageGrid(
-        scheme: scheme,
-        items: _pagedItems,
-        authToken: widget.api.authToken,
-        loadingMore: _loadingMore,
-        controller: _scrollController,
-        onTap: _openImagePreview,
-      );
-    }
     final groups = groupHitsByMonth(_pagedItems);
     return CustomScrollView(
       controller: _scrollController,
@@ -548,25 +538,35 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 for (final hit in group.hits) ...[
-                  _scope == ChatSearchScope.card
-                      ? SearchCardResultRow(
-                          hit: hit,
-                          agentName: _agentName,
-                          onCardTap: () => _openCard(hit),
-                          onRowTap: () => _locateMessage(hit),
-                          authToken: widget.api.authToken,
-                          apiBaseUrl: widget.api.baseUrl,
-                          agentAvatarUrl: widget.agentAvatarUrl,
-                          userAvatarUrl: widget.userAvatarUrl,
-                        )
-                      : SearchTextResultRow(
-                          hit: hit,
-                          agentName: _agentName,
-                          onTap: () => _locateMessage(hit),
-                          agentAvatarUrl: widget.agentAvatarUrl,
-                          userAvatarUrl: widget.userAvatarUrl,
-                          highlightQuery: _query,
-                        ),
+                  switch (_scope) {
+                    ChatSearchScope.card => SearchCardResultRow(
+                      hit: hit,
+                      agentName: _agentName,
+                      onCardTap: () => _openCard(hit),
+                      onRowTap: () => _locateMessage(hit),
+                      authToken: widget.api.authToken,
+                      apiBaseUrl: widget.api.baseUrl,
+                      agentAvatarUrl: widget.agentAvatarUrl,
+                      userAvatarUrl: widget.userAvatarUrl,
+                    ),
+                    ChatSearchScope.image => SearchImageResultRow(
+                      hit: hit,
+                      agentName: _agentName,
+                      onTap: () => _openImagePreview(hit),
+                      authToken: widget.api.authToken,
+                      agentAvatarUrl: widget.agentAvatarUrl,
+                      userAvatarUrl: widget.userAvatarUrl,
+                    ),
+                    ChatSearchScope.text || ChatSearchScope.all =>
+                      SearchTextResultRow(
+                        hit: hit,
+                        agentName: _agentName,
+                        onTap: () => _locateMessage(hit),
+                        agentAvatarUrl: widget.agentAvatarUrl,
+                        userAvatarUrl: widget.userAvatarUrl,
+                        highlightQuery: _query,
+                      ),
+                  },
                   const SizedBox(height: 16),
                 ],
               ]),
@@ -1115,83 +1115,6 @@ class _SearchSectionHeader extends StatelessWidget {
             ),
         ],
       ),
-    );
-  }
-}
-
-class _ImageGrid extends StatelessWidget {
-  const _ImageGrid({
-    required this.scheme,
-    required this.items,
-    required this.authToken,
-    required this.loadingMore,
-    required this.controller,
-    required this.onTap,
-  });
-
-  final _W2b scheme;
-  final List<MessageSearchHit> items;
-  final String? authToken;
-  final bool loadingMore;
-  final ScrollController controller;
-  final ValueChanged<MessageSearchHit> onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final groups = groupHitsByMonth(items);
-    return CustomScrollView(
-      controller: controller,
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      slivers: [
-        for (final group in groups) ...[
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: MonthHeaderDelegate(
-              label: group.label,
-              background: scheme.base,
-              horizontalPadding: 12,
-            ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                crossAxisSpacing: 4,
-                mainAxisSpacing: 4,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final hit = group.hits[index];
-                  final attachment = matchedImageAttachment(hit);
-                  if (attachment == null) return const SizedBox.shrink();
-                  return SearchImageThumb(
-                    attachment: attachment,
-                    authToken: authToken,
-                    size: null,
-                    onTap: () => onTap(hit),
-                  );
-                },
-                childCount: group.hits.length,
-              ),
-            ),
-          ),
-        ],
-        if (loadingMore)
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Center(
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            ),
-          ),
-        const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
-      ],
     );
   }
 }
