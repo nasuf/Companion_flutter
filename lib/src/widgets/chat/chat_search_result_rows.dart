@@ -28,7 +28,12 @@ List<MonthGroup> groupHitsByMonth(List<MessageSearchHit> hits) {
   String? currentLabel;
   List<MessageSearchHit>? currentHits;
   for (final hit in hits) {
-    final createdAt = hit.message.createdAt;
+    // .toLocal() first — createdAt off the wire is UTC, and grouping by its
+    // raw .year/.month read UTC calendar months. For a UTC+8 user, anything
+    // sent in the first 8 hours of a local day landed in the *previous* UTC
+    // day, so early-morning messages silently fell into the wrong month
+    // (same reason _formatTime() converts before reading calendar fields).
+    final createdAt = hit.message.createdAt.toLocal();
     final label = '${createdAt.year}-${createdAt.month}';
     if (label != currentLabel) {
       currentHits = <MessageSearchHit>[];

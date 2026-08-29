@@ -182,6 +182,22 @@ void main() {
     test('empty input yields no groups', () {
       expect(groupHitsByMonth(const []), isEmpty);
     });
+
+    test('groups by local calendar month, not the raw UTC one', () {
+      // Late-in-the-UTC-day timestamps land on the *next* local calendar
+      // date for any timezone ahead of UTC — grouping by the raw .month
+      // (no .toLocal()) silently misfiled early-local-morning messages into
+      // the previous month. Deriving "expected" the same way keeps this
+      // assertion meaningful regardless of the machine's own timezone,
+      // while still catching a regression to the un-converted field.
+      final utcTime = DateTime.utc(2026, 7, 31, 20, 0);
+      final hit = hitAt('a', utcTime);
+
+      final groups = groupHitsByMonth([hit]);
+
+      final expectedLocal = utcTime.toLocal();
+      expect(groups.single.label, '${expectedLocal.year}-${expectedLocal.month}');
+    });
   });
 
   group('highlightedSpans', () {

@@ -134,7 +134,6 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
   late ChatSearchScope _scope;
   late String? _cardCategory;
   String _query = '';
-  Timer? _debounce;
   List<String> _history = const [];
 
   bool _loading = false;
@@ -169,7 +168,6 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
     _query = _controller.text.trim();
     _loadHistory();
     _scrollController.addListener(_maybeLoadMore);
-    _controller.addListener(_handleControllerTextChanged);
     if (_scope != ChatSearchScope.all || _query.isNotEmpty) {
       _runSearch();
     }
@@ -182,8 +180,6 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
 
   @override
   void dispose() {
-    _debounce?.cancel();
-    _controller.removeListener(_handleControllerTextChanged);
     _controller.dispose();
     _focusNode.dispose();
     _scrollController.dispose();
@@ -195,43 +191,24 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
     if (mounted) setState(() => _history = history);
   }
 
-  /// Driven by the controller directly (not `TextField.onChanged`) so it can
-  /// see `composing`: candidate pinyin (or any IME) text isn't final until
-  /// the OS collapses that range, and searching on every candidate keystroke
-  /// fired a wave of pointless requests, then yet another once the
-  /// candidate was actually committed. `TextField.onChanged` only hands back
-  /// a plain String, no composing info — the controller's own value has it.
-  void _handleControllerTextChanged() {
-    if (_controller.value.composing.isValid) return;
-    _onQueryChanged(_controller.text);
-  }
-
-  void _onQueryChanged(String value) {
-    _debounce?.cancel();
-    final trimmed = value.trim();
-    if (trimmed == _query) return;
-    _debounce = Timer(const Duration(milliseconds: 300), () {
-      setState(() => _query = trimmed);
-      _runSearch();
-    });
-  }
-
+  /// The *only* thing that starts a search from typed text — the keyboard's
+  /// search action. Deliberately not "search as you type": that reacted to
+  /// every IME candidate keystroke and then again when a candidate was
+  /// committed, and even for plain ASCII input firing on every keystroke is
+  /// more requests than a person tapping "search" once actually asked for.
   Future<void> _onSubmitted(String value) async {
     final trimmed = value.trim();
     if (trimmed.isEmpty) return;
-    _debounce?.cancel();
     setState(() => _query = trimmed);
     await _runSearch();
     final history = await _historyStore.add(widget.conversationId, trimmed);
     if (mounted) setState(() => _history = history);
   }
 
-  /// The search bar's trailing "取消" — clears immediately (no debounce
-  /// wait, unlike normal typing) back to whatever this page's empty-query
-  /// state is: the landing page for scope=all, or "browse all of this
-  /// category" for a quick-filter/查看全部 page.
+  /// The search bar's trailing "取消" — clears immediately back to whatever
+  /// this page's empty-query state is: the landing page for scope=all, or
+  /// "browse all of this category" for a quick-filter/查看全部 page.
   void _cancelSearch() {
-    _debounce?.cancel();
     _controller.clear();
     if (_query.isEmpty) return;
     setState(() => _query = '');
@@ -435,7 +412,13 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
                 ),
                 if (_scope != ChatSearchScope.all)
                   _ScopeHeader(scope: _scope, cardCategory: _cardCategory),
-                Expanded(child: _buildBody(scheme)),
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: () => FocusScope.of(context).unfocus(),
+                    child: _buildBody(scheme),
+                  ),
+                ),
               ],
             ),
           ),
@@ -506,6 +489,7 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
     final groups = groupHitsByMonth(_pagedItems);
     return CustomScrollView(
       controller: _scrollController,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       slivers: [
         for (final group in groups) ...[
           SliverPersistentHeader(
@@ -705,7 +689,11 @@ class _ScopeHeader extends StatelessWidget {
     };
     if (label.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+      // Same 14px left inset as the month sticky headers and the result
+      // rows below them (SliverPadding(14, ...) in _buildBody /
+      // MonthHeaderDelegate's default horizontalPadding) — this used to be
+      // 18, reading as visibly less indented than "聊天记录" above it.
+      padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Text(
@@ -747,6 +735,7 @@ class _SearchLanding extends StatelessWidget {
       (label: '图片', onTap: () => onQuickFilter(ChatSearchScope.image)),
     ];
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
       children: [
         Text(
@@ -756,7 +745,7 @@ class _SearchLanding extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         for (var row = 0; row < tiles.length; row += 3) ...[
-          if (row > 0) const SizedBox(height: 4),
+          if (row > 0) const SizedBox(height: 2),
           IntrinsicHeight(
             child: Row(
               children: [
@@ -765,12 +754,19 @@ class _SearchLanding extends StatelessWidget {
                 // child in the Row would stretch to fill the whole row and
                 // read as an odd centered banner; padding out with blank
                 // placeholders keeps it sitting in column 1 like the rest.
+                // The divider itself is also always reserved (just painted
+                // transparent next to a placeholder) — omitting it there
+                // shrank the divider count for that row, which widened its
+                // real column(s) and shifted their centered text off from
+                // the same column in a full row above/below it.
                 for (var col = row; col < row + 3; col++) ...[
-                  if (col > row && col < tiles.length)
+                  if (col > row)
                     VerticalDivider(
-                      width: 24,
+                      width: 16,
                       thickness: 1,
-                      color: scheme.glassBorder,
+                      color: col < tiles.length
+                          ? scheme.glassBorder
+                          : Colors.transparent,
                     ),
                   Expanded(
                     child: col < tiles.length
@@ -800,7 +796,7 @@ class _SearchLanding extends StatelessWidget {
                 ),
               ),
               GestureDetector(
-                onTap: onClearHistory,
+                onTap: () => _confirmClearHistory(context),
                 child: Icon(
                   CupertinoIcons.delete,
                   size: 18,
@@ -839,6 +835,28 @@ class _SearchLanding extends StatelessWidget {
       ],
     );
   }
+
+  Future<void> _confirmClearHistory(BuildContext context) async {
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (dialogContext) => CupertinoAlertDialog(
+        title: const Text('清空最近搜索'),
+        content: const Text('确定要清空所有最近搜索记录吗？'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('清空'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) onClearHistory();
+  }
 }
 
 /// A plain text quick-filter cell — WeChat's own "search this chat"
@@ -859,7 +877,7 @@ class _QuickFilterTextTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return CupertinoButton(
       minimumSize: Size.zero,
-      padding: const EdgeInsets.symmetric(vertical: 18),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       onPressed: onTap,
       child: Text(
         label,
@@ -919,6 +937,7 @@ class _AllResultsList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
       children: [
         if (preview.images.isNotEmpty)
@@ -1068,6 +1087,7 @@ class _ImageGrid extends StatelessWidget {
     final groups = groupHitsByMonth(items);
     return CustomScrollView(
       controller: controller,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       slivers: [
         for (final group in groups) ...[
           SliverPersistentHeader(

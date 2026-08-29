@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:companion_flutter/companion_api.dart';
 import 'package:companion_flutter/main.dart';
 import 'package:companion_flutter/models.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -101,9 +102,42 @@ Widget _harness(CompanionApi api) {
   );
 }
 
+/// Simulates a person typing [text] then tapping the keyboard's own search
+/// action button — the *only* thing that should ever start a search from
+/// typed text (see chat_search_page.dart's `_onSubmitted` doc comment).
+Future<void> _submitSearch(WidgetTester tester, String text) async {
+  await tester.enterText(find.byType(TextField), text);
+  await tester.testTextInput.receiveAction(TextInputAction.search);
+  await tester.pump();
+}
+
 void main() {
   setUp(() {
     FlutterSecureStorage.setMockInitialValues({});
+  });
+
+  testWidgets('typing alone never fires a search — only pressing the keyboard search key does', (
+    tester,
+  ) async {
+    _useDesignCanvas(tester);
+    final api = _FakeSearchApi();
+    await tester.pumpWidget(_harness(api));
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField), 'a');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.enterText(find.byType(TextField), 'ab');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.enterText(find.byType(TextField), 'abc');
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(api.calls, isEmpty);
+
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pump();
+
+    expect(api.calls, ['abc']);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -114,10 +148,8 @@ void main() {
       await tester.pumpWidget(_harness(api));
       await tester.pump();
 
-      await tester.enterText(find.byType(TextField), 'A');
-      await tester.pump(const Duration(milliseconds: 350));
-      await tester.enterText(find.byType(TextField), 'B');
-      await tester.pump(const Duration(milliseconds: 350));
+      await _submitSearch(tester, 'A');
+      await _submitSearch(tester, 'B');
 
       expect(api.calls, ['A', 'B']);
 
@@ -133,27 +165,6 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
-
-  testWidgets('clearing the query back to empty does not re-hit the API', (
-    tester,
-  ) async {
-    _useDesignCanvas(tester);
-    final api = _FakeSearchApi();
-    await tester.pumpWidget(_harness(api));
-    await tester.pump();
-
-    await tester.enterText(find.byType(TextField), 'A');
-    await tester.pump(const Duration(milliseconds: 350));
-    expect(api.calls, ['A']);
-    api.completerFor('A').complete(_emptyResult);
-    await tester.pump();
-
-    await tester.enterText(find.byType(TextField), '');
-    await tester.pump(const Duration(milliseconds: 350));
-
-    expect(api.calls, ['A']);
-    expect(tester.takeException(), isNull);
-  });
 
   testWidgets(
     'tapping a card-category quick filter searches that category, not the generic "卡片" scope',
@@ -191,7 +202,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('取消 clears the field immediately without a debounce wait', (
+  testWidgets('取消 clears the field and returns to the landing page', (
     tester,
   ) async {
     _useDesignCanvas(tester);
@@ -199,14 +210,13 @@ void main() {
     await tester.pumpWidget(_harness(api));
     await tester.pump();
 
-    await tester.enterText(find.byType(TextField), 'A');
-    await tester.pump(const Duration(milliseconds: 350));
+    await _submitSearch(tester, 'A');
     expect(api.calls, ['A']);
     api.completerFor('A').complete(_emptyResult);
     await tester.pump();
 
     await tester.tap(find.text('取消'));
-    await tester.pump(); // no 300ms debounce needed for the explicit cancel
+    await tester.pump();
 
     final textField = tester.widget<TextField>(find.byType(TextField));
     expect(textField.controller!.text, isEmpty);
@@ -216,7 +226,7 @@ void main() {
   });
 
   testWidgets(
-    'mid-pinyin composition does not search; committing it searches exactly once',
+    'neither mid-pinyin composing nor committing a candidate searches — only the keyboard search key does',
     (tester) async {
       _useDesignCanvas(tester);
       final api = _FakeSearchApi();
@@ -241,11 +251,16 @@ void main() {
       expect(api.calls, isEmpty);
 
       // The user picks "测试" from the candidate list — composing collapses.
+      // Committing a candidate is still not the same as pressing "search".
       controller.value = const TextEditingValue(
         text: '测试',
         selection: TextSelection.collapsed(offset: 2),
       );
       await tester.pump(const Duration(milliseconds: 350));
+      expect(api.calls, isEmpty);
+
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pump();
 
       expect(api.calls, ['测试']);
       expect(tester.takeException(), isNull);
@@ -311,4 +326,57 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('clearing recent search history asks for confirmation first', (
+    tester,
+  ) async {
+    _useDesignCanvas(tester);
+    final api = _FakeSearchApi();
+    await tester.pumpWidget(_harness(api));
+    await tester.pump();
+
+    await _submitSearch(tester, '测试');
+    api.completerFor('测试').complete(_emptyResult);
+    await tester.pump();
+    await tester.tap(find.text('取消')); // back to landing; "测试" now in history
+    await tester.pump();
+    expect(find.text('测试'), findsOneWidget);
+
+    await tester.tap(find.byIcon(CupertinoIcons.delete));
+    await tester.pumpAndSettle();
+    expect(find.text('清空最近搜索'), findsOneWidget);
+
+    // Dismissing the dialog without confirming leaves history untouched.
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.text('测试'), findsOneWidget);
+
+    await tester.tap(find.byIcon(CupertinoIcons.delete));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('清空'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('测试'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('tapping blank space in the body dismisses the keyboard', (
+    tester,
+  ) async {
+    _useDesignCanvas(tester);
+    final api = _FakeSearchApi();
+    await tester.pumpWidget(_harness(api));
+    await tester.pump();
+
+    final focusNode = tester
+        .widget<TextField>(find.byType(TextField))
+        .focusNode!;
+    expect(focusNode.hasFocus, isTrue); // autofocused on the landing page
+
+    await tester.tap(find.text('按类型查找')); // plain label, no onTap of its own
+    await tester.pump();
+
+    expect(focusNode.hasFocus, isFalse);
+    expect(tester.takeException(), isNull);
+  });
 }
