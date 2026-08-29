@@ -786,12 +786,15 @@ class CompanionApi {
     String conversationId, {
     String? query,
     String scope = 'all',
+    String? cardCategory,
     int limit = 30,
     int offset = 0,
   }) async {
     final params = <String, String>{
       if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
       'scope': scope,
+      if (cardCategory != null && cardCategory.isNotEmpty)
+        'card_category': cardCategory,
       'limit': '$limit',
       'offset': '$offset',
     };

@@ -18,6 +18,35 @@ String _scopeQueryValue(ChatSearchScope scope) {
   };
 }
 
+/// One quick-filter category on the search landing page. `category` is the
+/// `card_category` value sent to the backend — matches
+/// `_CARD_CATEGORY_TYPES` in message_search.py. Text-only, no icon/card
+/// background — WeChat's own "search this chat" category grid is a plain
+/// text grid with thin column dividers, and a per-tile icon+glass-card
+/// treatment here read as "太丑" (busier than that reference).
+class _CardCategorySpec {
+  const _CardCategorySpec(this.category, this.label);
+
+  final String category;
+  final String label;
+}
+
+const _cardCategories = [
+  _CardCategorySpec('music', '音乐'),
+  _CardCategorySpec('checkin', '打卡'),
+  _CardCategorySpec('capsule', '胶囊'),
+  _CardCategorySpec('gift', '礼物'),
+  _CardCategorySpec('red_packet', '红包'),
+  _CardCategorySpec('activity', '活动'),
+];
+
+String? _cardCategoryLabel(String? category) {
+  for (final spec in _cardCategories) {
+    if (spec.category == category) return spec.label;
+  }
+  return null;
+}
+
 class ChatSearchPage extends StatefulWidget {
   const ChatSearchPage({
     super.key,
@@ -30,6 +59,7 @@ class ChatSearchPage extends StatefulWidget {
     required this.onPreviewAttachment,
     this.initialScope = ChatSearchScope.all,
     this.initialQuery,
+    this.initialCardCategory,
   });
 
   final CompanionApi api;
@@ -41,6 +71,7 @@ class ChatSearchPage extends StatefulWidget {
   final Future<void> Function(ChatAttachment attachment) onPreviewAttachment;
   final ChatSearchScope initialScope;
   final String? initialQuery;
+  final String? initialCardCategory;
 
   static Future<void> push(
     BuildContext context, {
@@ -54,6 +85,7 @@ class ChatSearchPage extends StatefulWidget {
     onPreviewAttachment,
     ChatSearchScope initialScope = ChatSearchScope.all,
     String? initialQuery,
+    String? initialCardCategory,
   }) {
     return Navigator.of(context).push<void>(
       PageRouteBuilder<void>(
@@ -69,6 +101,7 @@ class ChatSearchPage extends StatefulWidget {
           onPreviewAttachment: onPreviewAttachment,
           initialScope: initialScope,
           initialQuery: initialQuery,
+          initialCardCategory: initialCardCategory,
         ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return SlideTransition(
@@ -99,6 +132,7 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
   final _scrollController = ScrollController();
 
   late ChatSearchScope _scope;
+  late String? _cardCategory;
   String _query = '';
   Timer? _debounce;
   List<String> _history = const [];
@@ -130,10 +164,12 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
   void initState() {
     super.initState();
     _scope = widget.initialScope;
+    _cardCategory = widget.initialCardCategory;
     _controller.text = widget.initialQuery ?? '';
     _query = _controller.text.trim();
     _loadHistory();
     _scrollController.addListener(_maybeLoadMore);
+    _controller.addListener(_handleControllerTextChanged);
     if (_scope != ChatSearchScope.all || _query.isNotEmpty) {
       _runSearch();
     }
@@ -147,6 +183,7 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _controller.removeListener(_handleControllerTextChanged);
     _controller.dispose();
     _focusNode.dispose();
     _scrollController.dispose();
@@ -156,6 +193,17 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
   Future<void> _loadHistory() async {
     final history = await _historyStore.load(widget.conversationId);
     if (mounted) setState(() => _history = history);
+  }
+
+  /// Driven by the controller directly (not `TextField.onChanged`) so it can
+  /// see `composing`: candidate pinyin (or any IME) text isn't final until
+  /// the OS collapses that range, and searching on every candidate keystroke
+  /// fired a wave of pointless requests, then yet another once the
+  /// candidate was actually committed. `TextField.onChanged` only hands back
+  /// a plain String, no composing info — the controller's own value has it.
+  void _handleControllerTextChanged() {
+    if (_controller.value.composing.isValid) return;
+    _onQueryChanged(_controller.text);
   }
 
   void _onQueryChanged(String value) {
@@ -176,6 +224,18 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
     await _runSearch();
     final history = await _historyStore.add(widget.conversationId, trimmed);
     if (mounted) setState(() => _history = history);
+  }
+
+  /// The search bar's trailing "取消" — clears immediately (no debounce
+  /// wait, unlike normal typing) back to whatever this page's empty-query
+  /// state is: the landing page for scope=all, or "browse all of this
+  /// category" for a quick-filter/查看全部 page.
+  void _cancelSearch() {
+    _debounce?.cancel();
+    _controller.clear();
+    if (_query.isEmpty) return;
+    setState(() => _query = '');
+    _runSearch();
   }
 
   void _selectHistoryTerm(String term) {
@@ -231,6 +291,7 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
         widget.conversationId,
         query: _query,
         scope: _scopeQueryValue(_scope),
+        cardCategory: _scope == ChatSearchScope.card ? _cardCategory : null,
         limit: _pageSize,
         offset: 0,
       );
@@ -268,6 +329,7 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
         widget.conversationId,
         query: _query,
         scope: _scopeQueryValue(_scope),
+        cardCategory: _scope == ChatSearchScope.card ? _cardCategory : null,
         limit: _pageSize,
         offset: _pagedOffset,
       );
@@ -304,7 +366,7 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
     };
   }
 
-  void _openScope(ChatSearchScope scope) {
+  void _openScope(ChatSearchScope scope, [String? cardCategory]) {
     unawaited(
       ChatSearchPage.push(
         context,
@@ -317,6 +379,7 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
         onPreviewAttachment: widget.onPreviewAttachment,
         initialScope: scope,
         initialQuery: _query.isEmpty ? null : _query,
+        initialCardCategory: cardCategory,
       ),
     );
   }
@@ -366,12 +429,12 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
                   controller: _controller,
                   focusNode: _focusNode,
                   autofocus: _scope == ChatSearchScope.all,
-                  onChanged: _onQueryChanged,
                   onSubmitted: _onSubmitted,
                   onBack: () => Navigator.of(context).maybePop(),
+                  onCancel: _cancelSearch,
                 ),
                 if (_scope != ChatSearchScope.all)
-                  _ScopeHeader(scope: _scope),
+                  _ScopeHeader(scope: _scope, cardCategory: _cardCategory),
                 Expanded(child: _buildBody(scheme)),
               ],
             ),
@@ -416,12 +479,15 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
         scheme: scheme,
         preview: preview,
         agentName: _agentName,
+        agentAvatarUrl: widget.agentAvatarUrl,
+        userAvatarUrl: widget.userAvatarUrl,
         authToken: widget.api.authToken,
         apiBaseUrl: widget.api.baseUrl,
         onTextTap: _openContext,
         onCardTap: _openCard,
         onImageTap: _openImagePreview,
         onSeeAll: _openScope,
+        highlightQuery: _query,
       );
     }
     if (_pagedItems.isEmpty) {
@@ -429,6 +495,7 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
     }
     if (_scope == ChatSearchScope.image) {
       return _ImageGrid(
+        scheme: scheme,
         items: _pagedItems,
         authToken: widget.api.authToken,
         loadingMore: _loadingMore,
@@ -436,39 +503,62 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
         onTap: _openImagePreview,
       );
     }
-    return ListView.separated(
+    final groups = groupHitsByMonth(_pagedItems);
+    return CustomScrollView(
       controller: _scrollController,
-      padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
-      itemCount: _pagedItems.length + (_loadingMore ? 1 : 0),
-      separatorBuilder: (_, __) => const SizedBox(height: 14),
-      itemBuilder: (context, index) {
-        if (index == _pagedItems.length) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Center(
-              child: SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
+      slivers: [
+        for (final group in groups) ...[
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: MonthHeaderDelegate(
+              label: group.label,
+              background: scheme.base,
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                for (final hit in group.hits) ...[
+                  _scope == ChatSearchScope.card
+                      ? SearchCardResultRow(
+                          hit: hit,
+                          agentName: _agentName,
+                          onTap: () => _openCard(hit),
+                          authToken: widget.api.authToken,
+                          apiBaseUrl: widget.api.baseUrl,
+                          agentAvatarUrl: widget.agentAvatarUrl,
+                          userAvatarUrl: widget.userAvatarUrl,
+                        )
+                      : SearchTextResultRow(
+                          hit: hit,
+                          agentName: _agentName,
+                          onTap: () => _openContext(hit),
+                          agentAvatarUrl: widget.agentAvatarUrl,
+                          userAvatarUrl: widget.userAvatarUrl,
+                          highlightQuery: _query,
+                        ),
+                  const SizedBox(height: 16),
+                ],
+              ]),
+            ),
+          ),
+        ],
+        if (_loadingMore)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
               ),
             ),
-          );
-        }
-        final hit = _pagedItems[index];
-        return _scope == ChatSearchScope.card
-            ? SearchCardResultRow(
-                hit: hit,
-                agentName: _agentName,
-                onTap: () => _openCard(hit),
-                authToken: widget.api.authToken,
-                apiBaseUrl: widget.api.baseUrl,
-              )
-            : SearchTextResultRow(
-                hit: hit,
-                agentName: _agentName,
-                onTap: () => _openContext(hit),
-              );
-      },
+          ),
+        const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
+      ],
     );
   }
 }
@@ -503,18 +593,18 @@ class _SearchBar extends StatelessWidget {
     required this.controller,
     required this.focusNode,
     required this.autofocus,
-    required this.onChanged,
     required this.onSubmitted,
     required this.onBack,
+    required this.onCancel,
   });
 
   final _W2b scheme;
   final TextEditingController controller;
   final FocusNode focusNode;
   final bool autofocus;
-  final ValueChanged<String> onChanged;
   final ValueChanged<String> onSubmitted;
   final VoidCallback onBack;
+  final VoidCallback onCancel;
 
   @override
   Widget build(BuildContext context) {
@@ -522,12 +612,10 @@ class _SearchBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(10, 8, 14, 10),
       child: Row(
         children: [
-          CupertinoButton(
-            padding: const EdgeInsets.all(6),
-            minimumSize: Size.zero,
-            onPressed: onBack,
-            child: Icon(CupertinoIcons.back, color: scheme.ink),
-          ),
+          // Same 36pt glass circle weather_page.dart's own back button uses
+          // (capsule_home.dart already reuses it too, with its own tint).
+          _WeatherBackButton(onTap: onBack, iconColor: AppColors.accent),
+          const SizedBox(width: 10),
           Expanded(
             child: Container(
               height: 40,
@@ -547,14 +635,25 @@ class _SearchBar extends StatelessWidget {
                       controller: controller,
                       focusNode: focusNode,
                       autofocus: autofocus,
-                      onChanged: onChanged,
                       onSubmitted: onSubmitted,
                       textInputAction: TextInputAction.search,
+                      textAlignVertical: TextAlignVertical.center,
                       style: TextStyle(color: scheme.ink, fontSize: 15),
                       cursorColor: scheme.ink,
+                      // Every border variant nulled + isCollapsed (not just
+                      // isDense): Material's InputDecorator otherwise still
+                      // reserves its own focus-state box around the field,
+                      // which read as a second pill nested inside this one.
                       decoration: InputDecoration(
-                        isDense: true,
+                        isCollapsed: true,
+                        filled: false,
+                        contentPadding: EdgeInsets.zero,
                         border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
                         hintText: '搜索聊天记录',
                         hintStyle: TextStyle(color: scheme.inkFaint, fontSize: 15),
                       ),
@@ -565,14 +664,17 @@ class _SearchBar extends StatelessWidget {
                     builder: (context, value, _) {
                       if (value.text.isEmpty) return const SizedBox.shrink();
                       return GestureDetector(
-                        onTap: () {
-                          controller.clear();
-                          onChanged('');
-                        },
-                        child: Icon(
-                          CupertinoIcons.clear_circled_solid,
-                          size: 18,
-                          color: scheme.inkFaint,
+                        onTap: onCancel,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Text(
+                            '取消',
+                            style: TextStyle(
+                              color: AppColors.accent,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                       );
                     },
@@ -588,14 +690,15 @@ class _SearchBar extends StatelessWidget {
 }
 
 class _ScopeHeader extends StatelessWidget {
-  const _ScopeHeader({required this.scope});
+  const _ScopeHeader({required this.scope, required this.cardCategory});
 
   final ChatSearchScope scope;
+  final String? cardCategory;
 
   @override
   Widget build(BuildContext context) {
     final label = switch (scope) {
-      ChatSearchScope.card => '卡片',
+      ChatSearchScope.card => _cardCategoryLabel(cardCategory) ?? '卡片',
       ChatSearchScope.image => '图片',
       ChatSearchScope.text => '聊天记录',
       ChatSearchScope.all => '',
@@ -629,36 +732,60 @@ class _SearchLanding extends StatelessWidget {
 
   final _W2b scheme;
   final List<String> history;
-  final ValueChanged<ChatSearchScope> onQuickFilter;
+  final void Function(ChatSearchScope scope, [String? cardCategory]) onQuickFilter;
   final ValueChanged<String> onHistoryTap;
   final VoidCallback onClearHistory;
 
   @override
   Widget build(BuildContext context) {
+    final tiles = [
+      for (final spec in _cardCategories)
+        (
+          label: spec.label,
+          onTap: () => onQuickFilter(ChatSearchScope.card, spec.category),
+        ),
+      (label: '图片', onTap: () => onQuickFilter(ChatSearchScope.image)),
+    ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: _QuickFilterCard(
-                scheme: scheme,
-                icon: CupertinoIcons.square_grid_2x2_fill,
-                label: '卡片',
-                onTap: () => onQuickFilter(ChatSearchScope.card),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _QuickFilterCard(
-                scheme: scheme,
-                icon: CupertinoIcons.photo_on_rectangle,
-                label: '图片',
-                onTap: () => onQuickFilter(ChatSearchScope.image),
-              ),
-            ),
-          ],
+        Text(
+          '按类型查找',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: scheme.inkFaint, fontSize: 12),
         ),
+        const SizedBox(height: 4),
+        for (var row = 0; row < tiles.length; row += 3) ...[
+          if (row > 0) const SizedBox(height: 4),
+          IntrinsicHeight(
+            child: Row(
+              children: [
+                // Always 3 slots, even for a trailing partial row (today,
+                // just 图片 alone in row 3) — an Expanded with only 1 real
+                // child in the Row would stretch to fill the whole row and
+                // read as an odd centered banner; padding out with blank
+                // placeholders keeps it sitting in column 1 like the rest.
+                for (var col = row; col < row + 3; col++) ...[
+                  if (col > row && col < tiles.length)
+                    VerticalDivider(
+                      width: 24,
+                      thickness: 1,
+                      color: scheme.glassBorder,
+                    ),
+                  Expanded(
+                    child: col < tiles.length
+                        ? _QuickFilterTextTile(
+                            scheme: scheme,
+                            label: tiles[col].label,
+                            onTap: tiles[col].onTap,
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
         if (history.isNotEmpty) ...[
           const SizedBox(height: 26),
           Row(
@@ -714,44 +841,33 @@ class _SearchLanding extends StatelessWidget {
   }
 }
 
-class _QuickFilterCard extends StatelessWidget {
-  const _QuickFilterCard({
+/// A plain text quick-filter cell — WeChat's own "search this chat"
+/// category grid is flat text with thin column dividers, no card/icon per
+/// item, so this mirrors that instead of the app's usual glass-tile look.
+class _QuickFilterTextTile extends StatelessWidget {
+  const _QuickFilterTextTile({
     required this.scheme,
-    required this.icon,
     required this.label,
     required this.onTap,
   });
 
   final _W2b scheme;
-  final IconData icon;
   final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        decoration: BoxDecoration(
-          color: scheme.glass,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: scheme.glassBorder),
-          boxShadow: scheme.panelShadow,
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: AppColors.accent, size: 26),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: scheme.ink,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
+    return CupertinoButton(
+      minimumSize: Size.zero,
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      onPressed: onTap,
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: AppColors.accent,
+          fontSize: 15,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );
@@ -782,6 +898,9 @@ class _AllResultsList extends StatelessWidget {
     required this.onCardTap,
     required this.onImageTap,
     required this.onSeeAll,
+    this.agentAvatarUrl,
+    this.userAvatarUrl,
+    this.highlightQuery,
   });
 
   final _W2b scheme;
@@ -789,10 +908,13 @@ class _AllResultsList extends StatelessWidget {
   final String agentName;
   final String? authToken;
   final String? apiBaseUrl;
+  final String? highlightQuery;
+  final String? agentAvatarUrl;
+  final String? userAvatarUrl;
   final ValueChanged<MessageSearchHit> onTextTap;
   final ValueChanged<MessageSearchHit> onCardTap;
   final ValueChanged<MessageSearchHit> onImageTap;
-  final ValueChanged<ChatSearchScope> onSeeAll;
+  final void Function(ChatSearchScope scope, [String? cardCategory]) onSeeAll;
 
   @override
   Widget build(BuildContext context) {
@@ -841,8 +963,10 @@ class _AllResultsList extends StatelessWidget {
               onTap: () => onCardTap(hit),
               authToken: authToken,
               apiBaseUrl: apiBaseUrl,
+              agentAvatarUrl: agentAvatarUrl,
+              userAvatarUrl: userAvatarUrl,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
           ],
         ],
         if (preview.text.isNotEmpty) ...[
@@ -859,8 +983,11 @@ class _AllResultsList extends StatelessWidget {
               hit: hit,
               agentName: agentName,
               onTap: () => onTextTap(hit),
+              agentAvatarUrl: agentAvatarUrl,
+              userAvatarUrl: userAvatarUrl,
+              highlightQuery: highlightQuery,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
           ],
         ],
       ],
@@ -921,6 +1048,7 @@ class _SearchSectionHeader extends StatelessWidget {
 
 class _ImageGrid extends StatelessWidget {
   const _ImageGrid({
+    required this.scheme,
     required this.items,
     required this.authToken,
     required this.loadingMore,
@@ -928,6 +1056,7 @@ class _ImageGrid extends StatelessWidget {
     required this.onTap,
   });
 
+  final _W2b scheme;
   final List<MessageSearchHit> items;
   final String? authToken;
   final bool loadingMore;
@@ -936,33 +1065,44 @@ class _ImageGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final groups = groupHitsByMonth(items);
     return CustomScrollView(
       controller: controller,
       slivers: [
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-          sliver: SliverGrid(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              crossAxisSpacing: 4,
-              mainAxisSpacing: 4,
-            ),
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final hit = items[index];
-                final attachment = matchedImageAttachment(hit);
-                if (attachment == null) return const SizedBox.shrink();
-                return SearchImageThumb(
-                  attachment: attachment,
-                  authToken: authToken,
-                  size: null,
-                  onTap: () => onTap(hit),
-                );
-              },
-              childCount: items.length,
+        for (final group in groups) ...[
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: MonthHeaderDelegate(
+              label: group.label,
+              background: scheme.base,
+              horizontalPadding: 12,
             ),
           ),
-        ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                crossAxisSpacing: 4,
+                mainAxisSpacing: 4,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final hit = group.hits[index];
+                  final attachment = matchedImageAttachment(hit);
+                  if (attachment == null) return const SizedBox.shrink();
+                  return SearchImageThumb(
+                    attachment: attachment,
+                    authToken: authToken,
+                    size: null,
+                    onTap: () => onTap(hit),
+                  );
+                },
+                childCount: group.hits.length,
+              ),
+            ),
+          ),
+        ],
         if (loadingMore)
           const SliverToBoxAdapter(
             child: Padding(

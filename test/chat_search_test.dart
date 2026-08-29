@@ -1,5 +1,6 @@
 import 'package:companion_flutter/main.dart';
 import 'package:companion_flutter/models.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -131,6 +132,114 @@ void main() {
       await store.clear('conv-1');
 
       expect(await store.load('conv-1'), isEmpty);
+    });
+  });
+
+  group('groupHitsByMonth', () {
+    MessageSearchHit hitAt(String id, DateTime createdAt) {
+      return MessageSearchHit(
+        message: ChatMessage(
+          id: id,
+          conversationId: 'c1',
+          role: 'user',
+          content: id,
+          createdAt: createdAt,
+        ),
+        matchType: 'text',
+        rank: 0,
+      );
+    }
+
+    test('splits into one group per month, no zero-padding', () {
+      final hits = [
+        hitAt('a', DateTime(2026, 8, 20)),
+        hitAt('b', DateTime(2026, 8, 5)),
+        hitAt('c', DateTime(2023, 4, 8)),
+      ];
+
+      final groups = groupHitsByMonth(hits);
+
+      expect(groups.map((g) => g.label), ['2026-8', '2023-4']);
+      expect(groups[0].hits.map((h) => h.message.id), ['a', 'b']);
+      expect(groups[1].hits.map((h) => h.message.id), ['c']);
+    });
+
+    test('re-entering the same month later starts a new group', () {
+      // Input is assumed newest-first; a month reappearing non-consecutively
+      // (shouldn't happen with real server ordering, but the function must
+      // not silently merge it back into an earlier group of the same label).
+      final hits = [
+        hitAt('a', DateTime(2026, 8, 20)),
+        hitAt('b', DateTime(2023, 4, 8)),
+        hitAt('c', DateTime(2026, 8, 1)),
+      ];
+
+      final groups = groupHitsByMonth(hits);
+
+      expect(groups.map((g) => g.label), ['2026-8', '2023-4', '2026-8']);
+    });
+
+    test('empty input yields no groups', () {
+      expect(groupHitsByMonth(const []), isEmpty);
+    });
+  });
+
+  group('highlightedSpans', () {
+    const base = TextStyle(color: Color(0xFF000000));
+    const highlight = TextStyle(color: Color(0xFF0A84FF));
+
+    test('colors every case-insensitive occurrence of the query', () {
+      final spans = highlightedSpans(
+        text: '今天天气真好，今天心情也好',
+        query: '今天',
+        baseStyle: base,
+        highlightStyle: highlight,
+      );
+
+      expect(spans.map((s) => s.text), [
+        '今天',
+        '天气真好，',
+        '今天',
+        '心情也好',
+      ]);
+      expect(spans[0].style, highlight);
+      expect(spans[1].style, base);
+      expect(spans[2].style, highlight);
+      expect(spans[3].style, base);
+    });
+
+    test('matches regardless of case', () {
+      final spans = highlightedSpans(
+        text: 'Hello World',
+        query: 'world',
+        baseStyle: base,
+        highlightStyle: highlight,
+      );
+
+      expect(spans.map((s) => s.text), ['Hello ', 'World']);
+      expect(spans.last.style, highlight);
+    });
+
+    test('empty query returns the text unhighlighted, not empty', () {
+      final spans = highlightedSpans(
+        text: 'hello',
+        query: '  ',
+        baseStyle: base,
+        highlightStyle: highlight,
+      );
+
+      expect(spans, [const TextSpan(text: 'hello', style: base)]);
+    });
+
+    test('no match returns the whole text as one plain span', () {
+      final spans = highlightedSpans(
+        text: 'hello',
+        query: 'xyz',
+        baseStyle: base,
+        highlightStyle: highlight,
+      );
+
+      expect(spans, [const TextSpan(text: 'hello', style: base)]);
     });
   });
 }
