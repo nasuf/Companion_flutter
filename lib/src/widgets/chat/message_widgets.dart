@@ -25,6 +25,7 @@ class _MessageList extends StatelessWidget {
     this.stationMessageId,
     this.stationMessageKey,
     this.highlightMessageId,
+    this.highlightVisible = false,
     this.highlightMessageKey,
     this.agentAvatarUrl,
     this.userAvatarUrl,
@@ -57,11 +58,17 @@ class _MessageList extends StatelessWidget {
   final String? stationMessageId;
   final GlobalKey? stationMessageKey;
 
-  /// The message a search-result tap just jumped to — flashed via
-  /// [_Bubble]/[_MessageTextBubble] and, once, scrolled into view through
-  /// [highlightMessageKey] (same "conditionally attach a GlobalKey to
-  /// whichever row matches an id" idiom [stationMessageKey] already uses).
+  /// The message a search-result tap just jumped to. [highlightMessageKey]
+  /// attaches to whichever row matches this id (same conditional-GlobalKey
+  /// idiom [stationMessageKey] already uses) as long as this is non-null —
+  /// *not* only while [highlightVisible] is also true, so the key (and thus
+  /// the ability to `Scrollable.ensureVisible` it) stays available through
+  /// the whole flash sequence, not just its "on" half.
   final String? highlightMessageId;
+
+  /// The flash's current on/off phase — only actually tints/glows the row
+  /// (see [_Bubble]/[_MessageTextBubble]) when this is also true.
+  final bool highlightVisible;
   final GlobalKey? highlightMessageKey;
   final String? agentAvatarUrl;
   final String? userAvatarUrl;
@@ -88,6 +95,12 @@ class _MessageList extends StatelessWidget {
         parent: AlwaysScrollableScrollPhysics(),
       ),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      // Default (250) is too tight for a search-result jump: `_ChatPageState`
+      // estimates a rough scroll offset by index (item heights vary, so it
+      // won't land exactly), then relies on the target already being laid
+      // out to fine-tune with `ensureVisible`. A wider margin absorbs that
+      // estimation error instead of the target staying un-built.
+      scrollCacheExtent: const ScrollCacheExtent.pixels(1500),
       itemCount: messages.length + 1 + typingSlot,
       itemBuilder: (context, index) {
         if (showTyping && index == messages.length + 1) {
@@ -111,8 +124,9 @@ class _MessageList extends StatelessWidget {
           );
         }
         final message = messages[index - 1];
-        final highlighted =
+        final isHighlightTarget =
             highlightMessageId != null && message.id == highlightMessageId;
+        final highlighted = isHighlightTarget && highlightVisible;
         final row = _MessageRow(
           message: message,
           highlighted: highlighted,
@@ -140,7 +154,7 @@ class _MessageList extends StatelessWidget {
           key: ValueKey('chat-message-${message.id}'),
           child: row,
         );
-        if (highlighted && highlightMessageKey != null) {
+        if (isHighlightTarget && highlightMessageKey != null) {
           return KeyedSubtree(key: highlightMessageKey, child: keyedRow);
         }
         if (message.id == stationMessageId && stationMessageKey != null) {

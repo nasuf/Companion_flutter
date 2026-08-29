@@ -189,7 +189,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _hasMoreNewerJump = false;
   bool _loadingOlderJump = false;
   bool _loadingNewerJump = false;
+
+  // `_highlightMessageId` is the *identity* of the row `_highlightMessageKey`
+  // attaches to — it must be set (and the row rebuilt with it) before
+  // `_highlightAndScrollTo` ever looks up `_highlightMessageKey.currentContext`,
+  // otherwise the key is attached to no one and every scroll attempt finds
+  // nothing. The actual on/off blink is `_highlightVisible`, kept separate so
+  // the key stays attached (and scrolling stays possible) through the whole
+  // flash sequence instead of only during its "on" half.
   String? _highlightMessageId;
+  bool _highlightVisible = false;
 
   // CLAUDE.md 权益项 1: 本地缓存的额度预测, 避免每条消息都发一次 /chat/quota。
   // 会有最多一条消息的滞后 (ack 后才刷新) —— 服务端在 ws.py 仍是权威闸门,
@@ -1384,43 +1393,70 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     await _loadLatestMessages(showLoading: true);
   }
 
-  Future<void> _highlightAndScrollTo(String messageId) async {
+  Future<void> _waitForNextFrame() {
     final completer = Completer<void>();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) {
-        completer.complete();
-        return;
-      }
-      final targetContext = _highlightMessageKey.currentContext;
-      if (targetContext != null) {
-        await Scrollable.ensureVisible(
-          targetContext,
-          alignment: 0.5,
-          duration: const Duration(milliseconds: 320),
-          curve: Curves.easeOutCubic,
-        );
-      }
-      if (mounted) await _flashHighlight(messageId);
-      completer.complete();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => completer.complete());
     return completer.future;
   }
 
-  /// "文字变蓝色，然后闪烁两次就消失" — two on/off cycles of `highlighted`;
-  /// each toggle is a hard state flip, but `_MessageTextBubble`/`_Bubble`
-  /// ease the actual color/glow in and out (`AnimatedDefaultTextStyle` /
-  /// `AnimatedContainer`), so it reads as a smooth flash rather than a snap.
+  /// `ListView.builder` is lazy: it only lays out items near the *current*
+  /// scroll position (plus a small cache margin). Jumping straight to
+  /// `ensureVisible` on a target far from wherever the user (or a fresh
+  /// history jump) happened to leave the scroll offset finds nothing to
+  /// scroll to at all — `currentContext` on its key is null because the
+  /// row was never built. Estimate an offset from the target's index first
+  /// (item heights vary, so this is approximate, not exact) to get it
+  /// within the builder's cache range, *then* let `ensureVisible` do the
+  /// precise alignment once it's actually laid out.
+  Future<void> _highlightAndScrollTo(String messageId) async {
+    final index = _messages.indexWhere((message) => message.id == messageId);
+    setState(() {
+      _highlightMessageId = messageId;
+      _highlightVisible = false;
+    });
+    await _waitForNextFrame();
+    if (!mounted) return;
+    if (index != -1 && _scrollController.hasClients) {
+      const estimatedItemExtent = 90.0;
+      final maxExtent = _scrollController.position.maxScrollExtent;
+      final estimatedOffset = (index * estimatedItemExtent).clamp(
+        0.0,
+        maxExtent,
+      );
+      _scrollController.jumpTo(estimatedOffset);
+      await _waitForNextFrame();
+      if (!mounted) return;
+    }
+    final targetContext = _highlightMessageKey.currentContext;
+    if (targetContext != null && targetContext.mounted) {
+      await Scrollable.ensureVisible(
+        targetContext,
+        alignment: 0.5,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+      );
+    }
+    if (mounted) await _flashHighlight(messageId);
+  }
+
+  /// "文字变蓝色，然后闪烁两次就消失" — two on/off cycles of
+  /// `_highlightVisible`; each toggle is a hard state flip, but
+  /// `_MessageTextBubble`/`_Bubble` ease the actual color/glow in and out
+  /// (`AnimatedDefaultTextStyle` / `AnimatedContainer`), so it reads as a
+  /// smooth flash rather than a snap. `_highlightMessageId` itself is only
+  /// cleared at the very end, once nothing still needs the row keyed.
   Future<void> _flashHighlight(String messageId) async {
     const onDuration = Duration(milliseconds: 350);
     const offDuration = Duration(milliseconds: 250);
     for (var i = 0; i < 2; i++) {
       if (!mounted) return;
-      setState(() => _highlightMessageId = messageId);
+      setState(() => _highlightVisible = true);
       await Future.delayed(onDuration);
       if (!mounted) return;
-      setState(() => _highlightMessageId = null);
+      setState(() => _highlightVisible = false);
       if (i == 0) await Future.delayed(offDuration);
     }
+    if (mounted) setState(() => _highlightMessageId = null);
   }
 
   bool _isMusicStationCard(ChatComponentCard? card) {
@@ -3824,6 +3860,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           stationMessageId: _musicStation.messageId,
                           stationMessageKey: _stationCardKey,
                           highlightMessageId: _highlightMessageId,
+                          highlightVisible: _highlightVisible,
                           highlightMessageKey: _highlightMessageKey,
                           agentAvatarUrl: agentAvatarUrl,
                           userAvatarUrl: widget.session.userAvatarUrl,
