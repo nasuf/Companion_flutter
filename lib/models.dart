@@ -588,6 +588,80 @@ class ChatMessage {
   }
 }
 
+/// One hit from `GET /conversations/{id}/messages/search`. Wraps a real
+/// [ChatMessage] (the search response's per-item fields are a superset of
+/// [MessageResponse]) instead of duplicating message parsing, so search
+/// results render through the exact same bubble/card widgets as live chat.
+class MessageSearchHit {
+  const MessageSearchHit({
+    required this.message,
+    required this.matchType,
+    required this.rank,
+    this.matchedAttachmentId,
+  });
+
+  final ChatMessage message;
+  final String matchType; // 'text' | 'card' | 'image'
+  final int rank;
+  final String? matchedAttachmentId;
+
+  factory MessageSearchHit.fromJson(Map<String, dynamic> json) {
+    return MessageSearchHit(
+      message: ChatMessage.fromJson(json),
+      matchType: json['match_type'] as String? ?? 'text',
+      rank: (json['rank'] as num?)?.round() ?? 0,
+      matchedAttachmentId: json['matched_attachment_id'] as String?,
+    );
+  }
+
+  MessageSearchHit copyWith({ChatMessage? message}) {
+    return MessageSearchHit(
+      message: message ?? this.message,
+      matchType: matchType,
+      rank: rank,
+      matchedAttachmentId: matchedAttachmentId,
+    );
+  }
+}
+
+class MessageSearchResult {
+  const MessageSearchResult({
+    required this.text,
+    required this.cards,
+    required this.images,
+    required this.hasMoreText,
+    required this.hasMoreCards,
+    required this.hasMoreImages,
+  });
+
+  final List<MessageSearchHit> text;
+  final List<MessageSearchHit> cards;
+  final List<MessageSearchHit> images;
+  final bool hasMoreText;
+  final bool hasMoreCards;
+  final bool hasMoreImages;
+
+  static List<MessageSearchHit> _hits(dynamic raw) {
+    if (raw is! List) return const [];
+    return [
+      for (final item in raw)
+        if (item is Map)
+          MessageSearchHit.fromJson(Map<String, dynamic>.from(item)),
+    ];
+  }
+
+  factory MessageSearchResult.fromJson(Map<String, dynamic> json) {
+    return MessageSearchResult(
+      text: _hits(json['text']),
+      cards: _hits(json['cards']),
+      images: _hits(json['images']),
+      hasMoreText: json['has_more_text'] == true,
+      hasMoreCards: json['has_more_cards'] == true,
+      hasMoreImages: json['has_more_images'] == true,
+    );
+  }
+}
+
 class ChatAttachment {
   const ChatAttachment({
     required this.id,

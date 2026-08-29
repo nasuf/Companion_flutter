@@ -167,9 +167,13 @@ part 'src/widgets/chat/gift_component_card.dart';
 part 'src/widgets/chat/offline_activity_component_card.dart';
 part 'src/widgets/chat/offline_gift_component_card.dart';
 part 'src/widgets/chat/panels.dart';
+part 'src/widgets/chat/chat_search_result_rows.dart';
 part 'src/screens/chat/red_packet_sheet.dart';
 part 'src/screens/chat/gift_sheet.dart';
 part 'src/screens/chat/gift_picker_page.dart';
+part 'src/screens/chat/chat_search_page.dart';
+part 'src/screens/chat/chat_message_context_page.dart';
+part 'src/services/chat_search_history_store.dart';
 
 final RouteObserver<PageRoute<dynamic>> appRouteObserver =
     RouteObserver<PageRoute<dynamic>>();

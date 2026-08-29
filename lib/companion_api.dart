@@ -782,6 +782,40 @@ class CompanionApi {
         .toList();
   }
 
+  Future<MessageSearchResult> searchMessages(
+    String conversationId, {
+    String? query,
+    String scope = 'all',
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    final params = <String, String>{
+      if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+      'scope': scope,
+      'limit': '$limit',
+      'offset': '$offset',
+    };
+    final queryString = Uri(queryParameters: params).query;
+    final json =
+        await _request(
+              'GET',
+              '/conversations/$conversationId/messages/search?$queryString',
+            )
+            as Map<String, dynamic>;
+    final result = MessageSearchResult.fromJson(json);
+    List<MessageSearchHit> normalize(List<MessageSearchHit> hits) => hits
+        .map((hit) => hit.copyWith(message: _normalizeChatMessage(hit.message)))
+        .toList();
+    return MessageSearchResult(
+      text: normalize(result.text),
+      cards: normalize(result.cards),
+      images: normalize(result.images),
+      hasMoreText: result.hasMoreText,
+      hasMoreCards: result.hasMoreCards,
+      hasMoreImages: result.hasMoreImages,
+    );
+  }
+
   Future<ChatAttachment> uploadChatImage({
     required String conversationId,
     required String name,

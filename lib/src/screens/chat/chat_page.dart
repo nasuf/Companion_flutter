@@ -3256,6 +3256,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     await _showImagePreview(url: attachment.url);
   }
 
+  Future<void> _openChatSearch() async {
+    _dismissInputSurfaces();
+    await ChatSearchPage.push(
+      context,
+      api: widget.api,
+      session: widget.session,
+      conversationId: _conversationId,
+      agentAvatarUrl: _agentAvatarUrl,
+      userAvatarUrl: widget.session.userAvatarUrl,
+      onOpenComponentCard: _openComponentCard,
+      onPreviewAttachment: _previewAttachment,
+    );
+  }
+
   Future<void> _showImagePreview({String? localPath, String? url}) async {
     await showGeneralDialog<void>(
       context: context,
@@ -3725,6 +3739,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     unawaited(_pickChatImage(ImageSource.camera)),
                 onSendRedPacket: () => unawaited(_onSendRedPacket()),
                 onSendGift: () => unawaited(_onSendGift()),
+                onSearch: () => unawaited(_openChatSearch()),
               ),
             ),
           ),
