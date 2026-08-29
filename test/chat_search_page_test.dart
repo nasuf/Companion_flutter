@@ -379,4 +379,33 @@ void main() {
     expect(focusNode.hasFocus, isFalse);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('tapping a recent search entry dismisses the keyboard', (
+    tester,
+  ) async {
+    _useDesignCanvas(tester);
+    final api = _FakeSearchApi();
+    await tester.pumpWidget(_harness(api));
+    await tester.pump();
+
+    await _submitSearch(tester, '测试');
+    api.completerFor('测试').complete(_emptyResult);
+    await tester.pump();
+    await tester.tap(find.text('取消')); // back to landing; "测试" now in history
+    await tester.pump();
+    expect(find.text('测试'), findsOneWidget);
+
+    final focusNode = tester
+        .widget<TextField>(find.byType(TextField))
+        .focusNode!;
+    focusNode.requestFocus();
+    await tester.pump();
+    expect(focusNode.hasFocus, isTrue);
+
+    await tester.tap(find.text('测试'));
+    await tester.pump();
+
+    expect(focusNode.hasFocus, isFalse);
+    expect(tester.takeException(), isNull);
+  });
 }

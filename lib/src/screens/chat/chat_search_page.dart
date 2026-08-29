@@ -216,6 +216,7 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
   }
 
   void _selectHistoryTerm(String term) {
+    _focusNode.unfocus();
     _controller.text = term;
     _controller.selection = TextSelection.collapsed(offset: term.length);
     unawaited(_onSubmitted(term));
