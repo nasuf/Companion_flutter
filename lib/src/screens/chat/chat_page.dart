@@ -194,11 +194,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   // attaches to — it must be set (and the row rebuilt with it) before
   // `_highlightAndScrollTo` ever looks up `_highlightMessageKey.currentContext`,
   // otherwise the key is attached to no one and every scroll attempt finds
-  // nothing. The actual on/off blink is `_highlightVisible`, kept separate so
-  // the key stays attached (and scrolling stays possible) through the whole
-  // flash sequence instead of only during its "on" half.
+  // nothing. `_highlightVisible` is the highlight's own on/off state, kept
+  // separate so the key stays attached (and scrolling stays possible)
+  // through the fade-out too, not just the initial "on" instant.
   String? _highlightMessageId;
   bool _highlightVisible = false;
+
+  /// The query whose matches (inside the target message's own text) get a
+  /// background highlight while `_highlightVisible` — set alongside
+  /// `_highlightMessageId` in `_highlightAndScrollTo`.
+  String? _highlightQuery;
 
   // CLAUDE.md 权益项 1: 本地缓存的额度预测, 避免每条消息都发一次 /chat/quota。
   // 会有最多一条消息的滞后 (ack 后才刷新) —— 服务端在 ws.py 仍是权威闸门,
@@ -1293,15 +1298,19 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   /// messages (the common case: a recent hit, or the user is already
   /// looking at the window it belongs to) just scroll+flash; anything
   /// older is a real jump.
-  Future<void> _locateSearchHit(MessageSearchHit hit) async {
+  Future<void> _locateSearchHit(MessageSearchHit hit, String query) async {
     if (_messages.any((message) => message.id == hit.message.id)) {
-      unawaited(_highlightAndScrollTo(hit.message.id));
+      unawaited(_highlightAndScrollTo(hit.message.id, query));
       return;
     }
-    await _jumpToRank(hit.rank, hit.message.id);
+    await _jumpToRank(hit.rank, hit.message.id, query);
   }
 
-  Future<void> _jumpToRank(int rank, String focusMessageId) async {
+  Future<void> _jumpToRank(
+    int rank,
+    String focusMessageId,
+    String query,
+  ) async {
     if (_loadingInitial) return;
     final start = math.max(0, rank - _jumpWindowRadius);
     const take = _jumpWindowRadius * 2 + 1;
@@ -1328,7 +1337,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _isJumpedToHistory = true;
         _loadingInitial = false;
       });
-      unawaited(_highlightAndScrollTo(focusMessageId));
+      unawaited(_highlightAndScrollTo(focusMessageId, query));
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -1408,10 +1417,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   /// (item heights vary, so this is approximate, not exact) to get it
   /// within the builder's cache range, *then* let `ensureVisible` do the
   /// precise alignment once it's actually laid out.
-  Future<void> _highlightAndScrollTo(String messageId) async {
+  Future<void> _highlightAndScrollTo(String messageId, String query) async {
     final index = _messages.indexWhere((message) => message.id == messageId);
     setState(() {
       _highlightMessageId = messageId;
+      _highlightQuery = query;
       _highlightVisible = false;
     });
     await _waitForNextFrame();
@@ -1439,23 +1449,23 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (mounted) await _flashHighlight(messageId);
   }
 
-  /// "文字变蓝色，然后闪烁两次就消失" — two on/off cycles of
-  /// `_highlightVisible`; each toggle is a hard state flip, but
-  /// `_MessageTextBubble`/`_Bubble` ease the actual color/glow in and out
-  /// (`AnimatedDefaultTextStyle` / `AnimatedContainer`), so it reads as a
-  /// smooth flash rather than a snap. `_highlightMessageId` itself is only
-  /// cleared at the very end, once nothing still needs the row keyed.
+  /// Only the query's own matches inside the target message get a
+  /// background highlight (see `_MessageTextBubble`) — no color/weight/size
+  /// change to the rest of the text. Shows instantly (`_highlightVisible`
+  /// flips true with no transition), holds for 2s, then fades back to
+  /// normal over 500ms; `_highlightMessageId` itself is only cleared once
+  /// that fade has had time to finish, so a second jump to the very same
+  /// message later still finds `_highlightVisible` transitioning
+  /// false→true and re-triggers cleanly.
   Future<void> _flashHighlight(String messageId) async {
-    const onDuration = Duration(milliseconds: 350);
-    const offDuration = Duration(milliseconds: 250);
-    for (var i = 0; i < 2; i++) {
-      if (!mounted) return;
-      setState(() => _highlightVisible = true);
-      await Future.delayed(onDuration);
-      if (!mounted) return;
-      setState(() => _highlightVisible = false);
-      if (i == 0) await Future.delayed(offDuration);
-    }
+    const holdDuration = Duration(seconds: 2);
+    const fadeDuration = Duration(milliseconds: 500);
+    if (!mounted) return;
+    setState(() => _highlightVisible = true);
+    await Future.delayed(holdDuration);
+    if (!mounted) return;
+    setState(() => _highlightVisible = false);
+    await Future.delayed(fadeDuration);
     if (mounted) setState(() => _highlightMessageId = null);
   }
 
@@ -3861,6 +3871,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           stationMessageKey: _stationCardKey,
                           highlightMessageId: _highlightMessageId,
                           highlightVisible: _highlightVisible,
+                          highlightQuery: _highlightQuery,
                           highlightMessageKey: _highlightMessageKey,
                           agentAvatarUrl: agentAvatarUrl,
                           userAvatarUrl: widget.session.userAvatarUrl,

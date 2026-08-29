@@ -129,7 +129,7 @@ class _FakeSearchApi extends CompanionApi {
 
 Widget _harness(
   CompanionApi api, {
-  Future<void> Function(MessageSearchHit hit)? onLocateMessage,
+  Future<void> Function(MessageSearchHit hit, String query)? onLocateMessage,
   Future<void> Function(ChatComponentCard card)? onOpenComponentCard,
 }) {
   return MaterialApp(
@@ -139,7 +139,7 @@ Widget _harness(
       conversationId: 'conv-1',
       onOpenComponentCard: onOpenComponentCard ?? (_) async {},
       onPreviewAttachment: (_) async {},
-      onLocateMessage: onLocateMessage ?? (_) async {},
+      onLocateMessage: onLocateMessage ?? (_, __) async {},
     ),
   );
 }
@@ -149,7 +149,8 @@ Widget _harness(
 /// page, in the real app), not just that the callback fired.
 Widget _pushHarness(
   CompanionApi api, {
-  required Future<void> Function(MessageSearchHit hit) onLocateMessage,
+  required Future<void> Function(MessageSearchHit hit, String query)
+  onLocateMessage,
   Future<void> Function(ChatComponentCard card)? onOpenComponentCard,
 }) {
   return MaterialApp(
@@ -380,7 +381,7 @@ void main() {
             initialScope: ChatSearchScope.text,
             onOpenComponentCard: (_) async {},
             onPreviewAttachment: (_) async {},
-            onLocateMessage: (_) async {},
+            onLocateMessage: (_, __) async {},
           ),
         ),
       );
@@ -561,8 +562,15 @@ void main() {
       _useDesignCanvas(tester);
       final api = _FakeSearchApi();
       final located = <MessageSearchHit>[];
+      final queries = <String>[];
       await tester.pumpWidget(
-        _pushHarness(api, onLocateMessage: (hit) async => located.add(hit)),
+        _pushHarness(
+          api,
+          onLocateMessage: (hit, query) async {
+            located.add(hit);
+            queries.add(query);
+          },
+        ),
       );
       await tester.pump();
 
@@ -579,6 +587,7 @@ void main() {
       expect(find.text('open search'), findsOneWidget); // popped back
       expect(located, hasLength(1));
       expect(located.single.message.id, 'a-hit');
+      expect(queries, ['A']); // the query, so chat can highlight its matches
       expect(tester.takeException(), isNull);
     },
   );
@@ -593,7 +602,7 @@ void main() {
       await tester.pumpWidget(
         _pushHarness(
           api,
-          onLocateMessage: (hit) async => located.add(hit),
+          onLocateMessage: (hit, _) async => located.add(hit),
           onOpenComponentCard: (card) async => openedCards.add(card),
         ),
       );
@@ -630,7 +639,7 @@ void main() {
       await tester.pumpWidget(
         _pushHarness(
           api,
-          onLocateMessage: (hit) async => located.add(hit),
+          onLocateMessage: (hit, _) async => located.add(hit),
           onOpenComponentCard: (card) async => openedCards.add(card),
         ),
       );

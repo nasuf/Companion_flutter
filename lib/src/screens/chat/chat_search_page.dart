@@ -75,11 +75,14 @@ class ChatSearchPage extends StatefulWidget {
   final Future<void> Function(ChatAttachment attachment) onPreviewAttachment;
 
   /// Pops this page back to the live chat page and jumps it to the given
-  /// hit's message (scroll + flash-highlight) — see `_ChatPageState`'s
-  /// `_locateSearchHit`. Replaces the retired standalone
+  /// hit's message (scroll + flash-highlight, background-only, on the
+  /// query's own matches) — see `_ChatPageState`'s `_locateSearchHit`. The
+  /// query is passed through explicitly because it belongs to *this*
+  /// search page, not the hit itself. Replaces the retired standalone
   /// `ChatMessageContextPage`: a search result now opens the real chat
   /// instead of a read-only copy of it.
-  final Future<void> Function(MessageSearchHit hit) onLocateMessage;
+  final Future<void> Function(MessageSearchHit hit, String query)
+  onLocateMessage;
   final ChatSearchScope initialScope;
   final String? initialQuery;
   final String? initialCardCategory;
@@ -94,7 +97,8 @@ class ChatSearchPage extends StatefulWidget {
     required Future<void> Function(ChatComponentCard card) onOpenComponentCard,
     required Future<void> Function(ChatAttachment attachment)
     onPreviewAttachment,
-    required Future<void> Function(MessageSearchHit hit) onLocateMessage,
+    required Future<void> Function(MessageSearchHit hit, String query)
+    onLocateMessage,
     ChatSearchScope initialScope = ChatSearchScope.all,
     String? initialQuery,
     String? initialCardCategory,
@@ -414,7 +418,7 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
   /// the hit itself, instead of opening a separate read-only viewer.
   void _locateMessage(MessageSearchHit hit) {
     Navigator.of(context).pop();
-    unawaited(widget.onLocateMessage(hit));
+    unawaited(widget.onLocateMessage(hit, _query));
   }
 
   void _openCard(MessageSearchHit hit) {

@@ -26,6 +26,7 @@ class _MessageList extends StatelessWidget {
     this.stationMessageKey,
     this.highlightMessageId,
     this.highlightVisible = false,
+    this.highlightQuery,
     this.highlightMessageKey,
     this.agentAvatarUrl,
     this.userAvatarUrl,
@@ -66,9 +67,15 @@ class _MessageList extends StatelessWidget {
   /// the whole flash sequence, not just its "on" half.
   final String? highlightMessageId;
 
-  /// The flash's current on/off phase — only actually tints/glows the row
-  /// (see [_Bubble]/[_MessageTextBubble]) when this is also true.
+  /// The flash's current on/off phase — the target row's own text only
+  /// actually shows the background highlight (see [_MessageTextBubble])
+  /// when this is also true.
   final bool highlightVisible;
+
+  /// The search query whose matches (inside the target message's text) get
+  /// the background highlight — the rest of the text, and every other
+  /// message, is untouched (same font/size/weight/spacing throughout).
+  final String? highlightQuery;
   final GlobalKey? highlightMessageKey;
   final String? agentAvatarUrl;
   final String? userAvatarUrl;
@@ -130,6 +137,7 @@ class _MessageList extends StatelessWidget {
         final row = _MessageRow(
           message: message,
           highlighted: highlighted,
+          highlightQuery: highlightQuery,
           agentAvatarUrl: agentAvatarUrl,
           userAvatarUrl: userAvatarUrl,
           onComponentCardTap: onComponentCardTap,
@@ -170,6 +178,7 @@ class _MessageRow extends StatelessWidget {
   const _MessageRow({
     required this.message,
     this.highlighted = false,
+    this.highlightQuery,
     required this.onComponentCardTap,
     required this.onAchievementTap,
     required this.onResolveMusicTrack,
@@ -194,8 +203,12 @@ class _MessageRow extends StatelessWidget {
   final ChatMessage message;
 
   /// True for exactly the one message a search-result tap just jumped to —
-  /// flashes blue twice via [_Bubble]/[_MessageTextBubble], then clears.
+  /// gives its own [highlightQuery] matches a background highlight via
+  /// [_Bubble]/[_MessageTextBubble], then fades back to normal.
   final bool highlighted;
+
+  /// The query to highlight matches of, while [highlighted].
+  final String? highlightQuery;
   final ValueChanged<ChatComponentCard> onComponentCardTap;
   final ValueChanged<AchievementItem> onAchievementTap;
   final Future<MusicTrack?> Function(MusicTrack track) onResolveMusicTrack;
@@ -260,6 +273,7 @@ class _MessageRow extends StatelessWidget {
           _Bubble(
             message: message,
             highlighted: highlighted,
+            highlightQuery: highlightQuery,
             onComponentCardTap: onComponentCardTap,
             onResolveMusicTrack: onResolveMusicTrack,
             onMusicCardActivated: onMusicCardActivated,
@@ -577,6 +591,7 @@ class _Bubble extends StatelessWidget {
   const _Bubble({
     required this.message,
     this.highlighted = false,
+    this.highlightQuery,
     required this.onComponentCardTap,
     required this.onResolveMusicTrack,
     required this.onMusicCardActivated,
@@ -597,6 +612,7 @@ class _Bubble extends StatelessWidget {
 
   final ChatMessage message;
   final bool highlighted;
+  final String? highlightQuery;
   final ValueChanged<ChatComponentCard> onComponentCardTap;
   final Future<MusicTrack?> Function(MusicTrack track) onResolveMusicTrack;
   final void Function(ChatComponentCard card, String messageId)
@@ -648,7 +664,11 @@ class _Bubble extends StatelessWidget {
           : CrossAxisAlignment.start,
       children: [
         if (showTextWithCard) ...[
-          _MessageTextBubble(message: message, highlighted: highlighted),
+          _MessageTextBubble(
+            message: message,
+            highlighted: highlighted,
+            highlightQuery: highlightQuery,
+          ),
           const SizedBox(height: 8),
         ],
         if (message.isVoiceTranscriptionPending)
@@ -707,28 +727,19 @@ class _Bubble extends StatelessWidget {
           ),
           if (showTextWithAttachments) ...[
             const SizedBox(height: 8),
-            _MessageTextBubble(message: message, highlighted: highlighted),
+            _MessageTextBubble(
+              message: message,
+              highlighted: highlighted,
+              highlightQuery: highlightQuery,
+            ),
           ],
         ] else
-          _MessageTextBubble(message: message, highlighted: highlighted),
+          _MessageTextBubble(
+            message: message,
+            highlighted: highlighted,
+            highlightQuery: highlightQuery,
+          ),
       ],
-    );
-    final highlightedBubbleColumn = AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOut,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: highlighted
-            ? [
-                BoxShadow(
-                  color: AppColors.accent.withValues(alpha: 0.35),
-                  blurRadius: 16,
-                  spreadRadius: 2,
-                ),
-              ]
-            : const [],
-      ),
-      child: bubbleColumn,
     );
 
     return Flexible(
@@ -752,11 +763,11 @@ class _Bubble extends StatelessWidget {
                       : null,
                 ),
                 const SizedBox(width: 8),
-                highlightedBubbleColumn,
+                bubbleColumn,
               ],
             )
           else
-            highlightedBubbleColumn,
+            bubbleColumn,
           const SizedBox(height: 3),
           Text(
             _formatTime(message.createdAt),
@@ -957,36 +968,59 @@ class _TypingBubbleState extends State<_TypingBubble>
 }
 
 class _MessageTextBubble extends StatelessWidget {
-  const _MessageTextBubble({required this.message, this.highlighted = false});
+  const _MessageTextBubble({
+    required this.message,
+    this.highlighted = false,
+    this.highlightQuery,
+  });
 
   final ChatMessage message;
 
-  /// True for the one message a search-result tap just jumped to — the
-  /// text itself flashes to the app's accent blue (matching the same
-  /// [AppColors.accent] used to highlight matched terms in search results)
-  /// instead of a background tint, since that reads clearly against both
-  /// the tinted "mine" bubble and the plain "theirs" one.
+  /// True for the one message a search-result tap just jumped to.
   final bool highlighted;
+
+  /// The search query whose matches in [message.content] get a background
+  /// highlight while [highlighted] — font/size/weight/spacing never change,
+  /// only [highlightedSpans]' `highlightStyle` background color does, eased
+  /// by [TweenAnimationBuilder] from fully visible down to transparent.
+  final String? highlightQuery;
 
   @override
   Widget build(BuildContext context) {
+    final baseStyle = TextStyle(
+      color: message.isMine ? Colors.white : AppColors.text,
+      fontSize: 14,
+      height: 1.42,
+    );
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 270),
       child: DecoratedBox(
         decoration: _bubbleDecoration(message.isMine),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          child: AnimatedDefaultTextStyle(
-            duration: const Duration(milliseconds: 150),
-            style: TextStyle(
-              color: highlighted
-                  ? AppColors.accent
-                  : (message.isMine ? Colors.white : AppColors.text),
-              fontSize: 14,
-              fontWeight: highlighted ? FontWeight.w700 : FontWeight.normal,
-              height: 1.42,
-            ),
-            child: Text(message.content),
+          child: TweenAnimationBuilder<double>(
+            tween: Tween<double>(end: highlighted ? 1.0 : 0.0),
+            duration: highlighted
+                ? Duration.zero
+                : const Duration(milliseconds: 500),
+            curve: Curves.easeOut,
+            builder: (context, progress, _) {
+              final highlightStyle = baseStyle.copyWith(
+                backgroundColor: AppColors.accent.withValues(
+                  alpha: 0.35 * progress,
+                ),
+              );
+              return Text.rich(
+                TextSpan(
+                  children: highlightedSpans(
+                    text: message.content,
+                    query: highlightQuery ?? '',
+                    baseStyle: baseStyle,
+                    highlightStyle: highlightStyle,
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ),
