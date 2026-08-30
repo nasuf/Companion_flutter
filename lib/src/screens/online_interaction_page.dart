@@ -36,6 +36,7 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
   }
 
   Future<void> _openPortal(_OnlinePortal portal) async {
+    if (portal.disabled) return;
     final result = await Navigator.of(context).push<CapsuleChatDraft>(
       CupertinoPageRoute<CapsuleChatDraft>(
         builder: (_) {
@@ -57,8 +58,39 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
     widget.onSendToChat?.call(result);
   }
 
+  // 卡片间距，同时用作两列内部的纵向间距和两列之间的横向间距。
+  static const _portalGridSpacing = 12.0;
+  // 右列相对左列下沉的错位量——原来是滚动列表里靠 Transform.translate 单纯
+  // 位移实现的（不占布局空间，多出来的高度靠滚动吞掉）。现在整页不能滚动，
+  // 错位必须挤占进右列自己的高度预算里：右列顶部先空出这么高，右列两张卡
+  // 片因此比左列矮 _portalColumnStagger，撑满剩下的高度，而不是单纯地被推
+  // 到可视区域以外。
+  static const _portalColumnStagger = 12.0;
+
+  Widget _buildPortalColumn(List<int> indices, double progress) {
+    return Column(
+      children: [
+        for (var i = 0; i < indices.length; i++) ...[
+          if (i > 0) const SizedBox(height: _portalGridSpacing),
+          Expanded(
+            child: _OnlinePortalCard(
+              portal: _onlinePortals[indices[i]],
+              index: indices[i],
+              progress: progress,
+              onTap: () => _openPortal(_onlinePortals[indices[i]]),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // 整页不再滚动：hero 高度固定，下面两列卡片拿剩余空间用 Expanded 自己
+    // 撑满，而不是像之前那样用一个写死的 mainAxisExtent 让内容比视口高、
+    // 必须手动划一下才能看到底部两张卡片。
+    const gridBottomClearance = 126.0; // 留给 main_shell 悬浮 tab bar 的空间。
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
@@ -66,43 +98,43 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
         return Stack(
           children: [
             _OnlineBackground(progress: progress),
-            CustomScrollView(
-              physics: const BouncingScrollPhysics(),
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      34,
-                      MediaQuery.paddingOf(context).top + 50,
-                      20,
-                      0,
-                    ),
-                    child: _OnlineHero(progress: progress),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    34,
+                    MediaQuery.paddingOf(context).top + 50,
+                    20,
+                    0,
                   ),
+                  child: _OnlineHero(progress: progress),
                 ),
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 126),
-                  sliver: SliverGrid.builder(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                          mainAxisExtent: 232,
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      16,
+                      0,
+                      16,
+                      gridBottomClearance,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: _buildPortalColumn(const [0, 2], progress),
                         ),
-                    itemCount: _onlinePortals.length,
-                    itemBuilder: (context, index) {
-                      final portal = _onlinePortals[index];
-                      return Transform.translate(
-                        offset: Offset(0, index.isOdd ? 12 : 0),
-                        child: _OnlinePortalCard(
-                          portal: portal,
-                          index: index,
-                          progress: progress,
-                          onTap: () => _openPortal(portal),
+                        const SizedBox(width: _portalGridSpacing),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(
+                              top: _portalColumnStagger,
+                            ),
+                            child: _buildPortalColumn(const [1, 3], progress),
+                          ),
                         ),
-                      );
-                    },
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -293,11 +325,12 @@ class _OnlineHero extends StatelessWidget {
             left: 0,
             top: 58,
             child: Text(
-              '我想和你做的事情\n有很多',
+              '我想和你做的事情有很多',
+              maxLines: 1,
               style: TextStyle(
                 color: colors.text,
-                fontSize: 34,
-                height: 1.04,
+                fontSize: 26,
+                height: 1.15,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 0,
               ),
@@ -501,15 +534,24 @@ class _OnlinePortalCard extends StatelessWidget {
   final double progress;
   final VoidCallback onTap;
 
+  // 亮度加权的标准灰度矩阵，用来把"暂未开放"的卡片配图整体去色。
+  static const _greyscaleMatrix = <double>[
+    0.2126, 0.7152, 0.0722, 0, 0,
+    0.2126, 0.7152, 0.0722, 0, 0,
+    0.2126, 0.7152, 0.0722, 0, 0,
+    0, 0, 0, 1, 0,
+  ];
+
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     final isDark = AppColors.isDark(context);
+    final disabled = portal.disabled;
     return CupertinoButton(
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
       borderRadius: BorderRadius.circular(32),
-      onPressed: onTap,
+      onPressed: disabled ? null : onTap,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(32),
         child: DecoratedBox(
@@ -541,14 +583,61 @@ class _OnlinePortalCard extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              _BreathingPortalImage(
-                portal: portal,
-                progress: progress,
-                phaseOffset: index * 0.72,
+              Opacity(
+                opacity: disabled ? 0.55 : 1,
+                child: disabled
+                    ? ColorFiltered(
+                        colorFilter: const ColorFilter.matrix(
+                          _greyscaleMatrix,
+                        ),
+                        child: _BreathingPortalImage(
+                          portal: portal,
+                          progress: progress,
+                          phaseOffset: index * 0.72,
+                        ),
+                      )
+                    : _BreathingPortalImage(
+                        portal: portal,
+                        progress: progress,
+                        phaseOffset: index * 0.72,
+                      ),
               ),
               const _PortalBottomBlur(),
               _PortalText(portal: portal),
+              if (disabled) const _PortalComingSoonBadge(),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PortalComingSoonBadge extends StatelessWidget {
+  const _PortalComingSoonBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      right: 16,
+      top: 16,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.30)),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.fromLTRB(10, 5, 10, 5),
+          child: Text(
+            '敬请期待',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              height: 1,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+            ),
           ),
         ),
       ),
@@ -700,17 +789,18 @@ class _PortalText extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              Text(
-                '›',
-                style: TextStyle(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.70)
-                      : colors.muted,
-                  fontSize: 17,
-                  height: 1,
-                  fontWeight: FontWeight.w900,
+              if (!portal.disabled)
+                Text(
+                  '›',
+                  style: TextStyle(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.70)
+                        : colors.muted,
+                    fontSize: 17,
+                    height: 1,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
-              ),
             ],
           ),
         ],
@@ -749,6 +839,7 @@ class _OnlinePortal {
     required this.accent,
     required this.motion,
     this.alignment = Alignment.center,
+    this.disabled = false,
   });
 
   final String id;
@@ -759,6 +850,7 @@ class _OnlinePortal {
   final Color accent;
   final _PortalMotion motion;
   final Alignment alignment;
+  final bool disabled;
 }
 
 class _PortalMotion {
@@ -788,12 +880,13 @@ const _onlinePortals = [
   _OnlinePortal(
     id: 'movie',
     title: '一起看电影',
-    subtitle: '海报轮播、同步进度、共同弹幕。',
-    metric: '房间就绪',
+    subtitle: '海报轮播、同步进度、共同弹幕，功能开发中。',
+    metric: '暂未开放',
     asset: 'assets/prototype/movie-bouquet.jpg',
     accent: Color(0xFFFFC936),
     motion: _PortalMotion(startX: -7, endX: 8, startY: 4, endY: -6),
     alignment: Alignment(0, -0.48),
+    disabled: true,
   ),
   _OnlinePortal(
     id: 'game',

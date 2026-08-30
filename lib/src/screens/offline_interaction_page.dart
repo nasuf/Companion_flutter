@@ -106,6 +106,11 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
   @override
   Widget build(BuildContext context) {
     final tags = _home?.tags ?? const <String>[];
+    // 整页不再滚动：hero 和功能卡片行保持原有的固定高度，记忆胶囊面板拿
+    // 剩余空间用 Expanded 撑满（自己内部按拿到的高度等比收缩，见
+    // _OfflineMemoryPanel），而不是像之前那样整页内容比视口高、必须手动
+    // 划一下才能看到底部的记忆胶囊。
+    const memoryPanelBottomClearance = 140.0; // 留给 main_shell 悬浮 tab bar。
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
@@ -113,68 +118,68 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
         return Stack(
           children: [
             _OfflineBackground(progress: progress),
-            CustomScrollView(
-              physics: const BouncingScrollPhysics(),
-              slivers: [
-                SliverToBoxAdapter(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    28,
+                    MediaQuery.paddingOf(context).top + 52,
+                    28,
+                    0,
+                  ),
+                  child: _OfflineHero(progress: progress),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _OfflineFeatureCard(
+                          icon: CupertinoIcons.scope,
+                          iconColor: const Color(0xFF2D73FF),
+                          title: '看看活动',
+                          subtitle: _activitySubtitle,
+                          status: '推荐',
+                          gradient: const [
+                            Color(0xFF88B7FF),
+                            Color(0xFF63CEEA),
+                            Color(0xFFBDF7E3),
+                          ],
+                          onTap: _openActivities,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _OfflineFeatureCard(
+                          icon: CupertinoIcons.gift_fill,
+                          iconColor: const Color(0xFFFF8C4B),
+                          title: '我的礼物',
+                          subtitle: _home?.giftSummary ?? '你有一份惊喜在路上',
+                          status: '礼物',
+                          gradient: const [
+                            Color(0xFFFFB695),
+                            Color(0xFFFFD98D),
+                            Color(0xFFFFF0BF),
+                          ],
+                          onTap: _openGifts,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 26),
+                Expanded(
                   child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      28,
-                      MediaQuery.paddingOf(context).top + 52,
+                    padding: const EdgeInsets.fromLTRB(
                       28,
                       0,
+                      28,
+                      memoryPanelBottomClearance,
                     ),
-                    child: _OfflineHero(progress: progress),
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _OfflineFeatureCard(
-                            icon: CupertinoIcons.scope,
-                            iconColor: const Color(0xFF2D73FF),
-                            title: '看看活动',
-                            subtitle: _activitySubtitle,
-                            status: '推荐',
-                            gradient: const [
-                              Color(0xFF88B7FF),
-                              Color(0xFF63CEEA),
-                              Color(0xFFBDF7E3),
-                            ],
-                            onTap: _openActivities,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _OfflineFeatureCard(
-                            icon: CupertinoIcons.gift_fill,
-                            iconColor: const Color(0xFFFF8C4B),
-                            title: '我的礼物',
-                            subtitle: _home?.giftSummary ?? '你有一份惊喜在路上',
-                            status: '礼物',
-                            gradient: const [
-                              Color(0xFFFFB695),
-                              Color(0xFFFFD98D),
-                              Color(0xFFFFF0BF),
-                            ],
-                            onTap: _openGifts,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SliverToBoxAdapter(child: SizedBox(height: 26)),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 28),
                     child: _OfflineMemoryPanel(tags: tags, progress: progress),
                   ),
                 ),
-                const SliverToBoxAdapter(child: SizedBox(height: 140)),
               ],
             ),
           ],
@@ -454,10 +459,11 @@ class _OfflineHero extends StatelessWidget {
             top: 54,
             child: Text(
               '今天想一起做点什么？',
+              maxLines: 1,
               style: TextStyle(
                 color: colors.text,
-                fontSize: 34,
-                height: 1.06,
+                fontSize: 26,
+                height: 1.15,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 0,
               ),
@@ -915,57 +921,66 @@ class _OfflineMemoryPanel extends StatelessWidget {
       Color(0xFF82CEF1),
     ];
     final specs = _chipSpecs(display.length);
-    return SizedBox(
-      height: 296,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth;
-          final paintOrder =
-              List<int>.generate(display.length, (index) => index)
-                ..sort((a, b) {
-                  final aPlaceholder = display[a].isEmpty;
-                  final bPlaceholder = display[b].isEmpty;
-                  if (aPlaceholder == bPlaceholder) return a.compareTo(b);
-                  return aPlaceholder ? -1 : 1;
-                });
-          return Stack(
-            clipBehavior: Clip.none,
-            children: [
-              for (final i in paintOrder)
-                Positioned(
-                  left: (width * specs[i].x - specs[i].w / 2).clamp(
-                    0.0,
-                    math.max(0, width - specs[i].w),
-                  ),
-                  top: specs[i].y,
-                  child: _FloatingMemoryChip(
-                    text: display[i],
-                    color: palette[i % palette.length],
-                    placeholder: display[i].isEmpty,
-                    progress: progress,
-                    phase: specs[i].phase,
-                    width: specs[i].w,
-                  ),
-                ),
+    // 原来这块是写死 296 高的画布，绝对坐标摆放悬浮卡片。现在这一块要能塞
+    // 进页面剩余的任意高度而不滚动——不是用 FittedBox 整体缩放（那会连宽度
+    // 一起按同一个比例缩，明明宽度够用却被硬挤窄），而是让纵向坐标按拿到
+    // 的实际高度相对 296 的设计高度等比收缩，横向坐标继续用现成的
+    // constraints.maxWidth 逻辑，两个轴各自适应。
+    const designHeight = 296.0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final availableHeight = constraints.maxHeight;
+        final heightScale = availableHeight.isFinite
+            ? (availableHeight / designHeight).clamp(0.0, 1.0)
+            : 1.0;
+        final paintOrder =
+            List<int>.generate(display.length, (index) => index)..sort((
+              a,
+              b,
+            ) {
+              final aPlaceholder = display[a].isEmpty;
+              final bPlaceholder = display[b].isEmpty;
+              if (aPlaceholder == bPlaceholder) return a.compareTo(b);
+              return aPlaceholder ? -1 : 1;
+            });
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            for (final i in paintOrder)
               Positioned(
-                left: 0,
-                right: 0,
-                bottom: 18,
-                child: Text(
-                  '这些是咱们一起攒下来的小印记 ✨',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppColors.of(context).muted.withValues(alpha: 0.50),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    height: 1.35,
-                  ),
+                left: (width * specs[i].x - specs[i].w / 2).clamp(
+                  0.0,
+                  math.max(0, width - specs[i].w),
+                ),
+                top: specs[i].y * heightScale,
+                child: _FloatingMemoryChip(
+                  text: display[i],
+                  color: palette[i % palette.length],
+                  placeholder: display[i].isEmpty,
+                  progress: progress,
+                  phase: specs[i].phase,
+                  width: specs[i].w,
                 ),
               ),
-            ],
-          );
-        },
-      ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 18 * heightScale,
+              child: Text(
+                '这些是咱们一起攒下来的小印记 ✨',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.of(context).muted.withValues(alpha: 0.50),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
