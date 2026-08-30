@@ -961,6 +961,7 @@ class _OfflineMemoryPanel extends StatelessWidget {
                   progress: progress,
                   phase: specs[i].phase,
                   width: specs[i].w,
+                  heightScale: heightScale,
                 ),
               ),
             Positioned(
@@ -1027,6 +1028,7 @@ class _FloatingMemoryChip extends StatelessWidget {
     required this.phase,
     required this.width,
     this.placeholder = false,
+    this.heightScale = 1,
   });
 
   final String text;
@@ -1035,11 +1037,15 @@ class _FloatingMemoryChip extends StatelessWidget {
   final double phase;
   final double width;
   final bool placeholder;
+  // 可用高度比设计高度(296)矮的时候，光把纵坐标按比例收紧、卡片本身还是
+  // 固定 42 高的话，间距一压缩卡片就会互相压住——把这个收缩量也叠进卡片
+  // 自身的缩放里，纵坐标和卡片大小按同一个比例一起收缩才不会互相咬住。
+  final double heightScale;
 
   @override
   Widget build(BuildContext context) {
     final wave = math.sin(progress * math.pi * 2 + phase);
-    final scale = 1 + wave * .025;
+    final scale = heightScale * (1 + wave * .025);
     final dy = wave * 7;
     final blur = placeholder ? 14.0 : 7.0 + 1.4 * (wave + 1);
     final colors = AppColors.of(context);

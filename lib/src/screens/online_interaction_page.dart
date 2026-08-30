@@ -60,15 +60,19 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
 
   // 卡片间距，同时用作两列内部的纵向间距和两列之间的横向间距。
   static const _portalGridSpacing = 12.0;
-  // 右列相对左列下沉的错位量——原来是滚动列表里靠 Transform.translate 单纯
-  // 位移实现的（不占布局空间，多出来的高度靠滚动吞掉）。现在整页不能滚动，
-  // 错位必须挤占进右列自己的高度预算里：右列顶部先空出这么高，右列两张卡
-  // 片因此比左列矮 _portalColumnStagger，撑满剩下的高度，而不是单纯地被推
-  // 到可视区域以外。
-  static const _portalColumnStagger = 12.0;
+  // 右列相对左列的错落比例——两列都从顶部对齐开始(不再用顶部留白下沉)，
+  // 右列直接矮一截、底部不跟左列对平，这样两列高度差是真的"左列更高"，
+  // 而不是"整体下移但首尾都对齐"，更接近原来滚动列表里靠 Transform.
+  // translate 单纯位移出来的错落感。用比例而不是写死像素，两列高度差随
+  // 屏幕高度等比缩放，不会在大屏上显得太不明显、小屏上又显得太夸张。
+  static const _portalRightColumnHeightFactor = 0.90;
 
-  Widget _buildPortalColumn(List<int> indices, double progress) {
-    return Column(
+  Widget _buildPortalColumn(
+    List<int> indices,
+    double progress, {
+    double heightFactor = 1,
+  }) {
+    final column = Column(
       children: [
         for (var i = 0; i < indices.length; i++) ...[
           if (i > 0) const SizedBox(height: _portalGridSpacing),
@@ -82,6 +86,12 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
           ),
         ],
       ],
+    );
+    if (heightFactor >= 1) return column;
+    return FractionallySizedBox(
+      alignment: Alignment.topCenter,
+      heightFactor: heightFactor,
+      child: column,
     );
   }
 
@@ -126,11 +136,10 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
                         ),
                         const SizedBox(width: _portalGridSpacing),
                         Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.only(
-                              top: _portalColumnStagger,
-                            ),
-                            child: _buildPortalColumn(const [1, 3], progress),
+                          child: _buildPortalColumn(
+                            const [1, 3],
+                            progress,
+                            heightFactor: _portalRightColumnHeightFactor,
                           ),
                         ),
                       ],
