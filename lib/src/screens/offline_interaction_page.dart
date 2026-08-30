@@ -470,22 +470,6 @@ class _OfflineHero extends StatelessWidget {
             ),
           ),
           Positioned(
-            left: 0,
-            right: 0,
-            top: 164 - lowerContentLift,
-            child: Text(
-              '看看有没有你感兴趣的',
-              style: TextStyle(
-                color: isDark
-                    ? colors.muted.withValues(alpha: 0.84)
-                    : colors.muted,
-                fontSize: 15,
-                height: 1.5,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          Positioned(
             right: 0,
             top: 172 - lowerContentLift,
             child: SizedBox(
@@ -965,21 +949,6 @@ class _OfflineMemoryPanel extends StatelessWidget {
                   width: specs[i].w,
                 ),
               ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 18 * heightScale,
-              child: Text(
-                '这些是咱们一起攒下来的小印记 ✨',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.of(context).muted.withValues(alpha: 0.50),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  height: 1.35,
-                ),
-              ),
-            ),
           ],
         );
       },
