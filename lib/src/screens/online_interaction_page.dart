@@ -60,20 +60,22 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
 
   // 卡片间距，同时用作两列内部的纵向间距和两列之间的横向间距。
   static const _portalGridSpacing = 12.0;
-  // 右列相对左列的错落比例——两列都从顶部对齐开始(不再用顶部留白下沉)，
-  // 右列直接矮一截、底部不跟左列对平，这样两列高度差是真的"左列更高"，
-  // 而不是"整体下移但首尾都对齐"，更接近原来滚动列表里靠 Transform.
-  // translate 单纯位移出来的错落感。用比例而不是写死像素，两列高度差随
-  // 屏幕高度等比缩放，不会在大屏上显得太不明显、小屏上又显得太夸张。
-  static const _portalRightColumnHeightFactor = 0.90;
+  // 左右两列错落的位移量：两列卡片大小完全一致，只是左列贴顶、右列贴底，
+  // 各自把这段空白让在另一头——平行四边形式的错落，而不是让某一列的卡片
+  // 变矮。两列高度预算相同(同一个 Row + stretch)，各自内部都是
+  // "2 张卡片 + 1 个 12px 间距 + 1 个 stagger 空白"，Flex 自动按剩余空间
+  // 均分两张卡片，天然保证左右两列卡片尺寸一致。
+  static const _portalColumnStagger = 28.0;
 
   Widget _buildPortalColumn(
     List<int> indices,
     double progress, {
-    double heightFactor = 1,
+    required bool staggerAtTop,
   }) {
-    final column = Column(
+    final spacer = const SizedBox(height: _portalColumnStagger);
+    return Column(
       children: [
+        if (staggerAtTop) spacer,
         for (var i = 0; i < indices.length; i++) ...[
           if (i > 0) const SizedBox(height: _portalGridSpacing),
           Expanded(
@@ -85,13 +87,8 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
             ),
           ),
         ],
+        if (!staggerAtTop) spacer,
       ],
-    );
-    if (heightFactor >= 1) return column;
-    return FractionallySizedBox(
-      alignment: Alignment.topCenter,
-      heightFactor: heightFactor,
-      child: column,
     );
   }
 
@@ -132,14 +129,18 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Expanded(
-                          child: _buildPortalColumn(const [0, 2], progress),
+                          child: _buildPortalColumn(
+                            const [0, 2],
+                            progress,
+                            staggerAtTop: false,
+                          ),
                         ),
                         const SizedBox(width: _portalGridSpacing),
                         Expanded(
                           child: _buildPortalColumn(
                             const [1, 3],
                             progress,
-                            heightFactor: _portalRightColumnHeightFactor,
+                            staggerAtTop: true,
                           ),
                         ),
                       ],

@@ -921,18 +921,20 @@ class _OfflineMemoryPanel extends StatelessWidget {
       Color(0xFF82CEF1),
     ];
     final specs = _chipSpecs(display.length);
-    // 原来这块是写死 296 高的画布，绝对坐标摆放悬浮卡片。现在这一块要能塞
-    // 进页面剩余的任意高度而不滚动——不是用 FittedBox 整体缩放（那会连宽度
-    // 一起按同一个比例缩，明明宽度够用却被硬挤窄），而是让纵向坐标按拿到
-    // 的实际高度相对 296 的设计高度等比收缩，横向坐标继续用现成的
-    // constraints.maxWidth 逻辑，两个轴各自适应。
+    // 原来这块是写死 296 高的画布，绝对坐标摆放悬浮卡片。这一块要能塞进
+    // 页面剩余的任意高度而不滚动——卡片本身保持设计原尺寸不缩小，只把纵向
+    // 坐标的间距按实际高度相对 296 设计高度收紧；下限压到 0.72 封顶，不管
+    // 屏幕多矮都不让间距缩没——留原有间距的大部分，让"挨得近的几张卡片
+    // 略有交叠"读成错落感，而不是所有卡片挤成一团完全盖住彼此。横向坐标
+    // 继续用现成的 constraints.maxWidth 逻辑，两个轴各自适应。
     const designHeight = 296.0;
+    const minHeightScale = 0.72;
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final availableHeight = constraints.maxHeight;
         final heightScale = availableHeight.isFinite
-            ? (availableHeight / designHeight).clamp(0.0, 1.0)
+            ? (availableHeight / designHeight).clamp(minHeightScale, 1.0)
             : 1.0;
         final paintOrder =
             List<int>.generate(display.length, (index) => index)..sort((
@@ -961,7 +963,6 @@ class _OfflineMemoryPanel extends StatelessWidget {
                   progress: progress,
                   phase: specs[i].phase,
                   width: specs[i].w,
-                  heightScale: heightScale,
                 ),
               ),
             Positioned(
@@ -1028,7 +1029,6 @@ class _FloatingMemoryChip extends StatelessWidget {
     required this.phase,
     required this.width,
     this.placeholder = false,
-    this.heightScale = 1,
   });
 
   final String text;
@@ -1037,15 +1037,11 @@ class _FloatingMemoryChip extends StatelessWidget {
   final double phase;
   final double width;
   final bool placeholder;
-  // 可用高度比设计高度(296)矮的时候，光把纵坐标按比例收紧、卡片本身还是
-  // 固定 42 高的话，间距一压缩卡片就会互相压住——把这个收缩量也叠进卡片
-  // 自身的缩放里，纵坐标和卡片大小按同一个比例一起收缩才不会互相咬住。
-  final double heightScale;
 
   @override
   Widget build(BuildContext context) {
     final wave = math.sin(progress * math.pi * 2 + phase);
-    final scale = heightScale * (1 + wave * .025);
+    final scale = 1 + wave * .025;
     final dy = wave * 7;
     final blur = placeholder ? 14.0 : 7.0 + 1.4 * (wave + 1);
     final colors = AppColors.of(context);
