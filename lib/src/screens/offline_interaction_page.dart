@@ -124,7 +124,7 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
                 Padding(
                   padding: EdgeInsets.fromLTRB(
                     28,
-                    MediaQuery.paddingOf(context).top + 52,
+                    MediaQuery.paddingOf(context).top + 32,
                     28,
                     0,
                   ),
@@ -168,7 +168,7 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
                     ],
                   ),
                 ),
-                const SizedBox(height: 26),
+                const SizedBox(height: 16),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(
@@ -292,22 +292,36 @@ class _OfflineBackground extends StatelessWidget {
     final isDark = AppColors.isDark(context);
     final plateBreath = math.sin(progress * math.pi);
     final plateDrift = math.sin(progress * math.pi * 2);
+    // 跟互动页同一套"极光粉彩"底色思路(见 online_interaction_page.dart 的
+    // 说明)，但这里刻意偏暖——陪伴页讲的是走到现实世界里，暖阳/户外的暖调
+    // 占主导，冷色收在底部，跟互动页(线上、偏冷)拉开性格差异。深色模式仍走
+    // 主题色。
+    final Gradient baseGradient = isDark
+        ? LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              colors.page,
+              Color.lerp(colors.page, colors.surfaceMuted, 0.45)!,
+              Color.lerp(colors.page, colors.accentDeep, 0.14)!,
+            ],
+            stops: const [0, 0.52, 1],
+          )
+        : const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFFFFE7CE), // 左上暖阳杏色，提亮一档，暖调占主导
+              Color(0xFFFFF4E7), // 暖奶油，更亮
+              Color(0xFFEAF2FF), // 天蓝，提亮
+              Color(0xFFE0F5EA), // 右下薄荷，提亮
+            ],
+            stops: [0, 0.34, 0.68, 1],
+          );
     return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            colors.page,
-            Color.lerp(colors.page, colors.surfaceMuted, 0.40)!,
-            Color.lerp(colors.page, colors.accentSoft, 0.20)!,
-          ],
-          stops: [0, 0.52, 1],
-        ),
-      ),
+      decoration: BoxDecoration(gradient: baseGradient),
       child: Stack(
         children: [
-          Positioned.fill(child: CustomPaint(painter: _OnlineGridPainter())),
           Positioned(
             right: -78 + 10 * plateDrift,
             top: 88 - 7 * plateBreath,
@@ -321,7 +335,7 @@ class _OfflineBackground extends StatelessWidget {
             top: 388 + 9 * progress,
             child: _OnlineAura(
               size: const Size(270, 230),
-              color: const Color(0x34FFD3AA),
+              color: const Color(0x66FFCF98),
               blur: 42,
             ),
           ),
@@ -330,7 +344,7 @@ class _OfflineBackground extends StatelessWidget {
             bottom: 78 - 8 * progress,
             child: _OnlineAura(
               size: const Size(230, 210),
-              color: const Color(0x35D7D7FF),
+              color: const Color(0x5ECBD3FF),
               blur: 38,
             ),
           ),
@@ -339,11 +353,12 @@ class _OfflineBackground extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: RadialGradient(
                   center: const Alignment(0.76, -0.62),
-                  radius: 0.78 + 0.02 * progress,
+                  radius: 0.86 + 0.02 * progress,
                   colors: [
+                    // 右上角高光，挑亮角落但不冲淡暖粉彩。
                     isDark
-                        ? colors.accentSoft.withValues(alpha: 0.30)
-                        : Colors.white.withValues(alpha: 0.66),
+                        ? colors.accentSoft.withValues(alpha: 0.38)
+                        : Colors.white.withValues(alpha: 0.50),
                     Colors.transparent,
                   ],
                 ),
@@ -366,7 +381,7 @@ class _OfflineBreathingPlate extends StatelessWidget {
     final isDark = AppColors.isDark(context);
     final breath = math.sin(progress * math.pi);
     final drift = math.sin(progress * math.pi * 2);
-    final highlightAlpha = isDark ? 0.12 + breath * 0.07 : 0.48 + breath * 0.18;
+    final highlightAlpha = isDark ? 0.14 + breath * 0.07 : 0.60 + breath * 0.18;
     return Transform.translate(
       offset: Offset(drift * 3, -breath * 5),
       child: Transform.scale(
@@ -392,15 +407,17 @@ class _OfflineBreathingPlate extends StatelessWidget {
                       ).withValues(alpha: 0.11 + breath * 0.05),
                     ]
                   : [
+                      // 右上这块大色块是"顶部发灰"的主因——继续提亮提饱和、
+                      // 加大不透明度，让它读成明快的蓝青而不是灰蓝。
                       const Color(
-                        0xFF8DB8FF,
-                      ).withValues(alpha: 0.34 + breath * 0.09),
+                        0xFF6FB0FF,
+                      ).withValues(alpha: 0.60 + breath * 0.12),
                       const Color(
-                        0xFF78D6FF,
-                      ).withValues(alpha: 0.24 + breath * 0.08),
+                        0xFF52CCFF,
+                      ).withValues(alpha: 0.46 + breath * 0.10),
                       const Color(
-                        0xFF45D4C5,
-                      ).withValues(alpha: 0.18 + breath * 0.06),
+                        0xFF2FDCC8,
+                      ).withValues(alpha: 0.36 + breath * 0.08),
                     ],
               stops: const [0, 0.58, 1],
             ),
@@ -433,7 +450,10 @@ class _OfflineHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     final isDark = AppColors.isDark(context);
-    const lowerContentLift = 18.0;
+    // 之前"看看有没有你感兴趣的"那行字删掉后，这块 hero 的最下方内容就只剩
+    // LIVE 图形了——用这个把它（连同 hero 自身高度）一起再往上收一截，给
+    // 下面功能卡片和记忆胶囊标签多让一点空间，不需要再顾着已经删掉的文案。
+    const lowerContentLift = 32.0;
     return SizedBox(
       height: 300 - lowerContentLift,
       child: Stack(
@@ -1009,78 +1029,82 @@ class _FloatingMemoryChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 去掉 BackdropFilter 之后卡顿还在，说明不是唯一原因：boxShadow 的
+    // blurRadius 之前也跟着 wave 逐帧变化，卡片外观(阴影)每帧都不一样，
+    // RepaintBoundary 就算包在外面也没用——它只能让"没变化的内容"跳过重
+    // 绘，内容本身每帧都在变，边界只是把这份重绘开销单独隔离，并没有省掉
+    // 这份开销。9 张卡片每帧都要重新栅化一次阴影模糊，加起来才是真正卡顿
+    // 的地方。改成阴影固定不变，卡片的视觉内容整体变成帧不变的——现在
+    // RepaintBoundary 包在 Container 外层、Transform 外层，能把这个静态
+    // 内容缓存成一张纹理，外面的浮动/呼吸缩放只是在 GPU 上平移缩放这张现
+    // 成纹理，不需要每帧重新画。
     final wave = math.sin(progress * math.pi * 2 + phase);
     final scale = 1 + wave * .025;
     final dy = wave * 7;
-    final blur = placeholder ? 14.0 : 7.0 + 1.4 * (wave + 1);
     final colors = AppColors.of(context);
     return Transform.translate(
       offset: Offset(0, dy),
       child: Transform.scale(
         scale: scale,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(999),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-            child: Container(
-              width: width,
-              height: 42,
-              padding: const EdgeInsets.symmetric(horizontal: 15),
-              decoration: BoxDecoration(
+        child: RepaintBoundary(
+          child: Container(
+            width: width,
+            height: 42,
+            padding: const EdgeInsets.symmetric(horizontal: 15),
+            decoration: BoxDecoration(
+              color: placeholder
+                  ? color.withValues(
+                      alpha: AppColors.isDark(context) ? 0.10 : 0.16,
+                    )
+                  : color.withValues(
+                      alpha: AppColors.isDark(context) ? 0.16 : 0.18,
+                    ),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
                 color: placeholder
                     ? color.withValues(
-                        alpha: AppColors.isDark(context) ? 0.10 : 0.16,
+                        alpha: AppColors.isDark(context) ? 0.16 : 0.28,
                       )
-                    : color.withValues(
-                        alpha: AppColors.isDark(context) ? 0.16 : 0.18,
-                      ),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: placeholder
-                      ? color.withValues(
-                          alpha: AppColors.isDark(context) ? 0.16 : 0.28,
-                        )
-                      : color.withValues(alpha: .30),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: (placeholder ? Colors.white : color).withValues(
-                      alpha: AppColors.isDark(context) ? 0.05 : 0.13,
-                    ),
-                    blurRadius: 14 + 3 * (wave + 1),
-                    offset: const Offset(0, 8),
+                    : color.withValues(alpha: .30),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: (placeholder ? Colors.white : color).withValues(
+                    alpha: AppColors.isDark(context) ? 0.05 : 0.13,
                   ),
-                ],
-              ),
-              child: Center(
-                child: placeholder
-                    ? Container(
-                        height: 14,
-                        margin: const EdgeInsets.symmetric(horizontal: 10),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(999),
-                          color: color.withValues(
-                            alpha: AppColors.isDark(context) ? 0.12 : 0.20,
-                          ),
-                        ),
-                      )
-                    : Text(
-                        _chipEmoji(text) == null
-                            ? text
-                            : '${_chipEmoji(text)}  $text',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Color.lerp(
-                            color,
-                            colors.text,
-                            AppColors.isDark(context) ? 0.28 : 0.40,
-                          ),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
+                  blurRadius: 17,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Center(
+              child: placeholder
+                  ? Container(
+                      height: 14,
+                      margin: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        color: color.withValues(
+                          alpha: AppColors.isDark(context) ? 0.12 : 0.20,
                         ),
                       ),
-              ),
+                    )
+                  : Text(
+                      _chipEmoji(text) == null
+                          ? text
+                          : '${_chipEmoji(text)}  $text',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Color.lerp(
+                          color,
+                          colors.text,
+                          AppColors.isDark(context) ? 0.28 : 0.40,
+                        ),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
             ),
           ),
         ),
