@@ -96,8 +96,10 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
   Widget build(BuildContext context) {
     // 整页不再滚动：hero 高度固定，下面两列卡片拿剩余空间用 Expanded 自己
     // 撑满，而不是像之前那样用一个写死的 mainAxisExtent 让内容比视口高、
-    // 必须手动划一下才能看到底部两张卡片。
-    const gridBottomClearance = 126.0; // 留给 main_shell 悬浮 tab bar 的空间。
+    // 必须手动划一下才能看到底部两张卡片。这里刻意把 hero 顶部内边距和底部
+    // 让位都收紧一点，让卡片区拿到更多高度——卡片高度 = 剩余高度/2，因此
+    // 变高之后每张卡片就从近正方形变成竖长方形。
+    const gridBottomClearance = 112.0; // 留给 main_shell 悬浮 tab bar 的空间。
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
@@ -111,7 +113,7 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
                 Padding(
                   padding: EdgeInsets.fromLTRB(
                     34,
-                    MediaQuery.paddingOf(context).top + 50,
+                    MediaQuery.paddingOf(context).top + 24,
                     20,
                     0,
                   ),
@@ -138,7 +140,8 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
                         const SizedBox(width: _portalGridSpacing),
                         Expanded(
                           child: _buildPortalColumn(
-                            const [1, 3],
+                            // 右列上下对调：music(3) 到右上、movie(1) 到右下。
+                            const [3, 1],
                             progress,
                             staggerAtTop: true,
                           ),
@@ -165,59 +168,76 @@ class _OnlineBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     final isDark = AppColors.isDark(context);
+    // 之前把有彩度的粉彩从上铺到下，中下段就积成一层灰紫。改成"上彩下白"的
+    // 竖向渐变：顶部留一抹明亮的天蓝，很快过渡到纯白收尾——颜色只集中在
+    // 顶部，中下段是干净的白，不再发灰。真正的彩色由下面几团光晕(暖桃/蓝/
+    // 淡紫)在顶部区域提供，白底反而让它们更跳、更亮。深色模式仍走主题色。
+    final Gradient baseGradient = isDark
+        ? LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              colors.page,
+              Color.lerp(colors.page, colors.surfaceMuted, 0.45)!,
+              Color.lerp(colors.page, colors.accentDeep, 0.16)!,
+            ],
+            stops: const [0, 0.5, 1],
+          )
+        : const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFCBE4FF), // 顶部明亮天蓝
+              Color(0xFFE6F1FF),
+              Color(0xFFEEF6F5), // 过渡：从蓝白转向薄荷
+              Color(0xFFDFF2EA), // 底部一抹清透薄荷绿，不发灰也不是纯白
+            ],
+            stops: [0, 0.24, 0.58, 1],
+          );
     return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            colors.page,
-            Color.lerp(colors.page, colors.surfaceMuted, 0.40)!,
-            Color.lerp(colors.page, colors.accentSoft, 0.24)!,
-          ],
-          stops: [0, 0.44, 1],
-        ),
-      ),
+      decoration: BoxDecoration(gradient: baseGradient),
       child: Stack(
         children: [
-          Positioned.fill(child: CustomPaint(painter: _OnlineGridPainter())),
           Positioned(
             right: -88 + 10 * progress,
             top: -4 + 8 * progress,
             child: _OnlineAura(
-              size: const Size(290, 250),
-              color: const Color(0x5797D0FF),
-              blur: 34,
+              size: const Size(300, 262),
+              color: const Color(0x9A6FBEFF),
+              blur: 36,
             ),
           ),
           Positioned(
-            left: -126 - 5 * progress,
-            top: 108 + 9 * progress,
+            left: -120 - 5 * progress,
+            top: 40 + 9 * progress,
             child: _OnlineAura(
+              // 暖桃挪到更靠上，把温度集中在顶部，跟蓝形成暖冷对比。
               size: const Size(280, 250),
-              color: const Color(0x4DFFD6B9),
+              color: const Color(0x8AFFBE86),
               blur: 38,
             ),
           ),
           Positioned(
-            right: -72,
-            top: 408 - 10 * progress,
+            right: -80,
+            top: 236 - 10 * progress,
             child: _OnlineAura(
-              size: const Size(320, 270),
-              color: const Color(0x3DD9CFFF),
-              blur: 42,
+              // 淡紫上移、收小并降透明度，避免在中下段又积出灰紫。
+              size: const Size(300, 240),
+              color: const Color(0x3EBFA6FF),
+              blur: 44,
             ),
           ),
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: RadialGradient(
-                  center: const Alignment(0.70, -0.58),
-                  radius: 0.72 + 0.025 * progress,
+                  center: const Alignment(0.72, -0.60),
+                  radius: 0.86 + 0.025 * progress,
                   colors: [
+                    // 右上角高光，把角落挑亮但不至于把粉彩冲淡成白。
                     isDark
-                        ? colors.accentSoft.withValues(alpha: 0.32)
-                        : Colors.white.withValues(alpha: 0.62),
+                        ? colors.accentSoft.withValues(alpha: 0.40)
+                        : Colors.white.withValues(alpha: 0.55),
                     Colors.transparent,
                   ],
                 ),
@@ -257,24 +277,6 @@ class _OnlineAura extends StatelessWidget {
   }
 }
 
-class _OnlineGridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0x0C202D3A)
-      ..strokeWidth = 1;
-    for (var x = 0.0; x <= size.width; x += 36) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (var y = 0.0; y <= size.height; y += 36) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
 class _OnlineHero extends StatelessWidget {
   const _OnlineHero({required this.progress});
 
@@ -284,7 +286,9 @@ class _OnlineHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     return SizedBox(
-      height: 210,
+      // 194 刚好容下最靠下的装饰玻璃块(底边约 192)，再矮就会裁到它；把这
+      // 段高度让给下面的卡片区，卡片因此更接近竖长方形。
+      height: 194,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
