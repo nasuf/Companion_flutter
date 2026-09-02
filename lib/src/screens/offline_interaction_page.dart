@@ -111,80 +111,78 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
     // _OfflineMemoryPanel），而不是像之前那样整页内容比视口高、必须手动
     // 划一下才能看到底部的记忆胶囊。
     const memoryPanelBottomClearance = 140.0; // 留给 main_shell 悬浮 tab bar。
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        final progress = Curves.easeInOut.transform(_controller.value);
-        return Stack(
+    // 呼吸/漂移动画不再包整页：背景与 hero 各自内部用 AnimatedBuilder +
+    // RepaintBoundary 只重绘自己那一块；底部记忆 tag 每张各带本地 ticker
+    // (见 _FloatingMemoryChip)。整页(功能卡片行等)不再每帧重建——这正是
+    // "日常分享"页卡片呼吸流畅、而这里卡顿的差别所在。
+    return Stack(
+      children: [
+        _OfflineBackground(controller: _controller),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _OfflineBackground(progress: progress),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    28,
-                    MediaQuery.paddingOf(context).top + 32,
-                    28,
-                    0,
-                  ),
-                  child: _OfflineHero(progress: progress),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _OfflineFeatureCard(
-                          icon: CupertinoIcons.scope,
-                          iconColor: const Color(0xFF2D73FF),
-                          title: '看看活动',
-                          subtitle: _activitySubtitle,
-                          status: '推荐',
-                          gradient: const [
-                            Color(0xFF88B7FF),
-                            Color(0xFF63CEEA),
-                            Color(0xFFBDF7E3),
-                          ],
-                          onTap: _openActivities,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _OfflineFeatureCard(
-                          icon: CupertinoIcons.gift_fill,
-                          iconColor: const Color(0xFFFF8C4B),
-                          title: '我的礼物',
-                          subtitle: _home?.giftSummary ?? '你有一份惊喜在路上',
-                          status: '礼物',
-                          gradient: const [
-                            Color(0xFFFFB695),
-                            Color(0xFFFFD98D),
-                            Color(0xFFFFF0BF),
-                          ],
-                          onTap: _openGifts,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      28,
-                      0,
-                      28,
-                      memoryPanelBottomClearance,
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                28,
+                MediaQuery.paddingOf(context).top + 32,
+                28,
+                0,
+              ),
+              child: _OfflineHero(controller: _controller),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _OfflineFeatureCard(
+                      icon: CupertinoIcons.scope,
+                      iconColor: const Color(0xFF2D73FF),
+                      title: '看看活动',
+                      subtitle: _activitySubtitle,
+                      status: '推荐',
+                      gradient: const [
+                        Color(0xFF88B7FF),
+                        Color(0xFF63CEEA),
+                        Color(0xFFBDF7E3),
+                      ],
+                      onTap: _openActivities,
                     ),
-                    child: _OfflineMemoryPanel(tags: tags, progress: progress),
                   ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _OfflineFeatureCard(
+                      icon: CupertinoIcons.gift_fill,
+                      iconColor: const Color(0xFFFF8C4B),
+                      title: '我的礼物',
+                      subtitle: _home?.giftSummary ?? '你有一份惊喜在路上',
+                      status: '礼物',
+                      gradient: const [
+                        Color(0xFFFFB695),
+                        Color(0xFFFFD98D),
+                        Color(0xFFFFF0BF),
+                      ],
+                      onTap: _openGifts,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  28,
+                  0,
+                  28,
+                  memoryPanelBottomClearance,
                 ),
-              ],
+                child: _OfflineMemoryPanel(tags: tags),
+              ),
             ),
           ],
-        );
-      },
+        ),
+      ],
     );
   }
 
@@ -282,20 +280,57 @@ Future<bool> _requestAndSaveUserLocation(
 }
 
 class _OfflineBackground extends StatelessWidget {
-  const _OfflineBackground({required this.progress});
+  const _OfflineBackground({this.controller});
 
-  final double progress;
+  /// null 时渲染一帧静态柔光(给活动/礼物二级页当静态背景用)，非 null 时随
+  /// controller 漂移(陪伴主页)。
+  final AnimationController? controller;
+
+  Widget _drift(double progress) {
+    final plateBreath = math.sin(progress * math.pi);
+    final plateDrift = math.sin(progress * math.pi * 2);
+    return Stack(
+      children: [
+        Positioned(
+          right: -78 + 10 * plateDrift,
+          top: 88 - 7 * plateBreath,
+          child: Transform.rotate(
+            angle: (-7 + plateDrift * 1.4) * math.pi / 180,
+            child: _OfflineBreathingPlate(progress: progress),
+          ),
+        ),
+        Positioned(
+          left: -76 - 6 * progress,
+          top: 388 + 9 * progress,
+          child: _OnlineAura(
+            size: const Size(270, 230),
+            color: const Color(0x66FFCF98),
+            blur: 42,
+          ),
+        ),
+        Positioned(
+          right: -32 + 6 * progress,
+          bottom: 78 - 8 * progress,
+          child: _OnlineAura(
+            size: const Size(230, 210),
+            color: const Color(0x5ECBD3FF),
+            blur: 38,
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     final isDark = AppColors.isDark(context);
-    final plateBreath = math.sin(progress * math.pi);
-    final plateDrift = math.sin(progress * math.pi * 2);
+    final ctrl = controller;
     // 跟互动页同一套"极光粉彩"底色思路(见 online_interaction_page.dart 的
     // 说明)，但这里刻意偏暖——陪伴页讲的是走到现实世界里，暖阳/户外的暖调
     // 占主导，冷色收在底部，跟互动页(线上、偏冷)拉开性格差异。深色模式仍走
-    // 主题色。
+    // 主题色。底色本身是静态的，放在动画外面；只有会漂移的柔光块/呼吸盘用
+    // AnimatedBuilder + RepaintBoundary 单独重绘，不牵连整页。
     final Gradient baseGradient = isDark
         ? LinearGradient(
             begin: Alignment.topCenter,
@@ -318,54 +353,38 @@ class _OfflineBackground extends StatelessWidget {
             ],
             stops: [0, 0.34, 0.68, 1],
           );
-    return DecoratedBox(
-      decoration: BoxDecoration(gradient: baseGradient),
-      child: Stack(
-        children: [
-          Positioned(
-            right: -78 + 10 * plateDrift,
-            top: 88 - 7 * plateBreath,
-            child: Transform.rotate(
-              angle: (-7 + plateDrift * 1.4) * math.pi / 180,
-              child: _OfflineBreathingPlate(progress: progress),
-            ),
-          ),
-          Positioned(
-            left: -76 - 6 * progress,
-            top: 388 + 9 * progress,
-            child: _OnlineAura(
-              size: const Size(270, 230),
-              color: const Color(0x66FFCF98),
-              blur: 42,
-            ),
-          ),
-          Positioned(
-            right: -32 + 6 * progress,
-            bottom: 78 - 8 * progress,
-            child: _OnlineAura(
-              size: const Size(230, 210),
-              color: const Color(0x5ECBD3FF),
-              blur: 38,
-            ),
-          ),
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(0.76, -0.62),
-                  radius: 0.86 + 0.02 * progress,
-                  colors: [
-                    // 右上角高光，挑亮角落但不冲淡暖粉彩。
-                    isDark
-                        ? colors.accentSoft.withValues(alpha: 0.38)
-                        : Colors.white.withValues(alpha: 0.50),
-                    Colors.transparent,
-                  ],
+    return RepaintBoundary(
+      child: DecoratedBox(
+        decoration: BoxDecoration(gradient: baseGradient),
+        child: Stack(
+          children: [
+            if (ctrl != null)
+              AnimatedBuilder(
+                animation: ctrl,
+                builder: (context, _) =>
+                    _drift(Curves.easeInOut.transform(ctrl.value)),
+              )
+            else
+              _drift(0.42),
+            // 右上角高光(静态)，挑亮角落但不冲淡暖粉彩。
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: const Alignment(0.76, -0.62),
+                    radius: 0.87,
+                    colors: [
+                      isDark
+                          ? colors.accentSoft.withValues(alpha: 0.38)
+                          : Colors.white.withValues(alpha: 0.50),
+                      Colors.transparent,
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -442,9 +461,9 @@ class _OfflineBreathingPlate extends StatelessWidget {
 }
 
 class _OfflineHero extends StatelessWidget {
-  const _OfflineHero({required this.progress});
+  const _OfflineHero({required this.controller});
 
-  final double progress;
+  final AnimationController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -492,66 +511,80 @@ class _OfflineHero extends StatelessWidget {
           Positioned(
             right: 0,
             top: 172 - lowerContentLift,
-            child: SizedBox(
-              width: 226,
-              height: 122,
-              child: CustomPaint(
-                painter: _OfflineLivePainter(progress: progress),
-                child: Stack(
-                  children: [
-                    _OfflineLiveDot(
-                      left: 14,
-                      top: 66 + math.sin(progress * math.pi * 2) * 3,
-                      color: const Color(0xFFFF7047),
-                      progress: progress,
-                      phase: 0.00,
-                    ),
-                    _OfflineLiveDot(
-                      left: 110,
-                      top: 44 - math.sin(progress * math.pi * 2 + 0.7) * 3,
-                      color: const Color(0xFF2D73FF),
-                      progress: progress,
-                      phase: 0.18,
-                    ),
-                    _OfflineLiveDot(
-                      left: 166,
-                      top: 14 + math.sin(progress * math.pi * 2 + 1.2) * 3,
-                      color: const Color(0xFF58C87B),
-                      progress: progress,
-                      phase: 0.36,
-                    ),
-                    Positioned(
-                      right: 12,
-                      bottom: 18,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 13,
-                          vertical: 7,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? colors.surfaceMuted.withValues(alpha: 0.76)
-                              : Colors.white.withValues(alpha: 0.55),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.10)
-                                : Colors.transparent,
+            // LIVE 图形区是这块 hero 里唯一动的东西——只让它用 AnimatedBuilder
+            // + RepaintBoundary 单独重绘，标题/副标题这些静态文字不跟着重建。
+            child: RepaintBoundary(
+              child: SizedBox(
+                width: 226,
+                height: 122,
+                child: AnimatedBuilder(
+                  animation: controller,
+                  builder: (context, _) {
+                    final progress = Curves.easeInOut.transform(
+                      controller.value,
+                    );
+                    return CustomPaint(
+                      painter: _OfflineLivePainter(progress: progress),
+                      child: Stack(
+                        children: [
+                          _OfflineLiveDot(
+                            left: 14,
+                            top: 66 + math.sin(progress * math.pi * 2) * 3,
+                            color: const Color(0xFFFF7047),
+                            progress: progress,
+                            phase: 0.00,
                           ),
-                        ),
-                        child: Text(
-                          'LIVE',
-                          style: TextStyle(
-                            color: colors.accent,
-                            fontSize: 12,
-                            height: 1,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.8,
+                          _OfflineLiveDot(
+                            left: 110,
+                            top: 44 - math.sin(progress * math.pi * 2 + 0.7) * 3,
+                            color: const Color(0xFF2D73FF),
+                            progress: progress,
+                            phase: 0.18,
                           ),
-                        ),
+                          _OfflineLiveDot(
+                            left: 166,
+                            top: 14 + math.sin(progress * math.pi * 2 + 1.2) * 3,
+                            color: const Color(0xFF58C87B),
+                            progress: progress,
+                            phase: 0.36,
+                          ),
+                          Positioned(
+                            right: 12,
+                            bottom: 18,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 13,
+                                vertical: 7,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? colors.surfaceMuted.withValues(
+                                        alpha: 0.76,
+                                      )
+                                    : Colors.white.withValues(alpha: 0.55),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: isDark
+                                      ? Colors.white.withValues(alpha: 0.10)
+                                      : Colors.transparent,
+                                ),
+                              ),
+                              child: Text(
+                                'LIVE',
+                                style: TextStyle(
+                                  color: colors.accent,
+                                  fontSize: 12,
+                                  height: 1,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
               ),
             ),
@@ -903,10 +936,9 @@ class _OfflineCardLinePainter extends CustomPainter {
 }
 
 class _OfflineMemoryPanel extends StatelessWidget {
-  const _OfflineMemoryPanel({required this.tags, required this.progress});
+  const _OfflineMemoryPanel({required this.tags});
 
   final List<String> tags;
-  final double progress;
 
   @override
   Widget build(BuildContext context) {
@@ -964,7 +996,6 @@ class _OfflineMemoryPanel extends StatelessWidget {
                   text: display[i],
                   color: palette[i % palette.length],
                   placeholder: display[i].isEmpty,
-                  progress: progress,
                   phase: specs[i].phase,
                   width: specs[i].w,
                 ),
@@ -1010,11 +1041,10 @@ bool _isMemoryCategoryLabel(String value) {
   return _memoryCategoryLabels.any((label) => normalized == '$label为');
 }
 
-class _FloatingMemoryChip extends StatelessWidget {
+class _FloatingMemoryChip extends StatefulWidget {
   const _FloatingMemoryChip({
     required this.text,
     required this.color,
-    required this.progress,
     required this.phase,
     required this.width,
     this.placeholder = false,
@@ -1022,64 +1052,79 @@ class _FloatingMemoryChip extends StatelessWidget {
 
   final String text;
   final Color color;
-  final double progress;
   final double phase;
   final double width;
   final bool placeholder;
 
   @override
+  State<_FloatingMemoryChip> createState() => _FloatingMemoryChipState();
+}
+
+class _FloatingMemoryChipState extends State<_FloatingMemoryChip>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    // 每张 tag 各带一个本地 ticker(相位由 phase 错开)，做法跟"日常分享"页的
+    // _DailyBreathingArt 一致：呼吸只在这一小块内重绘、被 RepaintBoundary
+    // 隔离，不再靠页面级动画每帧重建整页 + 全部 tag——那才是之前卡顿的根因。
+    // 周期 ~4.6s 的连续正弦，跟旧的 sin(progress*2π+phase) 同形但不牵连整页。
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 4600),
+      value: (widget.phase % (math.pi * 2)) / (math.pi * 2),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // 去掉 BackdropFilter 之后卡顿还在，说明不是唯一原因：boxShadow 的
-    // blurRadius 之前也跟着 wave 逐帧变化，卡片外观(阴影)每帧都不一样，
-    // RepaintBoundary 就算包在外面也没用——它只能让"没变化的内容"跳过重
-    // 绘，内容本身每帧都在变，边界只是把这份重绘开销单独隔离，并没有省掉
-    // 这份开销。9 张卡片每帧都要重新栅化一次阴影模糊，加起来才是真正卡顿
-    // 的地方。改成阴影固定不变，卡片的视觉内容整体变成帧不变的——现在
-    // RepaintBoundary 包在 Container 外层、Transform 外层，能把这个静态
-    // 内容缓存成一张纹理，外面的浮动/呼吸缩放只是在 GPU 上平移缩放这张现
-    // 成纹理，不需要每帧重新画。
-    final wave = math.sin(progress * math.pi * 2 + phase);
-    final scale = 1 + wave * .025;
-    final dy = wave * 7;
+    final color = widget.color;
+    final placeholder = widget.placeholder;
+    final width = widget.width;
+    final text = widget.text;
     final colors = AppColors.of(context);
-    return Transform.translate(
-      offset: Offset(0, dy),
-      child: Transform.scale(
-        scale: scale,
-        child: RepaintBoundary(
-          child: Container(
-            width: width,
-            height: 42,
-            padding: const EdgeInsets.symmetric(horizontal: 15),
-            decoration: BoxDecoration(
-              color: placeholder
-                  ? color.withValues(
-                      alpha: AppColors.isDark(context) ? 0.10 : 0.16,
-                    )
-                  : color.withValues(
-                      alpha: AppColors.isDark(context) ? 0.16 : 0.18,
-                    ),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: placeholder
-                    ? color.withValues(
-                        alpha: AppColors.isDark(context) ? 0.16 : 0.28,
-                      )
-                    : color.withValues(alpha: .30),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: (placeholder ? Colors.white : color).withValues(
-                    alpha: AppColors.isDark(context) ? 0.05 : 0.13,
-                  ),
-                  blurRadius: 17,
-                  offset: const Offset(0, 8),
+    // 卡片视觉内容是帧不变的(阴影固定)，用 RepaintBoundary 缓存成一张纹理；
+    // 外面的浮动/呼吸只是在 GPU 上平移缩放这张现成纹理，不逐帧重画。
+    final chip = RepaintBoundary(
+      child: Container(
+        width: width,
+        height: 42,
+        padding: const EdgeInsets.symmetric(horizontal: 15),
+        decoration: BoxDecoration(
+          color: placeholder
+              ? color.withValues(alpha: AppColors.isDark(context) ? 0.10 : 0.16)
+              : color.withValues(
+                  alpha: AppColors.isDark(context) ? 0.16 : 0.18,
                 ),
-              ],
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: placeholder
+                ? color.withValues(
+                    alpha: AppColors.isDark(context) ? 0.16 : 0.28,
+                  )
+                : color.withValues(alpha: .30),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: (placeholder ? Colors.white : color).withValues(
+                alpha: AppColors.isDark(context) ? 0.05 : 0.13,
+              ),
+              blurRadius: 17,
+              offset: const Offset(0, 8),
             ),
-            child: Center(
-              child: placeholder
-                  ? Container(
+          ],
+        ),
+        child: Center(
+          child: placeholder
+              ? Container(
                       height: 14,
                       margin: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
@@ -1107,8 +1152,17 @@ class _FloatingMemoryChip extends StatelessWidget {
                     ),
             ),
           ),
-        ),
-      ),
+        );
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final wave = math.sin(_controller.value * math.pi * 2);
+        return Transform.translate(
+          offset: Offset(0, wave * 7),
+          child: Transform.scale(scale: 1 + wave * .025, child: child),
+        );
+      },
+      child: chip,
     );
   }
 }
