@@ -33,7 +33,7 @@ class _ExpandedSheetTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
+    final w = _W2b.resolve(context);
     final view = View.of(context);
     final topInset = view.padding.top / view.devicePixelRatio;
     return SizedBox(
@@ -47,31 +47,19 @@ class _ExpandedSheetTopBar extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Padding(
                 padding: const EdgeInsets.only(left: 18),
-                child: CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size.square(46),
-                  borderRadius: BorderRadius.circular(23),
-                  onPressed: onClose,
-                  child: Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: colors.surfaceMuted.withValues(alpha: 0.92),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      CupertinoIcons.xmark,
-                      size: 24,
-                      color: colors.accent,
-                    ),
-                  ),
+                // 关闭键跟活动主页左上角返回键同款同大小(36pt 玻璃圆)，只是图标
+                // 换成 X。
+                child: _WeatherBackButton(
+                  onTap: onClose,
+                  icon: CupertinoIcons.xmark,
+                  iconColor: w.ink,
                 ),
               ),
             ),
             Text(
               title,
               style: TextStyle(
-                color: colors.text,
+                color: w.ink,
                 fontSize: 20,
                 fontWeight: FontWeight.w900,
                 decoration: TextDecoration.none,

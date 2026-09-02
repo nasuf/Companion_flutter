@@ -42,7 +42,7 @@ class _CompletionComposer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
+    final w = _W2b.resolve(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -55,16 +55,24 @@ class _CompletionComposer extends StatelessWidget {
               minLines: 3,
               maxLines: 5,
               placeholder: '写一点感受，也可以直接拍照或录一小段声音...',
+              placeholderStyle: TextStyle(
+                color: w.inkSoft,
+                decoration: TextDecoration.none,
+              ),
+              style: TextStyle(color: w.ink, decoration: TextDecoration.none),
               padding: const EdgeInsets.all(16),
               textInputAction: TextInputAction.newline,
+              // 玻璃输入框：半透明白玻璃衬在 sheet 的极光底上，聚焦时描边收成
+              // 活动主题蓝(与入口卡片蓝一致)。
               decoration: BoxDecoration(
-                color: colors.surfaceMuted,
+                color: w.glass,
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: focusNode.hasFocus
-                      ? colors.accent.withValues(alpha: 0.24)
-                      : Colors.transparent,
+                      ? _kActivityAccent.withValues(alpha: 0.55)
+                      : w.glassBorder,
                 ),
+                boxShadow: w.panelShadow,
               ),
             );
           },
@@ -81,13 +89,10 @@ class _CompletionComposer extends StatelessWidget {
           onTakePhoto: onTakePhoto,
           onToggleRecord: onToggleRecord,
         ),
-        const SizedBox(height: 12),
-        _CompletionPhotoPicker(
-          photos: photos,
-          uploading: uploadingPhoto,
-          onPick: onPickGallery,
-          onRemove: onRemove,
-        ),
+        if (photos.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _CompletionPhotoPicker(photos: photos, onRemove: onRemove),
+        ],
         if (voice != null || uploadingVoice || recording) ...[
           const SizedBox(height: 12),
           _ActivityVoiceChip(
@@ -104,25 +109,63 @@ class _CompletionComposer extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: CupertinoButton(
-            borderRadius: BorderRadius.circular(18),
-            color: const Color(0xFFFFA83E),
-            onPressed:
-                (working || uploadingPhoto || uploadingVoice || recording)
-                ? null
-                : onComplete,
-            child: Text(
-              working ? '发送中...' : '完成并分享',
-              style: const TextStyle(
-                fontWeight: FontWeight.w900,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ),
+        _CompletionSubmitButton(
+          busy: working,
+          onPressed: (working || uploadingPhoto || uploadingVoice || recording)
+              ? null
+              : onComplete,
         ),
       ],
+    );
+  }
+}
+
+/// 与天气/打卡/胶囊页主按钮同一套设计：整宽胶囊 + 主题色填充 + 柔和投影，白字
+/// 20/w600；忙碌转圈；禁用变淡去掉投影。活动页主调是蓝色(与入口卡片一致)。
+class _CompletionSubmitButton extends StatelessWidget {
+  const _CompletionSubmitButton({required this.busy, required this.onPressed});
+
+  final bool busy;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    const base = _kActivityAccent;
+    final enabled = onPressed != null && !busy;
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: const Size.fromHeight(52),
+      borderRadius: BorderRadius.circular(999),
+      onPressed: enabled ? onPressed : null,
+      child: Container(
+        height: 52,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: enabled ? base : base.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: enabled
+              ? [
+                  BoxShadow(
+                    color: base.withValues(alpha: 0.28),
+                    blurRadius: 16,
+                    offset: const Offset(2, 8),
+                  ),
+                ]
+              : null,
+        ),
+        child: busy
+            ? const CupertinoActivityIndicator(color: Colors.white)
+            : const Text(
+                '完成并分享',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+      ),
     );
   }
 }
@@ -168,18 +211,18 @@ class _CompletionActionToolbar extends StatelessWidget {
           onTap: onTakePhoto,
         ),
         const SizedBox(width: 10),
-        Expanded(
-          child: _CompletionToolButton(
-            icon: recording ? CupertinoIcons.stop_fill : CupertinoIcons.mic,
-            label: recording
-                ? '停止 ${_formatActivityDuration(recordSeconds)}'
-                : hasVoice
-                ? '重录语音'
-                : '录语音',
-            enabled: !uploadingVoice,
-            emphasized: recording,
-            onTap: onToggleRecord,
-          ),
+        // 不再用 Expanded 把录语音撑到最右、留一大段空隙；跟相册/拍照一样按
+        // 内容宽度、10 的间距左对齐排列。
+        _CompletionToolButton(
+          icon: recording ? CupertinoIcons.stop_fill : CupertinoIcons.mic,
+          label: recording
+              ? '停止 ${_formatActivityDuration(recordSeconds)}'
+              : hasVoice
+              ? '重录语音'
+              : '录语音',
+          enabled: !uploadingVoice,
+          emphasized: recording,
+          onTap: onToggleRecord,
         ),
       ],
     );
@@ -204,7 +247,9 @@ class _CompletionToolButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
-    final fg = emphasized ? const Color(0xFFFF6E4A) : colors.accent;
+    final w = _W2b.resolve(context);
+    // 录音强调态保留暖红作为"正在录音"的警示色；其余用活动主题蓝。
+    final fg = emphasized ? const Color(0xFFFF6E4A) : _kActivityAccent;
     return CupertinoButton(
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
@@ -212,15 +257,17 @@ class _CompletionToolButton extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        // 玻璃药丸：录音强调态用暖桃底，其余半透明白玻璃，跟 sheet 里其他玻璃
+        // 元素统一。
         decoration: BoxDecoration(
-          color: emphasized
-              ? const Color(0xFFFFE9E2)
-              : colors.surfaceMuted.withValues(alpha: 0.92),
+          color: emphasized ? const Color(0xFFFFE9E2) : w.glass,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: (emphasized ? const Color(0xFFFFB39E) : colors.hairline)
-                .withValues(alpha: 0.82),
+            color: emphasized
+                ? const Color(0xFFFFB39E).withValues(alpha: 0.82)
+                : w.glassBorder,
           ),
+          boxShadow: [w.pillShadow],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -268,12 +315,14 @@ class _ActivityVoiceChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
+    final w = _W2b.resolve(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
       decoration: BoxDecoration(
-        color: colors.surfaceMuted,
+        color: w.glass,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: colors.hairline.withValues(alpha: 0.72)),
+        border: Border.all(color: w.glassBorder),
+        boxShadow: w.panelShadow,
       ),
       child: Row(
         children: [
@@ -310,7 +359,7 @@ class _ActivityVoiceChip extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: colors.text,
+                color: w.ink,
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
                 decoration: TextDecoration.none,

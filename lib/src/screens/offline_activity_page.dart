@@ -295,23 +295,29 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                                   icon: CupertinoIcons.location_solid,
                                   title: '暂无待出行活动',
                                   subtitle: '接受邀请后，我会在这里陪你等出发',
+                                  accent: _kActivityAccent,
                                 ),
                               ),
                             )
                           else
-                            SliverList.separated(
-                              itemCount: accepted.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 10),
-                              itemBuilder: (context, index) => Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                ),
-                                child: _ActivityMiniCard(
-                                  activity: accepted[index],
-                                  authToken: widget.api.authToken,
-                                  onTap: () =>
-                                      _showActivityDetail(accepted[index]),
+                            // 顶部留 14，跟空态面板(fromLTRB(20,14,..))一致，避免
+                            // 有数据时标题跟内容贴太近。
+                            SliverPadding(
+                              padding: const EdgeInsets.only(top: 14),
+                              sliver: SliverList.separated(
+                                itemCount: accepted.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 10),
+                                itemBuilder: (context, index) => Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                  ),
+                                  child: _ActivityMiniCard(
+                                    activity: accepted[index],
+                                    authToken: widget.api.authToken,
+                                    onTap: () =>
+                                        _showActivityDetail(accepted[index]),
+                                  ),
                                 ),
                               ),
                             ),
@@ -332,23 +338,27 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                                   icon: CupertinoIcons.archivebox,
                                   title: '暂无暂不考虑活动',
                                   subtitle: '你暂时跳过的活动会放在这里',
+                                  accent: _kActivityAccent,
                                 ),
                               ),
                             )
                           else
-                            SliverList.separated(
-                              itemCount: ignored.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 10),
-                              itemBuilder: (context, index) => Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                ),
-                                child: _ActivityMiniCard(
-                                  activity: ignored[index],
-                                  authToken: widget.api.authToken,
-                                  onTap: () =>
-                                      _showActivityDetail(ignored[index]),
+                            SliverPadding(
+                              padding: const EdgeInsets.only(top: 14),
+                              sliver: SliverList.separated(
+                                itemCount: ignored.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 10),
+                                itemBuilder: (context, index) => Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                  ),
+                                  child: _ActivityMiniCard(
+                                    activity: ignored[index],
+                                    authToken: widget.api.authToken,
+                                    onTap: () =>
+                                        _showActivityDetail(ignored[index]),
+                                  ),
                                 ),
                               ),
                             ),
@@ -369,23 +379,27 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                                   icon: CupertinoIcons.checkmark_seal,
                                   title: '暂无已完成活动',
                                   subtitle: '参加完活动可以来这分享照片',
+                                  accent: _kActivityAccent,
                                 ),
                               ),
                             )
                           else
-                            SliverList.separated(
-                              itemCount: completed.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 10),
-                              itemBuilder: (context, index) => Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                ),
-                                child: _ActivityMiniCard(
-                                  activity: completed[index],
-                                  authToken: widget.api.authToken,
-                                  onTap: () =>
-                                      _showActivityDetail(completed[index]),
+                            SliverPadding(
+                              padding: const EdgeInsets.only(top: 14),
+                              sliver: SliverList.separated(
+                                itemCount: completed.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 10),
+                                itemBuilder: (context, index) => Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                  ),
+                                  child: _ActivityMiniCard(
+                                    activity: completed[index],
+                                    authToken: widget.api.authToken,
+                                    onTap: () =>
+                                        _showActivityDetail(completed[index]),
+                                  ),
                                 ),
                               ),
                             ),
@@ -500,7 +514,7 @@ class _ActivityBalloonHeroState extends State<_ActivityBalloonHero>
         gradient: RadialGradient(
           colors: [
             colors.accent.withValues(alpha: 0.12),
-            const Color(0xFFFFB48E).withValues(alpha: 0.12),
+            const Color(0xFF63CEEA).withValues(alpha: 0.12),
             Colors.transparent,
           ],
           stops: const [0.5, 0.76, 1],
@@ -518,7 +532,7 @@ class _ActivityBalloonHeroState extends State<_ActivityBalloonHero>
           colors: [
             Colors.white.withValues(alpha: 0.92),
             const Color(0xFFE9F8FF).withValues(alpha: 0.72),
-            const Color(0xFFFFE6D7).withValues(alpha: 0.34),
+            const Color(0xFFCDEEFF).withValues(alpha: 0.34),
             Colors.transparent,
           ],
           stops: const [0, 0.43, 0.72, 1],
@@ -781,13 +795,13 @@ class _ActivityHeroCard extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFEAD9),
+                            color: const Color(0xFFEAF3FF),
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: Text(
                             '🎁 ${activity.taskHint}',
                             style: const TextStyle(
-                              color: Color(0xFFC57342),
+                              color: Color(0xFF3A6FC7),
                               fontWeight: FontWeight.w800,
                             ),
                           ),
@@ -871,7 +885,7 @@ class _ActivityImage extends StatelessWidget {
       child: Container(
         height: height,
         width: double.infinity,
-        color: const Color(0xFFFFC098),
+        color: const Color(0xFFB9D9F2),
         child: image == null
             ? Center(
                 child: Text(
@@ -991,7 +1005,7 @@ class _ActivityMiniThumb extends StatelessWidget {
         width: 58,
         height: 58,
         decoration: BoxDecoration(
-          color: const Color(0xFFFFE0C5),
+          color: const Color(0xFFD7E9F8),
           borderRadius: BorderRadius.circular(14),
         ),
         child: image.isEmpty

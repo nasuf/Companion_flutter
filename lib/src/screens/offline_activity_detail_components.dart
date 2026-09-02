@@ -47,55 +47,26 @@ class _ActivityTaskPanel extends StatelessWidget {
 class _CompletionPhotoPicker extends StatelessWidget {
   const _CompletionPhotoPicker({
     required this.photos,
-    required this.uploading,
-    required this.onPick,
     required this.onRemove,
   });
 
   final List<_ActivityCompletionImage> photos;
-  final bool uploading;
-  final VoidCallback onPick;
   final ValueChanged<_ActivityCompletionImage> onRemove;
 
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
+    // 只展示已选缩略图；不再多出一个"添加"方块——顶部工具栏的"相册/拍照"已经
+    // 负责添加，这里再放一个是重复。没有图片时整块不占位。
+    if (photos.isEmpty) return const SizedBox.shrink();
     return SizedBox(
       height: 78,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
-        itemCount: photos.length + (photos.length < 3 ? 1 : 0),
+        itemCount: photos.length,
         separatorBuilder: (_, __) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
-          if (index >= photos.length) {
-            return CupertinoButton(
-              padding: EdgeInsets.zero,
-              minimumSize: Size.zero,
-              borderRadius: BorderRadius.circular(18),
-              onPressed: uploading ? null : onPick,
-              child: Container(
-                width: 78,
-                height: 78,
-                decoration: BoxDecoration(
-                  color: colors.surfaceMuted,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: colors.hairline.withValues(alpha: 0.82),
-                  ),
-                ),
-                child: Center(
-                  child: uploading
-                      ? const CupertinoActivityIndicator()
-                      : Icon(
-                          CupertinoIcons.photo_on_rectangle,
-                          size: 24,
-                          color: colors.accent,
-                        ),
-                ),
-              ),
-            );
-          }
           final photo = photos[index];
           return Stack(
             clipBehavior: Clip.none,

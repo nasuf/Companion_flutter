@@ -1,5 +1,11 @@
 part of 'package:companion_flutter/main.dart';
 
+// 两个二级页各自的主调，跟陪伴主页的入口卡片一致：活动入口是蓝色卡片、礼物入口
+// 是橙色卡片。二级页/bottom sheet 里的图标、按钮、描边、聚焦态等强调元素都用各自
+// 这颗主调，避免活动页混橙、礼物页混蓝。
+const Color _kActivityAccent = Color(0xFF2D73FF);
+const Color _kGiftAccent = Color(0xFFFF8C4B);
+
 class _ActivityPageBackdrop extends StatelessWidget {
   const _ActivityPageBackdrop();
 
@@ -101,27 +107,28 @@ class _SoftEmptyPanel extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.subtitle,
+    required this.accent,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
 
+  /// 空态图标的主调色：活动页传蓝(_kActivityAccent)、礼物页传橙(_kGiftAccent)。
+  final Color accent;
+
   @override
   Widget build(BuildContext context) {
     return Container(
       height: 154,
       padding: const EdgeInsets.all(20),
-      decoration: _softCardDecoration(context, radius: 22).copyWith(
-        border: Border.all(
-          color: const Color(0x22F0A66B),
-          style: BorderStyle.solid,
-        ),
-      ),
+      // 保留 _softCardDecoration 的玻璃亮白描边(不再 copyWith 一条淡橙边把玻璃
+      // 边缘盖没、读成灰底)。
+      decoration: _softCardDecoration(context, radius: 22),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _RoundIcon(icon: icon, color: const Color(0xFFFFB38A)),
+          _RoundIcon(icon: icon, color: accent),
           const SizedBox(height: 12),
           Text(title, style: _titleStyle(context, 16)),
           const SizedBox(height: 6),
@@ -176,47 +183,53 @@ class _OfflineErrorBlock extends StatelessWidget {
 class _BottomSheetFrame extends StatelessWidget {
   const _BottomSheetFrame({
     required this.child,
-    this.expandWhenKeyboardVisible = false,
+    this.backgroundColor,
   });
 
   final Widget child;
-  final bool expandWhenKeyboardVisible;
+
+  /// sheet 底色。默认不透明 surface；表单类 sheet 传玻璃底色(_W2b.base)，
+  /// 让里面的玻璃输入框有对比、能显出来(白玻璃衬在白 surface 上会看不见)。
+  final Color? backgroundColor;
 
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final keyboardHeight = media.viewInsets.bottom;
-    final availableHeight =
-        media.size.height - keyboardHeight - media.padding.top - 12;
-    final maxSheetHeight = math.min(
+    // 键盘上方可视区最多这么高，超出则内部滚动。
+    final maxVisible = math.min(
       media.size.height * 0.86,
-      math.max(260.0, availableHeight),
+      math.max(260.0, media.size.height - media.padding.top - 12),
     );
-    final shouldExpand = expandWhenKeyboardVisible && keyboardHeight > 0;
-
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      padding: EdgeInsets.only(bottom: keyboardHeight),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => FocusScope.of(context).unfocus(),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          height: shouldExpand ? maxSheetHeight : null,
-          constraints: BoxConstraints(maxHeight: maxSheetHeight),
-          padding: EdgeInsets.fromLTRB(22, 10, 22, media.padding.bottom + 18),
-          decoration: BoxDecoration(
-            color: AppColors.of(context).surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: EdgeInsets.only(bottom: keyboardHeight > 0 ? 24 : 0),
-            child: child,
-          ),
+    // 高度由内容决定；键盘用底部 padding 抬起内容，白底顺着 padding 一直铺到
+    // 屏幕底、藏在键盘背后(padding 区域也被 decoration 涂满)，所以键盘弹起时
+    // 上沿两角不会露出背后蒙层。
+    //
+    // 二次下降修复：之前外层是 AnimatedContainer(220ms)，它动画的 height/padding
+    // 本身又被系统键盘的 viewInsets 每帧改动——等于两条时间线互相追逐；键盘
+    // 落到底那一刻 shouldExpand 翻假、height 从固定高 snap 到内容高，Animated
+    // Container 再补一段 220ms 收拢，就成了"第二次下降"。这里改回普通 Container：
+    // 高度直接跟随系统键盘的 viewInsets，单一连贯的一次动画，不再叠第二层。
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      // 点击 sheet 内空白处收起键盘。
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Container(
+        constraints: BoxConstraints(maxHeight: maxVisible + keyboardHeight),
+        decoration: BoxDecoration(
+          color: backgroundColor ?? AppColors.of(context).surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+          22,
+          10,
+          22,
+          keyboardHeight + media.padding.bottom + 18,
+        ),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          child: child,
         ),
       ),
     );

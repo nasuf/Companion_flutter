@@ -343,7 +343,6 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet>
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     final task = widget.activity.easterEggTask;
     final canRespond = widget.activity.status == 'pending';
     final canReaccept = widget.activity.status == 'ignored';
@@ -353,11 +352,14 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet>
     final bottomPadding =
         MediaQuery.paddingOf(context).bottom + viewInsets.bottom + 18;
     final expanded = widget.fullscreen || widget.expanded;
+    // sheet 底改成极光玻璃底色(跟地址 sheet 一致)：里面的输入框/工具键才有
+    // 半透明白玻璃可衬的对比，读成分层玻璃而不是一块白底。
+    final w = _W2b.resolve(context);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
-        color: colors.surface,
+        color: w.base,
         borderRadius: expanded
             ? BorderRadius.zero
             : const BorderRadius.vertical(top: Radius.circular(28)),

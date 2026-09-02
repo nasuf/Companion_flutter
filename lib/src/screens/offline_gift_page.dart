@@ -121,9 +121,15 @@ class _OfflineGiftPageState extends State<OfflineGiftPage> {
     final colors = AppColors.of(context);
     return CupertinoPageScaffold(
       backgroundColor: colors.page,
-      navigationBar: const CupertinoNavigationBar(
-        middle: Text('心意小窝'),
-        border: Border(bottom: BorderSide(color: Color(0x11000000))),
+      // 顶部导航栏不再重复标题(下面有品牌化的大标题"🎀 心意小窝")；返回键换成
+      // 跟打卡/天气页一致的玻璃圆返回键。
+      navigationBar: CupertinoNavigationBar(
+        border: const Border(bottom: BorderSide(color: Color(0x11000000))),
+        padding: const EdgeInsetsDirectional.only(start: 8),
+        leading: _WeatherBackButton(
+          onTap: () => Navigator.of(context).maybePop(),
+          iconColor: _W2b.resolve(context).ink,
+        ),
       ),
       child: DefaultTextStyle(
         style: TextStyle(
@@ -144,11 +150,12 @@ class _OfflineGiftPageState extends State<OfflineGiftPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('🎀 心意小窝', style: _titleStyle(context, 28)),
-                            const SizedBox(height: 4),
+                            // 大标题与"收到的礼物"等区块标题统一为 20。
+                            Text('🎀 心意小窝', style: _titleStyle(context, 20)),
+                            const SizedBox(height: 6),
                             Text(
                               '每一份礼物，都是被惦记的证明',
-                              style: _mutedStyle(context, 15),
+                              style: _mutedStyle(context, 14),
                             ),
                             if (_error != null) ...[
                               const SizedBox(height: 16),
@@ -205,6 +212,7 @@ class _OfflineGiftPageState extends State<OfflineGiftPage> {
                             icon: CupertinoIcons.gift,
                             title: '还没有送出过礼物',
                             subtitle: '多和我聊聊天，让我记住你的喜好与小心愿',
+                            accent: _kGiftAccent,
                           ),
                         ),
                       ),
@@ -235,7 +243,7 @@ class _AddressCard extends StatelessWidget {
           children: [
             _RoundIcon(
               icon: CupertinoIcons.house_fill,
-              color: const Color(0xFF7EC5E1),
+              color: const Color(0xFFFF8C4B),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -252,7 +260,7 @@ class _AddressCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     address?.display ?? '还没有填写地址',
-                    style: _titleStyle(context, 15),
+                    style: _titleStyle(context, 16),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -285,28 +293,35 @@ class _AllArrivedCard extends StatelessWidget {
         children: [
           _RoundIcon(
             icon: CupertinoIcons.mail_solid,
-            color: const Color(0xFF7DA7FF),
+            color: const Color(0xFFFF8C4B),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('所有心意都已抵达', style: _titleStyle(context, 17)),
+                Text('所有心意都已抵达', style: _titleStyle(context, 16)),
                 const SizedBox(height: 5),
-                Text('新的惊喜，正在悄悄酝酿中...', style: _mutedStyle(context, 13)),
+                Text(
+                  // 去掉逗号和省略号，收成一行不换行。
+                  '新的惊喜正在悄悄酝酿中',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _mutedStyle(context, 13),
+                ),
               ],
             ),
           ),
           CupertinoButton(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             borderRadius: BorderRadius.circular(999),
-            color: AppColors.of(context).accentSoft,
+            // 礼物页统一橙主调，不用 app 蓝 accent。
+            color: const Color(0xFFFFF1E6),
             onPressed: onTap,
-            child: Text(
+            child: const Text(
               '去聊聊',
               style: TextStyle(
-                color: AppColors.of(context).accent,
+                color: Color(0xFFE0813A),
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -379,10 +394,10 @@ class _ShippingGiftCardState extends State<_ShippingGiftCard> {
       child: Container(
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
         decoration: _softCardDecoration(context, radius: 22).copyWith(
-          border: Border.all(color: const Color(0x667EC5E1), width: 1.4),
+          border: Border.all(color: const Color(0x66FF8C4B), width: 1.4),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x167EC5E1),
+              color: Color(0x16FF8C4B),
               blurRadius: 26,
               offset: Offset(0, 14),
             ),
@@ -403,8 +418,8 @@ class _ShippingGiftCardState extends State<_ShippingGiftCard> {
                         '礼物正在向你飞奔',
                         style: _titleStyle(
                           context,
-                          18,
-                        ).copyWith(color: const Color(0xFF3D95B5)),
+                          16,
+                        ).copyWith(color: const Color(0xFFD9772F)),
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -426,7 +441,7 @@ class _ShippingGiftCardState extends State<_ShippingGiftCard> {
             const SizedBox(height: 18),
             Row(
               children: [
-                Text('物流追踪', style: _titleStyle(context, 15)),
+                Text('物流追踪', style: _titleStyle(context, 16)),
                 const Spacer(),
                 Text(
                   '点开查看寄语',
@@ -578,7 +593,6 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     return _BottomSheetFrame(
-      expandWhenKeyboardVisible: true,
       child: DefaultTextStyle(
         style: TextStyle(
           color: colors.text,
@@ -592,7 +606,7 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
             _sheetGrabber(context),
             _GiftThumb(gift: widget.gift, size: 190, wide: true),
             const SizedBox(height: 16),
-            Text(widget.gift.giftName, style: _titleStyle(context, 22)),
+            Text(widget.gift.giftName, style: _titleStyle(context, 20)),
             const SizedBox(height: 6),
             Text(
               _shortDate(widget.gift.createdAt),
@@ -621,7 +635,7 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
             const SizedBox(height: 18),
             Row(
               children: [
-                Text('物流追踪详情', style: _titleStyle(context, 17)),
+                Text('物流追踪详情', style: _titleStyle(context, 16)),
                 const SizedBox(width: 8),
                 if (_loadingTracking)
                   const CupertinoActivityIndicator(radius: 7),
@@ -642,7 +656,7 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
                 width: double.infinity,
                 child: CupertinoButton(
                   borderRadius: BorderRadius.circular(16),
-                  color: colors.accent,
+                  color: _kGiftAccent,
                   onPressed: _sending ? null : _sendThanks,
                   child: Text(
                     _sending ? '正在传达...' : '向 TA 说声谢谢',
@@ -697,8 +711,8 @@ class _GiftProgressBar extends StatelessWidget {
                 margin: const EdgeInsets.only(top: 15),
                 decoration: BoxDecoration(
                   color: i < currentStep
-                      ? const Color(0xFF7EC5E1)
-                      : const Color(0xFFE4ECF2),
+                      ? const Color(0xFFFF8C4B)
+                      : const Color(0xFFEFE3D8),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -724,7 +738,7 @@ class _GiftProgressStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? const Color(0xFF70C4E2) : const Color(0xFFD3DCE4);
+    final color = active ? const Color(0xFFFF9A57) : const Color(0xFFE1D4C8);
     return Column(
       children: [
         AnimatedContainer(
@@ -738,7 +752,7 @@ class _GiftProgressStep extends StatelessWidget {
             boxShadow: active
                 ? const [
                     BoxShadow(
-                      color: Color(0x337EC5E1),
+                      color: Color(0x33FF8C4B),
                       blurRadius: 12,
                       offset: Offset(0, 6),
                     ),
@@ -755,7 +769,7 @@ class _GiftProgressStep extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            color: active ? const Color(0xFF5AA8C4) : const Color(0xFF9AA6AF),
+            color: active ? const Color(0xFFCE7333) : const Color(0xFFB0A090),
             fontSize: 11,
             fontWeight: FontWeight.w900,
             decoration: TextDecoration.none,
@@ -775,12 +789,12 @@ class _ShippingStateChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = AppColors.isDark(context);
     final background = isDark
-        ? const Color(0x1F70C4E2)
-        : const Color(0xFFE7F6FC);
-    final border = isDark ? const Color(0x557EC5E1) : const Color(0x667EC5E1);
+        ? const Color(0x1FFF9A57)
+        : const Color(0xFFFFF1E6);
+    final border = isDark ? const Color(0x55FF8C4B) : const Color(0x66FF8C4B);
     final foreground = isDark
-        ? const Color(0xFF8DD9F1)
-        : const Color(0xFF4C9DBC);
+        ? const Color(0xFFFFB27E)
+        : const Color(0xFFCE7333);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -817,7 +831,7 @@ class _GiftThumb extends StatelessWidget {
       child: Container(
         width: wide ? double.infinity : size,
         height: size,
-        color: isDark ? const Color(0xFF162536) : const Color(0xFFEAF5FB),
+        color: isDark ? const Color(0xFF2A1D12) : const Color(0xFFFDF0E5),
         child: url == null
             ? const Center(child: Text('🎁', style: TextStyle(fontSize: 32)))
             : Image.network(
@@ -847,10 +861,10 @@ class _TrackingTimeline extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(compact ? 12 : 14),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF102031) : const Color(0xFFEFF7FC),
+        color: isDark ? const Color(0xFF241811) : const Color(0xFFFFF5EC),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isDark ? const Color(0x334BB6D8) : const Color(0x227EC5E1),
+          color: isDark ? const Color(0x33E0813A) : const Color(0x22FF8C4B),
         ),
       ),
       child: Column(
@@ -887,14 +901,14 @@ class _TrackingTimelineRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = AppColors.isDark(context);
     final dotColor = isLatest
-        ? (isDark ? const Color(0xFF74D5F0) : const Color(0xFF57BEE0))
-        : (isDark ? const Color(0xFF4A8CA7) : const Color(0xFF9ED3E8));
+        ? (isDark ? const Color(0xFFFFB27E) : const Color(0xFFFF9A57))
+        : (isDark ? const Color(0xFFB07648) : const Color(0xFFF6C9A6));
     final dotBorderColor = isDark
-        ? const Color(0xFF102031)
+        ? const Color(0xFF241811)
         : CupertinoColors.white;
     final lineColor = isDark
-        ? const Color(0x554BB6D8)
-        : const Color(0x557EC5E1);
+        ? const Color(0x55E0813A)
+        : const Color(0x55FF8C4B);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -914,7 +928,7 @@ class _TrackingTimelineRow extends StatelessWidget {
                       ? [
                           BoxShadow(
                             color: const Color(
-                              0xFF7EC5E1,
+                              0xFFFF8C4B,
                             ).withValues(alpha: isDark ? 0.32 : 0.20),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
@@ -987,7 +1001,7 @@ class _TrackingLoadingBlock extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF102031) : const Color(0xFFEFF7FC),
+        color: isDark ? const Color(0xFF241811) : const Color(0xFFFFF5EC),
         borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
@@ -1011,7 +1025,7 @@ class _TrackingEmptyBlock extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF102031) : const Color(0xFFEFF7FC),
+        color: isDark ? const Color(0xFF241811) : const Color(0xFFFFF5EC),
         borderRadius: BorderRadius.circular(18),
       ),
       child: Text('暂时还没有物流更新', style: _mutedStyle(context, 13)),

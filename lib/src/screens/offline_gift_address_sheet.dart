@@ -19,6 +19,8 @@ class _AddressEditSheetState extends State<_AddressEditSheet> {
   late final TextEditingController _name;
   late final TextEditingController _phone;
   late final TextEditingController _detail;
+  final FocusNode _nameFocus = FocusNode();
+  final FocusNode _phoneFocus = FocusNode();
   ChinaRegionData? _regions;
   String? _province;
   String? _city;
@@ -44,6 +46,8 @@ class _AddressEditSheetState extends State<_AddressEditSheet> {
     _name.dispose();
     _phone.dispose();
     _detail.dispose();
+    _nameFocus.dispose();
+    _phoneFocus.dispose();
     super.dispose();
   }
 
@@ -242,7 +246,7 @@ class _AddressEditSheetState extends State<_AddressEditSheet> {
                           child: Text(
                             '完成',
                             style: popupTextStyle.copyWith(
-                              color: CupertinoColors.activeBlue,
+                              color: const Color(0xFFE0813A),
                               fontWeight: FontWeight.w800,
                             ),
                           ),
@@ -307,19 +311,29 @@ class _AddressEditSheetState extends State<_AddressEditSheet> {
   @override
   Widget build(BuildContext context) {
     return _BottomSheetFrame(
-      expandWhenKeyboardVisible: true,
+      // 玻璃底色，让下面的玻璃输入框/下拉框衬出来(参考打卡计划新增 sheet)。
+      backgroundColor: _W2b.resolve(context).base,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           _sheetGrabber(context),
-          Text('收货地址', style: _titleStyle(context, 22)),
+          Text('收货地址', style: _titleStyle(context, 20)),
           const SizedBox(height: 16),
-          _AddressField(label: '收件人', controller: _name),
+          _AddressField(
+            label: '收件人',
+            controller: _name,
+            focusNode: _nameFocus,
+            textInputAction: TextInputAction.next,
+            onSubmitted: (_) => _phoneFocus.requestFocus(),
+          ),
           _AddressField(
             label: '手机号',
             controller: _phone,
+            focusNode: _phoneFocus,
             keyboardType: TextInputType.phone,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => FocusScope.of(context).unfocus(),
           ),
           _AddressSelectField(
             label: '省份',
@@ -343,21 +357,67 @@ class _AddressEditSheetState extends State<_AddressEditSheet> {
                 : (_city == null ? '请先选择城市' : '选择地区'),
             onTap: _selectDistrict,
           ),
-          _AddressField(label: '详细地址', controller: _detail),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: CupertinoButton(
-              color: const Color(0xFF4B98B5),
-              borderRadius: BorderRadius.circular(16),
-              onPressed: _saving ? null : _save,
-              child: Text(
-                _saving ? '保存中...' : '保存地址',
-                style: const TextStyle(fontWeight: FontWeight.w900),
-              ),
-            ),
+          _AddressField(
+            label: '详细地址',
+            controller: _detail,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => FocusScope.of(context).unfocus(),
           ),
+          const SizedBox(height: 10),
+          // 参考打卡计划新增 sheet 的主按钮(_CheckinPrimaryButton)：整宽胶囊、
+          // 主题蓝填充 + 柔和投影、白字 20/w600、忙碌显示转圈、禁用变淡。
+          _AddressSaveButton(busy: _saving, onPressed: _saving ? null : _save),
         ],
+      ),
+    );
+  }
+}
+
+/// 与打卡计划新增 sheet 的主按钮同一套设计：整宽胶囊 + 主题色填充 + 柔和投影，
+/// 白字 20/w600；忙碌转圈；禁用时变淡去掉投影。礼物页主调是橙色。
+class _AddressSaveButton extends StatelessWidget {
+  const _AddressSaveButton({required this.busy, required this.onPressed});
+
+  final bool busy;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    const base = _kGiftAccent;
+    final enabled = onPressed != null && !busy;
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: const Size.fromHeight(52),
+      borderRadius: BorderRadius.circular(999),
+      onPressed: enabled ? onPressed : null,
+      child: Container(
+        height: 52,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: enabled ? base : base.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: enabled
+              ? [
+                  BoxShadow(
+                    color: base.withValues(alpha: 0.25),
+                    blurRadius: 16,
+                    offset: const Offset(2, 8),
+                  ),
+                ]
+              : null,
+        ),
+        child: busy
+            ? const CupertinoActivityIndicator(color: Colors.white)
+            : const Text(
+                '保存地址',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                  decoration: TextDecoration.none,
+                ),
+              ),
       ),
     );
   }
@@ -368,41 +428,57 @@ class _AddressField extends StatelessWidget {
     required this.label,
     required this.controller,
     this.keyboardType,
+    this.focusNode,
+    this.textInputAction,
+    this.onSubmitted,
   });
 
   final String label;
   final TextEditingController controller;
   final TextInputType? keyboardType;
+  final FocusNode? focusNode;
+  final TextInputAction? textInputAction;
+  final ValueChanged<String>? onSubmitted;
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
+    final w = _W2b.resolve(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: _mutedStyle(
-              context,
-              13,
-            ).copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 6),
+          Text(label, style: _addressFieldLabelStyle(context)),
+          const SizedBox(height: 7),
           CupertinoTextField(
             controller: controller,
+            focusNode: focusNode,
             keyboardType: keyboardType,
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+            textInputAction: textInputAction,
+            onSubmitted: onSubmitted,
+            style: TextStyle(color: w.ink, fontSize: 15),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
             decoration: BoxDecoration(
-              color: colors.surfaceMuted,
-              borderRadius: BorderRadius.circular(12),
+              color: w.glass,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: w.glassBorder),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+/// 地址表单字段的小标签样式：统一小字号 + 次级墨色(跟天气/胶囊页一致)。
+TextStyle _addressFieldLabelStyle(BuildContext context) {
+  return TextStyle(
+    color: _W2b.resolve(context).inkSoft,
+    fontSize: 13,
+    height: 1.2,
+    fontWeight: FontWeight.w800,
+    decoration: TextDecoration.none,
+  );
 }
 
 class _AddressSelectField extends StatelessWidget {
@@ -420,32 +496,27 @@ class _AddressSelectField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
+    final w = _W2b.resolve(context);
     final displayValue = value?.trim();
     final hasValue = displayValue != null && displayValue.isNotEmpty;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: _mutedStyle(
-              context,
-              13,
-            ).copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 6),
+          Text(label, style: _addressFieldLabelStyle(context)),
+          const SizedBox(height: 7),
           CupertinoButton(
             minimumSize: Size.zero,
             padding: EdgeInsets.zero,
             onPressed: onTap,
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
               decoration: BoxDecoration(
-                color: colors.surfaceMuted,
-                borderRadius: BorderRadius.circular(12),
+                color: w.glass,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: w.glassBorder),
               ),
               child: Row(
                 children: [
@@ -455,11 +526,11 @@ class _AddressSelectField extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: hasValue ? colors.text : colors.muted,
-                        fontSize: 16,
+                        color: hasValue ? w.ink : w.inkFaint,
+                        fontSize: 15,
                         fontWeight: hasValue
                             ? FontWeight.w700
-                            : FontWeight.w600,
+                            : FontWeight.w500,
                       ),
                     ),
                   ),
@@ -467,7 +538,7 @@ class _AddressSelectField extends StatelessWidget {
                   Icon(
                     CupertinoIcons.chevron_down,
                     size: 17,
-                    color: colors.muted,
+                    color: w.inkFaint,
                   ),
                 ],
               ),
