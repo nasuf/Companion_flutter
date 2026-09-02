@@ -454,76 +454,130 @@ class _ActivityEmptyLanding extends StatelessWidget {
   }
 }
 
-class _ActivityBalloonHero extends StatelessWidget {
+class _ActivityBalloonHero extends StatefulWidget {
   const _ActivityBalloonHero();
+
+  @override
+  State<_ActivityBalloonHero> createState() => _ActivityBalloonHeroState();
+}
+
+class _ActivityBalloonHeroState extends State<_ActivityBalloonHero>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _breath;
+
+  @override
+  void initState() {
+    super.initState();
+    // 跟本项目其它呼吸动画同一套：本地 ticker + RepaintBoundary 隔离，只重绘
+    // 这一小块，流畅不牵连整页。
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 4600),
+    )..repeat(reverse: true);
+    _breath = CurvedAnimation(parent: _controller, curve: Curves.easeInOutSine);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
-    return SizedBox(
-      width: 176,
-      height: 176,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            width: 156,
-            height: 156,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                center: const Alignment(-0.18, -0.24),
-                radius: 0.82,
-                colors: [
-                  Colors.white.withValues(alpha: 0.92),
-                  const Color(0xFFE9F8FF).withValues(alpha: 0.72),
-                  const Color(0xFFFFE6D7).withValues(alpha: 0.34),
-                  Colors.transparent,
-                ],
-                stops: const [0, 0.43, 0.72, 1],
-              ),
-              border: Border.all(
-                color: colors.accentCyan.withValues(alpha: 0.18),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: colors.accent.withValues(alpha: 0.08),
-                  blurRadius: 38,
-                  offset: const Offset(0, 18),
+    // 关键：被逐帧缩放的子树里绝不能有高斯模糊(boxShadow / 文字投影)。动画中
+    // 的 Transform.scale 会让 Flutter 的光栅缓存失效，缓存里那张含模糊的图片
+    // 就得每帧按新缩放重新栅化、把两条大模糊重跑一遍——这才是卡顿根因。日常
+    // 分享页流畅，是因为它缩放的是一张解码好的图片(纯 GPU 贴图)、没有模糊要
+    // 重算。所以这里把外发光的 boxShadow 换成"便宜"的径向渐变光晕(无模糊滤镜)；
+    // 气球连同它自己的文字投影只做平移(不缩放)、并单独缓存——平移只是挪动现成
+    // 图层，不会重跑那条投影模糊。
+    final halo = DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [
+            colors.accent.withValues(alpha: 0.12),
+            const Color(0xFFFFB48E).withValues(alpha: 0.12),
+            Colors.transparent,
+          ],
+          stops: const [0.5, 0.76, 1],
+        ),
+      ),
+    );
+    final circle = Container(
+      width: 156,
+      height: 156,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          center: const Alignment(-0.18, -0.24),
+          radius: 0.82,
+          colors: [
+            Colors.white.withValues(alpha: 0.92),
+            const Color(0xFFE9F8FF).withValues(alpha: 0.72),
+            const Color(0xFFFFE6D7).withValues(alpha: 0.34),
+            Colors.transparent,
+          ],
+          stops: const [0, 0.43, 0.72, 1],
+        ),
+        border: Border.all(
+          color: colors.accentCyan.withValues(alpha: 0.18),
+          width: 1,
+        ),
+      ),
+    );
+    final ring = CustomPaint(
+      size: const Size(176, 176),
+      painter: _ActivityBalloonRingPainter(
+        color: colors.accentCyan.withValues(alpha: 0.24),
+      ),
+    );
+    // 气球单独缓存：它含一条文字投影模糊，缓存后平移只挪图层、不重跑模糊。
+    const balloon = RepaintBoundary(
+      child: Text(
+        '🎈',
+        style: TextStyle(
+          fontSize: 58,
+          decoration: TextDecoration.none,
+          shadows: [
+            Shadow(
+              color: Color(0x33000000),
+              blurRadius: 16,
+              offset: Offset(0, 10),
+            ),
+          ],
+        ),
+      ),
+    );
+    return RepaintBoundary(
+      child: SizedBox(
+        width: 176,
+        height: 176,
+        child: AnimatedBuilder(
+          animation: _breath,
+          builder: (context, _) {
+            final v = _breath.value; // 0→1→0
+            return Stack(
+              alignment: Alignment.center,
+              children: [
+                // 光晕/圆/外圈都是渐变+描边(无模糊)，逐帧缩放很便宜。
+                Positioned.fill(
+                  child: Transform.scale(scale: 1 + v * 0.06, child: halo),
                 ),
-                BoxShadow(
-                  color: const Color(0xFFFFB48E).withValues(alpha: 0.14),
-                  blurRadius: 30,
-                  offset: const Offset(0, 10),
+                Transform.scale(scale: 1 + v * 0.045, child: circle),
+                Transform.scale(scale: 1 + v * 0.03, child: ring),
+                // 气球只上下轻浮(平移)，投影不重算。
+                Transform.translate(
+                  offset: Offset(0, -6 - v * 8),
+                  child: balloon,
                 ),
               ],
-            ),
-          ),
-          CustomPaint(
-            size: const Size(176, 176),
-            painter: _ActivityBalloonRingPainter(
-              color: colors.accentCyan.withValues(alpha: 0.24),
-            ),
-          ),
-          Transform.translate(
-            offset: const Offset(0, -6),
-            child: const Text(
-              '🎈',
-              style: TextStyle(
-                fontSize: 58,
-                decoration: TextDecoration.none,
-                shadows: [
-                  Shadow(
-                    color: Color(0x33000000),
-                    blurRadius: 16,
-                    offset: Offset(0, 10),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -585,16 +639,19 @@ class _ActivityInfoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
+    final base = _softCardDecoration(context, radius: 22);
+    // 保留 _softCardDecoration 的玻璃描边(亮白边缘正是玻璃感的关键)；只有可
+    // 点击的 tile 才把描边换成主题色以示可交互。之前这里无脑 copyWith 一个暗
+    // 灰 hairline，把玻璃边缘覆盖没了，卡片就读成一块灰底。
     final child = Container(
       padding: EdgeInsets.fromLTRB(18, 18, onTap == null ? 18 : 14, 18),
-      decoration: _softCardDecoration(context, radius: 22).copyWith(
-        border: Border.all(
-          color: onTap == null
-              ? colors.hairline.withValues(alpha: 0.70)
-              : colors.accent.withValues(alpha: 0.20),
-          style: BorderStyle.solid,
-        ),
-      ),
+      decoration: onTap == null
+          ? base
+          : base.copyWith(
+              border: Border.all(
+                color: colors.accent.withValues(alpha: 0.30),
+              ),
+            ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

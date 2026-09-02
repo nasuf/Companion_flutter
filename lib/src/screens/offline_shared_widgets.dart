@@ -5,13 +5,17 @@ class _ActivityPageBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 只压一层很淡的底色雾，让玻璃底的极光透出来(否则 0.70 的厚底把极光糊成
+    // 一片灰、玻璃卡片也没了通透感)；列表在半透明玻璃卡片里，可读性由卡片本身
+    // 保证。
+    final w = _W2b.resolve(context);
     return Stack(
       children: [
-        _OfflineBackground(progress: 0.42),
+        const _OfflineBackground(),
         Positioned.fill(
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: AppColors.of(context).page.withValues(alpha: 0.70),
+              color: w.base.withValues(alpha: w.isDark ? 0.40 : 0.22),
             ),
           ),
         ),
@@ -28,6 +32,7 @@ class _OfflineSubpageTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
     return SizedBox(
       height: 54,
       child: Stack(
@@ -35,15 +40,13 @@ class _OfflineSubpageTopBar extends StatelessWidget {
         children: [
           Align(
             alignment: Alignment.centerLeft,
-            child: _AppNavCircleButton(
-              icon: CupertinoIcons.chevron_left,
-              onPressed: onBack,
-            ),
+            // 统一成天气/胶囊/日常分享页那颗玻璃返回键。
+            child: _WeatherBackButton(onTap: onBack, iconColor: w.ink),
           ),
           Text(
             title,
             style: TextStyle(
-              color: AppColors.of(context).text,
+              color: w.ink,
               fontSize: 18,
               fontWeight: FontWeight.w900,
               letterSpacing: 0,
@@ -264,27 +267,21 @@ Widget _sheetGrabber(BuildContext context) {
   );
 }
 
+// 活动/礼物两个二级页的卡片主体都走这个共享装饰——直接换成 _W2b 玻璃令牌，
+// 一处改动即让两页大部分卡片变成和天气/胶囊/日常分享页一致的半透明玻璃。
 BoxDecoration _softCardDecoration(BuildContext context, {double radius = 26}) {
-  final colors = AppColors.of(context);
+  final w = _W2b.resolve(context);
   return BoxDecoration(
-    color: colors.surface,
+    color: w.glass,
     borderRadius: BorderRadius.circular(radius),
-    border: Border.all(color: colors.hairline.withValues(alpha: 0.44)),
-    boxShadow: [
-      BoxShadow(
-        color: Colors.black.withValues(
-          alpha: AppColors.isDark(context) ? 0.22 : 0.055,
-        ),
-        blurRadius: 22,
-        offset: const Offset(0, 12),
-      ),
-    ],
+    border: Border.all(color: w.glassBorder),
+    boxShadow: w.panelShadow,
   );
 }
 
 TextStyle _titleStyle(BuildContext context, double size) {
   return TextStyle(
-    color: AppColors.of(context).text,
+    color: _W2b.resolve(context).ink,
     fontSize: size,
     fontWeight: FontWeight.w900,
     letterSpacing: 0,
@@ -295,7 +292,7 @@ TextStyle _titleStyle(BuildContext context, double size) {
 
 TextStyle _mutedStyle(BuildContext context, double size) {
   return TextStyle(
-    color: AppColors.of(context).muted,
+    color: _W2b.resolve(context).inkSoft,
     fontSize: size,
     fontWeight: FontWeight.w600,
     height: 1.35,
