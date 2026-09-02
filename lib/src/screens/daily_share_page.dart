@@ -19,6 +19,8 @@ class _DailySharePageState extends State<DailySharePage>
   late Future<DailyShareLinksResponse> _linksFuture;
   _DailyShareTab _tab = _DailyShareTab.photo;
   double _heroFade = 0;
+  final GlobalKey _titleKey = GlobalKey();
+  double _extraPinSpace = 0;
 
   @override
   void initState() {
@@ -30,6 +32,13 @@ class _DailySharePageState extends State<DailySharePage>
     _scrollController = ScrollController()..addListener(_syncHeroFade);
     _photosFuture = widget.api.listDailySharePhotos();
     _linksFuture = widget.api.listDailyShareLinks();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 每帧结束后核一次 tab 吸顶所需的底部补偿(收敛后不再 setState)。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncTabPinSpace());
+    return _buildScaffold(context);
   }
 
   @override
@@ -97,92 +106,107 @@ class _DailySharePageState extends State<DailySharePage>
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildScaffold(BuildContext context) {
     return FutureBuilder<DailySharePhotosResponse>(
       future: _photosFuture,
       builder: (context, snapshot) {
         final photos = snapshot.data;
-        return AnimatedBuilder(
-          animation: _breathController,
-          builder: (context, _) {
-            final breath = Curves.easeInOut.transform(_breathController.value);
-            return Scaffold(
-              backgroundColor: AppColors.page,
-              body: Stack(
-                children: [
-                  _DailyBreathingBackground(progress: breath),
-                  RefreshIndicator(
-                    color: AppColors.accentDeep,
-                    onRefresh: _refresh,
-                    child: CustomScrollView(
-                      controller: _scrollController,
-                      physics: const BouncingScrollPhysics(
-                        parent: AlwaysScrollableScrollPhysics(),
-                      ),
-                      slivers: [
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: EdgeInsets.fromLTRB(
-                              24,
-                              MediaQuery.paddingOf(context).top + 34,
-                              24,
-                              0,
-                            ),
-                            child: _DailyHeader(
-                              loading:
-                                  snapshot.connectionState ==
-                                  ConnectionState.waiting,
-                              onBack: () => Navigator.of(context).pop(),
-                            ),
-                          ),
-                        ),
-                        SliverPersistentHeader(
-                          pinned: true,
-                          delegate: _DailyTabsHeaderDelegate(
-                            activeTab: _tab,
-                            topInset: MediaQuery.paddingOf(context).top,
-                            onChanged: (tab) => setState(() => _tab = tab),
-                          ),
-                        ),
-                        if (_tab == _DailyShareTab.photo)
-                          SliverPadding(
-                            padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
-                            sliver: SliverToBoxAdapter(
-                              child: _DailyHeroCard(
-                                photos: photos,
-                                fade: _heroFade,
-                                breath: _breathController.value,
-                                authToken: widget.api.authToken,
-                              ),
-                            ),
-                          ),
-                        if (_tab == _DailyShareTab.photo)
-                          _DailyPhotoContent(
-                            snapshot: snapshot,
-                            authToken: widget.api.authToken,
-                            onRetry: _refresh,
-                            onPreview: _previewPhoto,
-                            breath: _breathController.value,
-                          )
-                        else
-                          _DailyLinkContent(
-                            future: _linksFuture,
-                            authToken: widget.api.authToken,
-                            onRetry: _refresh,
-                            onOpen: _openLink,
-                          ),
-                        const SliverToBoxAdapter(child: SizedBox(height: 116)),
-                      ],
-                    ),
+        // 呼吸动画不再包整页：背景自带 AnimatedBuilder，卡片各自带本地呼吸，
+        // 整个 scrollview 不用每帧重建。
+        return Scaffold(
+          backgroundColor: _W2b.resolve(context).base,
+          body: Stack(
+            children: [
+              _DailyBreathingBackground(controller: _breathController),
+              RefreshIndicator(
+                color: AppColors.accentDeep,
+                onRefresh: _refresh,
+                child: CustomScrollView(
+                  controller: _scrollController,
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
                   ),
-                ],
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        key: _titleKey,
+                        padding: EdgeInsets.fromLTRB(
+                          24,
+                          MediaQuery.paddingOf(context).top + 34,
+                          24,
+                          0,
+                        ),
+                        child: _DailyHeader(
+                          loading:
+                              snapshot.connectionState ==
+                              ConnectionState.waiting,
+                          onBack: () => Navigator.of(context).pop(),
+                        ),
+                      ),
+                    ),
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _DailyTabsHeaderDelegate(
+                        activeTab: _tab,
+                        topInset: MediaQuery.paddingOf(context).top,
+                        onChanged: (tab) => setState(() => _tab = tab),
+                      ),
+                    ),
+                    if (_tab == _DailyShareTab.photo)
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
+                        sliver: SliverToBoxAdapter(
+                          child: _DailyHeroCard(
+                            photos: photos,
+                            fade: _heroFade,
+                            authToken: widget.api.authToken,
+                          ),
+                        ),
+                      ),
+                    if (_tab == _DailyShareTab.photo)
+                      _DailyPhotoContent(
+                        snapshot: snapshot,
+                        authToken: widget.api.authToken,
+                        onRetry: _refresh,
+                        onPreview: _previewPhoto,
+                      )
+                    else
+                      _DailyLinkContent(
+                        future: _linksFuture,
+                        authToken: widget.api.authToken,
+                        onRetry: _refresh,
+                        onOpen: _openLink,
+                      ),
+                    // 底部留白 = 固定 116 + 自适应补偿(_extraPinSpace)，保证
+                    // 内容再少也能把上方标题区整段滑走、让 pinned tab 停到顶部；
+                    // 内容足够时补偿为 0，不产生多余空白。见 _syncTabPinSpace。
+                    SliverToBoxAdapter(
+                      child: SizedBox(height: 116 + _extraPinSpace),
+                    ),
+                  ],
+                ),
               ),
-            );
-          },
+            ],
+          ),
         );
       },
     );
+  }
+
+  /// 自适应底部补偿：量出标题区高度(需要被滑走的部分)与"没有补偿时"的
+  /// maxScrollExtent，补足到刚好能把标题区滑完、让 tab 吸顶。>1px 才写回，
+  /// 内容稳定时一两帧内收敛，不会反复 setState。
+  void _syncTabPinSpace() {
+    if (!mounted || !_scrollController.hasClients) return;
+    final box = _titleKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final titleHeight = box.size.height;
+    final baseMaxScroll =
+        _scrollController.position.maxScrollExtent - _extraPinSpace;
+    final needed = math.max(0.0, titleHeight - baseMaxScroll);
+    if ((needed - _extraPinSpace).abs() > 1) {
+      setState(() => _extraPinSpace = needed);
+    }
   }
 }
 
@@ -192,12 +216,10 @@ class _DailyPhotoContent extends StatelessWidget {
     required this.authToken,
     required this.onRetry,
     required this.onPreview,
-    required this.breath,
   });
 
   final AsyncSnapshot<DailySharePhotosResponse> snapshot;
   final String? authToken;
-  final double breath;
   final Future<void> Function() onRetry;
   final Future<void> Function(
     BuildContext context,
@@ -230,7 +252,6 @@ class _DailyPhotoContent extends StatelessWidget {
             child: _DailyPhotoGroupSection(
               group: group,
               authToken: authToken,
-              breath: breath,
               onPreview: (photo, photoIndex) =>
                   onPreview(context, photo, group, photoIndex),
             ),
@@ -315,13 +336,14 @@ class _DailyLinkGroupSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           group.title,
-          style: const TextStyle(
-            color: Color(0xFF11161A),
+          style: TextStyle(
+            color: w.ink,
             fontSize: 20,
             fontWeight: FontWeight.w900,
             height: 1.1,
@@ -331,7 +353,7 @@ class _DailyLinkGroupSection extends StatelessWidget {
         Text(
           '${group.count} 条 · ${group.subtitle}',
           style: TextStyle(
-            color: AppColors.muted,
+            color: w.inkSoft,
             fontSize: 12,
             fontWeight: FontWeight.w700,
           ),
@@ -368,27 +390,18 @@ class _DailyLinkCard extends StatelessWidget {
         ? link.imageUrl!.trim()
         : link.componentCard.payload['image_url']?.toString().trim();
     final body = _dailyLinkOriginalText(link);
-    final isDark = AppColors.isDark(context);
+    final w = _W2b.resolve(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
       onPressed: onTap,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: AppColors.elevatedSurface(context, light: 0.76),
+          // 玻璃卡片：跟侧边栏其它页统一走 _W2b.glass/glassBorder/panelShadow。
+          color: w.glass,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.12)
-                : accent.withValues(alpha: 0.20),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: accent.withValues(alpha: isDark ? 0.18 : 0.10),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          border: Border.all(color: w.glassBorder),
+          boxShadow: w.panelShadow,
         ),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -432,7 +445,7 @@ class _DailyLinkCard extends StatelessWidget {
                         maxLines: 4,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: AppColors.text,
+                          color: w.ink,
                           fontSize: 13,
                           height: 1.34,
                         ),
@@ -499,13 +512,11 @@ class _DailyPhotoGroupSection extends StatefulWidget {
   const _DailyPhotoGroupSection({
     required this.group,
     required this.authToken,
-    required this.breath,
     required this.onPreview,
   });
 
   final DailySharePhotoGroup group;
   final String? authToken;
-  final double breath;
   final void Function(ChatAttachment photo, int index) onPreview;
 
   @override
@@ -623,6 +634,7 @@ class _DailyPhotoGroupSectionState extends State<_DailyPhotoGroupSection> {
     final headers = widget.authToken?.isNotEmpty == true
         ? {'Authorization': 'Bearer ${widget.authToken}'}
         : null;
+    final w = _W2b.resolve(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -638,7 +650,7 @@ class _DailyPhotoGroupSectionState extends State<_DailyPhotoGroupSection> {
                     Text(
                       widget.group.title,
                       style: TextStyle(
-                        color: AppColors.text,
+                        color: w.ink,
                         fontSize: 21,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 0,
@@ -649,8 +661,8 @@ class _DailyPhotoGroupSectionState extends State<_DailyPhotoGroupSection> {
                       widget.group.subtitle,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0x99707A85),
+                      style: TextStyle(
+                        color: w.inkSoft,
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
@@ -660,8 +672,8 @@ class _DailyPhotoGroupSectionState extends State<_DailyPhotoGroupSection> {
               ),
               Text(
                 '${widget.group.count} 张',
-                style: const TextStyle(
-                  color: Color(0x99707A85),
+                style: TextStyle(
+                  color: w.inkSoft,
                   fontSize: 13,
                   fontWeight: FontWeight.w900,
                 ),
@@ -727,7 +739,6 @@ class _DailyPhotoGroupSectionState extends State<_DailyPhotoGroupSection> {
                       return _DailyPhotoTile(
                         photo: photo,
                         index: index,
-                        breath: widget.breath,
                         headers: headers,
                         onTap: () => widget.onPreview(photo, index),
                       );
@@ -778,56 +789,54 @@ class _DailyPhotoTile extends StatelessWidget {
   const _DailyPhotoTile({
     required this.photo,
     required this.index,
-    required this.breath,
     required this.headers,
     required this.onTap,
   });
 
   final ChatAttachment photo;
   final int index;
-  final double breath;
   final Map<String, String>? headers;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final wave = math.sin((breath + index * 0.18) * math.pi * 2);
-    return Transform.translate(
-      offset: Offset(0, wave * 2.8),
-      child: Transform.scale(
-        scale: 1 + wave * 0.012,
-        child: GestureDetector(
-          onTap: onTap,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(21),
-            child: SizedBox(
-              width: _DailyRailMetrics.tileWidth,
-              height: 104,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppColors.subtleFill(context, light: 0.54),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.shadow.withValues(
-                        alpha: AppColors.isDark(context) ? 0.48 : 0.12,
-                      ),
-                      blurRadius: 28,
-                      offset: const Offset(0, 16),
-                    ),
-                  ],
+    // 呼吸交给本地 _DailyBreathingArt(复用游戏卡片做法，各图用 index 做 seed
+    // 错开相位)，不再由页面级动画逐帧驱动整条 rail。
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(21),
+        child: SizedBox(
+          width: _DailyRailMetrics.tileWidth,
+          height: 104,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: AppColors.subtleFill(context, light: 0.54),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.shadow.withValues(
+                    alpha: AppColors.isDark(context) ? 0.48 : 0.12,
+                  ),
+                  blurRadius: 28,
+                  offset: const Offset(0, 16),
                 ),
-                child: Image.network(
-                  photo.url,
-                  headers: headers,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const _DailyImageFallback(),
-                  loadingBuilder: (context, child, progress) {
-                    if (progress == null) return child;
-                    return const Center(
-                      child: CupertinoActivityIndicator(radius: 10),
-                    );
-                  },
-                ),
+              ],
+            ),
+            child: _DailyBreathingArt(
+              seed: photo.url.hashCode ^ (index * 131),
+              scaleAmount: 0.045,
+              glowAmount: 0.0,
+              child: Image.network(
+                photo.url,
+                headers: headers,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const _DailyImageFallback(),
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return const Center(
+                    child: CupertinoActivityIndicator(radius: 10),
+                  );
+                },
               ),
             ),
           ),

@@ -1,54 +1,160 @@
 part of 'package:companion_flutter/main.dart';
 
 class _DailyBreathingBackground extends StatelessWidget {
-  const _DailyBreathingBackground({required this.progress});
+  const _DailyBreathingBackground({required this.controller});
 
-  final double progress;
+  final AnimationController controller;
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            colors.page,
-            Color.lerp(colors.page, colors.surfaceMuted, 0.38)!,
-            Color.lerp(colors.page, colors.accentSoft, 0.20)!,
+    // 跟天气/胶囊页统一：_W2b.base 纯色底 + 几团柔光，不再用主题色渐变，也
+    // 去掉网格铺层，读成"分层玻璃扁平"而不是带网格的仪表盘底。
+    // 呼吸动画只包在这层背景里(自带 AnimatedBuilder + RepaintBoundary)，不再
+    // 让整页(scrollview/所有卡片)跟着每帧重建——那正是大卡片呼吸卡顿的根因。
+    final w = _W2b.resolve(context);
+    return RepaintBoundary(
+      child: DecoratedBox(
+        decoration: BoxDecoration(color: w.base),
+        child: Stack(
+          children: [
+            AnimatedBuilder(
+              animation: controller,
+              builder: (context, _) {
+                final progress = Curves.easeInOut.transform(controller.value);
+                return Stack(
+                  children: [
+                    Positioned(
+                      right: -86 - progress * 14,
+                      top: 60 + progress * 22,
+                      child: _DailyAura(
+                        size: 300,
+                        colors: [
+                          const Color(0xFFFF7940).withValues(alpha: 0.14),
+                          const Color(0xFF7C3CFF).withValues(alpha: 0.10),
+                          AppColors.accentDeep.withValues(alpha: 0.08),
+                        ],
+                      ),
+                    ),
+                    Positioned(
+                      left: -80 + progress * 12,
+                      bottom: 40 - progress * 16,
+                      child: _DailyAura(
+                        size: 300,
+                        colors: [
+                          AppColors.accentCyan.withValues(alpha: 0.12),
+                          AppColors.accentDeep.withValues(alpha: 0.08),
+                          Colors.white.withValues(alpha: 0.02),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+            // 右上角柔光高光(静态)，跟侧边栏其它玻璃页一致。
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: const Alignment(0.7, -0.66),
+                    radius: 0.8,
+                    colors: [
+                      w.isDark
+                          ? Colors.white.withValues(alpha: 0.05)
+                          : Colors.white.withValues(alpha: 0.5),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ],
-          stops: [0, 0.54, 1],
         ),
       ),
-      child: Stack(
-        children: [
-          Positioned.fill(child: CustomPaint(painter: _DailyGridPainter())),
-          Positioned(
-            right: -86 - progress * 14,
-            top: 82 + progress * 22,
-            child: _DailyAura(
-              size: 258,
-              colors: [
-                const Color(0xFFFF7940).withValues(alpha: 0.18),
-                const Color(0xFF7C3CFF).withValues(alpha: 0.12),
-                AppColors.accentDeep.withValues(alpha: 0.10),
-              ],
+    );
+  }
+}
+
+/// 复用游戏主页卡片的呼吸做法(见 game_hub_ui.dart `_HubBreathingArt`)：自带
+/// 一个 seeded 的本地 AnimationController，只让包住的 child 做轻微缩放 + 一层
+/// 柔光，整枚 widget 用 RepaintBoundary 隔离——呼吸只重绘这一小块，不牵连整页，
+/// 也不把 BackdropFilter 之类的贵操作放进逐帧变化的变换里。
+class _DailyBreathingArt extends StatefulWidget {
+  const _DailyBreathingArt({
+    required this.child,
+    this.seed = 0,
+    this.scaleAmount = 0.06,
+    this.glowAmount = 0.12,
+  });
+
+  final Widget child;
+  final int seed;
+  final double scaleAmount;
+  final double glowAmount;
+
+  @override
+  State<_DailyBreathingArt> createState() => _DailyBreathingArtState();
+}
+
+class _DailyBreathingArtState extends State<_DailyBreathingArt>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _breath;
+  late final Animation<double> _glow;
+
+  @override
+  void initState() {
+    super.initState();
+    final offset = widget.seed.abs();
+    _controller = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: 4300 + offset % 900),
+      value: (offset % 1000) / 1000,
+    )..repeat(reverse: true);
+    final curve = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOutSine,
+    );
+    _breath = Tween<double>(
+      begin: 1.0,
+      end: 1.0 + widget.scaleAmount,
+    ).animate(curve);
+    _glow = Tween<double>(begin: 0.0, end: widget.glowAmount).animate(curve);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) => Stack(
+          fit: StackFit.expand,
+          children: [
+            Transform.scale(scale: _breath.value, child: child),
+            IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: const Alignment(-0.35, -0.45),
+                    radius: 0.9,
+                    colors: [
+                      Colors.white.withValues(alpha: _glow.value),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.74],
+                  ),
+                ),
+              ),
             ),
-          ),
-          Positioned(
-            left: -80 + progress * 12,
-            bottom: 52 - progress * 16,
-            child: _DailyAura(
-              size: 286,
-              colors: [
-                AppColors.accentCyan.withValues(alpha: 0.12),
-                AppColors.accentDeep.withValues(alpha: 0.10),
-                Colors.white.withValues(alpha: 0.02),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
+        child: widget.child,
       ),
     );
   }
@@ -78,25 +184,6 @@ class _DailyAura extends StatelessWidget {
       ),
     );
   }
-}
-
-class _DailyGridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFF9BB0C6).withValues(alpha: 0.08)
-      ..strokeWidth = 0.8;
-    const gap = 42.0;
-    for (var x = 0.0; x <= size.width; x += gap) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (var y = 0.0; y <= size.height; y += gap) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _DailyGridPainter oldDelegate) => false;
 }
 
 class _DailyCircleButton extends StatelessWidget {
@@ -360,73 +447,69 @@ class _DailyStateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = AppColors.isDark(context);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(28),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppColors.elevatedSurface(context, light: 0.62),
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: AppColors.glassBorder(context)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                Icon(icon, color: AppColors.accentDeep),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          color: AppColors.text,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          color: isDark
-                              ? AppColors.muted
-                              : const Color(0x99707A85),
-                          fontSize: 13,
-                          height: 1.35,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (actionLabel != null && onAction != null) ...[
-                  const SizedBox(width: 12),
-                  CupertinoButton(
-                    minimumSize: Size.zero,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 9,
+    // 跟本页其它玻璃元素统一：半透明 _W2b.glass 底 + 边框 + 阴影，不再用
+    // BackdropFilter。之前那层 BackdropFilter 会把整块(含文字)推进一个离屏
+    // 图层、在非整数像素处采样，导致个别字(如"链")发虚。
+    final w = _W2b.resolve(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: w.glass,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: w.glassBorder),
+        boxShadow: w.panelShadow,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          children: [
+            Icon(icon, color: AppColors.accentDeep),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: w.ink,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
                     ),
-                    borderRadius: BorderRadius.circular(16),
-                    color: AppColors.accentDeep,
-                    onPressed: onAction,
-                    child: Text(
-                      actionLabel!,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                      ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: w.inkSoft,
+                      fontSize: 13,
+                      height: 1.35,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
-          ),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(width: 12),
+              CupertinoButton(
+                minimumSize: Size.zero,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 9,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                color: AppColors.accentDeep,
+                onPressed: onAction,
+                child: Text(
+                  actionLabel!,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
