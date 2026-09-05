@@ -36,6 +36,13 @@ class _StorePageState extends State<StorePage> {
   late final PageController _sectionController;
   late Future<WalletBalance> _walletFuture;
 
+  // Apple IAP：真实内购（订阅 + 充值消耗型）。价格从 StoreKit 拉本地化值。
+  late final IapService _iap;
+  StreamSubscription<IapEvent>? _iapSub;
+  bool _iapReady = false; // 商品价格已拉到，可用本地化价渲染
+  bool _subscribing = false; // 订阅购买+校验进行中
+  bool _rechargeSubmitting = false; // 充值购买+校验进行中
+
   @override
   void initState() {
     super.initState();
@@ -51,12 +58,79 @@ class _StorePageState extends State<StorePage> {
     _sectionController = PageController(initialPage: _sectionIndex(_section));
     _walletFuture = _loadWallet();
     _loadCatalog();
+    _iap = IapService(onVerify: _verifyPurchase);
+    _iapSub = _iap.events.listen(_onIapEvent);
+    _initIap();
   }
 
   @override
   void dispose() {
     _sectionController.dispose();
+    _iapSub?.cancel();
+    _iap.dispose();
     super.dispose();
+  }
+
+  Future<void> _initIap() async {
+    final ok = await _iap.init();
+    if (!ok) return; // 模拟器无 StoreKit / 设备不支持：价格回退营销价，按钮点了给提示
+    await _iap.queryProducts(IapProducts.all);
+    if (!mounted) return;
+    setState(() => _iapReady = _iap.hasProducts);
+  }
+
+  /// 购买成功回调：把 transactionId 交后端校验+到账。抛异常 = 不 complete。
+  Future<IapVerifyResponse> _verifyPurchase({
+    required String productId,
+    required String transactionId,
+    required String signedTransaction,
+  }) {
+    return widget.api.verifyAppleIap(
+      productId: productId,
+      transactionId: transactionId,
+      signedTransaction: signedTransaction,
+      agentId: widget.session.agentId,
+    );
+  }
+
+  void _onIapEvent(IapEvent event) {
+    if (!mounted) return;
+    switch (event.type) {
+      case IapEventType.pending:
+      case IapEventType.verifying:
+        // 保持按钮 loading（在发起处已置位），无需额外处理。
+        break;
+      case IapEventType.success:
+        final r = event.result;
+        setState(() {
+          _subscribing = false;
+          _rechargeSubmitting = false;
+          if (r != null) {
+            _walletFuture = Future.value(r.wallet);
+            _isVip = r.vip.isVip;
+            _vipTrialAvailable = r.vip.vipTrialAvailable;
+          }
+        });
+        _showToast('已到账');
+      case IapEventType.canceled:
+        setState(() {
+          _subscribing = false;
+          _rechargeSubmitting = false;
+        });
+      case IapEventType.error:
+        setState(() {
+          _subscribing = false;
+          _rechargeSubmitting = false;
+        });
+        _showToast(event.message ?? '购买失败');
+      case IapEventType.verifyFailed:
+        setState(() {
+          _subscribing = false;
+          _rechargeSubmitting = false;
+        });
+        // 钱可能已扣、到账在重试中——不报"失败"以免误导。
+        _showToast('支付成功，正在到账，请稍候');
+    }
   }
 
   Future<WalletBalance> _loadWallet() {
@@ -74,6 +148,41 @@ class _StorePageState extends State<StorePage> {
     } catch (_) {
       // Local catalog still renders; prices default to non-member until retry.
     }
+  }
+
+  Future<void> _handleSubscribe() async {
+    if (_subscribing) return;
+    final productId =
+        (_selectedPlan >= 0 && _selectedPlan < IapProducts.subscriptionPlans.length)
+        ? IapProducts.subscriptionPlans[_selectedPlan]
+        : IapProducts.vipMonthlyAuto;
+    if (!_iap.available || _iap.priceLabel(productId) == null) {
+      _showToast('内购暂不可用，请稍后再试');
+      return;
+    }
+    setState(() => _subscribing = true);
+    try {
+      if (IapProducts.isAutoRenew(productId)) {
+        await _iap.buySubscription(productId);
+      } else {
+        await _iap.buyConsumable(productId);
+      }
+      // 后续 success/canceled/error 由 _onIapEvent 处理并清 _subscribing。
+    } catch (e) {
+      if (mounted) {
+        setState(() => _subscribing = false);
+        _showToast('发起购买失败：$e');
+      }
+    }
+  }
+
+  Future<void> _handleRestore() async {
+    if (!_iap.available) {
+      _showToast('内购暂不可用');
+      return;
+    }
+    await _iap.restore();
+    _showToast('正在恢复购买…');
   }
 
   void _openRechargeTickets() {
@@ -107,24 +216,6 @@ class _StorePageState extends State<StorePage> {
     }
 
     _sectionController.jumpToPage(_sectionIndex(section));
-  }
-
-  void _showComingSoon(String title) {
-    showCupertinoDialog<void>(
-      context: context,
-      builder: (context) {
-        return CupertinoAlertDialog(
-          title: Text(title),
-          content: const Text('商城后端和支付订单接口接好后，这里会完成真实购买和发放。'),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('知道了'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   Future<void> _handleRecharge() async {
@@ -184,28 +275,45 @@ class _StorePageState extends State<StorePage> {
       return;
     }
 
-    showCupertinoDialog<void>(
+    // 钞票充值 = Apple IAP 消耗型商品（App Store 规定虚拟货币必须走 IAP）。
+    if (_rechargeSubmitting) return;
+    final productId = IapProducts.ticket(pack.amount);
+    final priceLabel = _iap.priceLabel(productId);
+    if (!_iap.available || priceLabel == null) {
+      _showToast('内购暂不可用，请稍后再试');
+      return;
+    }
+    final confirmed = await showCupertinoDialog<bool>(
       context: context,
       builder: (context) {
         return CupertinoAlertDialog(
-          title: const Text('微信支付待接入'),
-          content: Text(
-            '已选 ${pack.amount} 钞票，价格 ¥${pack.cost}。\n\n下一步需要服务端返回微信预支付参数，前端再通过 fluwx 调起支付。',
-          ),
+          title: const Text('确认充值'),
+          content: Text('将支付 $priceLabel 获得 ${pack.amount} 钞票，是否继续？'),
           actions: [
             CupertinoDialogAction(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => Navigator.of(context).pop(false),
               child: const Text('取消'),
             ),
             CupertinoDialogAction(
               isDefaultAction: true,
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('好的'),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('去支付'),
             ),
           ],
         );
       },
     );
+    if (confirmed != true || !mounted) return;
+    setState(() => _rechargeSubmitting = true);
+    try {
+      await _iap.buyConsumable(productId);
+      // 后续 success/canceled/error 由 _onIapEvent 处理并清 _rechargeSubmitting。
+    } catch (e) {
+      if (mounted) {
+        setState(() => _rechargeSubmitting = false);
+        _showToast('发起支付失败：$e');
+      }
+    }
   }
 
   Future<void> _openGamePointConvert() async {
@@ -468,7 +576,15 @@ class _StorePageState extends State<StorePage> {
       _StoreSection.subscription => _SubscriptionStoreView(
         selectedPlan: _selectedPlan,
         onSelectPlan: (value) => setState(() => _selectedPlan = value),
-        onSubscribe: () => _showComingSoon('开通会员'),
+        onSubscribe: _handleSubscribe,
+        onRestore: _handleRestore,
+        subscribing: _subscribing,
+        planPrices: _iapReady
+            ? [
+                for (final id in IapProducts.subscriptionPlans)
+                  _iap.priceLabel(id),
+              ]
+            : const [],
         bottomSpace: bottomSpace,
       ),
       _StoreSection.bundle => _BundleStoreView(
@@ -508,6 +624,10 @@ class _StorePageState extends State<StorePage> {
         onSelectPack: (value) => setState(() => _selectedRecharge = value),
         onSubmit: _handleRecharge,
         onConvertGamePoints: _openGamePointConvert,
+        submitting: _rechargeSubmitting,
+        priceLabelFor: (pack) => pack.currency == _StoreCurrency.ticket
+            ? _iap.priceLabel(IapProducts.ticket(pack.amount))
+            : null,
         bottomSpace: bottomSpace,
       ),
     };
@@ -515,23 +635,46 @@ class _StorePageState extends State<StorePage> {
 
   Future<void> _handleBuyBundle(_BundleOffer offer, _BundleTier? tier) async {
     if (offer.isVipTrial) {
-      showCupertinoDialog<void>(
+      // ¥1 体验 = Apple IAP 消耗型商品，到账后端记 30 天 VIP（账号限购一次）。
+      if (_subscribing) return;
+      const productId = IapProducts.vipTrial;
+      final priceLabel = _iap.priceLabel(productId);
+      if (!_iap.available || priceLabel == null) {
+        _showToast('内购暂不可用，请稍后再试');
+        return;
+      }
+      final confirmed = await showCupertinoDialog<bool>(
         context: context,
         builder: (context) {
           return CupertinoAlertDialog(
-            title: const Text('微信支付待接入'),
-            content: const Text(
-              '月度 VIP 体验 ¥1，账号终身限购 1 次。\n\n支付接口接好后会按月度会员权益发放，并立刻按会员积分计价。',
+            title: const Text('月度 VIP 体验'),
+            content: Text(
+              '将支付 $priceLabel 获得 30 天会员权益（账号限购一次）。到期不自动续费。',
             ),
             actions: [
               CupertinoDialogAction(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('好的'),
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('取消'),
+              ),
+              CupertinoDialogAction(
+                isDefaultAction: true,
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('去支付'),
               ),
             ],
           );
         },
       );
+      if (confirmed != true || !mounted) return;
+      setState(() => _subscribing = true);
+      try {
+        await _iap.buyConsumable(productId);
+      } catch (e) {
+        if (mounted) {
+          setState(() => _subscribing = false);
+          _showToast('发起支付失败：$e');
+        }
+      }
       return;
     }
     if (tier == null) {

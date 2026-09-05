@@ -5,13 +5,23 @@ class _SubscriptionStoreView extends StatefulWidget {
     required this.selectedPlan,
     required this.onSelectPlan,
     required this.onSubscribe,
+    required this.onRestore,
     required this.bottomSpace,
+    this.planPrices = const [],
+    this.subscribing = false,
   });
 
   final int selectedPlan;
   final ValueChanged<int> onSelectPlan;
   final VoidCallback onSubscribe;
+  final VoidCallback onRestore;
   final double bottomSpace;
+
+  /// StoreKit 本地化价格（与 _plans 同序）；缺失（未拉到/离线）回退到营销价。
+  final List<String?> planPrices;
+
+  /// 购买+校验进行中：按钮转圈禁用。
+  final bool subscribing;
 
   static const _plans = [
     ('连续包月', '¥29', '¥39', '特惠推荐'),
@@ -113,10 +123,13 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (context, index) {
               final plan = _SubscriptionStoreView._plans[index];
+              final localized = index < widget.planPrices.length
+                  ? widget.planPrices[index]
+                  : null;
               return _PlanCard(
                 selected: widget.selectedPlan == index,
                 title: plan.$1,
-                price: plan.$2,
+                price: localized ?? plan.$2,
                 origin: plan.$3,
                 badge: plan.$4,
                 onTap: () => _selectPlan(index),
@@ -151,7 +164,9 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
           padding: edge,
           child: _StorePrimaryButton(
             label: '立即开通',
-            onPressed: widget.onSubscribe,
+            // 未勾选会员协议则置灰不可点（合规要求用户明示同意续费条款）。
+            onPressed: _agreementChecked ? widget.onSubscribe : null,
+            loading: widget.subscribing,
             height: 56,
           ),
         ),
@@ -207,6 +222,25 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+        // 恢复购买：Apple 审核硬性要求（有订阅必须提供）。换设备/重装后据此
+        // 恢复订阅态；消耗型钞票不参与恢复（符合预期）。
+        Center(
+          child: CupertinoButton(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+            minimumSize: Size.zero,
+            onPressed: widget.subscribing ? null : widget.onRestore,
+            child: Text(
+              '恢复购买',
+              style: TextStyle(
+                color: _W2b.resolve(context).inkSoft,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+                decoration: TextDecoration.none,
+              ),
             ),
           ),
         ),

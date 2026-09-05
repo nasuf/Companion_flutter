@@ -1503,6 +1503,31 @@ class CompanionApi {
     return StoreCatalogStatus.fromJson(json);
   }
 
+  /// Apple IAP 校验 + 到账。服务端只信 transactionId（向 Apple 校验为准），
+  /// 按 transactionId 幂等去重（app 重启 purchaseStream 会重放未 complete 的交易，
+  /// 重复提交只到账一次）。返回到账后的新钱包 + VIP 状态。
+  Future<IapVerifyResponse> verifyAppleIap({
+    required String productId,
+    required String transactionId,
+    required String signedTransaction,
+    String? agentId,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/iap/apple/verify',
+              body: {
+                'transaction_id': transactionId,
+                'product_id': productId,
+                'signed_transaction': signedTransaction,
+                if (agentId != null && agentId.isNotEmpty) 'agent_id': agentId,
+              },
+              debugLabel: 'iap.apple.verify',
+            )
+            as Map<String, dynamic>;
+    return IapVerifyResponse.fromJson(json);
+  }
+
   Future<StoreInventoryResponse> listStoreInventory() async {
     final json =
         await _request('GET', '/store/inventory', debugLabel: 'store.inventory')

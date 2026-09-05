@@ -1675,6 +1675,34 @@ class VipStatus {
   }
 }
 
+/// Apple IAP 校验+到账结果：`POST /iap/apple/verify` 返回到账后的新钱包 + VIP。
+class IapVerifyResponse {
+  const IapVerifyResponse({
+    required this.status,
+    required this.kind,
+    required this.wallet,
+    required this.vip,
+  });
+
+  final String status; // 'granted'
+  final String kind; // 'subscription' | 'consumable'
+  final WalletBalance wallet;
+  final VipStatus vip;
+
+  factory IapVerifyResponse.fromJson(Map<String, dynamic> json) {
+    return IapVerifyResponse(
+      status: json['status']?.toString() ?? '',
+      kind: json['kind']?.toString() ?? '',
+      wallet: WalletBalance.fromJson(
+        Map<String, dynamic>.from(json['wallet'] as Map? ?? const {}),
+      ),
+      vip: VipStatus.fromJson(
+        Map<String, dynamic>.from(json['vip'] as Map? ?? const {}),
+      ),
+    );
+  }
+}
+
 /// 对话额度预检：`GET /chat/quota`。发送前用它判断要不要弹确认框。
 enum ChatQuotaMode { free, paid, blocked }
 

@@ -32,6 +32,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'chat_socket.dart';
 import 'companion_api.dart';
 import 'models.dart';
+import 'src/payment/iap_service.dart';
 import 'offline_models.dart';
 import 'src/services/client_info.dart';
 import 'src/games/chess_family_engine.dart';

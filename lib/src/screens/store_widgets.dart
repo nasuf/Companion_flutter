@@ -267,31 +267,43 @@ class _StorePrimaryButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.height = 50,
+    this.loading = false,
   });
 
   final String label;
-  final VoidCallback onPressed;
+
+  /// null = 禁用（置灰不可点，如未勾选会员协议）。
+  final VoidCallback? onPressed;
   final double height;
+
+  /// 购买/校验进行中：显示转圈并禁用，防重复点击。
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
+    final disabled = loading || onPressed == null;
     return CupertinoButton(
       minimumSize: Size.zero,
       padding: EdgeInsets.zero,
-      onPressed: onPressed,
-      child: Container(
-        height: height,
-        decoration: _storeAccentButtonDecoration(),
-        child: Center(
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
-              decoration: TextDecoration.none,
-            ),
+      onPressed: disabled ? null : onPressed,
+      child: Opacity(
+        opacity: disabled ? 0.5 : 1,
+        child: Container(
+          height: height,
+          decoration: _storeAccentButtonDecoration(),
+          child: Center(
+            child: loading
+                ? const CupertinoActivityIndicator(color: Colors.white)
+                : Text(
+                    label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
           ),
         ),
       ),

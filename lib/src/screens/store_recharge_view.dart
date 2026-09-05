@@ -12,6 +12,8 @@ class _RechargeStoreView extends StatelessWidget {
     required this.onSubmit,
     required this.bottomSpace,
     this.onConvertGamePoints,
+    this.priceLabelFor,
+    this.submitting = false,
   });
 
   final _StoreCurrency currency;
@@ -24,6 +26,12 @@ class _RechargeStoreView extends StatelessWidget {
   final VoidCallback onSubmit;
   final VoidCallback? onConvertGamePoints;
   final double bottomSpace;
+
+  /// 钞票档位的 StoreKit 本地化价格（缺失回退营销价）；积分档不用。
+  final String? Function(_RechargePack pack)? priceLabelFor;
+
+  /// 充值购买进行中：按钮转圈禁用，防重复下单。
+  final bool submitting;
 
   @override
   Widget build(BuildContext context) {
@@ -102,6 +110,7 @@ class _RechargeStoreView extends StatelessWidget {
               return _RechargePackCard(
                 pack: pack,
                 selected: selectedIndex == index,
+                priceLabel: priceLabelFor?.call(pack),
                 onTap: () => onSelectPack(index),
               );
             },
@@ -110,6 +119,7 @@ class _RechargeStoreView extends StatelessWidget {
           _StorePrimaryButton(
             label: currency == _StoreCurrency.ticket ? '立即充值' : '立即兑换',
             onPressed: onSubmit,
+            loading: submitting,
           ),
         ],
       ),
@@ -289,11 +299,15 @@ class _RechargePackCard extends StatelessWidget {
     required this.pack,
     required this.selected,
     required this.onTap,
+    this.priceLabel,
   });
 
   final _RechargePack pack;
   final bool selected;
   final VoidCallback onTap;
+
+  /// StoreKit 本地化价格（钞票档位）；null 回退到营销价 `¥cost`。
+  final String? priceLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -342,7 +356,7 @@ class _RechargePackCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               pack.currency == _StoreCurrency.ticket
-                  ? '¥${pack.cost}'
+                  ? (priceLabel ?? '¥${pack.cost}')
                   : '${pack.cost} 钞票',
               style: TextStyle(
                 // 选中只改边框，金额/价格颜色保持不变。

@@ -1,0 +1,200 @@
+{
+  "identifier": "1E4FC11F-2942-4ED2-97E2-EAC44DF223CF",
+  "nonRenewingSubscriptions": [],
+  "products": [
+    {
+      "displayPrice": "1.00",
+      "familyShareable": false,
+      "internalID": "60516557",
+      "localizations": [
+        {
+          "description": "10 钞票",
+          "displayName": "10 钞票",
+          "locale": "zh_CN"
+        }
+      ],
+      "productID": "com.bansheng.companion.ticket.10",
+      "referenceName": "ticket_10",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "8.00",
+      "familyShareable": false,
+      "internalID": "173757129",
+      "localizations": [
+        {
+          "description": "80 钞票",
+          "displayName": "80 钞票",
+          "locale": "zh_CN"
+        }
+      ],
+      "productID": "com.bansheng.companion.ticket.80",
+      "referenceName": "ticket_80",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "18.00",
+      "familyShareable": false,
+      "internalID": "758619703",
+      "localizations": [
+        {
+          "description": "180 钞票",
+          "displayName": "180 钞票",
+          "locale": "zh_CN"
+        }
+      ],
+      "productID": "com.bansheng.companion.ticket.180",
+      "referenceName": "ticket_180",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "30.00",
+      "familyShareable": false,
+      "internalID": "8988622",
+      "localizations": [
+        {
+          "description": "300 钞票",
+          "displayName": "300 钞票",
+          "locale": "zh_CN"
+        }
+      ],
+      "productID": "com.bansheng.companion.ticket.300",
+      "referenceName": "ticket_300",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "98.00",
+      "familyShareable": false,
+      "internalID": "235145118",
+      "localizations": [
+        {
+          "description": "980 钞票",
+          "displayName": "980 钞票",
+          "locale": "zh_CN"
+        }
+      ],
+      "productID": "com.bansheng.companion.ticket.980",
+      "referenceName": "ticket_980",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "198.00",
+      "familyShareable": false,
+      "internalID": "962416395",
+      "localizations": [
+        {
+          "description": "1980 钞票",
+          "displayName": "1980 钞票",
+          "locale": "zh_CN"
+        }
+      ],
+      "productID": "com.bansheng.companion.ticket.1980",
+      "referenceName": "ticket_1980",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "39.00",
+      "familyShareable": false,
+      "internalID": "498301634",
+      "localizations": [
+        {
+          "description": "31 天会员",
+          "displayName": "31 天会员",
+          "locale": "zh_CN"
+        }
+      ],
+      "productID": "com.bansheng.companion.vip.month",
+      "referenceName": "vip_month",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "89.00",
+      "familyShareable": false,
+      "internalID": "1468319067",
+      "localizations": [
+        {
+          "description": "季卡会员",
+          "displayName": "季卡会员",
+          "locale": "zh_CN"
+        }
+      ],
+      "productID": "com.bansheng.companion.vip.quarter",
+      "referenceName": "vip_quarter",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "249.00",
+      "familyShareable": false,
+      "internalID": "128396522",
+      "localizations": [
+        {
+          "description": "年卡会员",
+          "displayName": "年卡会员",
+          "locale": "zh_CN"
+        }
+      ],
+      "productID": "com.bansheng.companion.vip.year",
+      "referenceName": "vip_year",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "1.00",
+      "familyShareable": false,
+      "internalID": "184248476",
+      "localizations": [
+        {
+          "description": "¥1 体验会员",
+          "displayName": "¥1 体验会员",
+          "locale": "zh_CN"
+        }
+      ],
+      "productID": "com.bansheng.companion.vip.trial",
+      "referenceName": "vip_trial",
+      "type": "Consumable"
+    }
+  ],
+  "settings": {
+    "_applicationInternalID": "492508505",
+    "_developerTeamID": "",
+    "_failTransactionsEnabled": false,
+    "_lastSynchronizedDate": 0,
+    "_locale": "zh_CN",
+    "_storefront": "CHN",
+    "_storeKitErrors": []
+  },
+  "subscriptionGroups": [
+    {
+      "id": "879CEEDE-EEA7-4BAA-B978-25F9C5C851E3",
+      "localizationsForGroup": [],
+      "name": "companion_vip",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "29.00",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "488548670",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "连续包月会员",
+              "displayName": "连续包月",
+              "locale": "zh_CN"
+            }
+          ],
+          "productID": "com.bansheng.companion.vip.monthly.auto",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "vip_monthly_auto",
+          "subscriptionGroupID": "879CEEDE-EEA7-4BAA-B978-25F9C5C851E3",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 4,
+    "minor": 0
+  }
+}
