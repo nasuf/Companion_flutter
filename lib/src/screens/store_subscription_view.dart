@@ -9,6 +9,8 @@ class _SubscriptionStoreView extends StatefulWidget {
     required this.bottomSpace,
     this.planPrices = const [],
     this.subscribing = false,
+    this.isVip = false,
+    this.vipUntil,
   });
 
   final int selectedPlan;
@@ -16,6 +18,10 @@ class _SubscriptionStoreView extends StatefulWidget {
   final VoidCallback onSubscribe;
   final VoidCallback onRestore;
   final double bottomSpace;
+
+  /// 当前会员状态：驱动标题下方的状态行（是否已开通 / 有效期）。
+  final bool isVip;
+  final DateTime? vipUntil;
 
   /// StoreKit 本地化价格（与 _plans 同序）；缺失（未拉到/离线）回退到营销价。
   final List<String?> planPrices;
@@ -108,7 +114,15 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
       children: [
         const SizedBox(height: 4),
         const Padding(padding: edge, child: _VipTitle()),
-        const SizedBox(height: 16),
+        const SizedBox(height: 6),
+        Padding(
+          padding: edge,
+          child: _VipStatusLine(
+            isVip: widget.isVip,
+            vipUntil: widget.vipUntil,
+          ),
+        ),
+        const SizedBox(height: 10),
         const _MemberBenefitGrid(),
         const SizedBox(height: 18),
         SizedBox(
@@ -241,6 +255,52 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
                 letterSpacing: 0,
                 decoration: TextDecoration.none,
               ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 标题下的一行会员状态：已开通显示「会员生效中 · 有效期至 …」，未开通提示去开通。
+/// 刻意做成单行紧凑样式，避免撑破「订阅」页一屏容纳的布局。
+class _VipStatusLine extends StatelessWidget {
+  const _VipStatusLine({required this.isVip, this.vipUntil});
+
+  final bool isVip;
+  final DateTime? vipUntil;
+
+  static String _formatDate(DateTime d) => '${d.year}年${d.month}月${d.day}日';
+
+  @override
+  Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
+    final dotColor = isVip ? const Color(0xFF16C6D4) : w.inkSoft;
+    final text = isVip
+        ? (vipUntil != null
+              ? '会员生效中 · 有效期至 ${_formatDate(vipUntil!)}'
+              : '会员生效中')
+        : '尚未开通会员 · 选择套餐立即开通';
+    return Row(
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: dotColor),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: isVip ? w.ink : w.inkSoft,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+              decoration: TextDecoration.none,
             ),
           ),
         ),

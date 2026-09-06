@@ -30,6 +30,7 @@ class _StorePageState extends State<StorePage> {
   int _selectedPlan = 0; // 默认选中「连续包月（特惠推荐）」
   int _selectedRecharge = 0;
   bool _isVip = false;
+  DateTime? _vipUntil; // 会员到期时间（本地显示用），null=未开通/未拉到
   bool _vipTrialAvailable = true;
   final Set<String> _exchangingKinds = {};
   final Set<_BundleKind> _buyingBundles = {};
@@ -57,7 +58,7 @@ class _StorePageState extends State<StorePage> {
     }
     _sectionController = PageController(initialPage: _sectionIndex(_section));
     _walletFuture = _loadWallet();
-    _loadCatalog();
+    _loadVipStatus();
     _iap = IapService(onVerify: _verifyPurchase);
     _iapSub = _iap.events.listen(_onIapEvent);
     _initIap();
@@ -108,6 +109,7 @@ class _StorePageState extends State<StorePage> {
           if (r != null) {
             _walletFuture = Future.value(r.wallet);
             _isVip = r.vip.isVip;
+            _vipUntil = r.vip.vipUntil;
             _vipTrialAvailable = r.vip.vipTrialAvailable;
           }
         });
@@ -137,16 +139,19 @@ class _StorePageState extends State<StorePage> {
     return widget.api.getWallet(agentId: widget.session.agentId);
   }
 
-  Future<void> _loadCatalog() async {
+  /// 拉统一 VIP 状态（GET /me/vip）：会员是否生效、到期时间、¥1 体验是否可购。
+  /// 用它驱动「订阅」tab 的当前状态横幅与「礼包」tab 的体验卡可购态。
+  Future<void> _loadVipStatus() async {
     try {
-      final catalog = await widget.api.getStoreCatalog();
+      final vip = await widget.api.getVipStatus();
       if (!mounted) return;
       setState(() {
-        _isVip = catalog.isVip;
-        _vipTrialAvailable = catalog.vipTrialAvailable;
+        _isVip = vip.isVip;
+        _vipUntil = vip.vipUntil;
+        _vipTrialAvailable = vip.vipTrialAvailable;
       });
     } catch (_) {
-      // Local catalog still renders; prices default to non-member until retry.
+      // 拉取失败不阻塞商城渲染；购买成功回调（_onIapEvent）会再刷新一次。
     }
   }
 
@@ -579,6 +584,8 @@ class _StorePageState extends State<StorePage> {
         onSubscribe: _handleSubscribe,
         onRestore: _handleRestore,
         subscribing: _subscribing,
+        isVip: _isVip,
+        vipUntil: _vipUntil,
         planPrices: _iapReady
             ? [
                 for (final id in IapProducts.subscriptionPlans)
