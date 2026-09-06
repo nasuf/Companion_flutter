@@ -29,7 +29,7 @@ class _FakeIap implements InAppPurchase {
 PurchaseDetails _details(
   PurchaseStatus status, {
   String id = 'txn-1',
-  String product = 'com.bansheng.companion.ticket.10',
+  String product = 'com.bansheng.ticket.10',
 }) {
   return PurchaseDetails(
     purchaseID: id,
@@ -148,7 +148,7 @@ void main() {
   });
 
   test('IapProducts.ticket 生成正确 product id', () {
-    expect(IapProducts.ticket(80), 'com.bansheng.companion.ticket.80');
+    expect(IapProducts.ticket(80), 'com.bansheng.ticket.80');
     expect(IapProducts.isAutoRenew(IapProducts.vipMonthlyAuto), isTrue);
     expect(IapProducts.isAutoRenew(IapProducts.vipYear), isFalse);
   });

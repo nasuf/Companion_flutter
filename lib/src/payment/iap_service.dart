@@ -9,7 +9,7 @@ import '../../models.dart';
 class IapProducts {
   IapProducts._();
 
-  static const _prefix = 'com.bansheng.companion';
+  static const _prefix = 'com.bansheng';
 
   // VIP：连续包月=自动续订订阅；月/季/年卡=消耗型时长包（到期不自动扣）。
   static const vipMonthlyAuto = '$_prefix.vip.monthly.auto';
