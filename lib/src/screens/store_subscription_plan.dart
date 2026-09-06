@@ -100,27 +100,41 @@ class _PlanCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    Text(
-                      price,
-                      style: TextStyle(
-                        color: titleColor,
-                        fontSize: 32,
-                        height: 1,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.5,
-                        decoration: TextDecoration.none,
+                    // 价格单行自适应：人民币「¥29」按 32px 原样显示，美元/其它币种
+                    // 的长串（如「US$12.99」）等比缩小到一行，绝不折行。FittedBox
+                    // 只缩不放，短价保持满级字号。
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        price,
+                        maxLines: 1,
+                        softWrap: false,
+                        style: TextStyle(
+                          color: titleColor,
+                          fontSize: 32,
+                          height: 1,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.5,
+                          decoration: TextDecoration.none,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 6),
-                    Text(
-                      origin,
-                      style: TextStyle(
-                        color: originColor,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0,
-                        decoration: TextDecoration.lineThrough,
-                        decorationColor: originColor,
+                    // 原价同样单行自适应，避免美元长串折行撑高卡片。
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        origin,
+                        maxLines: 1,
+                        softWrap: false,
+                        style: TextStyle(
+                          color: originColor,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0,
+                          decoration: TextDecoration.lineThrough,
+                          decorationColor: originColor,
+                        ),
                       ),
                     ),
                   ],
