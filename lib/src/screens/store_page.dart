@@ -78,6 +78,8 @@ class _StorePageState extends State<StorePage> {
     await _iap.queryProducts(IapProducts.all);
     if (!mounted) return;
     setState(() => _iapReady = _iap.hasProducts);
+    // StoreKit 重放完成后用服务端权威状态刷新（避免只信 verify 回放快照）。
+    await _loadVipStatus();
   }
 
   /// 购买成功回调：把 transactionId 交后端校验+到账。抛异常 = 不 complete。
@@ -113,7 +115,9 @@ class _StorePageState extends State<StorePage> {
             _vipTrialAvailable = r.vip.vipTrialAvailable;
           }
         });
-        _showToast('已到账');
+        if (!event.replay) {
+          _showToast('已到账');
+        }
       case IapEventType.canceled:
         setState(() {
           _subscribing = false;

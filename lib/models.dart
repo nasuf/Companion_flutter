@@ -1682,12 +1682,14 @@ class IapVerifyResponse {
     required this.kind,
     required this.wallet,
     required this.vip,
+    this.replay = false,
   });
 
   final String status; // 'granted'
   final String kind; // 'subscription' | 'consumable'
   final WalletBalance wallet;
   final VipStatus vip;
+  final bool replay;
 
   factory IapVerifyResponse.fromJson(Map<String, dynamic> json) {
     return IapVerifyResponse(
@@ -1699,6 +1701,7 @@ class IapVerifyResponse {
       vip: VipStatus.fromJson(
         Map<String, dynamic>.from(json['vip'] as Map? ?? const {}),
       ),
+      replay: json['replay'] == true,
     );
   }
 }

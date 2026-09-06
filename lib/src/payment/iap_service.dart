@@ -50,12 +50,13 @@ class IapProducts {
 enum IapEventType { pending, verifying, success, canceled, error, verifyFailed }
 
 class IapEvent {
-  const IapEvent(this.type, {this.productId, this.result, this.message});
+  const IapEvent(this.type, {this.productId, this.result, this.message, this.replay = false});
 
   final IapEventType type;
   final String? productId;
   final IapVerifyResponse? result;
   final String? message;
+  final bool replay;
 }
 
 /// 购买成功后交给后端校验+到账。返回到账结果=可 completePurchase；抛异常=不
@@ -169,7 +170,12 @@ class IapService {
         signedTransaction: d.verificationData.serverVerificationData,
       );
       await _complete(d); // 只有 verify+到账都成功才 complete
-      _emit(IapEvent(IapEventType.success, productId: d.productID, result: result));
+      _emit(IapEvent(
+        IapEventType.success,
+        productId: d.productID,
+        result: result,
+        replay: result.replay,
+      ));
     } catch (e) {
       // verify 失败：绝不 complete。交易滞留队列，下次 init/restore 重发，
       // 后端按 transactionId 幂等补发到账。
