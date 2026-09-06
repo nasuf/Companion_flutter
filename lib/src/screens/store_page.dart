@@ -32,6 +32,8 @@ class _StorePageState extends State<StorePage> {
   bool _isVip = false;
   DateTime? _vipUntil; // 会员到期时间（本地显示用），null=未开通/未拉到
   bool _vipTrialAvailable = true;
+  bool _autoRenewActive = false;
+  DateTime? _subscriptionExpires;
   final Set<String> _exchangingKinds = {};
   final Set<_BundleKind> _buyingBundles = {};
   late final PageController _sectionController;
@@ -58,7 +60,7 @@ class _StorePageState extends State<StorePage> {
     }
     _sectionController = PageController(initialPage: _sectionIndex(_section));
     _walletFuture = _loadWallet();
-    _loadVipStatus();
+    _loadMembership();
     _iap = IapService(onVerify: _verifyPurchase);
     _iapSub = _iap.events.listen(_onIapEvent);
     _initIap();
@@ -79,8 +81,16 @@ class _StorePageState extends State<StorePage> {
     if (!mounted) return;
     setState(() => _iapReady = _iap.hasProducts);
     // StoreKit 重放完成后用服务端权威状态刷新（避免只信 verify 回放快照）。
-    await _loadVipStatus();
+    await _loadMembership();
   }
+
+  StoreSubscribeUiState get _subscribeUi => resolveStoreSubscribeUi(
+    isVip: _isVip,
+    vipUntil: _vipUntil,
+    selectedPlanIndex: _selectedPlan,
+    autoRenewActive: _autoRenewActive,
+    subscriptionExpires: _subscriptionExpires,
+  );
 
   /// 购买成功回调：把 transactionId 交后端校验+到账。抛异常 = 不 complete。
   Future<IapVerifyResponse> _verifyPurchase({
@@ -118,6 +128,7 @@ class _StorePageState extends State<StorePage> {
         if (!event.replay) {
           _showToast('已到账');
         }
+        unawaited(_loadMembership());
       case IapEventType.canceled:
         setState(() {
           _subscribing = false;
@@ -143,6 +154,30 @@ class _StorePageState extends State<StorePage> {
     return widget.api.getWallet(agentId: widget.session.agentId);
   }
 
+  /// 拉会员中心（GET /me/iap/membership）：VIP、连续包月态、购买历史缓存。
+  Future<void> _loadMembership() async {
+    try {
+      final membership = await widget.api.getIapMembership();
+      if (!mounted) return;
+      setState(() {
+        _isVip = membership.vip.isVip;
+        _vipUntil = membership.vip.vipUntil;
+        _vipTrialAvailable = membership.vip.vipTrialAvailable;
+        _autoRenewActive = membership.autoRenewActive;
+        _subscriptionExpires = membership.subscription?.expiresDate;
+      });
+    } catch (_) {
+      // 失败时回退只拉 VIP；清掉订阅态避免按钮文案沿用旧缓存。
+      if (mounted) {
+        setState(() {
+          _autoRenewActive = false;
+          _subscriptionExpires = null;
+        });
+      }
+      await _loadVipStatus();
+    }
+  }
+
   /// 拉统一 VIP 状态（GET /me/vip）：会员是否生效、到期时间、¥1 体验是否可购。
   /// 用它驱动「订阅」tab 的当前状态横幅与「礼包」tab 的体验卡可购态。
   Future<void> _loadVipStatus() async {
@@ -159,8 +194,81 @@ class _StorePageState extends State<StorePage> {
     }
   }
 
+  Future<void> _openMembershipHistory() async {
+    await Navigator.of(context).push<void>(
+      CupertinoPageRoute(
+        builder: (context) => StoreSubscriptionHistoryPage(api: widget.api),
+      ),
+    );
+    if (!mounted) return;
+    await _loadMembership();
+  }
+
+  Future<void> _openAppleSubscriptions({DateTime? expires}) async {
+    final dateText =
+        expires != null ? formatVipDisplayDate(expires) : '当前周期结束';
+    final proceed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('管理自动续费'),
+        content: Text(
+          '关闭自动续费后，当前会员权益保留至 $dateText，到期后不再自动扣款。\n\n'
+          '将在 Apple 订阅管理中继续操作，本 App 无法代您取消扣款。',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('前往管理'),
+          ),
+        ],
+      ),
+    );
+    if (proceed != true || !mounted) return;
+    final uri = Uri.parse(kAppleSubscriptionsUrl);
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      _showToast('无法打开订阅管理，请前往 设置 → Apple ID → 订阅');
+    }
+  }
+
   Future<void> _handleSubscribe() async {
     if (_subscribing) return;
+    final ui = _subscribeUi;
+    if (ui.action == StoreSubscribeAction.manageSubscription) {
+      await _openAppleSubscriptions(
+        expires: _subscriptionExpires ?? _vipUntil,
+      );
+      return;
+    }
+    if (ui.needsAutoRenewWarning) {
+      final proceed = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (context) => CupertinoAlertDialog(
+          title: const Text('确认叠加购买'),
+          content: const Text(
+            '您已开通连续包月，购买时长包不会停止自动扣款。\n\n'
+            '如需停止续费，请先在会员记录中管理自动续费。是否继续购买？',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('继续购买'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true || !mounted) return;
+    }
     final productId =
         (_selectedPlan >= 0 && _selectedPlan < IapProducts.subscriptionPlans.length)
         ? IapProducts.subscriptionPlans[_selectedPlan]
@@ -534,6 +642,17 @@ class _StorePageState extends State<StorePage> {
                               currency: _StoreCurrency.ticket,
                               onTap: _openRechargeTickets,
                             )
+                          : _section == _StoreSection.subscription
+                          ? CupertinoButton(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              onPressed: _openMembershipHistory,
+                              child: Icon(
+                                CupertinoIcons.doc_text,
+                                color: AppColors.text,
+                                size: 27,
+                              ),
+                            )
                           : null,
                     ),
                     Expanded(
@@ -590,6 +709,7 @@ class _StorePageState extends State<StorePage> {
         subscribing: _subscribing,
         isVip: _isVip,
         vipUntil: _vipUntil,
+        subscribeUi: _subscribeUi,
         planPrices: _iapReady
             ? [
                 for (final id in IapProducts.subscriptionPlans)

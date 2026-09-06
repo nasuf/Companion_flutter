@@ -7,6 +7,7 @@ class _SubscriptionStoreView extends StatefulWidget {
     required this.onSubscribe,
     required this.onRestore,
     required this.bottomSpace,
+    required this.subscribeUi,
     this.planPrices = const [],
     this.subscribing = false,
     this.isVip = false,
@@ -18,6 +19,7 @@ class _SubscriptionStoreView extends StatefulWidget {
   final VoidCallback onSubscribe;
   final VoidCallback onRestore;
   final double bottomSpace;
+  final StoreSubscribeUiState subscribeUi;
 
   /// 当前会员状态：驱动标题下方的状态行（是否已开通 / 有效期）。
   final bool isVip;
@@ -152,32 +154,33 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
           ),
         ),
         const SizedBox(height: 14),
-        // 只有「连续包月」（index 0）是自动续费方案，续费提示也只在选中它时出现、
-        // 居中显示。用固定高度的占位槽承载：不显示时仍占同样高度，下方的「立即
-        // 开通」和勾选框位置不会因此上移。
-        SizedBox(
-          height: 20,
-          child: widget.selectedPlan == 0
-              ? Center(
-                  child: Text(
-                    '到期按所选周期自动续费，可随时取消',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: _W2b.resolve(context).inkSoft,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                )
-              : null,
+        Padding(
+          padding: edge,
+          child: SizedBox(
+            height: 40,
+            child: Center(
+              child: Text(
+                widget.subscribeUi.hintText ?? '',
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: _W2b.resolve(context).inkSoft,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0,
+                  height: 1.25,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+          ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
         Padding(
           padding: edge,
           child: _StorePrimaryButton(
-            label: '立即开通',
+            label: widget.subscribeUi.buttonLabel,
             // 未勾选会员协议则置灰不可点（合规要求用户明示同意续费条款）。
             onPressed: _agreementChecked ? widget.onSubscribe : null,
             loading: widget.subscribing,

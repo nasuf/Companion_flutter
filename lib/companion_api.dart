@@ -1467,6 +1467,18 @@ class CompanionApi {
     return VipStatus.fromJson(json);
   }
 
+  /// 会员中心：`GET /me/iap/membership`（VIP + 连续包月 + 购买历史）。
+  Future<IapMembership> getIapMembership({int historyLimit = 50}) async {
+    final json =
+        await _request(
+              'GET',
+              '/me/iap/membership?history_limit=$historyLimit',
+              debugLabel: 'iap.membership',
+            )
+            as Map<String, dynamic>;
+    return IapMembership.fromJson(json);
+  }
+
   /// 发送前预检对话额度（权益项 1）：决定要不要弹"继续扣费/订阅VIP"确认框。
   Future<ChatQuota> getChatQuota() async {
     final json =

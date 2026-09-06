@@ -1706,6 +1706,119 @@ class IapVerifyResponse {
   }
 }
 
+/// `GET /me/iap/membership` — VIP + 连续包月态 + 购买历史（订阅页 / 会员记录）。
+class IapMembership {
+  const IapMembership({
+    required this.vip,
+    required this.autoRenewActive,
+    required this.history,
+    this.subscription,
+  });
+
+  final VipStatus vip;
+  final IapSubscriptionStatus? subscription;
+  final bool autoRenewActive;
+  final List<IapHistoryItem> history;
+
+  factory IapMembership.fromJson(Map<String, dynamic> json) {
+    return IapMembership(
+      vip: VipStatus.fromJson(Map<String, dynamic>.from(json['vip'] as Map? ?? const {})),
+      subscription: json['subscription'] == null
+          ? null
+          : IapSubscriptionStatus.fromJson(
+              Map<String, dynamic>.from(json['subscription'] as Map),
+            ),
+      autoRenewActive: json['auto_renew_active'] == true,
+      history: (json['history'] as List? ?? const [])
+          .map(
+            (item) => IapHistoryItem.fromJson(
+              Map<String, dynamic>.from(item as Map),
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
+class IapSubscriptionStatus {
+  const IapSubscriptionStatus({
+    required this.productId,
+    required this.productLabel,
+    required this.status,
+    required this.autoRenewEnabled,
+    this.autoRenewProductId,
+    this.expiresDate,
+    this.gracePeriodExpiresDate,
+    required this.updatedAt,
+  });
+
+  final String productId;
+  final String productLabel;
+  final String status;
+  final bool autoRenewEnabled;
+  final String? autoRenewProductId;
+  final DateTime? expiresDate;
+  final DateTime? gracePeriodExpiresDate;
+  final DateTime? updatedAt;
+
+  factory IapSubscriptionStatus.fromJson(Map<String, dynamic> json) {
+    DateTime? parse(String? key) {
+      final raw = json[key];
+      if (raw == null) return null;
+      return DateTime.tryParse(raw.toString());
+    }
+
+    return IapSubscriptionStatus(
+      productId: json['product_id']?.toString() ?? '',
+      productLabel: json['product_label']?.toString() ?? '',
+      status: json['status']?.toString() ?? '',
+      autoRenewEnabled: json['auto_renew_enabled'] == true,
+      autoRenewProductId: json['auto_renew_product_id']?.toString(),
+      expiresDate: parse('expires_date'),
+      gracePeriodExpiresDate: parse('grace_period_expires_date'),
+      updatedAt: parse('updated_at'),
+    );
+  }
+}
+
+class IapHistoryItem {
+  const IapHistoryItem({
+    required this.transactionId,
+    required this.productId,
+    required this.productLabel,
+    required this.kind,
+    required this.status,
+    this.purchaseDate,
+    this.expiresDate,
+  });
+
+  final String transactionId;
+  final String productId;
+  final String productLabel;
+  final String kind;
+  final String status;
+  final DateTime? purchaseDate;
+  final DateTime? expiresDate;
+
+  factory IapHistoryItem.fromJson(Map<String, dynamic> json) {
+    DateTime? parse(String? key) {
+      final raw = json[key];
+      if (raw == null) return null;
+      return DateTime.tryParse(raw.toString());
+    }
+
+    return IapHistoryItem(
+      transactionId: json['transaction_id']?.toString() ?? '',
+      productId: json['product_id']?.toString() ?? '',
+      productLabel: json['product_label']?.toString() ?? '',
+      kind: json['kind']?.toString() ?? '',
+      status: json['status']?.toString() ?? '',
+      purchaseDate: parse('purchase_date'),
+      expiresDate: parse('expires_date'),
+    );
+  }
+}
+
 /// 对话额度预检：`GET /chat/quota`。发送前用它判断要不要弹确认框。
 enum ChatQuotaMode { free, paid, blocked }
 
