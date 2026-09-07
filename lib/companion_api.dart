@@ -392,6 +392,64 @@ class CompanionApi {
     return ProfileStats.fromJson(json);
   }
 
+  Future<UserFeedbackSubmission> submitUserFeedback({
+    required String content,
+    required String contact,
+    String? occurredAt,
+    String? appVersion,
+    String? platform,
+    List<Uint8List> imageBytes = const [],
+    List<String> imageNames = const [],
+    List<String> imageMimes = const [],
+  }) async {
+    final json =
+        await _requestFeedbackMultipart(
+              content: content,
+              contact: contact,
+              occurredAt: occurredAt,
+              appVersion: appVersion,
+              platform: platform,
+              imageBytes: imageBytes,
+              imageNames: imageNames,
+              imageMimes: imageMimes,
+            )
+            as Map<String, dynamic>;
+    return UserFeedbackSubmission.fromJson(json);
+  }
+
+  Future<AdminUserFeedbackList> listAdminUserFeedback({
+    String? status,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final params = <String, String>{
+      'limit': '$limit',
+      'offset': '$offset',
+    };
+    if (status != null && status.isNotEmpty) {
+      params['status'] = status;
+    }
+    final query = Uri(queryParameters: params).query;
+    final json =
+        await _request('GET', '/admin-api/user-feedback?$query')
+            as Map<String, dynamic>;
+    return AdminUserFeedbackList.fromJson(json);
+  }
+
+  Future<AdminUserFeedbackItem> updateAdminUserFeedbackStatus({
+    required String feedbackId,
+    required String status,
+  }) async {
+    final json =
+        await _request(
+              'PATCH',
+              '/admin-api/user-feedback/$feedbackId',
+              body: {'status': status},
+            )
+            as Map<String, dynamic>;
+    return AdminUserFeedbackItem.fromJson(json);
+  }
+
   /// 改昵称。返回服务端解析后的展示身份，调用方 `session.copyWith` 即可。
   Future<UserProfileUpdateResult> updateUserDisplayName(String name) async {
     final json =
@@ -931,6 +989,94 @@ class CompanionApi {
         throw ApiException(response.statusCode, _extractError(text));
       }
       if (response.statusCode == 204 || text.isEmpty) return null;
+      return jsonDecode(text);
+    } on SocketException catch (error) {
+      throw ApiException(0, '无法连接到后端：${error.message}');
+    } on HandshakeException catch (error) {
+      throw ApiException(0, '后端连接失败：${error.message}');
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<dynamic> _requestFeedbackMultipart({
+    required String content,
+    required String contact,
+    String? occurredAt,
+    String? appVersion,
+    String? platform,
+    required List<Uint8List> imageBytes,
+    required List<String> imageNames,
+    required List<String> imageMimes,
+  }) async {
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 20);
+    final stopwatch = Stopwatch()..start();
+    try {
+      final boundary =
+          'companion-${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}';
+      final request = await client.openUrl('POST', _uri('/users/me/feedback'));
+      request.headers.contentType = ContentType(
+        'multipart',
+        'form-data',
+        parameters: {'boundary': boundary},
+      );
+      if (authToken != null && authToken!.isNotEmpty) {
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer $authToken',
+        );
+      }
+      final body = BytesBuilder();
+      void writeField(String name, String value) {
+        body.add(
+          utf8.encode(
+            '--$boundary\r\n'
+            'Content-Disposition: form-data; name="$name"\r\n\r\n'
+            '$value\r\n',
+          ),
+        );
+      }
+
+      writeField('content', content);
+      writeField('contact', contact);
+      if (occurredAt != null && occurredAt.isNotEmpty) {
+        writeField('occurred_at', occurredAt);
+      }
+      if (appVersion != null && appVersion.isNotEmpty) {
+        writeField('app_version', appVersion);
+      }
+      if (platform != null && platform.isNotEmpty) {
+        writeField('platform', platform);
+      }
+      for (var i = 0; i < imageBytes.length; i += 1) {
+        final bytes = imageBytes[i];
+        final name = i < imageNames.length ? imageNames[i] : 'image_$i.jpg';
+        final mime = i < imageMimes.length ? imageMimes[i] : 'image/jpeg';
+        body.add(
+          utf8.encode(
+            '--$boundary\r\n'
+            'Content-Disposition: form-data; name="images"; '
+            'filename="${name.replaceAll('"', '_')}"\r\n'
+            'Content-Type: $mime\r\n\r\n',
+          ),
+        );
+        body.add(bytes);
+        body.add(utf8.encode('\r\n'));
+      }
+      body.add(utf8.encode('--$boundary--\r\n'));
+      final payload = body.takeBytes();
+      request.headers.contentLength = payload.length;
+      debugPrint(
+        '[feedback.submit] request POST /users/me/feedback body=${payload.length}B elapsed=${stopwatch.elapsedMilliseconds}ms',
+      );
+      request.add(payload);
+      final response = await request.close();
+      final text = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw ApiException(response.statusCode, _extractError(text));
+      }
+      if (text.isEmpty) return null;
       return jsonDecode(text);
     } on SocketException catch (error) {
       throw ApiException(0, '无法连接到后端：${error.message}');

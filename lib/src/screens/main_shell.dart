@@ -756,6 +756,7 @@ class _ProfilePageState extends State<ProfilePage>
   String? _profileStatsError;
   int _profileStatsRequestId = 0;
   String? _error;
+  String _appVersionLabel = '...';
 
   @override
   void initState() {
@@ -765,6 +766,21 @@ class _ProfilePageState extends State<ProfilePage>
       duration: const Duration(milliseconds: 9600),
     )..repeat();
     _loadProfileStats();
+    _loadAppVersionLabel();
+  }
+
+  Future<void> _loadAppVersionLabel() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final label = info.buildNumber.isEmpty
+          ? 'v${info.version}'
+          : 'v${info.version} (${info.buildNumber})';
+      if (!mounted) return;
+      setState(() => _appVersionLabel = label);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _appVersionLabel = 'v?');
+    }
   }
 
   @override
@@ -963,7 +979,7 @@ class _ProfilePageState extends State<ProfilePage>
       builder: (context) {
         return CupertinoAlertDialog(
           title: const Text('版本信息'),
-          content: const Text('当前版本 v0.1.8\n已经是最新版本。'),
+          content: Text('当前版本 $_appVersionLabel\n已经是最新版本。'),
           actions: [
             CupertinoDialogAction(
               onPressed: () => Navigator.of(context).pop(),
@@ -973,52 +989,6 @@ class _ProfilePageState extends State<ProfilePage>
         );
       },
     );
-  }
-
-  Future<void> _showClearChatDialog() async {
-    final confirmed = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (context) {
-        return CupertinoAlertDialog(
-          title: const Text('清空所有聊天记录'),
-          content: const Text('确认后会清空当前伴生对象下的聊天记录。这个操作不会删除账号、AI伙伴或背包数据。'),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
-            ),
-            CupertinoDialogAction(
-              isDestructiveAction: true,
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('确认清空'),
-            ),
-          ],
-        );
-      },
-    );
-    if (confirmed != true) return;
-    try {
-      final result = await widget.api.clearChatRecords(
-        workspaceId: widget.session.workspaceId,
-      );
-      if (!mounted) return;
-      await _loadProfileStats();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已清空 ${result.clearedConversations} 条会话记录'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      await _showPlainDialog(
-        title: '清空失败',
-        message: _asMessage(error),
-        confirmText: '知道了',
-        destructive: true,
-      );
-    }
   }
 
   Future<void> _showDeleteAccountDialog() async {
@@ -1142,7 +1112,8 @@ class _ProfilePageState extends State<ProfilePage>
                                   label: '消息与互动',
                                   rows: [
                                     _SettingsRowData(
-                                      icon: '🔔',
+                                      icon: CupertinoIcons.bell_fill,
+                                      iconAccent: _SettingsColors.blue,
                                       title: '通知设置',
                                       onTap: () => _pushPage(
                                         _NotificationSettingsPage(
@@ -1158,19 +1129,15 @@ class _ProfilePageState extends State<ProfilePage>
                                   label: '个性化与显示',
                                   rows: [
                                     _SettingsRowData(
-                                      icon: '🎨',
-                                      title: '皮肤设置',
-                                      onTap: () =>
-                                          _pushPage(const _SkinSettingsPage()),
-                                    ),
-                                    _SettingsRowData(
-                                      icon: '🔤',
+                                      icon: CupertinoIcons.textformat,
+                                      iconAccent: const Color(0xFF8E8E93),
                                       title: '字体与大小',
                                       onTap: () =>
                                           _pushPage(const _FontSettingsPage()),
                                     ),
                                     _SettingsRowData(
-                                      icon: '🌙',
+                                      icon: CupertinoIcons.moon_fill,
+                                      iconAccent: const Color(0xFF5856D6),
                                       title: '深色模式',
                                       value: _themeModeLabel(mode),
                                       trailing: CupertinoSwitch(
@@ -1192,14 +1159,16 @@ class _ProfilePageState extends State<ProfilePage>
                                   label: '隐私与安全',
                                   rows: [
                                     _SettingsRowData(
-                                      icon: '🔒',
+                                      icon: CupertinoIcons.lock_fill,
+                                      iconAccent: const Color(0xFF34C759),
                                       title: '隐私与安全中心',
                                       onTap: () => _pushPage(
                                         _PrivacySecurityPage(
-                                          username: widget.session.username,
-                                          stats: _profileStats,
-                                          onClearChat: _showClearChatDialog,
+                                          api: widget.api,
+                                          session: widget.session,
+                                          initialStats: _profileStats,
                                         ),
+                                        refreshStatsOnReturn: true,
                                       ),
                                     ),
                                   ],
@@ -1209,26 +1178,32 @@ class _ProfilePageState extends State<ProfilePage>
                                   label: '其他与信息',
                                   rows: [
                                     _SettingsRowData(
-                                      icon: '🗂',
+                                      icon: CupertinoIcons.tray_fill,
+                                      iconAccent: const Color(0xFF64B5F6),
                                       title: '缓存清理',
                                       onTap: () =>
                                           _pushPage(const _CacheCleanupPage()),
                                     ),
                                     _SettingsRowData(
-                                      icon: 'ℹ️',
+                                      icon: CupertinoIcons.info_circle_fill,
+                                      iconAccent: _SettingsColors.blue,
                                       title: '关于我们',
                                       onTap: () => _pushPage(
                                         _AboutCompanionPage(
                                           onContact: () => _pushPage(
-                                            const _ContactFeedbackPage(),
+                                            _ContactFeedbackPage(
+                                              api: widget.api,
+                                              session: widget.session,
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
                                     _SettingsRowData(
-                                      icon: '📦',
+                                      icon: CupertinoIcons.cube_box_fill,
+                                      iconAccent: const Color(0xFF90A4AE),
                                       title: '版本信息',
-                                      value: 'v0.1.8',
+                                      value: _appVersionLabel,
                                       secondaryAction: '检查更新',
                                       onTap: _showVersionDialog,
                                     ),
@@ -1772,7 +1747,8 @@ class _SettingsDashboardGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final cards = [
       _DashboardCardData(
-        icon: '💛',
+        icon: CupertinoIcons.heart_fill,
+        iconAccent: _SettingsColors.orange,
         label: '亲密度',
         accent: _SettingsColors.orange,
         value: stats == null
@@ -1781,7 +1757,8 @@ class _SettingsDashboardGrid extends StatelessWidget {
         subtext: stats?.intimacySubtitle ?? (loading ? '同步中' : '暂无数据'),
       ),
       _DashboardCardData(
-        icon: '📅',
+        icon: CupertinoIcons.calendar,
+        iconAccent: _SettingsColors.blue,
         label: '相识时间',
         accent: _SettingsColors.blue,
         value: stats == null
@@ -1792,7 +1769,8 @@ class _SettingsDashboardGrid extends StatelessWidget {
             : '始于 ${stats!.companionStartedOn}',
       ),
       _DashboardCardData(
-        icon: '⏱',
+        icon: CupertinoIcons.stopwatch_fill,
+        iconAccent: const Color(0xFFA0C8E8),
         label: '相处时光',
         accent: const Color(0xFFA0C8E8),
         value: stats == null
@@ -1801,7 +1779,8 @@ class _SettingsDashboardGrid extends StatelessWidget {
         subtext: stats?.chatDurationSubtitle ?? '累计聊天时长',
       ),
       _DashboardCardData(
-        icon: '💬',
+        icon: CupertinoIcons.chat_bubble_2_fill,
+        iconAccent: const Color(0xFFD4B89C),
         label: '讯息总数',
         accent: const Color(0xFFD4B89C),
         value: stats == null
@@ -1846,13 +1825,15 @@ class _SettingsDashboardGrid extends StatelessWidget {
 class _DashboardCardData {
   const _DashboardCardData({
     required this.icon,
+    required this.iconAccent,
     required this.label,
     required this.accent,
     required this.value,
     required this.subtext,
   });
 
-  final String icon;
+  final IconData icon;
+  final Color iconAccent;
   final String label;
   final Color accent;
   final String value;
@@ -1886,7 +1867,12 @@ class _SettingsDashboardCard extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(data.icon, style: const TextStyle(fontSize: 17)),
+                    _SettingsFlatIcon(
+                      icon: data.icon,
+                      accent: data.iconAccent,
+                      size: 28,
+                      iconSize: 15,
+                    ),
                     const SizedBox(width: 6),
                     // Expanded + 右对齐, 而不是 Spacer + 裸 Text: 裸 Text 会按自然
                     // 宽度铺开, 它上面的 maxLines/ellipsis 只在宽度被约束时才生效,
@@ -2026,7 +2012,10 @@ class _SettingsBackpackCard extends StatelessWidget {
       onTap: onTap,
       child: Row(
         children: [
-          _SettingsIconBadge(icon: '🎒', background: _SettingsColors.blueLight),
+          _SettingsFlatIcon(
+            icon: CupertinoIcons.bag_fill,
+            accent: _SettingsColors.blue,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -2115,7 +2104,10 @@ class _SettingsMemberCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _SettingsIconBadge(icon: '💎', background: _SettingsColors.goldLight),
+          _SettingsFlatIcon(
+            icon: CupertinoIcons.star_circle_fill,
+            accent: _SettingsColors.gold,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -2186,6 +2178,7 @@ class _SettingsSectionCard extends StatelessWidget {
 class _SettingsRowData {
   const _SettingsRowData({
     required this.icon,
+    required this.iconAccent,
     required this.title,
     this.value,
     this.secondaryAction,
@@ -2193,7 +2186,8 @@ class _SettingsRowData {
     this.onTap,
   });
 
-  final String icon;
+  final IconData icon;
+  final Color iconAccent;
   final String title;
   final String? value;
   final String? secondaryAction;
@@ -2224,7 +2218,7 @@ class _SettingsRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Text(data.icon, style: const TextStyle(fontSize: 19)),
+          _SettingsFlatIcon(icon: data.icon, accent: data.iconAccent),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -2302,6 +2296,7 @@ class _SettingsAccountActions extends StatelessWidget {
         _SettingsActionButton(
           label: '注销账号',
           destructive: true,
+          enabled: false,
           onTap: onDeleteAccount,
         ),
       ],
@@ -2314,36 +2309,41 @@ class _SettingsActionButton extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.destructive = false,
+    this.enabled = true,
   });
 
   final String label;
   final VoidCallback onTap;
   final bool destructive;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     return CupertinoButton(
       padding: EdgeInsets.zero,
       borderRadius: BorderRadius.circular(14),
-      onPressed: onTap,
-      child: Container(
-        width: double.infinity,
-        height: 50,
-        alignment: Alignment.center,
-        decoration: destructive
-            ? _settingsDangerButtonDecoration(radius: 14)
-            : _settingsCardDecoration(radius: 14),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: destructive
-                ? (_SettingsColors.isDark
-                      ? const Color(0xFFFF8F8A)
-                      : const Color(0xFFD43D2E))
-                : _SettingsColors.blueDark,
-            fontSize: 15,
-            fontWeight: destructive ? FontWeight.w800 : FontWeight.w700,
-            letterSpacing: 0,
+      onPressed: enabled ? onTap : null,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.45,
+        child: Container(
+          width: double.infinity,
+          height: 50,
+          alignment: Alignment.center,
+          decoration: destructive
+              ? _settingsDangerButtonDecoration(radius: 14)
+              : _settingsCardDecoration(radius: 14),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: destructive
+                  ? (_SettingsColors.isDark
+                        ? const Color(0xFFFF8F8A)
+                        : const Color(0xFFD43D2E))
+                  : _SettingsColors.blueDark,
+              fontSize: 15,
+              fontWeight: destructive ? FontWeight.w800 : FontWeight.w700,
+              letterSpacing: 0,
+            ),
           ),
         ),
       ),
@@ -2398,23 +2398,30 @@ class _SettingsTappableCard extends StatelessWidget {
   }
 }
 
-class _SettingsIconBadge extends StatelessWidget {
-  const _SettingsIconBadge({required this.icon, required this.background});
+class _SettingsFlatIcon extends StatelessWidget {
+  const _SettingsFlatIcon({
+    required this.icon,
+    required this.accent,
+    this.size = 38,
+    this.iconSize = 19,
+  });
 
-  final String icon;
-  final Color background;
+  final IconData icon;
+  final Color accent;
+  final double size;
+  final double iconSize;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 38,
-      height: 38,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(12),
+        color: accent.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(size >= 38 ? 12 : 10),
       ),
       alignment: Alignment.center,
-      child: Text(icon, style: const TextStyle(fontSize: 19)),
+      child: Icon(icon, color: accent, size: iconSize),
     );
   }
 }
@@ -2475,14 +2482,11 @@ class _SettingsSubScaffold extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    CupertinoButton(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      minimumSize: const Size(44, 44),
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: Icon(
-                        CupertinoIcons.chevron_left,
-                        color: _SettingsColors.blueDark,
-                        size: 26,
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: _WeatherBackButton(
+                        onTap: () => Navigator.of(context).pop(),
+                        iconColor: _SettingsColors.blueDark,
                       ),
                     ),
                     Expanded(
@@ -3317,116 +3321,6 @@ class _NotificationSettingsPageState extends State<_NotificationSettingsPage> {
   }
 }
 
-class _SkinSettingsPage extends StatelessWidget {
-  const _SkinSettingsPage();
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = AppThemeScope.of(context);
-    final current = controller.mode;
-    return _SettingsSubScaffold(
-      title: '皮肤设置',
-      child: _SubPageContent(
-        children: [
-          _SkinPreview(label: controller.currentLabel),
-          const SizedBox(height: 12),
-          _SubCard(
-            children: [
-              _ThemeModeRow(
-                label: '跟随系统',
-                selected: current == ThemeMode.system,
-                onTap: () => controller.setMode(ThemeMode.system),
-              ),
-              _ThemeModeRow(
-                label: '浅色',
-                selected: current == ThemeMode.light,
-                onTap: () => controller.setMode(ThemeMode.light),
-              ),
-              _ThemeModeRow(
-                label: '深色',
-                selected: current == ThemeMode.dark,
-                showDivider: false,
-                onTap: () => controller.setMode(ThemeMode.dark),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _SubCard(
-            padding: const EdgeInsets.all(15),
-            children: [
-              Text(
-                '主题模式会立即应用，并保存到本机安全存储。',
-                style: TextStyle(
-                  color: _SettingsColors.isDark
-                      ? _SettingsColors.tertiary
-                      : const Color(0xFF999999),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0,
-                  height: 1.5,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SkinPreview extends StatelessWidget {
-  const _SkinPreview({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 84,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [_SettingsColors.headerA, _SettingsColors.headerC],
-        ),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Text(
-        '当前主题 · $label',
-        style: TextStyle(
-          color: _SettingsColors.blueDark,
-          fontSize: 15,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0,
-        ),
-      ),
-    );
-  }
-}
-
-class _ThemeModeRow extends StatelessWidget {
-  const _ThemeModeRow({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    this.showDivider = true,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  final bool showDivider;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SubCardRow(
-      label: label,
-      value: selected ? '✓' : null,
-      onTap: onTap,
-      showDivider: showDivider,
-    );
-  }
-}
-
 class _SubTitle extends StatelessWidget {
   const _SubTitle(this.text);
 
@@ -3493,19 +3387,68 @@ class _FontSettingsPage extends StatelessWidget {
   }
 }
 
-class _PrivacySecurityPage extends StatelessWidget {
+class _PrivacySecurityPage extends StatefulWidget {
   const _PrivacySecurityPage({
-    required this.username,
-    required this.stats,
-    required this.onClearChat,
+    required this.api,
+    required this.session,
+    this.initialStats,
   });
 
-  final String username;
-  final ProfileStats? stats;
-  final VoidCallback onClearChat;
+  final CompanionApi api;
+  final AuthSession session;
+  final ProfileStats? initialStats;
+
+  @override
+  State<_PrivacySecurityPage> createState() => _PrivacySecurityPageState();
+}
+
+class _PrivacySecurityPageState extends State<_PrivacySecurityPage> {
+  ProfileStats? _stats;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _stats = widget.initialStats;
+    _refreshStats();
+  }
+
+  Future<void> _refreshStats() async {
+    if (widget.session.agentId == null || widget.session.agentId!.isEmpty) {
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      widget.api.authToken = widget.session.token;
+      final stats = await widget.api.fetchProfileStats(
+        workspaceId: widget.session.workspaceId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _stats = stats;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = _asMessage(error);
+        _loading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final messageCount = _stats?.messageCount;
+    final messageLabel = _loading
+        ? '同步中...'
+        : messageCount == null
+        ? (_error == null ? '--' : '暂不可用')
+        : '$messageCount 条';
     return _SettingsSubScaffold(
       title: '隐私与安全中心',
       child: _SubPageContent(
@@ -3513,21 +3456,16 @@ class _PrivacySecurityPage extends StatelessWidget {
           _SubCard(
             children: [
               const _SubSectionHeader('绑定信息'),
-              _SubCardRow(label: '绑定手机', value: _maskedPhone(username)),
+              _SubCardRow(
+                label: '绑定手机',
+                value: _maskedPhone(widget.session.username),
+              ),
               const _SubCardRow(label: '绑定微信', value: '未绑定 ›'),
-              const _SubCardRow(label: '绑定QQ', value: '未绑定 ›'),
               const _SubCardRow(
                 label: '绑定邮箱',
                 value: '未绑定 ›',
                 showDivider: false,
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const _SubCard(
-            children: [
-              _SubSectionHeader('账户安全'),
-              _SubCardRow(label: '修改密码', value: '›', showDivider: false),
             ],
           ),
           const SizedBox(height: 12),
@@ -3550,18 +3488,16 @@ class _PrivacySecurityPage extends StatelessWidget {
           _SubCard(
             children: [
               const _SubSectionHeader('聊天记录管理'),
-              _SubCardRow(
-                label: '当前消息数',
-                value: '${stats?.messageCount ?? 0} 条',
-              ),
-              _SubCardRow(
-                label: '一键清空所有聊天记录',
-                destructive: true,
-                onTap: onClearChat,
-              ),
-              const _SubCardRow(label: '设备迁移', value: '›', showDivider: false),
+              _SubCardRow(label: '当前消息数', value: messageLabel, showDivider: false),
             ],
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              style: TextStyle(color: _SettingsColors.red, fontSize: 12),
+            ),
+          ],
         ],
       ),
     );
@@ -3621,6 +3557,9 @@ class _CacheCleanupPageState extends State<_CacheCleanupPage> {
     setState(() => _cleaning = true);
     PaintingBinding.instance.imageCache.clear();
     PaintingBinding.instance.imageCache.clearLiveImages();
+    try {
+      await DefaultCacheManager().emptyCache();
+    } catch (_) {}
     final dirs = <Directory>[];
     try {
       dirs.add(await getTemporaryDirectory());
@@ -3676,7 +3615,8 @@ class _CacheCleanupPageState extends State<_CacheCleanupPage> {
               const SizedBox(height: 12),
               Center(
                 child: Text(
-                  '清理后不会影响聊天记录和账号数据',
+                  '仅清理本机图片与临时文件，不会删除服务端聊天记录',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     color: _SettingsColors.isDark
                         ? _SettingsColors.tertiary
@@ -3718,7 +3658,15 @@ class _AboutCompanionPage extends StatelessWidget {
         center: true,
         children: [
           const SizedBox(height: 18),
-          const _DualPlanetLogo(),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Image.asset(
+              'assets/prototype/logo.png',
+              width: 88,
+              height: 88,
+              fit: BoxFit.cover,
+            ),
+          ),
           const SizedBox(height: 10),
           Text(
             '伴生·SoulMate',
@@ -3789,49 +3737,106 @@ class _AboutCompanionPage extends StatelessWidget {
   }
 }
 
-class _DualPlanetLogo extends StatelessWidget {
-  const _DualPlanetLogo();
+class _ContactFeedbackPage extends StatefulWidget {
+  const _ContactFeedbackPage({required this.api, required this.session});
+
+  final CompanionApi api;
+  final AuthSession session;
 
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 88,
-      height: 70,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: [_SettingsColors.blue, _SettingsColors.blueLight],
-              ),
-            ),
-          ),
-          Positioned(
-            right: 8,
-            bottom: 6,
-            child: Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [_SettingsColors.orange, _SettingsColors.orangeLight],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  State<_ContactFeedbackPage> createState() => _ContactFeedbackPageState();
 }
 
-class _ContactFeedbackPage extends StatelessWidget {
-  const _ContactFeedbackPage();
+class _ContactFeedbackPageState extends State<_ContactFeedbackPage> {
+  final _contentController = TextEditingController();
+  final _contactController = TextEditingController();
+  final _occurredAtController = TextEditingController();
+  final _picker = ImagePicker();
+  final List<_FeedbackAttachmentDraft> _attachments = [];
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _contentController.dispose();
+    _contactController.dispose();
+    _occurredAtController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImages() async {
+    if (_attachments.length >= 3) return;
+    final files = await _picker.pickMultiImage(imageQuality: 85);
+    if (files.isEmpty) return;
+    for (final file in files) {
+      if (_attachments.length >= 3) break;
+      final bytes = await file.readAsBytes();
+      setState(() {
+        _attachments.add(
+          _FeedbackAttachmentDraft(
+            bytes: bytes,
+            name: file.name,
+            mime: 'image/jpeg',
+          ),
+        );
+      });
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    final content = _contentController.text.trim();
+    final contact = _contactController.text.trim();
+    if (content.length < 5) {
+      _showSnack('请至少输入 5 个字的反馈内容');
+      return;
+    }
+    if (contact.isEmpty) {
+      _showSnack('请填写联系方式');
+      return;
+    }
+    setState(() => _submitting = true);
+    try {
+      widget.api.authToken = widget.session.token;
+      final clientInfo = await ClientInfo.load();
+      await widget.api.submitUserFeedback(
+        content: content,
+        contact: contact,
+        occurredAt: _occurredAtController.text.trim(),
+        appVersion: clientInfo.appVersion,
+        platform: clientInfo.platform,
+        imageBytes: _attachments.map((item) => item.bytes).toList(),
+        imageNames: _attachments.map((item) => item.name).toList(),
+        imageMimes: _attachments.map((item) => item.mime).toList(),
+      );
+      if (!mounted) return;
+      await showCupertinoDialog<void>(
+        context: context,
+        builder: (context) => CupertinoAlertDialog(
+          title: const Text('提交成功'),
+          content: const Text('感谢你的反馈，我们会尽快处理。'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) return;
+      _showSnack('提交失败：${_asMessage(error)}');
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3839,31 +3844,131 @@ class _ContactFeedbackPage extends StatelessWidget {
       title: '联系我们/意见反馈',
       child: _SubPageContent(
         children: [
-          const _SubCard(
-            padding: EdgeInsets.all(16),
+          _SubCard(
+            padding: const EdgeInsets.all(16),
             children: [
-              _SubTitle('问题与意见 *'),
-              SizedBox(height: 10),
-              _FeedbackInputBox(text: '请详细描述您的问题或建议...'),
+              const _SubTitle('问题与意见 *'),
+              const SizedBox(height: 10),
+              CupertinoTextField(
+                controller: _contentController,
+                maxLines: 5,
+                minLines: 4,
+                placeholder: '请详细描述您的问题或建议...',
+                decoration: BoxDecoration(
+                  color: _SettingsColors.page,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
-          const _SubCard(
-            padding: EdgeInsets.all(16),
+          _SubCard(
+            padding: const EdgeInsets.all(16),
             children: [
-              _SubTitle('上传图片（选填）'),
-              SizedBox(height: 10),
-              _DashedUploadBox(),
+              const _SubTitle('上传图片（选填）'),
+              const SizedBox(height: 10),
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: _attachments.length >= 3 ? null : _pickImages,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _SettingsColors.separator),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    _attachments.isEmpty
+                        ? '点击上传截图（最多3张）'
+                        : '已选 ${_attachments.length}/3，点击继续添加',
+                    style: TextStyle(
+                      color: _SettingsColors.tertiary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              if (_attachments.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (var i = 0; i < _attachments.length; i += 1)
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.memory(
+                              _attachments[i].bytes,
+                              width: 72,
+                              height: 72,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          Positioned(
+                            top: -6,
+                            right: -6,
+                            child: CupertinoButton(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              onPressed: () =>
+                                  setState(() => _attachments.removeAt(i)),
+                              child: Container(
+                                width: 22,
+                                height: 22,
+                                decoration: const BoxDecoration(
+                                  color: Color(0x99000000),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  CupertinoIcons.xmark,
+                                  size: 12,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
-          const _SubCard(
+          _SubCard(
             children: [
-              _SubCardRow(label: '问题发生时间', value: '如：2026-06-22'),
+              _SubCardRow(
+                label: '问题发生时间',
+                value: '',
+                trailing: SizedBox(
+                  width: 160,
+                  child: CupertinoTextField(
+                    controller: _occurredAtController,
+                    placeholder: '如：2026-06-22',
+                    textAlign: TextAlign.right,
+                    decoration: null,
+                  ),
+                ),
+              ),
               _SubCardRow(
                 label: '联系方式 *',
-                value: '请留下您的邮箱',
+                value: '',
                 showDivider: false,
+                trailing: SizedBox(
+                  width: 180,
+                  child: CupertinoTextField(
+                    controller: _contactController,
+                    placeholder: '邮箱或手机号',
+                    textAlign: TextAlign.right,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: null,
+                  ),
+                ),
               ),
             ],
           ),
@@ -3871,16 +3976,17 @@ class _ContactFeedbackPage extends StatelessWidget {
           CupertinoButton(
             color: _SettingsColors.blueDark,
             borderRadius: BorderRadius.circular(16),
-            onPressed: () {},
-            child: const Text(
-              '提交反馈',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0,
-              ),
-            ),
+            onPressed: _submitting ? null : _submit,
+            child: _submitting
+                ? const CupertinoActivityIndicator(color: Colors.white)
+                : const Text(
+                    '提交反馈',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
           ),
         ],
       ),
@@ -3888,62 +3994,16 @@ class _ContactFeedbackPage extends StatelessWidget {
   }
 }
 
-class _FeedbackInputBox extends StatelessWidget {
-  const _FeedbackInputBox({required this.text});
+class _FeedbackAttachmentDraft {
+  const _FeedbackAttachmentDraft({
+    required this.bytes,
+    required this.name,
+    required this.mime,
+  });
 
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 108,
-      alignment: Alignment.topLeft,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _SettingsColors.page,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: _SettingsColors.tertiary,
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-          letterSpacing: 0,
-        ),
-      ),
-    );
-  }
-}
-
-class _DashedUploadBox extends StatelessWidget {
-  const _DashedUploadBox();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: _SettingsColors.isDark
-              ? _SettingsColors.separator
-              : const Color(0xFFD0D0D8),
-        ),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        '📷 点击上传截图（最多3张）',
-        style: TextStyle(
-          color: _SettingsColors.tertiary,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0,
-        ),
-      ),
-    );
-  }
+  final Uint8List bytes;
+  final String name;
+  final String mime;
 }
 
 class _LegalDocumentPage extends StatefulWidget {

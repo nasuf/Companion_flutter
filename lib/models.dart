@@ -312,6 +312,103 @@ class ChatRecordsClearResult {
   }
 }
 
+class UserFeedbackSubmission {
+  const UserFeedbackSubmission({required this.id, required this.createdAt});
+
+  final String id;
+  final DateTime createdAt;
+
+  factory UserFeedbackSubmission.fromJson(Map<String, dynamic> json) {
+    return UserFeedbackSubmission(
+      id: json['id'] as String? ?? '',
+      createdAt:
+          DateTime.tryParse(json['created_at'] as String? ?? '') ??
+          DateTime.now(),
+    );
+  }
+}
+
+class AdminUserFeedbackItem {
+  const AdminUserFeedbackItem({
+    required this.id,
+    required this.userId,
+    required this.content,
+    required this.contact,
+    required this.status,
+    required this.createdAt,
+    required this.updatedAt,
+    this.username,
+    this.displayName,
+    this.occurredAt,
+    this.imageUrls = const [],
+    this.appVersion,
+    this.platform,
+  });
+
+  final String id;
+  final String userId;
+  final String? username;
+  final String? displayName;
+  final String content;
+  final String contact;
+  final String? occurredAt;
+  final List<String> imageUrls;
+  final String status;
+  final String? appVersion;
+  final String? platform;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  factory AdminUserFeedbackItem.fromJson(Map<String, dynamic> json) {
+    return AdminUserFeedbackItem(
+      id: json['id'] as String? ?? '',
+      userId: json['user_id'] as String? ?? '',
+      username: json['username'] as String?,
+      displayName: json['display_name'] as String?,
+      content: json['content'] as String? ?? '',
+      contact: json['contact'] as String? ?? '',
+      occurredAt: json['occurred_at'] as String?,
+      imageUrls: (json['image_urls'] as List?)
+              ?.map((item) => item.toString())
+              .toList(growable: false) ??
+          const [],
+      status: json['status'] as String? ?? 'open',
+      appVersion: json['app_version'] as String?,
+      platform: json['platform'] as String?,
+      createdAt:
+          DateTime.tryParse(json['created_at'] as String? ?? '') ??
+          DateTime.now(),
+      updatedAt:
+          DateTime.tryParse(json['updated_at'] as String? ?? '') ??
+          DateTime.now(),
+    );
+  }
+}
+
+class AdminUserFeedbackList {
+  const AdminUserFeedbackList({required this.items, required this.total});
+
+  final List<AdminUserFeedbackItem> items;
+  final int total;
+
+  factory AdminUserFeedbackList.fromJson(Map<String, dynamic> json) {
+    final rawItems = json['items'];
+    return AdminUserFeedbackList(
+      items: rawItems is List
+          ? rawItems
+                .whereType<Map>()
+                .map(
+                  (item) => AdminUserFeedbackItem.fromJson(
+                    Map<String, dynamic>.from(item),
+                  ),
+                )
+                .toList(growable: false)
+          : const [],
+      total: (json['total'] as num?)?.round() ?? 0,
+    );
+  }
+}
+
 class AgentProvisionStatus {
   const AgentProvisionStatus({
     required this.agentId,

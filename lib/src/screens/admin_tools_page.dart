@@ -574,6 +574,16 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     );
   }
 
+  void _openUserFeedbackAdmin() {
+    widget.api.authToken = widget.session.token;
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) =>
+            AdminUserFeedbackPage(api: widget.api, session: widget.session),
+      ),
+    );
+  }
+
   void _openSystemSettings() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
@@ -990,6 +1000,22 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                               subtitle: '扫码校验、商家管理与核销数据统计',
                               accent: const Color(0xFFE8804C),
                               onTap: _openMealAdmin,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _ProfileSectionV6(
+                        title: '用户反馈',
+                        trailing: '客户意见',
+                        child: Column(
+                          children: [
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.envelope_fill,
+                              title: '意见反馈',
+                              subtitle: '查看用户提交的问题、建议与截图',
+                              accent: const Color(0xFF2D73FF),
+                              onTap: _openUserFeedbackAdmin,
                             ),
                           ],
                         ),
