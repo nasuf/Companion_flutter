@@ -188,10 +188,14 @@ class _StoreSubscriptionHistoryPageState
                                 ),
                               )
                             else
-                              ...membership.history.map(
-                                (item) => Padding(
+                              ...groupMembershipHistory(membership.history).map(
+                                (node) => Padding(
                                   padding: const EdgeInsets.only(bottom: 10),
-                                  child: _MembershipHistoryTile(item: item),
+                                  child: node.isRenewalGroup
+                                      ? _MembershipRenewalGroupTile(
+                                          items: node.renewalItems,
+                                        )
+                                      : _MembershipHistoryTile(item: node.item!),
                                 ),
                               ),
                             const SizedBox(height: 8),
@@ -222,7 +226,9 @@ class _StoreSubscriptionHistoryPageState
   String _historyFootnote(IapMembership membership) {
     final sub = membership.subscription;
     final base =
-        '时长包为一次性购买，到期不自动续费；连续包月请在 Apple 订阅管理中关闭自动续费。';
+        '时长包为一次性购买，到期不自动续费；连续包月请在 Apple 订阅管理中关闭自动续费。\n'
+        '沙盒连续包月可能产生多笔续费记录，已折叠展示；每笔仅为计费周期凭证，'
+        '不会像时长包那样叠加延长会员。';
     if (sub != null && !sub.autoRenewEnabled && membership.autoRenewActive == false) {
       return '$base\n\n'
           '若您未手动关闭自动续费却显示「已关闭」，可能是沙盒订阅已达续期上限，'
@@ -302,6 +308,143 @@ class _MembershipStatusCard extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _MembershipRenewalGroupTile extends StatefulWidget {
+  const _MembershipRenewalGroupTile({required this.items});
+
+  final List<IapHistoryItem> items;
+
+  @override
+  State<_MembershipRenewalGroupTile> createState() =>
+      _MembershipRenewalGroupTileState();
+}
+
+class _MembershipRenewalGroupTileState extends State<_MembershipRenewalGroupTile> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
+    final items = widget.items;
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    final headline = items.first;
+    final latest = items.first.purchaseDate;
+    final latestText =
+        latest != null ? formatVipDisplayDateTime(latest) : '—';
+    final grantedCount =
+        items.where((item) => item.status == 'granted').length;
+    final subtitle = items.length == 1
+        ? '$latestText · 自动续费 · 已到账'
+        : '$latestText · 自动续费 · 共 ${items.length} 笔'
+            '${grantedCount < items.length ? '（含退款/撤销）' : ''}';
+
+    return _GlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      radius: 18,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            minimumSize: Size.zero,
+            onPressed: items.length > 1
+                ? () => setState(() => _expanded = !_expanded)
+                : null,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        headline.productLabel,
+                        style: TextStyle(
+                          color: w.ink,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          color: w.inkSoft,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (items.length > 1)
+                  Icon(
+                    _expanded
+                        ? CupertinoIcons.chevron_up
+                        : CupertinoIcons.chevron_down,
+                    color: w.inkFaint,
+                    size: 16,
+                  ),
+              ],
+            ),
+          ),
+          if (_expanded && items.length > 1) ...[
+            const SizedBox(height: 10),
+            ...items.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: _MembershipRenewalDetailLine(item: item),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MembershipRenewalDetailLine extends StatelessWidget {
+  const _MembershipRenewalDetailLine({required this.item});
+
+  final IapHistoryItem item;
+
+  String get _statusLabel {
+    switch (item.status) {
+      case 'refunded':
+        return '已退款';
+      case 'revoked':
+        return '已撤销';
+      default:
+        return '已到账';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
+    final when = item.purchaseDate != null
+        ? formatVipDisplayDateTime(item.purchaseDate!)
+        : '—';
+    final periodEnd = item.expiresDate != null
+        ? formatVipDisplayDateTime(item.expiresDate!)
+        : null;
+    final detail = periodEnd == null
+        ? '第 ${item.renewalSequence} 次 · $when · $_statusLabel'
+        : '第 ${item.renewalSequence} 次 · $when → $periodEnd · $_statusLabel';
+    return Text(
+      detail,
+      style: TextStyle(
+        color: w.inkSoft,
+        fontSize: 11,
+        height: 1.35,
+        fontWeight: FontWeight.w500,
+        decoration: TextDecoration.none,
       ),
     );
   }

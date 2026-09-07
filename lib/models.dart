@@ -1819,19 +1819,23 @@ class IapSubscriptionStatus {
 class IapHistoryItem {
   const IapHistoryItem({
     required this.transactionId,
+    required this.originalTransactionId,
     required this.productId,
     required this.productLabel,
     required this.kind,
     required this.status,
+    required this.renewalSequence,
     this.purchaseDate,
     this.expiresDate,
   });
 
   final String transactionId;
+  final String originalTransactionId;
   final String productId;
   final String productLabel;
   final String kind;
   final String status;
+  final int renewalSequence;
   final DateTime? purchaseDate;
   final DateTime? expiresDate;
 
@@ -1844,10 +1848,12 @@ class IapHistoryItem {
 
     return IapHistoryItem(
       transactionId: json['transaction_id']?.toString() ?? '',
+      originalTransactionId: json['original_transaction_id']?.toString() ?? '',
       productId: json['product_id']?.toString() ?? '',
       productLabel: json['product_label']?.toString() ?? '',
       kind: json['kind']?.toString() ?? '',
       status: json['status']?.toString() ?? '',
+      renewalSequence: (json['renewal_sequence'] as num?)?.round() ?? 1,
       purchaseDate: parse('purchase_date'),
       expiresDate: parse('expires_date'),
     );

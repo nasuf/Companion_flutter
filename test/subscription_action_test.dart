@@ -1,3 +1,4 @@
+import 'package:companion_flutter/models.dart';
 import 'package:companion_flutter/src/payment/subscription_action.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -98,5 +99,49 @@ void main() {
       now: base,
     );
     expect(packUi.hintText, contains('一次性'));
+  });
+
+  test('groupMembershipHistory folds subscription renewals', () {
+    final t1 = DateTime.utc(2026, 9, 1);
+    final t2 = DateTime.utc(2026, 9, 2);
+    final month = DateTime.utc(2026, 8, 20);
+    final nodes = groupMembershipHistory([
+      IapHistoryItem(
+        transactionId: 'r2',
+        originalTransactionId: 'otxn-1',
+        productId: 'com.bansheng.vip.monthly.auto',
+        productLabel: '连续包月',
+        kind: 'subscription',
+        status: 'granted',
+        renewalSequence: 2,
+        purchaseDate: t2,
+      ),
+      IapHistoryItem(
+        transactionId: 'm1',
+        originalTransactionId: 'm1',
+        productId: 'com.bansheng.vip.month',
+        productLabel: '月卡',
+        kind: 'consumable',
+        status: 'granted',
+        renewalSequence: 1,
+        purchaseDate: month,
+      ),
+      IapHistoryItem(
+        transactionId: 'r1',
+        originalTransactionId: 'otxn-1',
+        productId: 'com.bansheng.vip.monthly.auto',
+        productLabel: '连续包月',
+        kind: 'subscription',
+        status: 'granted',
+        renewalSequence: 1,
+        purchaseDate: t1,
+      ),
+    ]);
+
+    expect(nodes.length, 2);
+    expect(nodes.first.isRenewalGroup, isTrue);
+    expect(nodes.first.renewalItems.length, 2);
+    expect(nodes.last.isRenewalGroup, isFalse);
+    expect(nodes.last.item?.productLabel, '月卡');
   });
 }

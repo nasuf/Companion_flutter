@@ -184,3 +184,71 @@ StoreSubscribeUiState resolveStoreSubscribeUi({
     action: StoreSubscribeAction.purchase,
   );
 }
+
+/// One row in membership history: a duration pack or a folded renewal group.
+class MembershipHistoryNode {
+  const MembershipHistoryNode._({
+    required this.isRenewalGroup,
+    this.item,
+    this.renewalItems = const [],
+  });
+
+  factory MembershipHistoryNode.single(IapHistoryItem item) =>
+      MembershipHistoryNode._(isRenewalGroup: false, item: item);
+
+  factory MembershipHistoryNode.renewalGroup(List<IapHistoryItem> items) =>
+      MembershipHistoryNode._(isRenewalGroup: true, renewalItems: items);
+
+  final bool isRenewalGroup;
+  final IapHistoryItem? item;
+  final List<IapHistoryItem> renewalItems;
+
+  DateTime? get sortDate {
+    if (isRenewalGroup) {
+      final dates = renewalItems.map((e) => e.purchaseDate).whereType<DateTime>();
+      if (dates.isEmpty) return null;
+      return dates.reduce((a, b) => a.isAfter(b) ? a : b);
+    }
+    return item?.purchaseDate;
+  }
+}
+
+/// Fold subscription renewals by ``original_transaction_id``; keep duration packs flat.
+List<MembershipHistoryNode> groupMembershipHistory(List<IapHistoryItem> history) {
+  final consumables = <IapHistoryItem>[];
+  final renewalGroups = <String, List<IapHistoryItem>>{};
+
+  for (final entry in history) {
+    if (entry.kind == 'subscription') {
+      final key = entry.originalTransactionId.isNotEmpty
+          ? entry.originalTransactionId
+          : entry.productId;
+      renewalGroups.putIfAbsent(key, () => []).add(entry);
+    } else {
+      consumables.add(entry);
+    }
+  }
+
+  final nodes = <MembershipHistoryNode>[
+    ...consumables.map(MembershipHistoryNode.single),
+    ...renewalGroups.values.map((items) {
+      final sorted = [...items]
+        ..sort((a, b) {
+          final ap = a.purchaseDate ?? DateTime.fromMillisecondsSinceEpoch(0);
+          final bp = b.purchaseDate ?? DateTime.fromMillisecondsSinceEpoch(0);
+          return bp.compareTo(ap);
+        });
+      return MembershipHistoryNode.renewalGroup(sorted);
+    }),
+  ];
+
+  nodes.sort((a, b) {
+    final ad = a.sortDate;
+    final bd = b.sortDate;
+    if (ad == null && bd == null) return 0;
+    if (ad == null) return 1;
+    if (bd == null) return -1;
+    return bd.compareTo(ad);
+  });
+  return nodes;
+}
