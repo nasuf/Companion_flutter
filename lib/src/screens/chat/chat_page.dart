@@ -2616,7 +2616,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<int?> _askRedPacketAmount(int balance) async {
+  Future<int?> _askRedPacketAmount(num balance) async {
     final controller = TextEditingController();
     try {
       return await showCupertinoDialog<int>(
@@ -2634,7 +2634,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        '当前余额 $balance 钞票',
+                        '当前余额 ${formatTicketAmount(balance)} 钞票',
                         style: const TextStyle(fontSize: 13),
                       ),
                       const SizedBox(height: 12),

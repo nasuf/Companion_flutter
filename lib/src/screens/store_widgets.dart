@@ -90,9 +90,16 @@ class _StoreBalancePill extends StatelessWidget {
     required this.onTap,
   });
 
-  final int amount;
+  final num amount;
   final _StoreCurrency currency;
   final VoidCallback onTap;
+
+  String get _displayAmount {
+    if (currency == _StoreCurrency.ticket) {
+      return formatTicketAmount(amount);
+    }
+    return '$amount';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +126,7 @@ class _StoreBalancePill extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text(
-                  '$amount',
+                  _displayAmount,
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
