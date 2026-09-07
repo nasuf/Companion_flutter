@@ -6,14 +6,11 @@ PODS:
   - fluwx/pay (0.0.1):
     - Flutter
     - WechatOpenSDK-XCFramework (~> 2.0.5)
-  - receive_sharing_intent (1.8.1):
-    - Flutter
   - WechatOpenSDK-XCFramework (2.0.5)
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
   - fluwx (from `.symlinks/plugins/fluwx/ios`)
-  - receive_sharing_intent (from `.symlinks/plugins/receive_sharing_intent/ios`)
 
 SPEC REPOS:
   trunk:
@@ -24,13 +21,10 @@ EXTERNAL SOURCES:
     :path: Flutter
   fluwx:
     :path: ".symlinks/plugins/fluwx/ios"
-  receive_sharing_intent:
-    :path: ".symlinks/plugins/receive_sharing_intent/ios"
 
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   fluwx: 95a2274c23418c1098940bd00dcfe7c975bb0550
-  receive_sharing_intent: 79c848f5b045674ad60b9fea3bafea59962ad2c1
   WechatOpenSDK-XCFramework: ff342ae616bb86df3d236aca38059dfd4bc4a949
 
 PODFILE CHECKSUM: 0ceb8411469f8407641df6133f137b2efb365d06
