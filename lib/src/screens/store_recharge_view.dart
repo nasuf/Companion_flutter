@@ -17,7 +17,7 @@ class _RechargeStoreView extends StatelessWidget {
   });
 
   final _StoreCurrency currency;
-  final int ticketBalance;
+  final num ticketBalance;
   final int pointBalance;
   final int selectedIndex;
   final List<_RechargePack> packs;
@@ -137,7 +137,7 @@ class _RechargeBalance extends StatelessWidget {
   });
 
   final _StoreCurrency currency;
-  final int balance;
+  final num balance;
   final Color accent;
 
   @override
@@ -161,7 +161,9 @@ class _RechargeBalance extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          '$balance',
+          currency == _StoreCurrency.ticket
+              ? formatTicketAmount(balance)
+              : '$balance',
           style: TextStyle(
             color: w.isDark ? w.ink : Colors.black,
             fontSize: 46,

@@ -5,6 +5,24 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   final base = DateTime.utc(2026, 9, 6);
 
+  test('formatTicketAmount shows fractional tickets', () {
+    expect(formatTicketAmount(-0.5, withSign: true), '-0.5');
+    expect(formatTicketAmount(0.5, withSign: true), '+0.5');
+    expect(formatTicketAmount(9), '9');
+    expect(formatTicketAmount(9.5), '9.5');
+  });
+
+  test('compact status line merges tier and expiry', () {
+    expect(
+      buildMembershipCompactStatusLine(
+        isVip: true,
+        activeProductId: 'com.bansheng.vip.monthly.auto',
+        vipUntil: DateTime.utc(2027, 1, 8, 10, 7, 40),
+      ),
+      '连续包月会员生效中 · 有效期至 2027年1月8日',
+    );
+  });
+
   test('membership headline uses tier label', () {
     expect(
       buildMembershipHeadline(
@@ -143,5 +161,28 @@ void main() {
     expect(nodes.first.renewalItems.length, 2);
     expect(nodes.last.isRenewalGroup, isFalse);
     expect(nodes.last.item?.productLabel, '月卡');
+  });
+
+  test('renewal history line is single compact row', () {
+    final start = DateTime.utc(2026, 9, 6, 23, 16, 28);
+    final end = DateTime.utc(2026, 9, 6, 23, 21, 28);
+    final line = formatRenewalHistoryLine(
+      item: IapHistoryItem(
+        transactionId: 'r1',
+        originalTransactionId: 'otxn',
+        productId: 'com.bansheng.vip.monthly.auto',
+        productLabel: '连续包月',
+        kind: 'subscription',
+        status: 'granted',
+        renewalSequence: 3,
+        purchaseDate: start,
+        expiresDate: end,
+      ),
+      sequence: 3,
+    );
+    expect(line, contains('#3'));
+    expect(line, contains('→'));
+    expect(line, contains('已到账'));
+    expect(line.split('\n').length, 1);
   });
 }

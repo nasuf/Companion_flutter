@@ -1295,24 +1295,24 @@ class WalletBalance {
     this.giftTicketBalance = 0,
   });
 
-  final int ticketBalance;
+  final num ticketBalance;
   final int pointBalance;
   final int achievementPointsSynced;
 
   /// VIP 每月赠送的限时钞票（随 VIP 存续结转，过期即清零）。花费时优先扣
   /// 这部分而非 [ticketBalance]，见 companion_api.dart:getVipStatus 附近说明。
-  final int giftTicketBalance;
+  final num giftTicketBalance;
 
   /// 可花费的钞票总额 = 限时赠送 + 永久，跟商城/聊天/音乐超额提示保持一致。
-  int get spendableTickets => ticketBalance + giftTicketBalance;
+  num get spendableTickets => ticketBalance + giftTicketBalance;
 
   factory WalletBalance.fromJson(Map<String, dynamic> json) {
     return WalletBalance(
-      ticketBalance: (json['ticket_balance'] as num?)?.round() ?? 0,
+      ticketBalance: (json['ticket_balance'] as num?) ?? 0,
       pointBalance: (json['point_balance'] as num?)?.round() ?? 0,
       achievementPointsSynced:
           (json['achievement_points_synced'] as num?)?.round() ?? 0,
-      giftTicketBalance: (json['gift_ticket_balance'] as num?)?.round() ?? 0,
+      giftTicketBalance: (json['gift_ticket_balance'] as num?) ?? 0,
     );
   }
 }
@@ -1326,28 +1326,40 @@ class WalletLedgerItem {
     required this.balanceAfter,
     required this.source,
     this.sourceId,
+    this.metadata = const {},
     this.createdAt,
   });
 
   final String id;
   final String currency;
-  final int delta;
-  final int balanceAfter;
+  final num delta;
+  final num balanceAfter;
   final String source;
   final String? sourceId;
+  final Map<String, dynamic> metadata;
   final DateTime? createdAt;
 
   factory WalletLedgerItem.fromJson(Map<String, dynamic> json) {
+    DateTime? parse(String? key) {
+      final raw = json[key];
+      if (raw == null) return null;
+      return DateTime.tryParse(raw.toString());
+    }
+
+    final rawMeta = json['metadata'];
+    final metadata = rawMeta is Map
+        ? Map<String, dynamic>.from(rawMeta)
+        : const <String, dynamic>{};
+
     return WalletLedgerItem(
       id: json['id']?.toString() ?? '',
       currency: json['currency']?.toString() ?? '',
-      delta: (json['delta'] as num?)?.round() ?? 0,
-      balanceAfter: (json['balance_after'] as num?)?.round() ?? 0,
+      delta: (json['delta'] as num?) ?? 0,
+      balanceAfter: (json['balance_after'] as num?) ?? 0,
       source: json['source']?.toString() ?? '',
       sourceId: json['source_id']?.toString(),
-      createdAt: json['created_at'] == null
-          ? null
-          : DateTime.tryParse(json['created_at'].toString()),
+      metadata: metadata,
+      createdAt: parse('created_at'),
     );
   }
 }
@@ -1690,10 +1702,10 @@ class VipStatus {
   final bool isVip;
   final DateTime? vipUntil;
   final bool vipTrialAvailable;
-  final int giftTicketBalance;
-  final int ticketBalance;
+  final num giftTicketBalance;
+  final num ticketBalance;
   final int pointBalance;
-  final int spendableTickets;
+  final num spendableTickets;
 
   factory VipStatus.fromJson(Map<String, dynamic> json) {
     return VipStatus(
@@ -1702,10 +1714,10 @@ class VipStatus {
           ? null
           : DateTime.tryParse(json['vip_until'].toString()),
       vipTrialAvailable: json['vip_trial_available'] == true,
-      giftTicketBalance: (json['gift_ticket_balance'] as num?)?.round() ?? 0,
-      ticketBalance: (json['ticket_balance'] as num?)?.round() ?? 0,
+      giftTicketBalance: (json['gift_ticket_balance'] as num?) ?? 0,
+      ticketBalance: (json['ticket_balance'] as num?) ?? 0,
       pointBalance: (json['point_balance'] as num?)?.round() ?? 0,
-      spendableTickets: (json['spendable_tickets'] as num?)?.round() ?? 0,
+      spendableTickets: (json['spendable_tickets'] as num?) ?? 0,
     );
   }
 }
@@ -1874,14 +1886,14 @@ class ChatQuota {
   final ChatQuotaMode mode;
   final int freeRemaining;
   final double perMsgCost;
-  final int spendableTickets;
+  final num spendableTickets;
 
   factory ChatQuota.fromJson(Map<String, dynamic> json) {
     return ChatQuota(
       mode: _parseChatQuotaMode(json['mode']?.toString()),
       freeRemaining: (json['free_remaining'] as num?)?.round() ?? 0,
       perMsgCost: (json['per_msg_cost'] as num?)?.toDouble() ?? 0,
-      spendableTickets: (json['spendable_tickets'] as num?)?.round() ?? 0,
+      spendableTickets: (json['spendable_tickets'] as num?) ?? 0,
     );
   }
 }

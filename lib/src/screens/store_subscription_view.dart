@@ -116,14 +116,10 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
   Widget build(BuildContext context) {
     const edge = EdgeInsets.symmetric(horizontal: 12);
     final currentPlanIndex = planIndexForProductId(widget.activeProductId);
-    final detailLine = buildMembershipDetailLine(
+    final statusLine = buildMembershipCompactStatusLine(
       isVip: widget.isVip,
+      activeProductId: widget.activeProductId,
       vipUntil: widget.vipUntil,
-      subscriptionExpires: widget.subscriptionExpires,
-      autoRenewEnabled: widget.autoRenewEnabled,
-      autoRenewActive: widget.autoRenewActive,
-      selectedPlanIndex: widget.selectedPlan,
-      planHint: widget.subscribeUi.hintText,
     );
     return ListView(
       physics: const NeverScrollableScrollPhysics(),
@@ -134,13 +130,7 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
         const SizedBox(height: 6),
         Padding(
           padding: edge,
-          child: _MembershipStatusBanner(
-            headline: buildMembershipHeadline(
-              isVip: widget.isVip,
-              activeProductId: widget.activeProductId,
-            ),
-            detailLine: detailLine,
-          ),
+          child: _MembershipStatusBanner(statusLine: statusLine),
         ),
         const SizedBox(height: 10),
         const _MemberBenefitGrid(),
@@ -262,67 +252,39 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
   }
 }
 
-/// 标题下的会员状态：会员类型 + 有效期/续费说明（最多两行，不额外占套餐下方空间）。
+/// 标题下的会员状态：订阅 tab 仅一行（类型 + 有效期）。
 class _MembershipStatusBanner extends StatelessWidget {
-  const _MembershipStatusBanner({
-    required this.headline,
-    this.detailLine,
-  });
+  const _MembershipStatusBanner({required this.statusLine});
 
-  final String headline;
-  final String? detailLine;
+  final String statusLine;
 
   @override
   Widget build(BuildContext context) {
     final w = _W2b.resolve(context);
-    final isActive = !headline.startsWith('尚未开通');
+    final isActive = !statusLine.startsWith('尚未开通');
     final dotColor = isActive ? const Color(0xFF16C6D4) : w.inkSoft;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Row(
-          children: [
-            Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: dotColor),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                headline,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: isActive ? w.ink : w.inkSoft,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-            ),
-          ],
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: dotColor),
         ),
-        if (detailLine != null && detailLine!.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Padding(
-            padding: const EdgeInsets.only(left: 15),
-            child: Text(
-              detailLine!,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: w.inkSoft,
-                fontSize: 11,
-                height: 1.35,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0,
-                decoration: TextDecoration.none,
-              ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            statusLine,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: isActive ? w.ink : w.inkSoft,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+              decoration: TextDecoration.none,
             ),
           ),
-        ],
+        ),
       ],
     );
   }

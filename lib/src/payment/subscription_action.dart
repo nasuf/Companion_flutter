@@ -35,6 +35,32 @@ String formatVipDisplayDateTime(DateTime date) {
   return '${local.year}年${local.month}月${local.day}日 $h:$m:$s';
 }
 
+String formatVipDisplayClock(DateTime date) {
+  final local = date.toLocal();
+  final h = local.hour.toString().padLeft(2, '0');
+  final m = local.minute.toString().padLeft(2, '0');
+  final s = local.second.toString().padLeft(2, '0');
+  return '$h:$m:$s';
+}
+
+/// Display tickets with one decimal when needed (0.5 / 0.3 overage).
+String formatTicketAmount(num value, {bool withSign = false}) {
+  final rounded = (value * 10).round() / 10;
+  final abs = rounded.abs();
+  final text = abs == abs.roundToDouble()
+      ? abs.toInt().toString()
+      : abs.toStringAsFixed(1);
+  if (withSign && rounded > 0) return '+$text';
+  if (withSign && rounded < 0) return '-$text';
+  return rounded < 0 ? '-$text' : text;
+}
+
+bool isSameLocalDay(DateTime a, DateTime b) {
+  final la = a.toLocal();
+  final lb = b.toLocal();
+  return la.year == lb.year && la.month == lb.month && la.day == lb.day;
+}
+
 int? planIndexForProductId(String? productId) {
   if (productId == null) return null;
   final idx = IapProducts.subscriptionPlans.indexOf(productId);
@@ -75,6 +101,42 @@ String membershipTierLabel(String? productId) {
     default:
       return '会员';
   }
+}
+
+/// Single-line status for the subscription tab hero (no extra hints).
+String buildMembershipCompactStatusLine({
+  required bool isVip,
+  required String? activeProductId,
+  required DateTime? vipUntil,
+}) {
+  if (!isVip) return '尚未开通会员 · 选择套餐立即开通';
+  final tier = membershipTierLabel(activeProductId);
+  if (vipUntil != null) {
+    return '$tier生效中 · 有效期至 ${formatVipDisplayDate(vipUntil)}';
+  }
+  return '$tier生效中';
+}
+
+/// One-line renewal row inside a folded subscription group.
+String formatRenewalHistoryLine({
+  required IapHistoryItem item,
+  required int sequence,
+}) {
+  final status = switch (item.status) {
+    'refunded' => '已退款',
+    'revoked' => '已撤销',
+    _ => '已到账',
+  };
+  final when = item.purchaseDate;
+  if (when == null) return '#$sequence · — · $status';
+  final end = item.expiresDate;
+  if (end == null) {
+    return '#$sequence · ${formatVipDisplayDateTime(when)} · $status';
+  }
+  final endText = isSameLocalDay(when, end)
+      ? formatVipDisplayClock(end)
+      : formatVipDisplayDateTime(end);
+  return '#$sequence · ${formatVipDisplayDateTime(when)}→$endText · $status';
 }
 
 /// Primary status headline for subscription tab / history card.

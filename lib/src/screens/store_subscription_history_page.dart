@@ -395,56 +395,44 @@ class _MembershipRenewalGroupTileState extends State<_MembershipRenewalGroupTile
             ),
           ),
           if (_expanded && items.length > 1) ...[
-            const SizedBox(height: 10),
-            ...items.map(
-              (item) => Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: _MembershipRenewalDetailLine(item: item),
-              ),
-            ),
+            const SizedBox(height: 8),
+            ...() {
+              final sortedAsc = [...items]
+                ..sort((a, b) {
+                  final ap =
+                      a.purchaseDate ?? DateTime.fromMillisecondsSinceEpoch(0);
+                  final bp =
+                      b.purchaseDate ?? DateTime.fromMillisecondsSinceEpoch(0);
+                  return ap.compareTo(bp);
+                });
+              final sortedDesc = sortedAsc.reversed.toList();
+              return sortedDesc.map(
+                (item) {
+                  final sequence = sortedAsc.indexOf(item) + 1;
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      formatRenewalHistoryLine(
+                        item: item,
+                        sequence: sequence,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: w.inkSoft,
+                        fontSize: 11,
+                        height: 1.2,
+                        fontWeight: FontWeight.w500,
+                        decoration: TextDecoration.none,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  );
+                },
+              );
+            }(),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _MembershipRenewalDetailLine extends StatelessWidget {
-  const _MembershipRenewalDetailLine({required this.item});
-
-  final IapHistoryItem item;
-
-  String get _statusLabel {
-    switch (item.status) {
-      case 'refunded':
-        return '已退款';
-      case 'revoked':
-        return '已撤销';
-      default:
-        return '已到账';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final w = _W2b.resolve(context);
-    final when = item.purchaseDate != null
-        ? formatVipDisplayDateTime(item.purchaseDate!)
-        : '—';
-    final periodEnd = item.expiresDate != null
-        ? formatVipDisplayDateTime(item.expiresDate!)
-        : null;
-    final detail = periodEnd == null
-        ? '第 ${item.renewalSequence} 次 · $when · $_statusLabel'
-        : '第 ${item.renewalSequence} 次 · $when → $periodEnd · $_statusLabel';
-    return Text(
-      detail,
-      style: TextStyle(
-        color: w.inkSoft,
-        fontSize: 11,
-        height: 1.35,
-        fontWeight: FontWeight.w500,
-        decoration: TextDecoration.none,
       ),
     );
   }

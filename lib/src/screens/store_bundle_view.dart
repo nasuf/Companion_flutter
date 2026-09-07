@@ -10,7 +10,7 @@ class _BundleStoreView extends StatefulWidget {
     required this.bottomSpace,
   });
 
-  final int ticketBalance;
+  final num ticketBalance;
   final bool vipTrialAvailable;
   final void Function(_BundleOffer offer, _BundleTier? tier) onBuy;
   final bool Function(_BundleOffer offer) isBuying;
@@ -79,7 +79,7 @@ class _BundleCard extends StatelessWidget {
 
   final _BundleOffer offer;
   final _BundleTier? selectedTier;
-  final int ticketBalance;
+  final num ticketBalance;
   final ValueChanged<_BundleTier> onTierChanged;
   final VoidCallback onBuy;
   final VoidCallback onInsufficientTickets;

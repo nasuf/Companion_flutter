@@ -124,8 +124,10 @@ class _StoreWalletLedgerPageState extends State<StoreWalletLedgerPage> {
                             const SizedBox(height: 8),
                             Text(
                               widget.currency == _StoreCurrency.ticket
-                                  ? '仅展示永久钞票变动；VIP 限时赠送钞票不在此列表。'
-                                  : '积分变动含商城兑换、游戏积分同步等来源。',
+                                  ? '仅展示永久钞票变动；VIP 限时赠送钞票不在此列表。\n'
+                                      '聊天超额按 0.5 钞票/句逐句扣费（VIP 0.3/句）。'
+                                  : '积分变动含商城兑换、游戏成就同步等来源。\n'
+                                      '「游戏成就积分同步」= 成就总分换算为商城积分（自动），非手动发放。',
                               style: TextStyle(
                                 color: _W2b.resolve(context).inkSoft,
                                 fontSize: 12,
@@ -156,9 +158,21 @@ class _WalletLedgerTile extends StatelessWidget {
 
   String get _sourceLabel => _walletLedgerSourceLabel(item.source);
 
+  String? get _detailLine => _walletLedgerDetailLine(item);
+
   String get _deltaLabel {
+    if (item.currency == 'ticket') {
+      return formatTicketAmount(item.delta, withSign: true);
+    }
     final sign = item.delta >= 0 ? '+' : '';
     return '$sign${item.delta}';
+  }
+
+  String get _balanceLabel {
+    if (item.currency == 'ticket') {
+      return formatTicketAmount(item.balanceAfter);
+    }
+    return '${item.balanceAfter}';
   }
 
   @override
@@ -191,7 +205,11 @@ class _WalletLedgerTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '$when · 余额 ${item.balanceAfter}',
+                  [
+                    when,
+                    if (_detailLine != null) _detailLine!,
+                    '余额 $_balanceLabel',
+                  ].join(' · '),
                   style: TextStyle(
                     color: w.inkSoft,
                     fontSize: 12,
@@ -242,7 +260,11 @@ String _walletLedgerSourceLabel(String source) {
     case 'red_packet_unbound_refund':
       return '红包退回';
     case 'achievement_sync':
-      return '游戏积分同步';
+      return '游戏成就积分同步';
+    case 'game_point_conversion':
+      return '游戏积分兑换商城积分';
+    case 'store_exchange':
+      return '商城兑换消费';
     case 'vip_monthly_grant':
       return 'VIP 每月赠送';
     case 'vip_expire_clear':
@@ -250,4 +272,23 @@ String _walletLedgerSourceLabel(String source) {
     default:
       return source;
   }
+}
+
+String? _walletLedgerDetailLine(WalletLedgerItem item) {
+  if (item.source == 'chat_overage') {
+    final perMsg = item.metadata['per_msg_cost'];
+    if (perMsg is num) {
+      final unit = formatTicketAmount(perMsg);
+      return '$unit 钞票/句';
+    }
+    return '聊天超额扣费';
+  }
+  if (item.source == 'achievement_sync') {
+    final score = item.metadata['achievement_score'];
+    if (score is num) {
+      return '成就总分 $score 换算';
+    }
+    return '成就总分自动换算';
+  }
+  return null;
 }
