@@ -1317,6 +1317,41 @@ class WalletBalance {
   }
 }
 
+/// `GET /wallet/ledger` — 钞票/积分流水（充值 tab 明细页）。
+class WalletLedgerItem {
+  const WalletLedgerItem({
+    required this.id,
+    required this.currency,
+    required this.delta,
+    required this.balanceAfter,
+    required this.source,
+    this.sourceId,
+    this.createdAt,
+  });
+
+  final String id;
+  final String currency;
+  final int delta;
+  final int balanceAfter;
+  final String source;
+  final String? sourceId;
+  final DateTime? createdAt;
+
+  factory WalletLedgerItem.fromJson(Map<String, dynamic> json) {
+    return WalletLedgerItem(
+      id: json['id']?.toString() ?? '',
+      currency: json['currency']?.toString() ?? '',
+      delta: (json['delta'] as num?)?.round() ?? 0,
+      balanceAfter: (json['balance_after'] as num?)?.round() ?? 0,
+      source: json['source']?.toString() ?? '',
+      sourceId: json['source_id']?.toString(),
+      createdAt: json['created_at'] == null
+          ? null
+          : DateTime.tryParse(json['created_at'].toString()),
+    );
+  }
+}
+
 class GameLevel {
   const GameLevel({
     required this.stageName,

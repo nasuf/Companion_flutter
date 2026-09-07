@@ -86,6 +86,7 @@ class _RechargeStoreView extends StatelessWidget {
             _StoreActionRow(
               icon: CupertinoIcons.play_rectangle_fill,
               label: '看广告得免费钞票',
+              enabled: false,
               onTap: () {},
             )
           else if (onConvertGamePoints != null)
@@ -254,41 +255,58 @@ class _StoreActionRow extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.enabled = true,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     final w = _W2b.resolve(context);
-    return CupertinoButton(
-      minimumSize: Size.zero,
-      padding: EdgeInsets.zero,
-      onPressed: onTap,
-      child: _GlassCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        radius: 18,
-        child: Row(
-          children: [
-            _CircleIcon(icon: icon, size: 36),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: w.ink,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0,
-                  decoration: TextDecoration.none,
-                ),
+    final child = _GlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      radius: 18,
+      child: Row(
+        children: [
+          _CircleIcon(icon: icon, size: 36),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: enabled ? w.ink : w.inkSoft,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+                decoration: TextDecoration.none,
               ),
             ),
-            Icon(CupertinoIcons.chevron_right, color: w.inkFaint, size: 16),
-          ],
-        ),
+          ),
+          if (enabled)
+            Icon(CupertinoIcons.chevron_right, color: w.inkFaint, size: 16)
+          else
+            Text(
+              '即将上线',
+              style: TextStyle(
+                color: w.inkFaint,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                decoration: TextDecoration.none,
+              ),
+            ),
+        ],
+      ),
+    );
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: CupertinoButton(
+        minimumSize: Size.zero,
+        padding: EdgeInsets.zero,
+        onPressed: enabled ? onTap : null,
+        child: child,
       ),
     );
   }

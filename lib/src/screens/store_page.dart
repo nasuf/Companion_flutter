@@ -213,6 +213,22 @@ class _StorePageState extends State<StorePage> {
     await _loadMembership();
   }
 
+  Future<void> _openWalletLedger() async {
+    await Navigator.of(context).push<void>(
+      CupertinoPageRoute(
+        builder: (context) => StoreWalletLedgerPage(
+          api: widget.api,
+          currency: _rechargeCurrency,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(() {
+      _walletFuture = _loadWallet();
+    });
+    await _walletFuture;
+  }
+
   Future<void> _openAppleSubscriptions({DateTime? expires}) async {
     final dateText =
         expires != null ? formatVipDisplayDate(expires) : '当前周期结束';
@@ -656,6 +672,17 @@ class _StorePageState extends State<StorePage> {
                               padding: EdgeInsets.zero,
                               minimumSize: Size.zero,
                               onPressed: _openMembershipHistory,
+                              child: Icon(
+                                CupertinoIcons.doc_text,
+                                color: AppColors.text,
+                                size: 27,
+                              ),
+                            )
+                          : _section == _StoreSection.recharge
+                          ? CupertinoButton(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              onPressed: _openWalletLedger,
                               child: Icon(
                                 CupertinoIcons.doc_text,
                                 color: AppColors.text,

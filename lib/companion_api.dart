@@ -1295,6 +1295,36 @@ class CompanionApi {
     return WalletBalance.fromJson(json);
   }
 
+  /// 钞票/积分流水：`GET /wallet/ledger`。
+  Future<List<WalletLedgerItem>> getWalletLedger({
+    String? currency,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final params = <String, String>{
+      'limit': '$limit',
+      'offset': '$offset',
+    };
+    if (currency != null && currency.isNotEmpty) {
+      params['currency'] = currency;
+    }
+    final query = Uri(queryParameters: params).query;
+    final json =
+        await _request(
+              'GET',
+              '/wallet/ledger?$query',
+              debugLabel: 'wallet.ledger',
+            )
+            as List<dynamic>;
+    return json
+        .map(
+          (item) => WalletLedgerItem.fromJson(
+            Map<String, dynamic>.from(item as Map),
+          ),
+        )
+        .toList();
+  }
+
   Future<RedPacketSendResult> sendRedPacket({
     required String conversationId,
     required int ticketAmount,

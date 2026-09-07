@@ -146,6 +146,7 @@ part 'src/screens/store_subscription_hero.dart';
 part 'src/screens/store_subscription_plan.dart';
 part 'src/screens/store_subscription_view.dart';
 part 'src/screens/store_subscription_history_page.dart';
+part 'src/screens/store_wallet_ledger_page.dart';
 part 'src/screens/store_widgets.dart';
 part 'src/screens/weather_page.dart';
 part 'src/services/checkin_notification_service.dart';
