@@ -33,7 +33,9 @@ class _StorePageState extends State<StorePage> {
   DateTime? _vipUntil; // 会员到期时间（本地显示用），null=未开通/未拉到
   bool _vipTrialAvailable = true;
   bool _autoRenewActive = false;
+  bool _autoRenewEnabled = false;
   DateTime? _subscriptionExpires;
+  String? _activeProductId;
   final Set<String> _exchangingKinds = {};
   final Set<_BundleKind> _buyingBundles = {};
   late final PageController _sectionController;
@@ -164,14 +166,21 @@ class _StorePageState extends State<StorePage> {
         _vipUntil = membership.vip.vipUntil;
         _vipTrialAvailable = membership.vip.vipTrialAvailable;
         _autoRenewActive = membership.autoRenewActive;
+        _autoRenewEnabled = membership.subscription?.autoRenewEnabled ?? false;
         _subscriptionExpires = membership.subscription?.expiresDate;
+        _activeProductId = resolveActiveProductId(
+          subscription: membership.subscription,
+          history: membership.history,
+        );
       });
     } catch (_) {
       // 失败时回退只拉 VIP；清掉订阅态避免按钮文案沿用旧缓存。
       if (mounted) {
         setState(() {
           _autoRenewActive = false;
+          _autoRenewEnabled = false;
           _subscriptionExpires = null;
+          _activeProductId = null;
         });
       }
       await _loadVipStatus();
@@ -710,6 +719,10 @@ class _StorePageState extends State<StorePage> {
         isVip: _isVip,
         vipUntil: _vipUntil,
         subscribeUi: _subscribeUi,
+        activeProductId: _activeProductId,
+        autoRenewEnabled: _autoRenewEnabled,
+        autoRenewActive: _autoRenewActive,
+        subscriptionExpires: _subscriptionExpires,
         planPrices: _iapReady
             ? [
                 for (final id in IapProducts.subscriptionPlans)

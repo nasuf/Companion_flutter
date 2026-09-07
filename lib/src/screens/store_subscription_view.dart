@@ -8,6 +8,10 @@ class _SubscriptionStoreView extends StatefulWidget {
     required this.onRestore,
     required this.bottomSpace,
     required this.subscribeUi,
+    this.activeProductId,
+    this.autoRenewEnabled = false,
+    this.autoRenewActive = false,
+    this.subscriptionExpires,
     this.planPrices = const [],
     this.subscribing = false,
     this.isVip = false,
@@ -20,6 +24,10 @@ class _SubscriptionStoreView extends StatefulWidget {
   final VoidCallback onRestore;
   final double bottomSpace;
   final StoreSubscribeUiState subscribeUi;
+  final String? activeProductId;
+  final bool autoRenewEnabled;
+  final bool autoRenewActive;
+  final DateTime? subscriptionExpires;
 
   /// 当前会员状态：驱动标题下方的状态行（是否已开通 / 有效期）。
   final bool isVip;
@@ -106,11 +114,18 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
 
   @override
   Widget build(BuildContext context) {
-    // 页面左右留 8：让权益卡尽量贴近 design 的 182px 宽（副标题才放得下）。
-    // 其余元素用 _edge 包一层补回到 20 的观感。
     const edge = EdgeInsets.symmetric(horizontal: 12);
+    final currentPlanIndex = planIndexForProductId(widget.activeProductId);
+    final detailLine = buildMembershipDetailLine(
+      isVip: widget.isVip,
+      vipUntil: widget.vipUntil,
+      subscriptionExpires: widget.subscriptionExpires,
+      autoRenewEnabled: widget.autoRenewEnabled,
+      autoRenewActive: widget.autoRenewActive,
+      selectedPlanIndex: widget.selectedPlan,
+      planHint: widget.subscribeUi.hintText,
+    );
     return ListView(
-      // 内容已能一屏容纳，禁止整页滚动（横向套餐条仍可滑动，见下方 _planController）。
       physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(8, 8, 8, widget.bottomSpace),
       children: [
@@ -119,14 +134,17 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
         const SizedBox(height: 6),
         Padding(
           padding: edge,
-          child: _VipStatusLine(
-            isVip: widget.isVip,
-            vipUntil: widget.vipUntil,
+          child: _MembershipStatusBanner(
+            headline: buildMembershipHeadline(
+              isVip: widget.isVip,
+              activeProductId: widget.activeProductId,
+            ),
+            detailLine: detailLine,
           ),
         ),
         const SizedBox(height: 10),
         const _MemberBenefitGrid(),
-        const SizedBox(height: 18),
+        const SizedBox(height: 12),
         SizedBox(
           height: 148,
           child: ListView.separated(
@@ -144,6 +162,7 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
                   : null;
               return _PlanCard(
                 selected: widget.selectedPlan == index,
+                isCurrentPlan: currentPlanIndex == index,
                 title: plan.$1,
                 price: localized ?? plan.$2,
                 origin: plan.$3,
@@ -151,29 +170,6 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
                 onTap: () => _selectPlan(index),
               );
             },
-          ),
-        ),
-        const SizedBox(height: 14),
-        Padding(
-          padding: edge,
-          child: SizedBox(
-            height: 40,
-            child: Center(
-              child: Text(
-                widget.subscribeUi.hintText ?? '',
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: _W2b.resolve(context).inkSoft,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0,
-                  height: 1.25,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-            ),
           ),
         ),
         const SizedBox(height: 10),
@@ -266,47 +262,67 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
   }
 }
 
-/// 标题下的一行会员状态：已开通显示「会员生效中 · 有效期至 …」，未开通提示去开通。
-/// 刻意做成单行紧凑样式，避免撑破「订阅」页一屏容纳的布局。
-class _VipStatusLine extends StatelessWidget {
-  const _VipStatusLine({required this.isVip, this.vipUntil});
+/// 标题下的会员状态：会员类型 + 有效期/续费说明（最多两行，不额外占套餐下方空间）。
+class _MembershipStatusBanner extends StatelessWidget {
+  const _MembershipStatusBanner({
+    required this.headline,
+    this.detailLine,
+  });
 
-  final bool isVip;
-  final DateTime? vipUntil;
-
-  static String _formatDate(DateTime d) => '${d.year}年${d.month}月${d.day}日';
+  final String headline;
+  final String? detailLine;
 
   @override
   Widget build(BuildContext context) {
     final w = _W2b.resolve(context);
-    final dotColor = isVip ? const Color(0xFF16C6D4) : w.inkSoft;
-    final text = isVip
-        ? (vipUntil != null
-              ? '会员生效中 · 有效期至 ${_formatDate(vipUntil!)}'
-              : '会员生效中')
-        : '尚未开通会员 · 选择套餐立即开通';
-    return Row(
+    final isActive = !headline.startsWith('尚未开通');
+    final dotColor = isActive ? const Color(0xFF16C6D4) : w.inkSoft;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 7,
-          height: 7,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: dotColor),
+        Row(
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: dotColor),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                headline,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isActive ? w.ink : w.inkSoft,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            text,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: isVip ? w.ink : w.inkSoft,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0,
-              decoration: TextDecoration.none,
+        if (detailLine != null && detailLine!.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 15),
+            child: Text(
+              detailLine!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: w.inkSoft,
+                fontSize: 11,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+                decoration: TextDecoration.none,
+              ),
             ),
           ),
-        ),
+        ],
       ],
     );
   }

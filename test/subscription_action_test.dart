@@ -4,6 +4,29 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   final base = DateTime.utc(2026, 9, 6);
 
+  test('membership headline uses tier label', () {
+    expect(
+      buildMembershipHeadline(
+        isVip: true,
+        activeProductId: 'com.bansheng.vip.monthly.auto',
+      ),
+      '连续包月会员生效中',
+    );
+  });
+
+  test('detail line includes next renewal datetime', () {
+    final line = buildMembershipDetailLine(
+      isVip: true,
+      vipUntil: DateTime.utc(2027, 1, 8, 10, 7, 40),
+      subscriptionExpires: DateTime.utc(2026, 9, 6, 10, 7, 40),
+      autoRenewEnabled: true,
+      autoRenewActive: true,
+      selectedPlanIndex: 0,
+    );
+    expect(line, contains('下次自动续费'));
+    expect(line, contains('2026年9月6日'));
+  });
+
   test('auto renew active + monthly auto plan shows manage', () {
     final ui = resolveStoreSubscribeUi(
       isVip: true,

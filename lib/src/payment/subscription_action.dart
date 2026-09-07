@@ -1,6 +1,9 @@
 /// Store subscription tab: button label, hint, and action kind from VIP + plan state.
 library;
 
+import '../../models.dart';
+import 'iap_service.dart';
+
 enum StoreSubscribeAction { purchase, manageSubscription }
 
 class StoreSubscribeUiState {
@@ -22,6 +25,104 @@ const kAppleSubscriptionsUrl = 'https://apps.apple.com/account/subscriptions';
 String formatVipDisplayDate(DateTime date) {
   final local = date.toLocal();
   return '${local.year}年${local.month}月${local.day}日';
+}
+
+String formatVipDisplayDateTime(DateTime date) {
+  final local = date.toLocal();
+  final h = local.hour.toString().padLeft(2, '0');
+  final m = local.minute.toString().padLeft(2, '0');
+  final s = local.second.toString().padLeft(2, '0');
+  return '${local.year}年${local.month}月${local.day}日 $h:$m:$s';
+}
+
+int? planIndexForProductId(String? productId) {
+  if (productId == null) return null;
+  final idx = IapProducts.subscriptionPlans.indexOf(productId);
+  return idx >= 0 ? idx : null;
+}
+
+String? resolveActiveProductId({
+  required IapSubscriptionStatus? subscription,
+  required List<IapHistoryItem> history,
+}) {
+  final sub = subscription;
+  if (sub != null &&
+      (sub.status == 'active' || sub.status == 'in_grace') &&
+      planIndexForProductId(sub.productId) != null) {
+    return sub.productId;
+  }
+  for (final item in history) {
+    if (item.status != 'granted') continue;
+    if (planIndexForProductId(item.productId) != null) {
+      return item.productId;
+    }
+  }
+  return null;
+}
+
+String membershipTierLabel(String? productId) {
+  switch (productId) {
+    case IapProducts.vipMonthlyAuto:
+      return '连续包月会员';
+    case IapProducts.vipMonth:
+      return '月度会员';
+    case IapProducts.vipQuarter:
+      return '季度会员';
+    case IapProducts.vipYear:
+      return '年度会员';
+    case IapProducts.vipTrial:
+      return '体验会员';
+    default:
+      return '会员';
+  }
+}
+
+/// Primary status headline for subscription tab / history card.
+String buildMembershipHeadline({
+  required bool isVip,
+  required String? activeProductId,
+}) {
+  if (!isVip) return '尚未开通会员 · 选择套餐立即开通';
+  return '${membershipTierLabel(activeProductId)}生效中';
+}
+
+/// Secondary line: expiry, next renewal, or plan-selection hint.
+String? buildMembershipDetailLine({
+  required bool isVip,
+  required DateTime? vipUntil,
+  required DateTime? subscriptionExpires,
+  required bool autoRenewEnabled,
+  required bool autoRenewActive,
+  required int selectedPlanIndex,
+  String? planHint,
+}) {
+  if (!isVip) {
+    return selectedPlanIndex == 0
+        ? '到期按所选周期自动续费，可随时在 Apple 订阅管理中关闭'
+        : '一次性购买，到期不自动续费';
+  }
+
+  final parts = <String>[];
+  if (vipUntil != null) {
+    parts.add('有效期至 ${formatVipDisplayDate(vipUntil)}');
+  }
+  if (autoRenewEnabled && subscriptionExpires != null) {
+    parts.add('下次自动续费 ${formatVipDisplayDateTime(subscriptionExpires)}');
+  } else if (autoRenewActive && subscriptionExpires != null) {
+    parts.add('本期至 ${formatVipDisplayDateTime(subscriptionExpires)}');
+  }
+
+  if (isVip && !autoRenewActive && selectedPlanIndex == 0 && planHint != null) {
+    if (parts.isNotEmpty) {
+      return '${parts.join(' · ')}\n$planHint';
+    }
+    return planHint;
+  }
+
+  if (parts.isNotEmpty) return parts.join(' · ');
+
+  // Fall back to selected-plan hint when membership detail is sparse.
+  return planHint;
 }
 
 StoreSubscribeUiState resolveStoreSubscribeUi({

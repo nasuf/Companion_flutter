@@ -8,9 +8,11 @@ class _PlanCard extends StatelessWidget {
     required this.origin,
     required this.onTap,
     this.badge,
+    this.isCurrentPlan = false,
   });
 
   final bool selected;
+  final bool isCurrentPlan;
   final String title;
   final String price;
   final String origin;
@@ -78,13 +80,40 @@ class _PlanCard extends StatelessWidget {
                   ),
                 ),
               ),
+            if (isCurrentPlan)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  decoration: BoxDecoration(
+                    color: _kStoreBlue.withValues(alpha: 0.12),
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(24),
+                      bottomRight: Radius.circular(24),
+                    ),
+                  ),
+                  child: const Text(
+                    '当前方案',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: _kStoreBlue,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+              ),
             Center(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
                   12,
                   badge == null ? 16 : 26,
                   12,
-                  16,
+                  isCurrentPlan ? 28 : 16,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,

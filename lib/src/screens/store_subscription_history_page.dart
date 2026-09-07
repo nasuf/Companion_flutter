@@ -36,8 +36,9 @@ class _StoreSubscriptionHistoryPageState
   }
 
   Future<void> _confirmManageAutoRenew(DateTime? expires) async {
-    final dateText =
-        expires != null ? formatVipDisplayDate(expires) : '当前周期结束';
+    final dateText = expires != null
+        ? formatVipDisplayDateTime(expires)
+        : '当前周期结束';
     final proceed = await showCupertinoDialog<bool>(
       context: context,
       builder: (context) => CupertinoAlertDialog(
@@ -131,6 +132,12 @@ class _StoreSubscriptionHistoryPageState
                         );
                       }
                       final membership = snapshot.data!;
+                      final activeProductId = resolveActiveProductId(
+                        subscription: membership.subscription,
+                        history: membership.history,
+                      );
+                      final sub = membership.subscription;
+                      final hasSubscriptionRecord = sub != null;
                       return RefreshIndicator(
                         onRefresh: _reload,
                         color: _kStoreBlue,
@@ -140,14 +147,18 @@ class _StoreSubscriptionHistoryPageState
                           ),
                           padding: EdgeInsets.fromLTRB(16, 8, 16, bottom + 24),
                           children: [
-                            _MembershipStatusCard(membership: membership),
-                            if (membership.autoRenewActive) ...[
+                            _MembershipStatusCard(
+                              membership: membership,
+                              activeProductId: activeProductId,
+                            ),
+                            if (hasSubscriptionRecord) ...[
                               const SizedBox(height: 12),
                               _StorePrimaryButton(
-                                label: '管理自动续费',
+                                label: sub.autoRenewEnabled
+                                    ? '管理自动续费'
+                                    : '前往 Apple 订阅管理',
                                 onPressed: () => _confirmManageAutoRenew(
-                                  membership.subscription?.expiresDate ??
-                                      membership.vip.vipUntil,
+                                  sub.expiresDate ?? membership.vip.vipUntil,
                                 ),
                                 height: 48,
                               ),
@@ -185,7 +196,7 @@ class _StoreSubscriptionHistoryPageState
                               ),
                             const SizedBox(height: 8),
                             Text(
-                              '时长包为一次性购买，到期不自动续费；连续包月请在 Apple 订阅管理中关闭自动续费。',
+                              _historyFootnote(membership),
                               style: TextStyle(
                                 color: _W2b.resolve(context).inkSoft,
                                 fontSize: 12,
@@ -207,23 +218,46 @@ class _StoreSubscriptionHistoryPageState
       ),
     );
   }
+
+  String _historyFootnote(IapMembership membership) {
+    final sub = membership.subscription;
+    final base =
+        '时长包为一次性购买，到期不自动续费；连续包月请在 Apple 订阅管理中关闭自动续费。';
+    if (sub != null && !sub.autoRenewEnabled && membership.autoRenewActive == false) {
+      return '$base\n\n'
+          '若您未手动关闭自动续费却显示「已关闭」，可能是沙盒订阅已达续期上限，'
+          '或 Apple 尚未推送最新续费状态；可在上方按钮进入系统订阅页确认。';
+    }
+    return base;
+  }
 }
 
 class _MembershipStatusCard extends StatelessWidget {
-  const _MembershipStatusCard({required this.membership});
+  const _MembershipStatusCard({
+    required this.membership,
+    required this.activeProductId,
+  });
 
   final IapMembership membership;
+  final String? activeProductId;
 
   @override
   Widget build(BuildContext context) {
     final w = _W2b.resolve(context);
     final vip = membership.vip;
     final sub = membership.subscription;
-    final statusLine = vip.isVip
-        ? (vip.vipUntil != null
-              ? '会员生效中 · 有效期至 ${formatVipDisplayDate(vip.vipUntil!)}'
-              : '会员生效中')
-        : '尚未开通会员';
+    final headline = buildMembershipHeadline(
+      isVip: vip.isVip,
+      activeProductId: activeProductId,
+    );
+    final detail = buildMembershipDetailLine(
+      isVip: vip.isVip,
+      vipUntil: vip.vipUntil,
+      subscriptionExpires: sub?.expiresDate,
+      autoRenewEnabled: sub?.autoRenewEnabled ?? false,
+      autoRenewActive: membership.autoRenewActive,
+      selectedPlanIndex: 0,
+    );
 
     return _GlassCard(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
@@ -231,7 +265,7 @@ class _MembershipStatusCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            statusLine,
+            headline,
             style: TextStyle(
               color: vip.isVip ? w.ink : w.inkSoft,
               fontSize: 15,
@@ -239,22 +273,25 @@ class _MembershipStatusCard extends StatelessWidget {
               decoration: TextDecoration.none,
             ),
           ),
-          if (sub != null) ...[
-            const SizedBox(height: 10),
+          if (detail != null && detail.isNotEmpty) ...[
+            const SizedBox(height: 8),
             Text(
-              '连续包月 · ${sub.productLabel}',
+              detail,
               style: TextStyle(
-                color: w.ink,
-                fontSize: 14,
+                color: w.inkSoft,
+                fontSize: 12,
+                height: 1.45,
                 fontWeight: FontWeight.w600,
                 decoration: TextDecoration.none,
               ),
             ),
-            const SizedBox(height: 4),
+          ],
+          if (sub != null) ...[
+            const SizedBox(height: 10),
             Text(
               sub.autoRenewEnabled
-                  ? '自动续费已开启${sub.expiresDate != null ? ' · 本期至 ${formatVipDisplayDate(sub.expiresDate!)}' : ''}'
-                  : '自动续费已关闭${sub.expiresDate != null ? ' · 权益至 ${formatVipDisplayDate(sub.expiresDate!)}' : ''}',
+                  ? '自动续费已开启'
+                  : '自动续费已关闭（当前周期权益仍有效至到期）',
               style: TextStyle(
                 color: w.inkSoft,
                 fontSize: 12,
@@ -292,7 +329,7 @@ class _MembershipHistoryTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final w = _W2b.resolve(context);
     final when = item.purchaseDate != null
-        ? formatVipDisplayDate(item.purchaseDate!)
+        ? formatVipDisplayDateTime(item.purchaseDate!)
         : '—';
     return _GlassCard(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
