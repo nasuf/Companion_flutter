@@ -68,9 +68,9 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>允许 Flutter 调试工具连接此设备，以便在开发时运行和诊断应用。</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>用于为你推荐附近适合一起去的活动、景点和美食。</string>
+	<string>用于推荐附近活动，以及在聊天中向 AI 分享你的当前位置。</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>用于在你开启定位授权后，为你推荐附近适合一起去的活动、景点和美食。</string>
+	<string>用于推荐附近活动，以及在聊天中向 AI 分享你的当前位置。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>用于聊天语音输入、时间胶囊和线下活动中的语音录制。</string>
 	<key>NSCameraUsageDescription</key>

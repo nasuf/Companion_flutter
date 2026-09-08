@@ -41,6 +41,7 @@ const _cardCategories = [
   _CardCategorySpec('gift', '礼物'),
   _CardCategorySpec('red_packet', '红包'),
   _CardCategorySpec('activity', '活动'),
+  _CardCategorySpec('location', '位置'),
 ];
 
 String? _cardCategoryLabel(String? category) {

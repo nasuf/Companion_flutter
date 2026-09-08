@@ -1674,6 +1674,13 @@ class _ComponentCardBubble extends StatelessWidget {
         apiBaseUrl: apiBaseUrl,
       );
     }
+    if (card.type == 'location') {
+      return _LocationComponentCard(
+        card: card,
+        isMine: isMine,
+        onTap: onTap,
+      );
+    }
     if (card.type == 'offline_gift') {
       return _OfflineGiftComponentCard(
         card: card,

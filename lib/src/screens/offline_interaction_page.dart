@@ -74,7 +74,10 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
   Future<void> _requestLocationOnce() async {
     if (_locationRequestStarted) return;
     _locationRequestStarted = true;
-    await _requestAndSaveUserLocation(widget.api);
+    await requestCurrentDeviceLocation(
+      api: widget.api,
+      syncUserProfile: true,
+    );
     await _load();
   }
 
@@ -197,86 +200,16 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
   }
 }
 
-String? _firstNonEmptyLocationPart(List<String?> values) {
-  for (final value in values) {
-    final trimmed = value?.trim();
-    if (trimmed != null && trimmed.isNotEmpty) return trimmed;
-  }
-  return null;
-}
-
 Future<bool> _requestAndSaveUserLocation(
   CompanionApi api, {
   bool openSettingsWhenBlocked = false,
 }) async {
-  try {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      await api.saveUserLocation(permissionStatus: 'service_disabled');
-      if (openSettingsWhenBlocked) {
-        await Geolocator.openLocationSettings();
-      }
-      return false;
-    }
-
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
-      await api.saveUserLocation(permissionStatus: permission.name);
-      if (openSettingsWhenBlocked) {
-        await Geolocator.openAppSettings();
-      }
-      return false;
-    }
-
-    final position = await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.medium,
-        timeLimit: Duration(seconds: 8),
-      ),
-    );
-    String? city;
-    String? region;
-    String? country;
-    try {
-      final places = await geocoding.placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
-      if (places.isNotEmpty) {
-        final place = places.first;
-        city = _firstNonEmptyLocationPart([
-          place.locality,
-          place.subAdministrativeArea,
-          place.administrativeArea,
-        ]);
-        region = _firstNonEmptyLocationPart([
-          place.administrativeArea,
-          place.subAdministrativeArea,
-        ]);
-        country = _firstNonEmptyLocationPart([
-          place.country,
-          place.isoCountryCode,
-        ]);
-      }
-    } catch (_) {
-      // Coordinates are still useful to persist even when reverse geocoding fails.
-    }
-    return api.saveUserLocation(
-      latitude: position.latitude,
-      longitude: position.longitude,
-      city: city,
-      region: region,
-      country: country,
-      permissionStatus: permission.name,
-    );
-  } catch (_) {
-    // Location is an enhancer for offline activities; never block the board.
-    return false;
-  }
+  final snapshot = await requestCurrentDeviceLocation(
+    api: api,
+    openSettingsWhenBlocked: openSettingsWhenBlocked,
+    syncUserProfile: true,
+  );
+  return snapshot != null;
 }
 
 class _OfflineBackground extends StatelessWidget {

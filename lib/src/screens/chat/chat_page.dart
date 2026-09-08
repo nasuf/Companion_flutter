@@ -965,6 +965,29 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _openSharedLocation(ChatComponentCard card) async {
+    final lat = card.payload['latitude'];
+    final lng = card.payload['longitude'];
+    if (lat is! num || lng is! num) return;
+
+    final label = Uri.encodeComponent(
+      card.subtitle.isNotEmpty ? card.subtitle : card.title,
+    );
+    final uri = Platform.isIOS
+        ? Uri.parse('http://maps.apple.com/?ll=$lat,$lng&q=$label')
+        : Uri.parse('geo:$lat,$lng?q=$lat,$lng($label)');
+
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    final fallback = Uri.parse('https://maps.google.com/?q=$lat,$lng');
+    if (await canLaunchUrl(fallback)) {
+      await launchUrl(fallback, mode: LaunchMode.externalApplication);
+    }
+  }
+
   Future<void> _openComponentCard(ChatComponentCard card) async {
     if (card.type == 'meal_voucher') {
       _dismissInputSurfaces();
@@ -1036,6 +1059,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           ),
         ),
       );
+      return;
+    }
+    if (card.type == 'location') {
+      await _openSharedLocation(card);
       return;
     }
     if (card.type == 'external_link') {
@@ -2553,6 +2580,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   bool _sendingRedPacket = false;
   bool _sendingGift = false;
+  bool _sendingLocation = false;
 
   Future<void> _onSendRedPacket() async {
     if (_sendingRedPacket) return;
@@ -2613,6 +2641,44 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _showRedPacketToast('礼物发送失败：${_asMessage(error)}');
     } finally {
       _sendingGift = false;
+    }
+  }
+
+  Future<void> _onSendLocation() async {
+    if (_sendingLocation) return;
+    _sendingLocation = true;
+    _dismissInputSurfaces();
+    try {
+      final snapshot = await requestCurrentDeviceLocation(
+        openSettingsWhenBlocked: true,
+      );
+      if (!mounted) return;
+      if (snapshot == null) {
+        _showRedPacketToast('未能获取当前位置，请检查定位权限或系统定位开关');
+        return;
+      }
+      final card = await LocationConfirmPage.push(
+        context,
+        snapshot: snapshot,
+      );
+      if (!mounted || card == null) return;
+      final payload = card.payload;
+      unawaited(
+        widget.api.saveUserLocation(
+          latitude: (payload['latitude'] as num?)?.toDouble(),
+          longitude: (payload['longitude'] as num?)?.toDouble(),
+          city: payload['city']?.toString(),
+          region: payload['region']?.toString(),
+          country: payload['country']?.toString(),
+          permissionStatus: snapshot.permissionStatus,
+        ),
+      );
+      sendComponentMessage('', card);
+    } catch (error) {
+      if (!mounted) return;
+      _showRedPacketToast('位置发送失败：${_asMessage(error)}');
+    } finally {
+      _sendingLocation = false;
     }
   }
 
@@ -3971,6 +4037,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     unawaited(_pickChatImage(ImageSource.camera)),
                 onSendRedPacket: () => unawaited(_onSendRedPacket()),
                 onSendGift: () => unawaited(_onSendGift()),
+                onSendLocation: () => unawaited(_onSendLocation()),
                 onSearch: () => unawaited(_openChatSearch()),
               ),
             ),

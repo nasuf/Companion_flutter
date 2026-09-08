@@ -8,6 +8,7 @@ class _ChatPanel extends StatefulWidget {
     required this.onTakePhoto,
     required this.onSendRedPacket,
     required this.onSendGift,
+    required this.onSendLocation,
     required this.onSearch,
     this.bottomInset = 0,
   });
@@ -18,6 +19,7 @@ class _ChatPanel extends StatefulWidget {
   final VoidCallback onTakePhoto;
   final VoidCallback onSendRedPacket;
   final VoidCallback onSendGift;
+  final VoidCallback onSendLocation;
   final VoidCallback onSearch;
 
   /// Bottom safe-area height. The panel docks to the screen bottom (like the
@@ -90,6 +92,7 @@ class _ChatPanelState extends State<_ChatPanel> {
               onTakePhoto: widget.onTakePhoto,
               onSendRedPacket: widget.onSendRedPacket,
               onSendGift: widget.onSendGift,
+              onSendLocation: widget.onSendLocation,
               onSearch: widget.onSearch,
             ),
             ComposerPanel.none => const SizedBox.shrink(),
@@ -325,6 +328,7 @@ class _MorePanel extends StatelessWidget {
     required this.onTakePhoto,
     required this.onSendRedPacket,
     required this.onSendGift,
+    required this.onSendLocation,
     required this.onSearch,
   });
 
@@ -332,6 +336,7 @@ class _MorePanel extends StatelessWidget {
   final VoidCallback onTakePhoto;
   final VoidCallback onSendRedPacket;
   final VoidCallback onSendGift;
+  final VoidCallback onSendLocation;
   final VoidCallback onSearch;
 
   static const _tools = [
@@ -352,7 +357,7 @@ class _MorePanel extends StatelessWidget {
       '位置',
       CupertinoIcons.location,
       Color(0xFF22C66B),
-      _ToolAction.none,
+      _ToolAction.location,
     ),
     _ToolSpec('查找', CupertinoIcons.search, Color(0xFF7C3CFF), _ToolAction.search),
     _ToolSpec('礼物', CupertinoIcons.gift, Color(0xFFFF8A3D), _ToolAction.gift),
@@ -382,6 +387,7 @@ class _MorePanel extends StatelessWidget {
                       _ToolAction.camera => onTakePhoto,
                       _ToolAction.redPacket => onSendRedPacket,
                       _ToolAction.gift => onSendGift,
+                      _ToolAction.location => onSendLocation,
                       _ToolAction.search => onSearch,
                       _ToolAction.none => null,
                     },
@@ -404,6 +410,7 @@ class _MorePanel extends StatelessWidget {
                   onTakePhoto: onTakePhoto,
                   onSendRedPacket: onSendRedPacket,
                   onSendGift: onSendGift,
+                  onSendLocation: onSendLocation,
                   onSearch: onSearch,
                 ),
                 const SizedBox(height: 26),
@@ -413,6 +420,7 @@ class _MorePanel extends StatelessWidget {
                   onTakePhoto: onTakePhoto,
                   onSendRedPacket: onSendRedPacket,
                   onSendGift: onSendGift,
+                  onSendLocation: onSendLocation,
                   onSearch: onSearch,
                 ),
               ],
@@ -431,6 +439,7 @@ class _ToolRow extends StatelessWidget {
     required this.onTakePhoto,
     required this.onSendRedPacket,
     required this.onSendGift,
+    required this.onSendLocation,
     required this.onSearch,
   });
 
@@ -439,6 +448,7 @@ class _ToolRow extends StatelessWidget {
   final VoidCallback onTakePhoto;
   final VoidCallback onSendRedPacket;
   final VoidCallback onSendGift;
+  final VoidCallback onSendLocation;
   final VoidCallback onSearch;
 
   @override
@@ -455,6 +465,7 @@ class _ToolRow extends StatelessWidget {
                   _ToolAction.camera => onTakePhoto,
                   _ToolAction.redPacket => onSendRedPacket,
                   _ToolAction.gift => onSendGift,
+                  _ToolAction.location => onSendLocation,
                   _ToolAction.search => onSearch,
                   _ToolAction.none => null,
                 },
@@ -521,4 +532,4 @@ class _ToolSpec {
   final _ToolAction action;
 }
 
-enum _ToolAction { photo, camera, redPacket, gift, search, none }
+enum _ToolAction { photo, camera, redPacket, gift, location, search, none }
