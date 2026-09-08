@@ -634,6 +634,30 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     );
   }
 
+  void _openLastWillSmsTest() {
+    widget.api.authToken = widget.session.token;
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => AdminLastWillSmsTestPage(
+          api: widget.api,
+          session: widget.session,
+        ),
+      ),
+    );
+  }
+
+  void _openVipSubscriptionManagement() {
+    widget.api.authToken = widget.session.token;
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => _AdminVipSubscriptionPage(
+          api: widget.api,
+          session: widget.session,
+        ),
+      ),
+    );
+  }
+
   Future<void> _triggerActivityGeneration() async {
     if (_generatingActivity) return;
     setState(() => _generatingActivity = true);
@@ -969,6 +993,13 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                               accent: const Color(0xFFE8A317),
                               onTap: _openPaymentManagement,
                             ),
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.star_circle_fill,
+                              title: 'VIP 订阅管理',
+                              subtitle: 'VIP 订阅用户 / 钞票充值记录 · 详情审计',
+                              accent: const Color(0xFF7C5CFF),
+                              onTap: _openVipSubscriptionManagement,
+                            ),
                           ],
                         ),
                       ),
@@ -1086,6 +1117,13 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                               accent: const Color(0xFF1FA97A),
                               enabled: !_injectingGift,
                               onTap: () => _injectMockGift(delivered: true),
+                            ),
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.chat_bubble_text_fill,
+                              title: '遗言短信测试',
+                              subtitle: '向指定手机号发送一条遗言通知测试短信',
+                              accent: const Color(0xFF7A5BE3),
+                              onTap: _openLastWillSmsTest,
                             ),
                           ],
                         ),
