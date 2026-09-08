@@ -185,4 +185,10 @@ void main() {
     expect(line, contains('已到账'));
     expect(line.split('\n').length, 1);
   });
+
+  test('iapProductGrantsVip detects vip skus', () {
+    expect(iapProductGrantsVip('com.bansheng.vip.month'), isTrue);
+    expect(iapProductGrantsTickets('com.bansheng.ticket.10'), isTrue);
+    expect(iapProductGrantsVip('com.bansheng.ticket.10'), isFalse);
+  });
 }

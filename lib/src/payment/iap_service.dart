@@ -72,11 +72,16 @@ typedef IapVerifyCallback = Future<IapVerifyResponse> Function({
 /// Apple 内购封装（官方 in_app_purchase / StoreKit 2 默认开启）。构造注入
 /// [InAppPurchase] 以便测试替身。**安全核心：verify 成功前绝不 completePurchase。**
 class IapService {
-  IapService({InAppPurchase? iap, required this.onVerify})
-      : _iap = iap ?? InAppPurchase.instance;
+  IapService({
+    InAppPurchase? iap,
+    required this.onVerify,
+    this.applicationUserName,
+  }) : _iap = iap ?? InAppPurchase.instance;
 
   final InAppPurchase _iap;
   final IapVerifyCallback onVerify;
+  /// Apple appAccountToken — set to logged-in user UUID so webhook can grant first.
+  final String? applicationUserName;
 
   StreamSubscription<List<PurchaseDetails>>? _sub;
   final Map<String, ProductDetails> _products = {};
@@ -119,7 +124,12 @@ class IapService {
       _emit(IapEvent(IapEventType.error, productId: productId, message: '商品未就绪'));
       return;
     }
-    await _iap.buyConsumable(purchaseParam: PurchaseParam(productDetails: p));
+    await _iap.buyConsumable(
+      purchaseParam: PurchaseParam(
+        productDetails: p,
+        applicationUserName: applicationUserName,
+      ),
+    );
   }
 
   Future<void> buySubscription(String productId) async {
@@ -129,7 +139,12 @@ class IapService {
       return;
     }
     // 订阅在 in_app_purchase 里走 buyNonConsumable。
-    await _iap.buyNonConsumable(purchaseParam: PurchaseParam(productDetails: p));
+    await _iap.buyNonConsumable(
+      purchaseParam: PurchaseParam(
+        productDetails: p,
+        applicationUserName: applicationUserName,
+      ),
+    );
   }
 
   Future<void> restore() => _iap.restorePurchases();

@@ -63,7 +63,10 @@ class _StorePageState extends State<StorePage> {
     _sectionController = PageController(initialPage: _sectionIndex(_section));
     _walletFuture = _loadWallet();
     _loadMembership();
-    _iap = IapService(onVerify: _verifyPurchase);
+    _iap = IapService(
+      onVerify: _verifyPurchase,
+      applicationUserName: widget.session.userId,
+    );
     _iapSub = _iap.events.listen(_onIapEvent);
     _initIap();
   }
@@ -130,7 +133,7 @@ class _StorePageState extends State<StorePage> {
         if (!event.replay) {
           _showToast('已到账');
         }
-        unawaited(_loadMembership());
+        unawaited(_pollAfterPurchase(event.productId));
       case IapEventType.canceled:
         setState(() {
           _subscribing = false;
@@ -149,6 +152,7 @@ class _StorePageState extends State<StorePage> {
         });
         // 钱可能已扣、到账在重试中——不报"失败"以免误导。
         _showToast('支付成功，正在到账，请稍候');
+        unawaited(_pollAfterPurchase(event.productId));
     }
   }
 
@@ -161,18 +165,7 @@ class _StorePageState extends State<StorePage> {
     try {
       final membership = await widget.api.getIapMembership();
       if (!mounted) return;
-      setState(() {
-        _isVip = membership.vip.isVip;
-        _vipUntil = membership.vip.vipUntil;
-        _vipTrialAvailable = membership.vip.vipTrialAvailable;
-        _autoRenewActive = membership.autoRenewActive;
-        _autoRenewEnabled = membership.subscription?.autoRenewEnabled ?? false;
-        _subscriptionExpires = membership.subscription?.expiresDate;
-        _activeProductId = resolveActiveProductId(
-          subscription: membership.subscription,
-          history: membership.history,
-        );
-      });
+      _applyMembership(membership);
     } catch (_) {
       // 失败时回退只拉 VIP；清掉订阅态避免按钮文案沿用旧缓存。
       if (mounted) {
@@ -184,6 +177,48 @@ class _StorePageState extends State<StorePage> {
         });
       }
       await _loadVipStatus();
+    }
+  }
+
+  void _applyMembership(IapMembership membership) {
+    setState(() {
+      _isVip = membership.vip.isVip;
+      _vipUntil = membership.vip.vipUntil;
+      _vipTrialAvailable = membership.vip.vipTrialAvailable;
+      _autoRenewActive = membership.autoRenewActive;
+      _autoRenewEnabled = membership.subscription?.autoRenewEnabled ?? false;
+      _subscriptionExpires = membership.subscription?.expiresDate;
+      _activeProductId = resolveActiveProductId(
+        subscription: membership.subscription,
+        history: membership.history,
+      );
+    });
+  }
+
+  /// Webhook may grant before verify returns; poll until VIP/tickets reflect payment.
+  Future<void> _pollAfterPurchase(String? productId) async {
+    num baselineTickets = 0;
+    try {
+      baselineTickets = (await _walletFuture).ticketBalance;
+    } catch (_) {}
+
+    final polled = await pollMembershipUntilCredited(
+      fetchMembership: widget.api.getIapMembership,
+      productId: productId,
+      baselineIsVip: _isVip,
+      baselineVipUntil: _vipUntil,
+      baselineTicketBalance: baselineTickets,
+    );
+    if (!mounted) return;
+    if (polled != null) {
+      _applyMembership(polled);
+    } else {
+      await _loadMembership();
+    }
+    if (mounted) {
+      setState(() {
+        _walletFuture = _loadWallet();
+      });
     }
   }
 

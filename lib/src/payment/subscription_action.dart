@@ -55,6 +55,54 @@ String formatTicketAmount(num value, {bool withSign = false}) {
   return rounded < 0 ? '-$text' : text;
 }
 
+bool iapProductGrantsVip(String productId) =>
+    productId.startsWith('com.bansheng.vip.');
+
+bool iapProductGrantsTickets(String productId) =>
+    productId.startsWith('com.bansheng.ticket.');
+
+typedef IapMembershipFetcher = Future<IapMembership> Function();
+
+/// Poll after Apple payment while webhook/verify settle (avoids "paid but not VIP").
+Future<IapMembership?> pollMembershipUntilCredited({
+  required IapMembershipFetcher fetchMembership,
+  required String? productId,
+  required bool baselineIsVip,
+  required DateTime? baselineVipUntil,
+  required num baselineTicketBalance,
+  Duration timeout = const Duration(seconds: 12),
+  Duration interval = const Duration(milliseconds: 500),
+}) async {
+  if (productId == null) return null;
+  final wantsVip = iapProductGrantsVip(productId);
+  final wantsTickets = iapProductGrantsTickets(productId);
+  if (!wantsVip && !wantsTickets) return null;
+
+  final deadline = DateTime.now().add(timeout);
+  IapMembership? latest;
+  while (DateTime.now().isBefore(deadline)) {
+    await Future<void>.delayed(interval);
+    try {
+      latest = await fetchMembership();
+      final vip = latest.vip;
+      if (wantsVip && vip.isVip) {
+        if (!baselineIsVip) return latest;
+        final until = vip.vipUntil;
+        if (until != null &&
+            (baselineVipUntil == null || until.isAfter(baselineVipUntil))) {
+          return latest;
+        }
+      }
+      if (wantsTickets && vip.ticketBalance > baselineTicketBalance) {
+        return latest;
+      }
+    } catch (_) {
+      // Keep polling through transient network errors.
+    }
+  }
+  return latest;
+}
+
 bool isSameLocalDay(DateTime a, DateTime b) {
   final la = a.toLocal();
   final lb = b.toLocal();
