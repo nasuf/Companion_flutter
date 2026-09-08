@@ -121,6 +121,7 @@ class _RechargeStoreView extends StatelessWidget {
             label: currency == _StoreCurrency.ticket ? '立即充值' : '立即兑换',
             onPressed: onSubmit,
             loading: submitting,
+            loadingLabel: submitting ? kIapCreditingLabel : null,
           ),
         ],
       ),

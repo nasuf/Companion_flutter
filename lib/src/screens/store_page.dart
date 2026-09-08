@@ -121,8 +121,6 @@ class _StorePageState extends State<StorePage> {
       case IapEventType.success:
         final r = event.result;
         setState(() {
-          _subscribing = false;
-          _rechargeSubmitting = false;
           if (r != null) {
             _walletFuture = Future.value(r.wallet);
             _isVip = r.vip.isVip;
@@ -130,10 +128,16 @@ class _StorePageState extends State<StorePage> {
             _vipTrialAvailable = r.vip.vipTrialAvailable;
           }
         });
-        if (!event.replay) {
-          _showToast('已到账');
+        if (event.replay) {
+          setState(() {
+            _subscribing = false;
+            _rechargeSubmitting = false;
+          });
+          unawaited(_pollAfterPurchase(event.productId));
+        } else {
+          _showToast(kIapCreditingLabel);
+          unawaited(_finishPurchasePolling(event.productId));
         }
-        unawaited(_pollAfterPurchase(event.productId));
       case IapEventType.canceled:
         setState(() {
           _subscribing = false;
@@ -146,14 +150,26 @@ class _StorePageState extends State<StorePage> {
         });
         _showToast(event.message ?? '购买失败');
       case IapEventType.verifyFailed:
+        _showToast(kIapCreditingLabel);
+        unawaited(_finishPurchasePolling(event.productId));
+    }
+  }
+
+  /// Keeps purchase buttons in loading until poll finishes, then toasts outcome.
+  Future<void> _finishPurchasePolling(String? productId) async {
+    var credited = false;
+    try {
+      credited = await _pollAfterPurchase(productId);
+    } finally {
+      if (mounted) {
         setState(() {
           _subscribing = false;
           _rechargeSubmitting = false;
         });
-        // 钱可能已扣、到账在重试中——不报"失败"以免误导。
-        _showToast('支付成功，正在到账，请稍候');
-        unawaited(_pollAfterPurchase(event.productId));
+      }
     }
+    if (!mounted) return;
+    _showToast(credited ? kIapCreditedToast : kIapCreditDelayedToast);
   }
 
   Future<WalletBalance> _loadWallet() {
@@ -196,30 +212,66 @@ class _StorePageState extends State<StorePage> {
   }
 
   /// Webhook may grant before verify returns; poll until VIP/tickets reflect payment.
-  Future<void> _pollAfterPurchase(String? productId) async {
+  Future<bool> _pollAfterPurchase(String? productId) async {
+    final baselineIsVip = _isVip;
+    final baselineVipUntil = _vipUntil;
     num baselineTickets = 0;
     try {
       baselineTickets = (await _walletFuture).ticketBalance;
     } catch (_) {}
 
-    final polled = await pollMembershipUntilCredited(
-      fetchMembership: widget.api.getIapMembership,
-      productId: productId,
-      baselineIsVip: _isVip,
-      baselineVipUntil: _vipUntil,
-      baselineTicketBalance: baselineTickets,
-    );
-    if (!mounted) return;
-    if (polled != null) {
-      _applyMembership(polled);
-    } else {
-      await _loadMembership();
+    final pid = productId;
+    final wantsPoll = pid != null &&
+        (iapProductGrantsVip(pid) || iapProductGrantsTickets(pid));
+
+    IapMembership? polled;
+    if (wantsPoll) {
+      polled = await pollMembershipUntilCredited(
+        fetchMembership: widget.api.getIapMembership,
+        productId: productId,
+        baselineIsVip: baselineIsVip,
+        baselineVipUntil: baselineVipUntil,
+        baselineTicketBalance: baselineTickets,
+      );
+      if (polled != null && mounted) {
+        _applyMembership(polled);
+      }
     }
+
     if (mounted) {
       setState(() {
         _walletFuture = _loadWallet();
       });
     }
+
+    if (polled != null) return true;
+    if (!wantsPoll) {
+      await _loadMembership();
+      return true;
+    }
+
+    await _loadMembership();
+    if (!mounted) return false;
+
+    if (iapProductGrantsVip(pid)) {
+      if (_isVip &&
+          (!baselineIsVip ||
+              (_vipUntil != null &&
+                  (baselineVipUntil == null ||
+                      _vipUntil!.isAfter(baselineVipUntil))))) {
+        return true;
+      }
+    }
+    if (iapProductGrantsTickets(pid)) {
+      try {
+        final wallet = await _loadWallet();
+        if (mounted) {
+          setState(() => _walletFuture = Future.value(wallet));
+        }
+        if (wallet.ticketBalance > baselineTickets) return true;
+      } catch (_) {}
+    }
+    return false;
   }
 
   /// 拉统一 VIP 状态（GET /me/vip）：会员是否生效、到期时间、¥1 体验是否可购。

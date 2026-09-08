@@ -275,6 +275,7 @@ class _StorePrimaryButton extends StatelessWidget {
     required this.onPressed,
     this.height = 50,
     this.loading = false,
+    this.loadingLabel,
   });
 
   final String label;
@@ -285,6 +286,9 @@ class _StorePrimaryButton extends StatelessWidget {
 
   /// 购买/校验进行中：显示转圈并禁用，防重复点击。
   final bool loading;
+
+  /// Optional caption beside the spinner while [loading].
+  final String? loadingLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -300,7 +304,24 @@ class _StorePrimaryButton extends StatelessWidget {
           decoration: _storeAccentButtonDecoration(),
           child: Center(
             child: loading
-                ? const CupertinoActivityIndicator(color: Colors.white)
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CupertinoActivityIndicator(color: Colors.white),
+                      if (loadingLabel != null) ...[
+                        const SizedBox(width: 10),
+                        Text(
+                          loadingLabel!,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ],
+                    ],
+                  )
                 : Text(
                     label,
                     style: const TextStyle(

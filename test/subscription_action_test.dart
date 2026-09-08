@@ -191,4 +191,30 @@ void main() {
     expect(iapProductGrantsTickets('com.bansheng.ticket.10'), isTrue);
     expect(iapProductGrantsVip('com.bansheng.ticket.10'), isFalse);
   });
+
+  test('membershipReflectsIapCredit detects vip activation', () {
+    final membership = IapMembership(
+      vip: VipStatus(
+        isVip: true,
+        vipUntil: DateTime.utc(2027, 1, 1),
+        vipTrialAvailable: false,
+        ticketBalance: 0,
+        pointBalance: 0,
+        giftTicketBalance: 0,
+        spendableTickets: 0,
+      ),
+      autoRenewActive: false,
+      history: const [],
+    );
+    expect(
+      membershipReflectsIapCredit(
+        membership: membership,
+        productId: 'com.bansheng.vip.month',
+        baselineIsVip: false,
+        baselineVipUntil: null,
+        baselineTicketBalance: 0,
+      ),
+      isTrue,
+    );
+  });
 }

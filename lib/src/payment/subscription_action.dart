@@ -61,7 +61,35 @@ bool iapProductGrantsVip(String productId) =>
 bool iapProductGrantsTickets(String productId) =>
     productId.startsWith('com.bansheng.ticket.');
 
+/// Shown on the purchase button and as toast while verify + polling run.
+const kIapCreditingLabel = '正在确认到账…';
+const kIapCreditedToast = '已到账';
+const kIapCreditDelayedToast = '到账可能有延迟，请稍后再看';
+
 typedef IapMembershipFetcher = Future<IapMembership> Function();
+
+bool membershipReflectsIapCredit({
+  required IapMembership membership,
+  required String productId,
+  required bool baselineIsVip,
+  required DateTime? baselineVipUntil,
+  required num baselineTicketBalance,
+}) {
+  final vip = membership.vip;
+  if (iapProductGrantsVip(productId) && vip.isVip) {
+    if (!baselineIsVip) return true;
+    final until = vip.vipUntil;
+    if (until != null &&
+        (baselineVipUntil == null || until.isAfter(baselineVipUntil))) {
+      return true;
+    }
+  }
+  if (iapProductGrantsTickets(productId) &&
+      vip.ticketBalance > baselineTicketBalance) {
+    return true;
+  }
+  return false;
+}
 
 /// Poll after Apple payment while webhook/verify settle (avoids "paid but not VIP").
 Future<IapMembership?> pollMembershipUntilCredited({
@@ -84,16 +112,13 @@ Future<IapMembership?> pollMembershipUntilCredited({
     await Future<void>.delayed(interval);
     try {
       latest = await fetchMembership();
-      final vip = latest.vip;
-      if (wantsVip && vip.isVip) {
-        if (!baselineIsVip) return latest;
-        final until = vip.vipUntil;
-        if (until != null &&
-            (baselineVipUntil == null || until.isAfter(baselineVipUntil))) {
-          return latest;
-        }
-      }
-      if (wantsTickets && vip.ticketBalance > baselineTicketBalance) {
+      if (membershipReflectsIapCredit(
+        membership: latest,
+        productId: productId,
+        baselineIsVip: baselineIsVip,
+        baselineVipUntil: baselineVipUntil,
+        baselineTicketBalance: baselineTicketBalance,
+      )) {
         return latest;
       }
     } catch (_) {

@@ -170,6 +170,7 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
             // 未勾选会员协议则置灰不可点（合规要求用户明示同意续费条款）。
             onPressed: _agreementChecked ? widget.onSubscribe : null,
             loading: widget.subscribing,
+            loadingLabel: widget.subscribing ? kIapCreditingLabel : null,
             height: 56,
           ),
         ),
