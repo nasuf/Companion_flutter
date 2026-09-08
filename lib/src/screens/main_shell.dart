@@ -755,6 +755,8 @@ class _ProfilePageState extends State<ProfilePage>
   bool _profileStatsLoading = false;
   String? _profileStatsError;
   int _profileStatsRequestId = 0;
+  int? _backpackItemCount;
+  IapMembership? _membership;
   String? _error;
   String _appVersionLabel = '...';
 
@@ -765,7 +767,7 @@ class _ProfilePageState extends State<ProfilePage>
       vsync: this,
       duration: const Duration(milliseconds: 9600),
     )..repeat();
-    _loadProfileStats();
+    _loadMePageData();
     _loadAppVersionLabel();
   }
 
@@ -789,7 +791,7 @@ class _ProfilePageState extends State<ProfilePage>
     if (oldWidget.session.workspaceId != widget.session.workspaceId ||
         oldWidget.session.agentId != widget.session.agentId ||
         oldWidget.session.token != widget.session.token) {
-      _loadProfileStats();
+      _loadMePageData();
     }
   }
 
@@ -801,12 +803,20 @@ class _ProfilePageState extends State<ProfilePage>
     super.dispose();
   }
 
-  Future<void> _loadProfileStats() async {
+  int _totalBackpackItems(StoreInventoryResponse inventory) {
+    return inventory.items
+        .where((item) => item.productKind.isNotEmpty && item.quantity > 0)
+        .fold<int>(0, (sum, item) => sum + item.quantity);
+  }
+
+  Future<void> _loadMePageData() async {
     if (widget.session.agentId == null || widget.session.agentId!.isEmpty) {
       setState(() {
         _profileStats = null;
         _profileStatsLoading = false;
         _profileStatsError = null;
+        _backpackItemCount = null;
+        _membership = null;
       });
       return;
     }
@@ -815,16 +825,25 @@ class _ProfilePageState extends State<ProfilePage>
       _profileStats = null;
       _profileStatsLoading = true;
       _profileStatsError = null;
+      _backpackItemCount = null;
+      _membership = null;
     });
     try {
       widget.api.authToken = widget.session.token;
-      final stats = await widget.api.fetchProfileStats(
-        workspaceId: widget.session.workspaceId,
-      );
+      final results = await Future.wait<Object?>([
+        widget.api.fetchProfileStats(workspaceId: widget.session.workspaceId),
+        widget.api.listStoreInventory(),
+        widget.api.getIapMembership(),
+      ]);
       if (!mounted || requestId != _profileStatsRequestId) return;
+      final stats = results[0]! as ProfileStats;
+      final inventory = results[1]! as StoreInventoryResponse;
+      final membership = results[2]! as IapMembership;
       setState(() {
         _profileStats = stats;
         _profileStatsLoading = false;
+        _backpackItemCount = _totalBackpackItems(inventory);
+        _membership = membership;
       });
     } catch (error) {
       if (!mounted || requestId != _profileStatsRequestId) return;
@@ -832,6 +851,8 @@ class _ProfilePageState extends State<ProfilePage>
         _profileStats = null;
         _profileStatsLoading = false;
         _profileStatsError = _asMessage(error);
+        _backpackItemCount = null;
+        _membership = null;
       });
     }
   }
@@ -962,7 +983,7 @@ class _ProfilePageState extends State<ProfilePage>
       context,
     ).push(CupertinoPageRoute<void>(builder: (_) => page));
     if (refreshStatsOnReturn && mounted) {
-      await _loadProfileStats();
+      await _loadMePageData();
     }
   }
 
@@ -1062,8 +1083,7 @@ class _ProfilePageState extends State<ProfilePage>
                             agentName: agentName,
                             userAvatarUrl: widget.session.userAvatarUrl,
                             agentAvatarUrl: widget.session.agentAvatarUrl,
-                            memberActive:
-                                _profileStats?.memberIsActive ?? false,
+                            memberActive: _membership?.vip.isVip ?? false,
                             showAdminEntry:
                                 widget.session.role == UserRole.admin,
                             onUserTap: () => _pushPage(
@@ -1092,8 +1112,16 @@ class _ProfilePageState extends State<ProfilePage>
                                   error: _profileStatsError,
                                 ),
                                 const SizedBox(height: 14),
+                                _SettingsMemberCard(
+                                  membership: _membership,
+                                  onTap: _showMemberInfo,
+                                ),
+                                const SizedBox(height: 12),
                                 _SettingsBackpackCard(
-                                  count: _profileStats?.backpackCount ?? 0,
+                                  count:
+                                      _backpackItemCount ??
+                                      _profileStats?.backpackCount ??
+                                      0,
                                   onTap: () => _pushPage(
                                     _BackpackPage(
                                       api: widget.api,
@@ -1102,17 +1130,12 @@ class _ProfilePageState extends State<ProfilePage>
                                     refreshStatsOnReturn: true,
                                   ),
                                 ),
-                                const SizedBox(height: 12),
-                                _SettingsMemberCard(
-                                  stats: _profileStats,
-                                  onTap: _showMemberInfo,
-                                ),
                                 const SizedBox(height: 18),
                                 _SettingsSectionCard(
                                   label: '消息与互动',
                                   rows: [
                                     _SettingsRowData(
-                                      icon: CupertinoIcons.bell_fill,
+                                      glyph: _SettingsGlyph.bell,
                                       iconAccent: _SettingsColors.blue,
                                       title: '通知设置',
                                       onTap: () => _pushPage(
@@ -1129,16 +1152,9 @@ class _ProfilePageState extends State<ProfilePage>
                                   label: '个性化与显示',
                                   rows: [
                                     _SettingsRowData(
-                                      icon: CupertinoIcons.textformat,
-                                      iconAccent: const Color(0xFF8E8E93),
-                                      title: '字体与大小',
-                                      onTap: () =>
-                                          _pushPage(const _FontSettingsPage()),
-                                    ),
-                                    _SettingsRowData(
-                                      icon: CupertinoIcons.moon_fill,
+                                      glyph: _SettingsGlyph.moon,
                                       iconAccent: const Color(0xFF5856D6),
-                                      title: '深色模式',
+                                      title: '显示模式',
                                       value: _themeModeLabel(mode),
                                       trailing: CupertinoSwitch(
                                         value: mode == ThemeMode.dark,
@@ -1159,7 +1175,7 @@ class _ProfilePageState extends State<ProfilePage>
                                   label: '隐私与安全',
                                   rows: [
                                     _SettingsRowData(
-                                      icon: CupertinoIcons.lock_fill,
+                                      glyph: _SettingsGlyph.lock,
                                       iconAccent: const Color(0xFF34C759),
                                       title: '隐私与安全中心',
                                       onTap: () => _pushPage(
@@ -1178,14 +1194,14 @@ class _ProfilePageState extends State<ProfilePage>
                                   label: '其他与信息',
                                   rows: [
                                     _SettingsRowData(
-                                      icon: CupertinoIcons.tray_fill,
+                                      glyph: _SettingsGlyph.tray,
                                       iconAccent: const Color(0xFF64B5F6),
                                       title: '缓存清理',
                                       onTap: () =>
                                           _pushPage(const _CacheCleanupPage()),
                                     ),
                                     _SettingsRowData(
-                                      icon: CupertinoIcons.info_circle_fill,
+                                      glyph: _SettingsGlyph.info,
                                       iconAccent: _SettingsColors.blue,
                                       title: '关于我们',
                                       onTap: () => _pushPage(
@@ -1200,7 +1216,7 @@ class _ProfilePageState extends State<ProfilePage>
                                       ),
                                     ),
                                     _SettingsRowData(
-                                      icon: CupertinoIcons.cube_box_fill,
+                                      glyph: _SettingsGlyph.cube,
                                       iconAccent: const Color(0xFF90A4AE),
                                       title: '版本信息',
                                       value: _appVersionLabel,
@@ -1309,6 +1325,20 @@ class _SettingsColors {
   static Color get red =>
       isDark ? const Color(0xFFFF7777) : const Color(0xFFE8553D);
 }
+
+TextStyle _settingsRowTitleStyle() => TextStyle(
+  color: _SettingsColors.text,
+  fontSize: 15,
+  fontWeight: FontWeight.w600,
+  letterSpacing: 0,
+);
+
+TextStyle _settingsRowValueStyle(Color color) => TextStyle(
+  color: color,
+  fontSize: 13,
+  fontWeight: FontWeight.w500,
+  letterSpacing: 0,
+);
 
 BoxDecoration _settingsCardDecoration({double radius = 16}) {
   return BoxDecoration(
@@ -1747,7 +1777,7 @@ class _SettingsDashboardGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final cards = [
       _DashboardCardData(
-        icon: CupertinoIcons.heart_fill,
+        glyph: _SettingsGlyph.heart,
         iconAccent: _SettingsColors.orange,
         label: '亲密度',
         accent: _SettingsColors.orange,
@@ -1757,7 +1787,7 @@ class _SettingsDashboardGrid extends StatelessWidget {
         subtext: stats?.intimacySubtitle ?? (loading ? '同步中' : '暂无数据'),
       ),
       _DashboardCardData(
-        icon: CupertinoIcons.calendar,
+        glyph: _SettingsGlyph.calendar,
         iconAccent: _SettingsColors.blue,
         label: '相识时间',
         accent: _SettingsColors.blue,
@@ -1769,7 +1799,7 @@ class _SettingsDashboardGrid extends StatelessWidget {
             : '始于 ${stats!.companionStartedOn}',
       ),
       _DashboardCardData(
-        icon: CupertinoIcons.stopwatch_fill,
+        glyph: _SettingsGlyph.stopwatch,
         iconAccent: const Color(0xFFA0C8E8),
         label: '相处时光',
         accent: const Color(0xFFA0C8E8),
@@ -1779,7 +1809,7 @@ class _SettingsDashboardGrid extends StatelessWidget {
         subtext: stats?.chatDurationSubtitle ?? '累计聊天时长',
       ),
       _DashboardCardData(
-        icon: CupertinoIcons.chat_bubble_2_fill,
+        glyph: _SettingsGlyph.chat,
         iconAccent: const Color(0xFFD4B89C),
         label: '讯息总数',
         accent: const Color(0xFFD4B89C),
@@ -1824,7 +1854,7 @@ class _SettingsDashboardGrid extends StatelessWidget {
 
 class _DashboardCardData {
   const _DashboardCardData({
-    required this.icon,
+    required this.glyph,
     required this.iconAccent,
     required this.label,
     required this.accent,
@@ -1832,7 +1862,7 @@ class _DashboardCardData {
     required this.subtext,
   });
 
-  final IconData icon;
+  final _SettingsGlyph glyph;
   final Color iconAccent;
   final String label;
   final Color accent;
@@ -1868,10 +1898,9 @@ class _SettingsDashboardCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     _SettingsFlatIcon(
-                      icon: data.icon,
+                      glyph: data.glyph,
                       accent: data.iconAccent,
                       size: 28,
-                      iconSize: 15,
                     ),
                     const SizedBox(width: 6),
                     // Expanded + 右对齐, 而不是 Spacer + 裸 Text: 裸 Text 会按自然
@@ -2013,35 +2042,12 @@ class _SettingsBackpackCard extends StatelessWidget {
       child: Row(
         children: [
           _SettingsFlatIcon(
-            icon: CupertinoIcons.bag_fill,
+            glyph: _SettingsGlyph.bag,
             accent: _SettingsColors.blue,
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '我的背包',
-                  style: TextStyle(
-                    color: _SettingsColors.text,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  '查看已兑换的礼物、盲盒和装扮',
-                  style: TextStyle(
-                    color: _SettingsColors.tertiary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ],
-            ),
+            child: Text('我的背包', style: _settingsRowTitleStyle()),
           ),
           Container(
             constraints: const BoxConstraints(minWidth: 30),
@@ -2070,18 +2076,17 @@ class _SettingsBackpackCard extends StatelessWidget {
 }
 
 class _SettingsMemberCard extends StatelessWidget {
-  const _SettingsMemberCard({required this.stats, required this.onTap});
+  const _SettingsMemberCard({required this.membership, required this.onTap});
 
-  final ProfileStats? stats;
+  final IapMembership? membership;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final active = stats?.memberIsActive ?? false;
-    final expiresOn = stats?.memberExpiresOn;
-    final status = active && expiresOn != null && expiresOn.isNotEmpty
-        ? '到期时间： $expiresOn'
-        : '成为会员';
+    final active = membership?.vip.isVip ?? false;
+    final status = membership == null
+        ? '成为会员'
+        : membershipPlanBadgeFromMembership(membership!);
     return _SettingsTappableCard(
       onTap: onTap,
       decoration: BoxDecoration(
@@ -2105,30 +2110,17 @@ class _SettingsMemberCard extends StatelessWidget {
       child: Row(
         children: [
           _SettingsFlatIcon(
-            icon: CupertinoIcons.star_circle_fill,
+            glyph: _SettingsGlyph.star,
             accent: _SettingsColors.gold,
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              '我的会员 · 尊享特权',
-              style: TextStyle(
-                color: _SettingsColors.isDark
-                    ? _SettingsColors.gold
-                    : const Color(0xFF8A6D2B),
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0,
-              ),
-            ),
+            child: Text('我的会员 · 尊享特权', style: _settingsRowTitleStyle()),
           ),
           Text(
             status,
-            style: TextStyle(
-              color: active ? const Color(0xFFA89050) : _SettingsColors.gold,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0,
+            style: _settingsRowValueStyle(
+              active ? const Color(0xFFA89050) : _SettingsColors.gold,
             ),
           ),
           const SizedBox(width: 8),
@@ -2177,7 +2169,7 @@ class _SettingsSectionCard extends StatelessWidget {
 
 class _SettingsRowData {
   const _SettingsRowData({
-    required this.icon,
+    required this.glyph,
     required this.iconAccent,
     required this.title,
     this.value,
@@ -2186,7 +2178,7 @@ class _SettingsRowData {
     this.onTap,
   });
 
-  final IconData icon;
+  final _SettingsGlyph glyph;
   final Color iconAccent;
   final String title;
   final String? value;
@@ -2218,28 +2210,15 @@ class _SettingsRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _SettingsFlatIcon(icon: data.icon, accent: data.iconAccent),
+          _SettingsFlatIcon(glyph: data.glyph, accent: data.iconAccent),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              data.title,
-              style: TextStyle(
-                color: _SettingsColors.text,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0,
-              ),
-            ),
+            child: Text(data.title, style: _settingsRowTitleStyle()),
           ),
           if (data.value != null) ...[
             Text(
               data.value!,
-              style: TextStyle(
-                color: _SettingsColors.tertiary,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 0,
-              ),
+              style: _settingsRowValueStyle(_SettingsColors.tertiary),
             ),
             const SizedBox(width: 8),
           ],
@@ -2398,30 +2377,74 @@ class _SettingsTappableCard extends StatelessWidget {
   }
 }
 
-class _SettingsFlatIcon extends StatelessWidget {
-  const _SettingsFlatIcon({
-    required this.icon,
-    required this.accent,
-    this.size = 38,
-    this.iconSize = 19,
-  });
+/// Settings row glyphs — solid white filled PNGs (weather/capsule flat style).
+/// Main silhouette is filled white; 面线 uses tiny cut-outs only (bell stripes,
+/// calendar dots, chat dots) — never a hollow body that shows the accent circle.
+/// 设置项圆标里的白色字形。
+///
+/// 用矢量 [IconData] 而非位图 PNG: 原来的 glyph_*.png 是 0.7-1.6KB 的低分辨率
+/// 位图, 每张内部留白/线宽各不相同, 放到统一尺寸的圆里就显得"不精致、大小不一"。
+/// 矢量图标任意尺寸都清晰, 且视觉重量天然一致 —— 跟天气页度量圆标同一套做法。
+enum _SettingsGlyph {
+  bell(CupertinoIcons.bell_fill),
+  moon(CupertinoIcons.moon_fill),
+  lock(CupertinoIcons.lock_fill),
+  tray(CupertinoIcons.tray_fill),
+  info(CupertinoIcons.info),
+  cube(CupertinoIcons.cube_box_fill),
+  heart(CupertinoIcons.heart_fill),
+  calendar(CupertinoIcons.calendar),
+  stopwatch(CupertinoIcons.stopwatch_fill),
+  chat(CupertinoIcons.chat_bubble_2_fill),
+  bag(CupertinoIcons.bag_fill),
+  star(CupertinoIcons.star_fill);
+
+  const _SettingsGlyph(this.icon);
 
   final IconData icon;
+}
+
+class _SettingsFlatIcon extends StatelessWidget {
+  const _SettingsFlatIcon({
+    required this.glyph,
+    required this.accent,
+    this.size = 40,
+    double? glyphSize,
+  }) : glyphSize = glyphSize ?? size * 0.50;
+
+  final _SettingsGlyph glyph;
   final Color accent;
   final double size;
-  final double iconSize;
+  /// 白色字形直径。统一取圆直径的 0.50 —— 与天气页度量圆标 (24pt / 48pt) 同比,
+  /// 让所有圆标里的图标看起来一样大。矢量图标边到边, 不像旧 PNG 自带留白, 所以
+  /// 从 0.60 收到 0.50 才不会显得过大。
+  final double glyphSize;
 
   @override
   Widget build(BuildContext context) {
+    final dark = _SettingsColors.isDark;
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        color: accent.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(size >= 38 ? 12 : 10),
-      ),
       alignment: Alignment.center,
-      child: Icon(icon, color: accent, size: iconSize),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: accent,
+        boxShadow: dark
+            ? null
+            : [
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.30),
+                  blurRadius: size >= 36 ? 8 : 6,
+                  offset: Offset(0, size >= 36 ? 3 : 2),
+                ),
+              ],
+      ),
+      child: Icon(
+        glyph.icon,
+        size: glyphSize,
+        color: Colors.white,
+      ),
     );
   }
 }
@@ -2464,56 +2487,47 @@ class _SettingsSubScaffold extends StatelessWidget {
       backgroundColor: _SettingsColors.page,
       body: Column(
         children: [
-          ClipRect(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(
-                height: padding.top + 56,
-                padding: EdgeInsets.only(top: padding.top),
-                decoration: BoxDecoration(
-                  color: _SettingsColors.bg.withValues(alpha: 0.88),
-                  border: Border(
-                    bottom: BorderSide(
-                      color: _SettingsColors.isDark
-                          ? Colors.white.withValues(alpha: 0.06)
-                          : Colors.black.withValues(alpha: 0.04),
-                    ),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Padding(
+          SizedBox(
+            height: padding.top + 56,
+            child: Padding(
+              padding: EdgeInsets.only(top: padding.top),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
                       padding: const EdgeInsets.only(left: 8),
                       child: _WeatherBackButton(
                         onTap: () => Navigator.of(context).pop(),
                         iconColor: _SettingsColors.blueDark,
                       ),
                     ),
-                    Expanded(
-                      child: Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: _SettingsColors.text,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0,
-                        ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 72),
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: _SettingsColors.text,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0,
                       ),
                     ),
-                    SizedBox(
-                      width: 84,
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 16),
-                          child: trailing ?? const SizedBox.shrink(),
-                        ),
+                  ),
+                  if (trailing != null)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: trailing,
                       ),
                     ),
-                  ],
-                ),
+                ],
               ),
             ),
           ),
@@ -3343,49 +3357,6 @@ class _SubTitle extends StatelessWidget {
   }
 }
 
-class _FontSettingsPage extends StatelessWidget {
-  const _FontSettingsPage();
-
-  @override
-  Widget build(BuildContext context) {
-    final textScale = MediaQuery.textScalerOf(context).scale(16) / 16;
-    return _SettingsSubScaffold(
-      title: '字体与大小',
-      child: _SubPageContent(
-        children: [
-          Container(
-            height: 78,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: _SettingsColors.card,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              'Aa 预览文本 · 你好，今天过得怎么样？',
-              style: TextStyle(
-                color: _SettingsColors.text,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          _SubCard(
-            children: [
-              const _SubCardRow(label: '字体', value: '系统默认'),
-              _SubCardRow(
-                label: '系统文字缩放',
-                value: '${(textScale * 100).round()}%',
-                showDivider: false,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _PrivacySecurityPage extends StatefulWidget {
   const _PrivacySecurityPage({
@@ -3764,12 +3735,37 @@ class _ContactFeedbackPageState extends State<_ContactFeedbackPage> {
   }
 
   Future<void> _pickImages() async {
-    if (_attachments.length >= 3) return;
+    final remaining = 3 - _attachments.length;
+    if (remaining <= 0) return;
+
+    if (remaining == 1) {
+      final file = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _attachments.add(
+          _FeedbackAttachmentDraft(
+            bytes: bytes,
+            name: file.name,
+            mime: 'image/jpeg',
+          ),
+        );
+      });
+      return;
+    }
+
     final files = await _picker.pickMultiImage(imageQuality: 85);
     if (files.isEmpty) return;
-    for (final file in files) {
-      if (_attachments.length >= 3) break;
+    if (files.length > remaining) {
+      _showSnack('最多还能选择 $remaining 张图片');
+    }
+    for (final file in files.take(remaining)) {
       final bytes = await file.readAsBytes();
+      if (!mounted) return;
       setState(() {
         _attachments.add(
           _FeedbackAttachmentDraft(
@@ -3780,6 +3776,31 @@ class _ContactFeedbackPageState extends State<_ContactFeedbackPage> {
         );
       });
     }
+  }
+
+  Future<void> _previewAttachment(int index) async {
+    if (index < 0 || index >= _attachments.length) return;
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'feedback-photo-preview',
+      barrierColor: Colors.black.withValues(alpha: 0.78),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, _, __) {
+        return _FeedbackAttachmentPreviewDialog(
+          attachments: List<_FeedbackAttachmentDraft>.unmodifiable(_attachments),
+          initialIndex: index,
+          onClose: () => Navigator.of(context).pop(),
+        );
+      },
+      transitionBuilder: (context, animation, _, child) {
+        final curved = Curves.easeOutCubic.transform(animation.value);
+        return Opacity(
+          opacity: curved,
+          child: Transform.scale(scale: 1.02 - 0.02 * curved, child: child),
+        );
+      },
+    );
   }
 
   Future<void> _submit() async {
@@ -3900,13 +3921,16 @@ class _ContactFeedbackPageState extends State<_ContactFeedbackPage> {
                       Stack(
                         clipBehavior: Clip.none,
                         children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: Image.memory(
-                              _attachments[i].bytes,
-                              width: 72,
-                              height: 72,
-                              fit: BoxFit.cover,
+                          GestureDetector(
+                            onTap: () => _previewAttachment(i),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.memory(
+                                _attachments[i].bytes,
+                                width: 72,
+                                height: 72,
+                                fit: BoxFit.cover,
+                              ),
                             ),
                           ),
                           Positioned(
@@ -4004,6 +4028,218 @@ class _FeedbackAttachmentDraft {
   final Uint8List bytes;
   final String name;
   final String mime;
+}
+
+class _FeedbackAttachmentPreviewDialog extends StatefulWidget {
+  const _FeedbackAttachmentPreviewDialog({
+    required this.attachments,
+    required this.initialIndex,
+    required this.onClose,
+  });
+
+  final List<_FeedbackAttachmentDraft> attachments;
+  final int initialIndex;
+  final VoidCallback onClose;
+
+  @override
+  State<_FeedbackAttachmentPreviewDialog> createState() =>
+      _FeedbackAttachmentPreviewDialogState();
+}
+
+class _FeedbackAttachmentPreviewDialogState
+    extends State<_FeedbackAttachmentPreviewDialog> {
+  late final PageController _pageController;
+  late final ScrollController _thumbController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex.clamp(
+      0,
+      widget.attachments.length - 1,
+    );
+    _pageController = PageController(initialPage: _currentIndex);
+    _thumbController = ScrollController();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _centerThumbnail());
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _thumbController.dispose();
+    super.dispose();
+  }
+
+  void _handlePageChanged(int index) {
+    setState(() => _currentIndex = index);
+    _centerThumbnail();
+  }
+
+  void _selectPhoto(int index) {
+    if (index == _currentIndex) return;
+    setState(() => _currentIndex = index);
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+    _centerThumbnail(index);
+  }
+
+  void _centerThumbnail([int? index]) {
+    if (!_thumbController.hasClients) return;
+    final targetIndex = index ?? _currentIndex;
+    final viewport = _thumbController.position.viewportDimension;
+    final target =
+        targetIndex * _DailyPreviewMetrics.thumbStride -
+        viewport / 2 +
+        _DailyPreviewMetrics.thumbWidth / 2;
+    _thumbController.animateTo(
+      target.clamp(
+        _thumbController.position.minScrollExtent,
+        _thumbController.position.maxScrollExtent,
+      ),
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final attachments = widget.attachments;
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+              child: const SizedBox.expand(),
+            ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+              child: Column(
+                children: [
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: _DailyCircleButton(
+                      icon: CupertinoIcons.xmark,
+                      onPressed: widget.onClose,
+                      dark: true,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: PageView.builder(
+                      controller: _pageController,
+                      physics: const BouncingScrollPhysics(),
+                      onPageChanged: _handlePageChanged,
+                      itemCount: attachments.length,
+                      itemBuilder: (context, index) {
+                        return Center(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(34),
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.42),
+                                    blurRadius: 80,
+                                    offset: const Offset(0, 34),
+                                  ),
+                                ],
+                              ),
+                              child: InteractiveViewer(
+                                minScale: 1,
+                                maxScale: 4,
+                                clipBehavior: Clip.none,
+                                panEnabled: true,
+                                scaleEnabled: true,
+                                child: Image.memory(
+                                  attachments[index].bytes,
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  if (attachments.length > 1) ...[
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      height: 66,
+                      child: ListView.separated(
+                        controller: _thumbController,
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 6,
+                        ),
+                        itemCount: attachments.length,
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(width: _DailyPreviewMetrics.thumbGap),
+                        itemBuilder: (context, index) {
+                          final selected = index == _currentIndex;
+                          return GestureDetector(
+                            onTap: () => _selectPhoto(index),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              curve: Curves.easeOutCubic,
+                              width: selected
+                                  ? _DailyPreviewMetrics.thumbWidth + 8
+                                  : _DailyPreviewMetrics.thumbWidth,
+                              height: _DailyPreviewMetrics.thumbHeight,
+                              padding: EdgeInsets.all(selected ? 2 : 0),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: Colors.white.withValues(
+                                    alpha: selected ? 0.88 : 0,
+                                  ),
+                                  width: selected ? 2 : 0,
+                                ),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: AnimatedOpacity(
+                                  opacity: selected ? 1 : 0.62,
+                                  duration: const Duration(milliseconds: 180),
+                                  child: Image.memory(
+                                    attachments[index].bytes,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Text(
+                    '反馈截图 · 第 ${_currentIndex + 1} 张',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.82),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _LegalDocumentPage extends StatefulWidget {

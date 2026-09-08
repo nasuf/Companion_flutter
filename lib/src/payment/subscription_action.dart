@@ -176,6 +176,40 @@ String membershipTierLabel(String? productId) {
   }
 }
 
+/// Compact plan label for settings rows / badges (e.g. 「连续包月VIP」).
+String membershipPlanBadgeLabel({
+  required bool isVip,
+  required String? activeProductId,
+}) {
+  if (!isVip) return '成为会员';
+  switch (activeProductId) {
+    case IapProducts.vipMonthlyAuto:
+      return '连续包月VIP';
+    case IapProducts.vipMonth:
+      return '月度VIP';
+    case IapProducts.vipQuarter:
+      return '季度VIP';
+    case IapProducts.vipYear:
+      return '年度VIP';
+    case IapProducts.vipTrial:
+      return '体验VIP';
+    default:
+      return 'VIP会员';
+  }
+}
+
+/// Resolve plan badge from a membership payload.
+String membershipPlanBadgeFromMembership(IapMembership membership) {
+  if (!membership.vip.isVip) return '成为会员';
+  return membershipPlanBadgeLabel(
+    isVip: true,
+    activeProductId: resolveActiveProductId(
+      subscription: membership.subscription,
+      history: membership.history,
+    ),
+  );
+}
+
 /// Single-line status for the subscription tab hero (no extra hints).
 String buildMembershipCompactStatusLine({
   required bool isVip,

@@ -217,4 +217,25 @@ void main() {
       isTrue,
     );
   });
+
+  test('membershipPlanBadgeLabel maps plans for settings row', () {
+    expect(
+      membershipPlanBadgeLabel(
+        isVip: true,
+        activeProductId: 'com.bansheng.vip.monthly.auto',
+      ),
+      '连续包月VIP',
+    );
+    expect(
+      membershipPlanBadgeLabel(
+        isVip: true,
+        activeProductId: 'com.bansheng.vip.month',
+      ),
+      '月度VIP',
+    );
+    expect(
+      membershipPlanBadgeLabel(isVip: false, activeProductId: null),
+      '成为会员',
+    );
+  });
 }
