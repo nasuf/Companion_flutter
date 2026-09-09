@@ -4,7 +4,7 @@ const _locationConfirmAccent = Color(0xFF22C66B);
 const _locationConfirmAccentDeep = Color(0xFF18A957);
 
 /// Half-screen glass bottom sheet to preview a location share before sending.
-class LocationConfirmPage extends StatelessWidget {
+class LocationConfirmPage extends StatefulWidget {
   const LocationConfirmPage({
     super.key,
     required this.snapshot,
@@ -28,9 +28,49 @@ class LocationConfirmPage extends StatelessWidget {
   }
 
   @override
+  State<LocationConfirmPage> createState() => _LocationConfirmPageState();
+}
+
+class _LocationConfirmPageState extends State<LocationConfirmPage> {
+  late DeviceLocationSnapshot _snapshot;
+  bool _refreshing = false;
+  String? _refreshError;
+
+  @override
+  void initState() {
+    super.initState();
+    _snapshot = widget.snapshot;
+  }
+
+  Future<void> _refreshLocation() async {
+    if (_refreshing) return;
+    setState(() {
+      _refreshing = true;
+      _refreshError = null;
+    });
+    try {
+      final updated = await requestCurrentDeviceLocation(
+        openSettingsWhenBlocked: true,
+      );
+      if (!mounted) return;
+      if (updated == null) {
+        setState(() {
+          _refreshError = '未能更新位置，请检查定位权限或到开阔处重试';
+        });
+        return;
+      }
+      setState(() => _snapshot = updated);
+    } finally {
+      if (mounted) {
+        setState(() => _refreshing = false);
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final w = _W2b.resolve(context);
-    final card = snapshot.toComponentCard();
+    final card = _snapshot.toComponentCard();
     final bottomInset = MediaQuery.paddingOf(context).bottom;
 
     return Padding(
@@ -105,23 +145,50 @@ class LocationConfirmPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     _LocationConfirmPreviewCard(card: card),
-                    if (snapshot.accuracyMeters != null) ...[
+                    if (_snapshot.accuracyMeters != null) ...[
                       const SizedBox(height: 12),
                       Align(
                         alignment: Alignment.centerLeft,
                         child: _LocationConfirmMetaChip(
                           label:
-                              '定位精度约 ${snapshot.accuracyMeters!.round()} 米',
+                              '定位精度约 ${_snapshot.accuracyMeters!.round()} 米',
                         ),
                       ),
                     ],
-                    const SizedBox(height: 16),
+                    if (_refreshError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _refreshError!,
+                        style: TextStyle(
+                          color: AppColors.of(context).danger,
+                          fontSize: 12,
+                          height: 1.35,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    _LocationConfirmActionButton(
+                      label: _refreshing ? '正在重新定位…' : '重新定位',
+                      filled: false,
+                      enabled: !_refreshing,
+                      leading: _refreshing
+                          ? const CupertinoActivityIndicator(radius: 9)
+                          : const Icon(
+                              CupertinoIcons.location_circle,
+                              size: 18,
+                              color: _locationConfirmAccent,
+                            ),
+                      onTap: _refreshLocation,
+                    ),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
                           child: _LocationConfirmActionButton(
                             label: '取消',
                             filled: false,
+                            enabled: !_refreshing,
                             onTap: () => Navigator.of(context).pop(),
                           ),
                         ),
@@ -131,6 +198,7 @@ class LocationConfirmPage extends StatelessWidget {
                           child: _LocationConfirmActionButton(
                             label: '发送位置',
                             filled: true,
+                            enabled: !_refreshing,
                             onTap: () => Navigator.of(context).pop(card),
                           ),
                         ),
@@ -352,18 +420,22 @@ class _LocationConfirmActionButton extends StatelessWidget {
     required this.label,
     required this.filled,
     required this.onTap,
+    this.enabled = true,
+    this.leading,
   });
 
   final String label;
   final bool filled;
   final VoidCallback onTap;
+  final bool enabled;
+  final Widget? leading;
 
   @override
   Widget build(BuildContext context) {
     final w = _W2b.resolve(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,
-      onPressed: onTap,
+      onPressed: enabled ? onTap : null,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: BackdropFilter(
@@ -387,14 +459,26 @@ class _LocationConfirmActionButton extends StatelessWidget {
                     ]
                   : [w.pillShadow],
             ),
-            child: Text(
-              label,
-              style: TextStyle(
-                color: filled ? Colors.white : w.ink,
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                decoration: TextDecoration.none,
-              ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (leading != null) ...[
+                  leading!,
+                  const SizedBox(width: 8),
+                ],
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: filled
+                        ? Colors.white
+                        : (enabled ? w.ink : w.inkSoft),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
             ),
           ),
         ),

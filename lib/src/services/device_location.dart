@@ -119,8 +119,8 @@ Future<DeviceLocationSnapshot?> requestCurrentDeviceLocation({
 
     final position = await Geolocator.getCurrentPosition(
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.medium,
-        timeLimit: Duration(seconds: 8),
+        accuracy: LocationAccuracy.best,
+        timeLimit: Duration(seconds: 15),
       ),
     );
 
