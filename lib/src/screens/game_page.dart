@@ -300,11 +300,27 @@ class _GamePageState extends State<GamePage>
                   slivers: [
                     SliverToBoxAdapter(child: _topBar(context, s)),
                     SliverToBoxAdapter(child: _statsHeader(s)),
-                    // Group banners decode many JPEGs and spin per-card
-                    // tickers. Keep them off the incoming Cupertino slide
-                    // and off the landing frame itself.
+                    // Builder sliver so off-screen groups never decode or
+                    // tick. Keep-alives stay off: a Column used to keep every
+                    // JPEG and breath controller alive for the whole hub.
                     if (_hubCatalogReady)
-                      SliverToBoxAdapter(child: _gameGroupsSection(s)),
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(21 * s, 31 * s, 21 * s, 0),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final group = _visibleGroups[index];
+                              return Padding(
+                                key: ValueKey(group.id),
+                                padding: EdgeInsets.only(bottom: 20 * s),
+                                child: _buildGameGroup(s, group),
+                              );
+                            },
+                            childCount: _visibleGroups.length,
+                            addAutomaticKeepAlives: false,
+                          ),
+                        ),
+                      ),
                     SliverToBoxAdapter(child: SizedBox(height: 120 * s)),
                   ],
                 );
@@ -423,75 +439,64 @@ class _GamePageState extends State<GamePage>
     );
   }
 
-  Widget _gameGroupsSection(double s) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(21 * s, 31 * s, 21 * s, 0),
+  Widget _buildGameGroup(double s, _GameGroup group) {
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
       child: Column(
         children: [
-          for (final group in _visibleGroups)
-            Padding(
-              padding: EdgeInsets.only(bottom: 20 * s),
-              child: AnimatedSize(
-                duration: const Duration(milliseconds: 420),
+          _HubGroupBanner(
+            scale: s,
+            group: group,
+            isOpen: group == _activeGroup,
+            onTap: () => setState(() {
+              _activeGroup = group == _activeGroup ? null : group;
+            }),
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 360),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              final curved = CurvedAnimation(
+                parent: animation,
                 curve: Curves.easeOutCubic,
-                alignment: Alignment.topCenter,
-                child: Column(
-                  children: [
-                    _HubGroupBanner(
-                      scale: s,
-                      group: group,
-                      isOpen: group == _activeGroup,
-                      onTap: () => setState(() {
-                        _activeGroup = group == _activeGroup ? null : group;
-                      }),
-                    ),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 360),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) {
-                        final curved = CurvedAnimation(
-                          parent: animation,
-                          curve: Curves.easeOutCubic,
-                          reverseCurve: Curves.easeInCubic,
-                        );
-                        return FadeTransition(
-                          opacity: curved,
-                          child: SizeTransition(
-                            sizeFactor: curved,
-                            alignment: const AlignmentDirectional(-1.0, -1.0),
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: group == _activeGroup
-                          ? Padding(
-                              key: ValueKey(group.id),
-                              padding: EdgeInsets.only(top: 4 * s),
-                              child: GridView.count(
-                                padding: EdgeInsets.zero,
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                crossAxisCount: 2,
-                                mainAxisSpacing: 16 * s,
-                                crossAxisSpacing: 10 * s,
-                                childAspectRatio: 170 / 138,
-                                children: [
-                                  for (final game in group.games)
-                                    _HubGameTile(
-                                      scale: s,
-                                      game: game,
-                                      onTap: () => _openGame(group, game),
-                                    ),
-                                ],
-                              ),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                  ],
+                reverseCurve: Curves.easeInCubic,
+              );
+              return FadeTransition(
+                opacity: curved,
+                child: SizeTransition(
+                  sizeFactor: curved,
+                  alignment: const AlignmentDirectional(-1.0, -1.0),
+                  child: child,
                 ),
-              ),
-            ),
+              );
+            },
+            child: group == _activeGroup
+                ? Padding(
+                    key: ValueKey(group.id),
+                    padding: EdgeInsets.only(top: 4 * s),
+                    child: GridView.count(
+                      padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 16 * s,
+                      crossAxisSpacing: 10 * s,
+                      childAspectRatio: 170 / 138,
+                      children: [
+                        for (final game in group.games)
+                          _HubGameTile(
+                            scale: s,
+                            game: game,
+                            onTap: () => _openGame(group, game),
+                          ),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
     );

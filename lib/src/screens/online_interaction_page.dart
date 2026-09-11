@@ -54,7 +54,7 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       for (final path in _gameHubWarmAssetPaths) {
-        precacheImage(AssetImage(path), context);
+        precacheImage(_hubWarmImageProvider(context, path), context);
       }
     });
   }

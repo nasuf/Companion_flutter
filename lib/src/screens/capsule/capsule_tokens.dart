@@ -22,9 +22,8 @@ class _CapsuleBackground extends StatefulWidget {
 }
 
 class _CapsuleBackgroundState extends State<_CapsuleBackground>
-    with SingleTickerProviderStateMixin, RouteAware {
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  PageRoute<dynamic>? _subscribedRoute;
 
   @override
   void initState() {
@@ -36,33 +35,7 @@ class _CapsuleBackgroundState extends State<_CapsuleBackground>
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final route = ModalRoute.of(context);
-    if (route is! PageRoute<dynamic> || route == _subscribedRoute) return;
-    appRouteObserver.unsubscribe(this);
-    _subscribedRoute = route;
-    appRouteObserver.subscribe(this, route);
-  }
-
-  @override
-  void didPushNext() {
-    _controller.stop();
-  }
-
-  @override
-  void didPopNext() {
-    _controller.repeat(reverse: true);
-  }
-
-  @override
-  void didPop() {
-    _controller.stop();
-  }
-
-  @override
   void dispose() {
-    appRouteObserver.unsubscribe(this);
     _controller.dispose();
     super.dispose();
   }

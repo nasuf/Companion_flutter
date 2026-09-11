@@ -167,11 +167,10 @@ class WeatherPage extends StatefulWidget {
 }
 
 class _WeatherPageState extends State<WeatherPage>
-    with SingleTickerProviderStateMixin, RouteAware {
+    with SingleTickerProviderStateMixin {
   late final AnimationController _breathController;
   late _WeatherForecast _forecast;
   bool _isRefreshing = true;
-  PageRoute<dynamic>? _subscribedRoute;
 
   @override
   void initState() {
@@ -189,31 +188,6 @@ class _WeatherPageState extends State<WeatherPage>
     _refreshForecast(initial: true);
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final route = ModalRoute.of(context);
-    if (route is! PageRoute<dynamic> || route == _subscribedRoute) return;
-    appRouteObserver.unsubscribe(this);
-    _subscribedRoute = route;
-    appRouteObserver.subscribe(this, route);
-  }
-
-  @override
-  void didPushNext() {
-    _breathController.stop();
-  }
-
-  @override
-  void didPopNext() {
-    _breathController.repeat(reverse: true);
-  }
-
-  @override
-  void didPop() {
-    _breathController.stop();
-  }
-
   String get _forecastCacheKey {
     final agentId = widget.agentId;
     if (agentId != null && agentId.isNotEmpty) return 'agent:$agentId';
@@ -225,7 +199,6 @@ class _WeatherPageState extends State<WeatherPage>
 
   @override
   void dispose() {
-    appRouteObserver.unsubscribe(this);
     _breathController.dispose();
     super.dispose();
   }
@@ -321,9 +294,8 @@ class _FutureWeatherPage extends StatefulWidget {
 }
 
 class _FutureWeatherPageState extends State<_FutureWeatherPage>
-    with SingleTickerProviderStateMixin, RouteAware {
+    with SingleTickerProviderStateMixin {
   late final AnimationController _breathController;
-  PageRoute<dynamic>? _subscribedRoute;
 
   @override
   void initState() {
@@ -335,33 +307,7 @@ class _FutureWeatherPageState extends State<_FutureWeatherPage>
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final route = ModalRoute.of(context);
-    if (route is! PageRoute<dynamic> || route == _subscribedRoute) return;
-    appRouteObserver.unsubscribe(this);
-    _subscribedRoute = route;
-    appRouteObserver.subscribe(this, route);
-  }
-
-  @override
-  void didPushNext() {
-    _breathController.stop();
-  }
-
-  @override
-  void didPopNext() {
-    _breathController.repeat(reverse: true);
-  }
-
-  @override
-  void didPop() {
-    _breathController.stop();
-  }
-
-  @override
   void dispose() {
-    appRouteObserver.unsubscribe(this);
     _breathController.dispose();
     super.dispose();
   }

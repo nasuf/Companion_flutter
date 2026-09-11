@@ -12,6 +12,9 @@ part of 'package:companion_flutter/main.dart';
 /// Daily Share / Music / Games build ImageFiltered layers and start N card
 /// tickers on the same frame the Cupertino slide begins. Exit felt fine
 /// because the destination was already a static snapshot.
+///
+/// Pushed pages must not add a second [RouteAware] stop/repeat on their
+/// breath controllers. [TickerMode] here is the only transition door.
 class RouteTickerScope extends StatefulWidget {
   const RouteTickerScope({super.key, required this.child});
 

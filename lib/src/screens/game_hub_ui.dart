@@ -48,6 +48,40 @@ const _hubBoardThumbs = <String, String>{
 String _hubTileArt(_GameTile game) =>
     _hubBoardThumbs[game.nativeGameKey] ?? game.image;
 
+/// Decode assets at the on-screen pixel width. Full-resolution prototype
+/// JPEGs are far larger than a hub card; shrinking at decode is cheaper on
+/// both Android and iOS than covering a 3x bitmap then filtering it.
+int _hubCacheWidth(BuildContext context, double logicalWidth) {
+  final px = (logicalWidth * MediaQuery.devicePixelRatioOf(context)).round();
+  return math.max(1, px);
+}
+
+/// Same [ResizeImage] widths the hub widgets decode at, so the 互动-tab
+/// warm pass populates the cache the pushed page will actually hit.
+ImageProvider _hubWarmImageProvider(
+  BuildContext context,
+  String path,
+) {
+  final width = MediaQuery.sizeOf(context).width;
+  final s = width / _hubRefWidth;
+  if (path.endsWith('bg.jpg')) {
+    return ResizeImage(AssetImage(path), width: _hubCacheWidth(context, width));
+  }
+  if (path.contains('banner_')) {
+    return ResizeImage(
+      AssetImage(path),
+      width: _hubCacheWidth(context, 336 * s),
+    );
+  }
+  if (path.contains('thumb_')) {
+    return ResizeImage(
+      AssetImage(path),
+      width: _hubCacheWidth(context, 140 * s),
+    );
+  }
+  return AssetImage(path);
+}
+
 /// The badge's two lines: `皮革手套-白` over `初学起步`. The ladder stores the
 /// glove, its colour and the caption separately, so this only joins them.
 ({String title, String subtitle}) _hubLevelLabels(GameLevel? level) {
@@ -158,6 +192,7 @@ class _HubBackground extends StatelessWidget {
       fit: BoxFit.cover,
       alignment: Alignment.topCenter,
       filterQuality: FilterQuality.medium,
+      cacheWidth: _hubCacheWidth(context, MediaQuery.sizeOf(context).width),
     );
     final settled = RouteSettled.of(context);
     return Positioned.fill(
@@ -183,11 +218,13 @@ class _HubBreathingArt extends StatefulWidget {
     required this.asset,
     required this.seed,
     this.desaturate = false,
+    this.cacheWidth,
   });
 
   final String asset;
   final int seed;
   final bool desaturate;
+  final int? cacheWidth;
 
   // Kept identical to the hub's previous idle motion.
   static const double _scaleAmount = 0.09;
@@ -238,6 +275,7 @@ class _HubBreathingArtState extends State<_HubBreathingArt>
       widget.asset,
       fit: BoxFit.cover,
       filterQuality: FilterQuality.medium,
+      cacheWidth: widget.cacheWidth,
     );
     if (widget.desaturate) {
       image = ColorFiltered(
@@ -824,6 +862,7 @@ class _HubGroupBanner extends StatelessWidget {
                     child: _HubBreathingArt(
                       asset: art,
                       seed: group.id.hashCode,
+                      cacheWidth: _hubCacheWidth(context, 336 * s),
                     ),
                   ),
                 ),
@@ -912,6 +951,7 @@ class _HubGameTile extends StatelessWidget {
                 asset: _hubTileArt(game),
                 seed: game.title.hashCode,
                 desaturate: !game.isOnline,
+                cacheWidth: _hubCacheWidth(context, 140 * s),
               ),
             ),
           ),
