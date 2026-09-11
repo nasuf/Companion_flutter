@@ -61,6 +61,12 @@ class MainActivity : FlutterActivity() {
                         lockPeakRefreshRate(writeWindow = false, allowSeamlessPlant = false)
                         result.success(null)
                     }
+                    "suppressRecover" -> {
+                        val ms = (call.arguments as? Number)?.toLong() ?: DEFAULT_SUPPRESS_MS
+                        val until = SystemClock.uptimeMillis() + ms
+                        if (until > ignoreVotesUntilMs) ignoreVotesUntilMs = until
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -151,8 +157,14 @@ class MainActivity : FlutterActivity() {
     private fun shouldRecoverVote(current: Float, peak: Float): Boolean {
         if (SystemClock.uptimeMillis() < ignoreVotesUntilMs) return false
         if (current >= peak - RATE_SLACK_HZ) return false
+        // ColorOS LTPO hops 120→30→120 when ALWAYS-recovering a 30 Hz flash.
+        // Dart DisplayRefreshPolicy mirrors this; do not recover the hop.
+        if (isLtpoHopHz(current)) return false
         return belowPeakForMs() >= STUCK_BELOW_PEAK_MS
     }
+
+    private fun isLtpoHopHz(hz: Float): Boolean =
+        hz >= LTPO_HOP_MIN_HZ && hz <= LTPO_HOP_MAX_HZ
 
     private fun applyWindowModeOnce() {
         if (windowModeApplied) return
@@ -283,7 +295,8 @@ class MainActivity : FlutterActivity() {
                 width: Int,
                 height: Int,
             ) {
-                lockPeakRefreshRate(writeWindow = false, allowSeamlessPlant = false)
+                // Height-only changes fire on every IME adjustResize frame.
+                // Re-voting here is what hops ColorOS 120→30→120 mid-keyboard.
             }
 
             override fun surfaceDestroyed(holder: SurfaceHolder) {}
@@ -358,5 +371,8 @@ class MainActivity : FlutterActivity() {
         private const val KEEP_ALIVE_RECOVER_MS = 400L
         private const val KEEP_ALIVE_IDLE_MS = 1500L
         private const val RATE_SLACK_HZ = 8f
+        private const val LTPO_HOP_MIN_HZ = 20f
+        private const val LTPO_HOP_MAX_HZ = 40f
+        private const val DEFAULT_SUPPRESS_MS = 700L
     }
 }

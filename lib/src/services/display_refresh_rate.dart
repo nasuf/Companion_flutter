@@ -8,7 +8,6 @@ import 'package:refresh_rate/refresh_rate.dart';
 
 /// ColorOS LTPO hops 120→30→120 when we call setFrameRate(ALWAYS) while
 /// already at peak. Native code mirrors these rules.
-@visibleForTesting
 class DisplayRefreshPolicy {
   /// [RefreshRate.boost] on Android ends with `resetToDefault()`. Never use it.
   static bool usesTemporaryBoost({required bool isAndroid}) => !isAndroid;
@@ -27,17 +26,27 @@ class DisplayRefreshPolicy {
 
   static const pointerThrottle = Duration(milliseconds: 400);
 
+  /// Cupertino push/pop is ~400 ms. Keep the covered route frozen until the
+  /// transition has painted its last frame, then uncover.
+  static const routeUncoverDelay = Duration(milliseconds: 500);
+
+  /// Suppress ALWAYS recover-votes for a bit longer than the transition so
+  /// ColorOS cannot 120→30→120 hop mid-pop.
+  static const routeRecoverSuppress = Duration(milliseconds: 700);
+
   static bool isLtpoHopHz(double hz) =>
       hz >= ltpoHopMinHz && hz <= ltpoHopMaxHz;
 
   /// Vote only after a real drop (typically 60 Hz) has lasted long enough.
-  /// Ignore already-at-peak and the 30 Hz LTPO hop.
+  /// Ignore already-at-peak and the 30 Hz LTPO hop — ALWAYS-recovering a hop
+  /// is what flashes 120→30→120 on ColorOS.
   static bool shouldRecoverVote({
     required double currentHz,
     required double peakHz,
     required Duration belowPeakFor,
   }) {
     if (currentHz >= peakHz - peakSlackHz) return false;
+    if (isLtpoHopHz(currentHz)) return false;
     if (belowPeakFor < stuckBelowPeak) return false;
     return true;
   }
@@ -100,6 +109,22 @@ class DisplayRefreshRate {
     _lockNativePeak();
   }
 
+  /// Block ALWAYS recover-votes during IME / route transitions. Native no-ops
+  /// lockPeak while this window is open.
+  static void suppressRecover(Duration duration) {
+    if (!_enabled || !Platform.isAndroid) return;
+    unawaited(_invokeNativeSuppress(duration));
+  }
+
+  static Future<void> _invokeNativeSuppress(Duration duration) async {
+    try {
+      await _nativeChannel.invokeMethod<void>(
+        'suppressRecover',
+        duration.inMilliseconds,
+      );
+    } catch (_) {}
+  }
+
   static void _persistPeakRate() {
     try {
       if (Platform.isIOS) {
@@ -141,7 +166,6 @@ class DisplayRefreshGate extends StatelessWidget {
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: (_) => DisplayRefreshRate.onPointerActivity(),
-      onPointerMove: (_) => DisplayRefreshRate.onPointerActivity(),
       child: child,
     );
   }

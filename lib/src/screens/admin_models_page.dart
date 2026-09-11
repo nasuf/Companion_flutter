@@ -880,7 +880,7 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
     final options = _options;
     if (options == null) return;
     final changed = await Navigator.of(context).push<bool>(
-      CupertinoPageRoute<bool>(
+      CompanionPageRoute<bool>(
         builder: (_) => _AdminModelEditPage(
           api: widget.api,
           session: widget.session,

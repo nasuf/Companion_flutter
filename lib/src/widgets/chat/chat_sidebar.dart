@@ -29,7 +29,7 @@ class _ChatSidebarOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final safeTop = MediaQuery.paddingOf(context).top;
+    final safeTop = MediaQuery.viewPaddingOf(context).top;
     final screenHeight = MediaQuery.sizeOf(context).height;
     final top = math.max(safeTop + 98, screenHeight * 0.16);
 

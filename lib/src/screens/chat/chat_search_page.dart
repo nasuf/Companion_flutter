@@ -108,27 +108,29 @@ class ChatSearchPage extends StatefulWidget {
       PageRouteBuilder<void>(
         transitionDuration: const Duration(milliseconds: 320),
         reverseTransitionDuration: const Duration(milliseconds: 260),
-        pageBuilder: (_, __, ___) => ChatSearchPage(
-          api: api,
-          session: session,
-          conversationId: conversationId,
-          agentAvatarUrl: agentAvatarUrl,
-          userAvatarUrl: userAvatarUrl,
-          onOpenComponentCard: onOpenComponentCard,
-          onPreviewAttachment: onPreviewAttachment,
-          onLocateMessage: onLocateMessage,
-          initialScope: initialScope,
-          initialQuery: initialQuery,
-          initialCardCategory: initialCardCategory,
+        pageBuilder: (_, __, ___) => RouteTickerScope(
+          child: ChatSearchPage(
+            api: api,
+            session: session,
+            conversationId: conversationId,
+            agentAvatarUrl: agentAvatarUrl,
+            userAvatarUrl: userAvatarUrl,
+            onOpenComponentCard: onOpenComponentCard,
+            onPreviewAttachment: onPreviewAttachment,
+            onLocateMessage: onLocateMessage,
+            initialScope: initialScope,
+            initialQuery: initialQuery,
+            initialCardCategory: initialCardCategory,
+          ),
         ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return SlideTransition(
-            position:
-                Tween<Offset>(
-                  begin: const Offset(0, 1),
-                  end: Offset.zero,
-                ).animate(
-                  CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+            position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
+                .animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  ),
                 ),
             child: child,
           );
@@ -380,7 +382,10 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
     }
   }
 
-  List<MessageSearchHit> _hitsFor(MessageSearchResult result, ChatSearchScope scope) {
+  List<MessageSearchHit> _hitsFor(
+    MessageSearchResult result,
+    ChatSearchScope scope,
+  ) {
     return switch (scope) {
       ChatSearchScope.text => result.text,
       ChatSearchScope.card => result.cards,
@@ -499,7 +504,9 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
     if (_scope == ChatSearchScope.all) {
       final preview = _preview;
       if (preview == null) return const SizedBox.shrink();
-      if (preview.text.isEmpty && preview.cards.isEmpty && preview.images.isEmpty) {
+      if (preview.text.isEmpty &&
+          preview.cards.isEmpty &&
+          preview.images.isEmpty) {
         return _EmptyResults(scheme: scheme);
       }
       return _AllResultsList(
@@ -558,15 +565,15 @@ class _ChatSearchPageState extends State<ChatSearchPage> {
                       agentAvatarUrl: widget.agentAvatarUrl,
                       userAvatarUrl: widget.userAvatarUrl,
                     ),
-                    ChatSearchScope.text || ChatSearchScope.all =>
-                      SearchTextResultRow(
-                        hit: hit,
-                        agentName: _agentName,
-                        onTap: () => _locateMessage(hit),
-                        agentAvatarUrl: widget.agentAvatarUrl,
-                        userAvatarUrl: widget.userAvatarUrl,
-                        highlightQuery: _query,
-                      ),
+                    ChatSearchScope.text ||
+                    ChatSearchScope.all => SearchTextResultRow(
+                      hit: hit,
+                      agentName: _agentName,
+                      onTap: () => _locateMessage(hit),
+                      agentAvatarUrl: widget.agentAvatarUrl,
+                      userAvatarUrl: widget.userAvatarUrl,
+                      highlightQuery: _query,
+                    ),
                   },
                   const SizedBox(height: 16),
                 ],
@@ -606,9 +613,7 @@ class _SearchBackdrop extends StatelessWidget {
           center: const Alignment(0, -0.9),
           radius: 1.3,
           colors: [
-            scheme.isDark
-                ? const Color(0xFF14243A)
-                : const Color(0xFFF3F8FF),
+            scheme.isDark ? const Color(0xFF14243A) : const Color(0xFFF3F8FF),
             scheme.base,
           ],
         ),
@@ -685,7 +690,10 @@ class _SearchBar extends StatelessWidget {
                         errorBorder: InputBorder.none,
                         focusedErrorBorder: InputBorder.none,
                         hintText: '搜索聊天记录',
-                        hintStyle: TextStyle(color: scheme.inkFaint, fontSize: 15),
+                        hintStyle: TextStyle(
+                          color: scheme.inkFaint,
+                          fontSize: 15,
+                        ),
                       ),
                     ),
                   ),
@@ -766,7 +774,8 @@ class _SearchLanding extends StatelessWidget {
 
   final _W2b scheme;
   final List<String> history;
-  final void Function(ChatSearchScope scope, [String? cardCategory]) onQuickFilter;
+  final void Function(ChatSearchScope scope, [String? cardCategory])
+  onQuickFilter;
   final ValueChanged<String> onHistoryTap;
   final VoidCallback onClearHistory;
 

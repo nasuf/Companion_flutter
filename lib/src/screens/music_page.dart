@@ -72,6 +72,7 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
   bool _seeking = false;
   int _seekGeneration = 0;
   String? _error;
+  bool _loadArmed = false;
 
   String get _agentId => widget.session.agentId ?? '';
   String get _agentName => widget.session.agentName ?? '小芜';
@@ -166,12 +167,22 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
     _playback.addListener(_handlePlaybackChanged);
     _playback.configureQuota(widget.api);
     _completeSub = _playback.completed.listen((_) {
-      if (mounted) {
+      if (mounted && _loadArmed) {
         unawaited(_playRandom(refresh: true, changeSource: 'auto_next'));
       }
     });
     _quotaSub = _playback.quotaEvents.listen(_handleMusicQuotaEvent);
-    _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loadArmed || !RouteSettled.of(context)) return;
+    _loadArmed = true;
+    // Singleton playback can already be running. Sync after the slide so
+    // that listener setState does not rebuild during the Cupertino push.
+    _handlePlaybackChanged();
+    unawaited(_load());
   }
 
   @override
@@ -188,7 +199,7 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
   /// CLAUDE.md 权益项 6: 控制器已暂停播放, 这里只负责按 action 弹对应的框
   /// 并把结果回传给控制器决定是否恢复播放。
   Future<void> _handleMusicQuotaEvent(MusicQuotaReport report) async {
-    if (!mounted) return;
+    if (!mounted || !_loadArmed) return;
     switch (report.action) {
       case MusicQuotaAction.confirmTicket:
         final confirmed = await showMusicOverageConfirmDialog(
@@ -219,7 +230,7 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
   }
 
   void _handlePlaybackChanged() {
-    if (!mounted) return;
+    if (!mounted || !_loadArmed) return;
     final track = _playback.track;
     setState(() {
       if (track != null) _currentTrack = _withFavoriteState(track);
@@ -241,10 +252,12 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
       });
       return;
     }
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (_error != null || !_loading) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final results = await Future.wait([
         widget.api.listMusicLibraries(),
@@ -783,6 +796,7 @@ class _MusicBackdrop extends StatelessWidget {
     final pulse = 0.5 - (0.5 - breath).abs();
     final slowDrift = (breath - 0.5) * 2;
     final counterDrift = math.sin((progress + 0.22) * math.pi * 2);
+    final settled = RouteSettled.of(context);
     return DecoratedBox(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -803,81 +817,83 @@ class _MusicBackdrop extends StatelessWidget {
               ),
             ),
           ),
-          Positioned(
-            right: -122 + 56 * slowDrift,
-            top: 52 + 44 * counterDrift,
-            child: Opacity(
-              opacity: 0.78 + pulse * 0.22,
-              child: Transform.rotate(
-                angle: 0.05 * slowDrift,
+          if (settled) ...[
+            Positioned(
+              right: -122 + 56 * slowDrift,
+              top: 52 + 44 * counterDrift,
+              child: Opacity(
+                opacity: 0.78 + pulse * 0.22,
+                child: Transform.rotate(
+                  angle: 0.05 * slowDrift,
+                  child: Transform.scale(
+                    scale: 0.94 + pulse * 0.16,
+                    child: _MusicGlow(
+                      width: 360,
+                      height: 340,
+                      radius: 168,
+                      color: const Color(0x63276FFF),
+                      blur: 18,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: -130 - 48 * slowDrift,
+              top: 220 + 54 * slowDrift,
+              child: Opacity(
+                opacity: 0.66 + pulse * 0.28,
+                child: Transform.rotate(
+                  angle: -0.06 * counterDrift,
+                  child: Transform.scale(
+                    scale: 0.92 + pulse * 0.18,
+                    child: _MusicGlow(
+                      width: 330,
+                      height: 300,
+                      radius: 150,
+                      color: const Color(0x5018C6C0),
+                      blur: 18,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              right: -150 + 72 * counterDrift,
+              bottom: -118 + 46 * slowDrift,
+              child: Opacity(
+                opacity: 0.50 + pulse * 0.28,
                 child: Transform.scale(
-                  scale: 0.94 + pulse * 0.16,
+                  scale: 0.92 + pulse * 0.17,
                   child: _MusicGlow(
                     width: 360,
-                    height: 340,
-                    radius: 168,
-                    color: const Color(0x63276FFF),
-                    blur: 18,
+                    height: 320,
+                    radius: 170,
+                    color: const Color(0x3CFFBE3D),
+                    blur: 24,
                   ),
                 ),
               ),
             ),
-          ),
-          Positioned(
-            left: -130 - 48 * slowDrift,
-            top: 220 + 54 * slowDrift,
-            child: Opacity(
-              opacity: 0.66 + pulse * 0.28,
-              child: Transform.rotate(
-                angle: -0.06 * counterDrift,
+            Positioned(
+              left: 18 + 34 * slowDrift,
+              right: 28 - 26 * counterDrift,
+              bottom: 78 - 42 * slowDrift,
+              child: Opacity(
+                opacity: 0.36 + pulse * 0.28,
                 child: Transform.scale(
-                  scale: 0.92 + pulse * 0.18,
+                  scale: 0.98 + pulse * 0.10,
                   child: _MusicGlow(
-                    width: 330,
-                    height: 300,
-                    radius: 150,
-                    color: const Color(0x5018C6C0),
-                    blur: 18,
+                    width: 340,
+                    height: 210,
+                    radius: 120,
+                    color: const Color(0x4611DCC4),
+                    blur: 26,
                   ),
                 ),
               ),
             ),
-          ),
-          Positioned(
-            right: -150 + 72 * counterDrift,
-            bottom: -118 + 46 * slowDrift,
-            child: Opacity(
-              opacity: 0.50 + pulse * 0.28,
-              child: Transform.scale(
-                scale: 0.92 + pulse * 0.17,
-                child: _MusicGlow(
-                  width: 360,
-                  height: 320,
-                  radius: 170,
-                  color: const Color(0x3CFFBE3D),
-                  blur: 24,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 18 + 34 * slowDrift,
-            right: 28 - 26 * counterDrift,
-            bottom: 78 - 42 * slowDrift,
-            child: Opacity(
-              opacity: 0.36 + pulse * 0.28,
-              child: Transform.scale(
-                scale: 0.98 + pulse * 0.10,
-                child: _MusicGlow(
-                  width: 340,
-                  height: 210,
-                  radius: 120,
-                  color: const Color(0x4611DCC4),
-                  blur: 26,
-                ),
-              ),
-            ),
-          ),
+          ],
         ],
       ),
     );
@@ -1050,8 +1066,8 @@ class _MusicLibrarySelector extends StatelessWidget {
         final activeIndex = selectedIndex < 0 ? 0 : selectedIndex;
         return ClipRRect(
           borderRadius: BorderRadius.circular(23),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+          child: RouteSettledBlur.backdrop(
+            sigma: 24,
             child: Container(
               height: 54,
               padding: const EdgeInsets.all(railPadding),
@@ -1141,8 +1157,8 @@ class _MusicLibraryIndicator extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: RouteSettledBlur.backdrop(
+          sigma: 18,
           child: DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(18),
@@ -2336,8 +2352,8 @@ class _MusicHintStrip extends StatelessWidget {
       onPressed: onTap,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: RouteSettledBlur.backdrop(
+          sigma: 20,
           child: Container(
             padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
             decoration: BoxDecoration(
@@ -2747,8 +2763,8 @@ class _MusicGlassButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+      child: RouteSettledBlur.backdrop(
+        sigma: 22,
         child: Container(
           width: width,
           height: height,

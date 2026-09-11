@@ -1282,7 +1282,7 @@ class _MealMerchantsPanelState extends State<_MealMerchantsPanel> {
 
   Future<void> _openDetail(_MealMerchant merchant) async {
     await Navigator.of(context).push<void>(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => _MealRedemptionDetailPage(
           api: widget.api,
           session: widget.session,

@@ -177,7 +177,7 @@ class _LoginPageState extends State<LoginPage>
 
   void _openLegalDocument({required String title, required String assetPath}) {
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => _LegalDocumentPage(title: title, assetPath: assetPath),
       ),
     );

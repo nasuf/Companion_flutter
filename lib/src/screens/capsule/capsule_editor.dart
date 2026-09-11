@@ -30,7 +30,7 @@ class CapsuleEditorPage extends StatefulWidget {
     bool readOnly = false,
   }) {
     return Navigator.of(context).push<Object?>(
-      CupertinoPageRoute<Object?>(
+      CompanionPageRoute<Object?>(
         fullscreenDialog: true,
         builder: (_) => CapsuleEditorPage(
           api: api,
@@ -872,7 +872,7 @@ class _CapsuleEditorPageState extends State<CapsuleEditorPage> {
               onOpenImage: _image == null
                   ? null
                   : () => Navigator.of(context).push<void>(
-                      CupertinoPageRoute(
+                      CompanionPageRoute(
                         fullscreenDialog: true,
                         builder: (_) => _CapsuleImageViewer(image: _image!),
                       ),

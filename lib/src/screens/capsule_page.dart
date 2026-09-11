@@ -280,7 +280,7 @@ class _CapsulePageState extends State<CapsulePage> {
   Future<void> _openPending(List<TimeCapsule> pending) async {
     if (pending.isEmpty) return;
     await Navigator.of(context).push<void>(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => _PendingCapsuleScene(capsules: pending),
       ),
     );
@@ -291,7 +291,7 @@ class _CapsulePageState extends State<CapsulePage> {
   Future<void> _openOpened(List<TimeCapsule> capsules) async {
     if (capsules.isEmpty) return;
     final result = await Navigator.of(context).push<Object?>(
-      CupertinoPageRoute<Object?>(
+      CompanionPageRoute<Object?>(
         builder: (_) => _OpenedCapsulesPage(
           capsules: capsules,
           onOpen: (capsule) => widget.api.openTimeCapsule(capsule.id),

@@ -99,7 +99,7 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
 
   void _openActivities() {
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => OfflineActivityPage(
           api: widget.api,
           session: widget.session,
@@ -112,7 +112,7 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
 
   void _openGifts() {
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => OfflineGiftPage(
           api: widget.api,
           session: widget.session,

@@ -38,8 +38,8 @@ class ChatPage extends StatefulWidget {
   final ValueChanged<VoiceRecordingOverlaySnapshot?>?
   onVoiceRecordingOverlayChanged;
 
-  /// Reports whether the emoji / more panel is up, so the shell can hide the
-  /// floating tab bar (the panel docks to the screen bottom like a keyboard).
+  /// Reports whether the emoji / more panel or the IME is docking the bottom
+  /// strip, so the shell can hide the floating tab bar.
   final ValueChanged<bool>? onComposerPanelChanged;
 
   @override
@@ -152,7 +152,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const _tabBarContentHeight = 64.0;
   static const _composerPanelHeight = 236.0;
   static const _messagePageSize = 100;
-  static const _loadOlderThreshold = 80.0;
   static const _jumpWindowRadius = 15;
   static const _jumpExtendStep = 15;
   static const _maxVoiceSeconds = 60;
@@ -173,9 +172,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _highlightMessageKey = GlobalKey(debugLabel: 'chat-highlight-message');
   final _musicStation = ChatMusicStationState();
   final _transcript = ChatTranscriptController();
-  // Keyboard-driven list padding updates every frame; keep it out of [build] so
-  // header + transcript ListenableBuilder are not rebuilt on each inset tick.
-  final _listBottomPadding = ValueNotifier(200.0);
   final _typingVisible = ValueNotifier(false);
   // Composer chrome and message-list music UI rebuild independently of the
   // header / station dock so WS ack/reply does not repaint the whole page.
@@ -244,7 +240,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   // renders real content instead of blanking instantly.
   ComposerPanel _lastDisplayedPanel = ComposerPanel.none;
   bool _notifiedComposerPanelVisible = false;
-  Timer? _panelHoldTimer;
+
+  /// True from the moment the user focuses the input until IME inset is gone.
+  /// Hides the floating tab bar on the cold-keyboard path the same way an
+  /// emoji/more panel already does.
+  bool _imeDockActive = false;
   Timer? _voiceTimer;
   StreamSubscription<Amplitude>? _voiceAmplitudeSub;
   Timer? _capsuleScanTimer;
@@ -270,9 +270,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   int get _loadedServerMessages => _transcript.loadedServerMessages;
   set _loadedServerMessages(int value) =>
       _transcript.loadedServerMessages = value;
-  double? _lastListBottomPadding;
-  bool _pinToBottomDuringKeyboard = false;
-  bool _wasNearBottomBeforePaddingChange = true;
+  bool _cachedNearBottom = true;
   int get _newMessageCount => _transcript.newMessageCount;
   set _newMessageCount(int value) => _transcript.newMessageCount = value;
   ({
@@ -362,8 +360,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void _syncCoListeningFromMessagesIfNeeded() {
     if (!mounted) return;
-    final next =
-        ChatMusicStationState.userCoListeningActiveFromMessages(_messages);
+    final next = ChatMusicStationState.userCoListeningActiveFromMessages(
+      _messages,
+    );
     if (next == _localUserCoListeningActive) return;
     _localUserCoListeningActive = next;
     if (!widget.isActive) return;
@@ -433,6 +432,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_handleScroll);
     _inputController.addListener(_handleInputChanged);
+    _inputFocus.addListener(_handleInputFocusChanged);
     if (widget.isActive) {
       _playback.addListener(_handleStationPlaybackChanged);
       _playbackSubscribed = true;
@@ -447,7 +447,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
       unawaited(_playNextStationTrack(auto: true));
     });
-    _musicQuotaSub = _playback.quotaEvents.listen(_handleStationMusicQuotaEvent);
+    _musicQuotaSub = _playback.quotaEvents.listen(
+      _handleStationMusicQuotaEvent,
+    );
     _bootstrapChat();
     unawaited(_refreshChatQuota());
   }
@@ -541,6 +543,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
     _scrollController.removeListener(_handleScroll);
     _inputController.removeListener(_handleInputChanged);
+    _inputFocus.removeListener(_handleInputFocusChanged);
     if (_playbackSubscribed) {
       _playback.removeListener(_handleStationPlaybackChanged);
       _playbackSubscribed = false;
@@ -551,7 +554,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _eventSub?.cancel();
     _stateSub?.cancel();
     _socket?.close();
-    _panelHoldTimer?.cancel();
     _voiceTimer?.cancel();
     _voiceAmplitudeSub?.cancel();
     _voiceAmplitude.dispose();
@@ -563,7 +565,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _musicQuotaSub?.cancel();
     _shareIntentSub?.cancel();
     unawaited(_voiceRecorder.dispose());
-    _listBottomPadding.dispose();
     _typingVisible.dispose();
     _composerShell.dispose();
     _viewportShell.dispose();
@@ -637,7 +638,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     await _shareIntentSub?.cancel();
     _shareIntentSub = null;
     await _socket?.close();
-    _panelHoldTimer?.cancel();
     _capsuleScanTimer?.cancel();
     _conversationMetaTimer?.cancel();
     if (!mounted) return;
@@ -953,7 +953,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _loadLatestMessages({required bool showLoading}) async {
-    final hadScrollPosition = _scrollController.hasClients;
+    final hadScrollPosition = _hasLaidOutScroll();
     final oldPixels = hadScrollPosition ? _scrollController.position.pixels : 0;
     final wasNearBottom = hadScrollPosition ? _isNearBottomNow() : true;
     if (showLoading) {
@@ -982,10 +982,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       });
       _adoptLatestMusicStationFromMessages();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_scrollController.hasClients) return;
+        if (!_hasLaidOutScroll()) return;
         if (showLoading) {
-          // First load / conversation switch: chase the settling extent so we
-          // land exactly on the newest message despite lazy list measurement.
           _jumpToBottomSettled();
         } else if (!hadScrollPosition || wasNearBottom) {
           _scrollToBottom();
@@ -1078,8 +1076,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   Future<void> _loadOlderMessages() async {
     if (_loadingOlder || !_hasOlderMessages) return;
-    final oldMaxExtent = _scrollController.position.maxScrollExtent;
-    final oldPixels = _scrollController.position.pixels;
     _notifyTranscript(() {
       _loadingOlder = true;
       _historyError = null;
@@ -1098,15 +1094,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             _countServerMessages(newestFirst) == _messagePageSize;
         _loadedServerMessages = _countServerMessages(_messages);
         _loadingOlder = false;
-      });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_scrollController.hasClients) return;
-        final delta = _scrollController.position.maxScrollExtent - oldMaxExtent;
-        final target = (oldPixels + delta).clamp(
-          _scrollController.position.minScrollExtent,
-          _scrollController.position.maxScrollExtent,
-        );
-        _scrollController.jumpTo(target.toDouble());
       });
     } catch (error) {
       if (mounted) {
@@ -1166,20 +1153,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
     if (card.type == 'red_packet') {
       _dismissInputSurfaces();
-      await _showRedPacketSheet(
-        context: context,
-        api: widget.api,
-        card: card,
-      );
+      await _showRedPacketSheet(context: context, api: widget.api, card: card);
       return;
     }
     if (card.type == 'gift') {
       _dismissInputSurfaces();
-      await _showGiftSheet(
-        context: context,
-        api: widget.api,
-        card: card,
-      );
+      await _showGiftSheet(context: context, api: widget.api, card: card);
       return;
     }
     if (card.type == 'offline_activity') {
@@ -1187,7 +1166,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (activityId == null || activityId.isEmpty) return;
       _dismissInputSurfaces();
       await Navigator.of(context).push<void>(
-        CupertinoPageRoute<void>(
+        CompanionPageRoute<void>(
           builder: (_) => OfflineActivityPage(
             api: widget.api,
             session: widget.session,
@@ -1203,7 +1182,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (giftId == null || giftId.isEmpty) return;
       _dismissInputSurfaces();
       await Navigator.of(context).push<void>(
-        CupertinoPageRoute<void>(
+        CompanionPageRoute<void>(
           builder: (_) => OfflineGiftPage(
             api: widget.api,
             session: widget.session,
@@ -1242,7 +1221,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           card.payload['reminder_id']?.toString() ??
           card.payload['habit_id']?.toString();
       final result = await Navigator.of(context).push<CapsuleChatDraft>(
-        CupertinoPageRoute<CapsuleChatDraft>(
+        CompanionPageRoute<CapsuleChatDraft>(
           fullscreenDialog: true,
           builder: (_) => CheckinPage(
             api: widget.api,
@@ -1295,7 +1274,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     try {
       if (!mounted) return;
       final result = await Navigator.of(context).push<CapsuleChatDraft>(
-        CupertinoPageRoute<CapsuleChatDraft>(
+        CompanionPageRoute<CapsuleChatDraft>(
           fullscreenDialog: true,
           builder: (_) => MusicPage(
             api: widget.api,
@@ -1611,13 +1590,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     });
     await _waitForNextFrame();
     if (!mounted) return;
-    if (index != -1 && _scrollController.hasClients) {
-      const estimatedItemExtent = 90.0;
+    if (index != -1 && _hasLaidOutScroll()) {
       final maxExtent = _scrollController.position.maxScrollExtent;
-      final estimatedOffset = (index * estimatedItemExtent).clamp(
-        0.0,
-        maxExtent,
-      );
+      final estimatedOffset =
+          ChatScrollPolicy.estimatedOffsetForChronologicalIndex(
+            chronologicalIndex: index,
+            messageCount: _messages.length,
+            maxScrollExtent: maxExtent,
+          );
       _scrollController.jumpTo(estimatedOffset);
       await _waitForNextFrame();
       if (!mounted) return;
@@ -1861,7 +1841,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _notifyTranscript(() => _historyError = '这首歌暂时播放不了，正在换一首。');
       }
     } catch (error) {
-      if (mounted && !auto) _notifyTranscript(() => _historyError = _asMessage(error));
+      if (mounted && !auto)
+        _notifyTranscript(() => _historyError = _asMessage(error));
     } finally {
       _advancingStation = false;
       _syncStationDockLifecycle();
@@ -2040,15 +2021,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _handleScroll() {
-    if (!_scrollController.hasClients) return;
+    if (!_hasLaidOutScroll()) return;
+    final position = _scrollController.position;
+    _cachedNearBottom = ChatScrollPolicy.isNearNewest(position);
     if (_isJumpedToHistory) {
-      final position = _scrollController.position;
-      if (position.pixels <= _loadOlderThreshold &&
+      if (ChatScrollPolicy.isNearOldest(position) &&
           _hasMoreOlderJump &&
           !_loadingOlderJump) {
         unawaited(_loadOlderJump());
       }
-      if (position.pixels >= position.maxScrollExtent - _loadOlderThreshold &&
+      if (ChatScrollPolicy.isNearNewest(position) &&
           _hasMoreNewerJump &&
           !_loadingNewerJump) {
         unawaited(_loadNewerJump());
@@ -2056,7 +2038,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _scheduleStationDockCheck();
       return;
     }
-    if (_scrollController.position.pixels <= _loadOlderThreshold &&
+    if (ChatScrollPolicy.isNearOldest(position) &&
         _hasOlderMessages &&
         !_loadingOlder) {
       unawaited(_loadOlderMessages());
@@ -2158,7 +2140,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             'attachments': attachments.map((item) => item.toJson()).toList(),
           if (payload['display_mode'] != null)
             'display_mode': payload['display_mode'],
-          if (payload['ai_emotion'] != null) 'ai_emotion': payload['ai_emotion'],
+          if (payload['ai_emotion'] != null)
+            'ai_emotion': payload['ai_emotion'],
           if (payload['emotion_intensity'] != null)
             'emotion_intensity': payload['emotion_intensity'],
         };
@@ -2576,7 +2559,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void _openInteractionDetail() {
     _dismissInputSurfaces();
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => _InteractionStreakPage(
           agentAvatarUrl: _agentAvatarUrl,
           userAvatarUrl: widget.session.userAvatarUrl,
@@ -2679,14 +2662,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final text = notice['text']?.toString().trim() ?? '';
     if (text.isEmpty) return;
     final messageId = notice['message_id']?.toString() ?? '';
-    final createdAt = DateTime.tryParse(
-          notice['created_at']?.toString() ?? '',
-        ) ??
+    final createdAt =
+        DateTime.tryParse(notice['created_at']?.toString() ?? '') ??
         DateTime.now();
     final offeringId = notice['offering_id']?.toString() ?? '';
     final shouldAutoScroll = widget.isActive && _isNearBottomNow();
     _notifyTranscript(() {
-      final alreadyShown = offeringId.isNotEmpty &&
+      final alreadyShown =
+          offeringId.isNotEmpty &&
           _messages.any(
             (message) =>
                 message.isOfferingReceived &&
@@ -2737,10 +2720,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             offeringId.isNotEmpty && currentId == offeringId;
         if (!matchesMessage && !matchesOffering) continue;
         _messages[i] = message.copyWith(
-          metadata: {
-            ...?message.metadata,
-            'component_card': card.toJson(),
-          },
+          metadata: {...?message.metadata, 'component_card': card.toJson()},
         );
         break;
       }
@@ -2826,10 +2806,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _showRedPacketToast('未能获取当前位置，请检查定位权限或系统定位开关');
         return;
       }
-      final card = await LocationConfirmPage.push(
-        context,
-        snapshot: snapshot,
-      );
+      final card = await LocationConfirmPage.push(context, snapshot: snapshot);
       if (!mounted || card == null) return;
       final payload = card.payload;
       unawaited(
@@ -2948,7 +2925,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
     if (!mounted || goRecharge != true) return;
     await Navigator.of(context).push<void>(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => StorePage(
           api: widget.api,
           session: widget.session,
@@ -3072,7 +3049,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           final matches = blocked.clientId == null
               ? true
               : (message.clientId == blocked.clientId ||
-                  message.id == blocked.clientId);
+                    message.id == blocked.clientId);
           if (matches) {
             blockedDraft = _messages.removeAt(i);
             break;
@@ -3201,25 +3178,59 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
-  /// Mirrors the derived panel visibility to the shell (which hides the
-  /// floating tab bar while a panel is docked). Called from build, so the
-  /// actual notification is deferred to after the frame: flipping parent
-  /// state mid-build is not allowed.
-  void _syncComposerPanelVisibility(bool visible) {
-    if (_notifiedComposerPanelVisible == visible) return;
-    _notifiedComposerPanelVisible = visible;
+  /// Mirrors docked chrome (emoji/more panel or IME) to the shell so the
+  /// floating tab bar slides away. Called from build, so the actual
+  /// notification is deferred to after the frame: flipping parent state
+  /// mid-build is not allowed.
+  void _syncComposerDockVisibility({required bool panelVisible}) {
+    final hideTabBar = ChatScrollPolicy.hideFloatingTabBar(
+      panelDocked: panelVisible,
+      imeDocked: _imeDockActive || _inputFocus.hasFocus,
+    );
+    if (_notifiedComposerPanelVisible == hideTabBar) return;
+    _notifiedComposerPanelVisible = hideTabBar;
     final callback = widget.onComposerPanelChanged;
     if (callback == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) callback(visible);
+      if (mounted) callback(hideTabBar);
     });
+  }
+
+  void _setImeDockActive(bool value) {
+    if (_imeDockActive == value) return;
+    _imeDockActive = value;
+    _syncComposerDockVisibility(
+      panelVisible:
+          _panel != ComposerPanel.none || _heldPanel != ComposerPanel.none,
+    );
+  }
+
+  void _handleInputFocusChanged() {
+    if (!mounted) return;
+    if (_inputFocus.hasFocus) {
+      _setImeDockActive(true);
+    }
+  }
+
+  /// IME inset has returned to 0 and the field is unfocused. Drop held-panel
+  /// occupancy (Path B) and bring the tab bar back unless a panel is still up.
+  void _onImeFullyClosed() {
+    if (!mounted) return;
+    if (_inputFocus.hasFocus) return;
+    var restChanged = false;
+    if (_panel == ComposerPanel.none && _heldPanel != ComposerPanel.none) {
+      _heldPanel = ComposerPanel.none;
+      restChanged = true;
+    }
+    _setImeDockActive(false);
+    if (restChanged) _bumpComposerShell();
   }
 
   VoiceReleaseAction _voiceActionForPosition(Offset position) {
     return voiceReleaseActionForPosition(
       position: position,
       screenSize: MediaQuery.sizeOf(context),
-      safeBottom: MediaQuery.paddingOf(context).bottom,
+      safeBottom: MediaQuery.viewPaddingOf(context).bottom,
       currentAction: _voiceReleaseAction,
     );
   }
@@ -3255,9 +3266,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             _voiceGestureActive = false;
             _pendingVoiceReleaseAction = null;
           });
-          _notifyTranscript(
-            () => _historyError = '需要麦克风权限才能进行语音输入。',
-          );
+          _notifyTranscript(() => _historyError = '需要麦克风权限才能进行语音输入。');
           _syncVoiceRecordingOverlay();
         }
         return;
@@ -3577,10 +3586,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       unawaited(_socket?.connect());
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && clearComposer && attachments.isEmpty && !panelOpen) {
+      if (!mounted) return;
+      if (clearComposer && attachments.isEmpty && !panelOpen) {
         _inputFocus.requestFocus();
       }
-      _scrollToBottom(animated: true);
+      if (_cachedNearBottom) {
+        _scrollToBottom();
+      }
       _scheduleStationDockCheck();
     });
   }
@@ -3770,43 +3782,54 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
+  bool _hasLaidOutScroll() {
+    return _scrollController.hasClients &&
+        ChatScrollPolicy.hasLaidOut(_scrollController.position);
+  }
+
   void _scrollToBottom({bool animated = false}) {
-    if (!_scrollController.hasClients) return;
-    final target = _scrollController.position.maxScrollExtent;
-    if (animated) {
+    if (!_hasLaidOutScroll()) return;
+    final position = _scrollController.position;
+    final target = position.minScrollExtent;
+    final distance = (position.pixels - target).abs();
+    if (distance < 1) return;
+    // Animate only when catching up from well above the composer. Keyboard
+    // motion is a compositor slide, not this path.
+    final glued =
+        _cachedNearBottom || distance < ChatScrollPolicy.newestEdgeThreshold;
+    if (animated && !glued) {
       unawaited(
         _scrollController.animateTo(
           target,
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOutCubic,
+          duration: _animationDuration,
+          curve: _animationCurve,
         ),
       );
     } else {
       _scrollController.jumpTo(target);
     }
+    _cachedNearBottom = true;
   }
 
   /// Jumps to the newest message and keeps chasing the true bottom across the
-  /// next few frames. On first open the ListView.builder only measures the
-  /// visible items, so its initial maxScrollExtent is an estimate; a single
-  /// jump lands short. Re-jumping while the extent keeps growing settles the
-  /// list exactly at the latest message.
+  /// next few frames. On first open the list only measures the visible items,
+  /// so its initial min-edge is an estimate; a single jump can land short.
   void _jumpToBottomSettled({int remaining = 6}) {
-    if (!mounted || !_scrollController.hasClients) return;
+    if (!mounted || !_hasLaidOutScroll()) return;
     final position = _scrollController.position;
-    _scrollController.jumpTo(position.maxScrollExtent);
+    _scrollController.jumpTo(position.minScrollExtent);
+    _cachedNearBottom = true;
     if (remaining <= 0) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
+      if (!mounted || !_hasLaidOutScroll()) return;
       final next = _scrollController.position;
-      if (next.pixels < next.maxScrollExtent - 1) {
+      if (next.pixels > next.minScrollExtent + 1) {
         _jumpToBottomSettled(remaining: remaining - 1);
       }
     });
   }
 
   void _setPanel(ComposerPanel panel) {
-    _panelHoldTimer?.cancel();
     final nextPanel = _panel == panel ? ComposerPanel.none : panel;
     final opening = nextPanel != ComposerPanel.none;
     _heldPanel = ComposerPanel.none;
@@ -3820,45 +3843,45 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (opening) {
       FocusScope.of(context).unfocus();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _scrollToBottom(animated: true);
+        if (!mounted) return;
+        if (!_cachedNearBottom) _scrollToBottom(animated: true);
       });
     }
   }
 
   void _focusInput() {
-    // Summoning the keyboard always pulls the conversation to the newest
-    // message, mirroring the emoji/more panel behaviour. The pin then keeps
-    // the list glued to the composer while the keyboard animates up.
-    _pinToBottomDuringKeyboard = true;
-    _panelHoldTimer?.cancel();
+    // Keyboard motion is handled by retained paint followers. Catch up only
+    // when the reader is outside the newest-edge tolerance.
     final panelToHold = _panel != ComposerPanel.none ? _panel : _heldPanel;
+    final panelChanged = _panel != ComposerPanel.none;
     _panel = ComposerPanel.none;
     _heldPanel = panelToHold;
-    _bumpComposerShell();
+    // Hide the tab bar on this frame, matching the already-open-panel path.
+    // Keep [_heldPanel] until IME inset is gone so restLift cannot jump
+    // while the keyboard is still covering that occupancy.
+    _setImeDockActive(true);
+    DisplayRefreshRate.suppressRecover(
+      DisplayRefreshPolicy.routeRecoverSuppress,
+    );
+    if (panelChanged) {
+      _bumpComposerShell();
+    }
     _inputFocus.requestFocus();
     // Covers the cases the keyboard-pin cannot: keyboard already open (cursor
     // re-tap, panel -> keyboard switch with unchanged composer offset), where
     // no padding delta ever fires the pinned scroll sync.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _scrollToBottom(animated: true);
+      if (!mounted) return;
+      if (!_cachedNearBottom) _scrollToBottom(animated: true);
     });
-    if (panelToHold != ComposerPanel.none) {
-      _panelHoldTimer = Timer(const Duration(milliseconds: 360), () {
-        if (!mounted || _heldPanel == ComposerPanel.none) return;
-        _heldPanel = ComposerPanel.none;
-        _bumpComposerShell();
-      });
-    }
   }
 
   void _toggleVoiceInputMode() {
     if (_preparingVoice || _recordingVoice || _transcribingVoice) return;
-    _panelHoldTimer?.cancel();
     final next = !_voiceInputMode;
     _voiceInputMode = next;
     _panel = ComposerPanel.none;
     _heldPanel = ComposerPanel.none;
-    _pinToBottomDuringKeyboard = false;
     _bumpComposerShell();
     if (next) {
       FocusScope.of(context).unfocus();
@@ -3871,22 +3894,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void _dismissInputSurfaces() {
     FocusScope.of(context).unfocus();
-    _panelHoldTimer?.cancel();
-    if (_panel == ComposerPanel.none &&
-        _heldPanel == ComposerPanel.none &&
-        !_pinToBottomDuringKeyboard) {
+    if (_panel == ComposerPanel.none && _heldPanel == ComposerPanel.none) {
       return;
     }
     _panel = ComposerPanel.none;
     _heldPanel = ComposerPanel.none;
-    _pinToBottomDuringKeyboard = false;
     _bumpComposerShell();
   }
 
   bool _isNearBottomNow() {
-    if (!_scrollController.hasClients) return true;
-    final position = _scrollController.position;
-    return position.maxScrollExtent - position.pixels < 120;
+    if (!_hasLaidOutScroll()) return true;
+    return ChatScrollPolicy.isNearNewest(_scrollController.position);
   }
 
   double _composerHeightForWidth() {
@@ -3920,63 +3938,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
-  void _syncScrollWithBottomPadding(
-    double nextPadding, {
-    required bool forcePinToBottom,
-    required bool followKeyboardMetrics,
-  }) {
-    final previousPadding = _lastListBottomPadding;
-    if (_scrollController.hasClients && previousPadding != null) {
-      final position = _scrollController.position;
-      _wasNearBottomBeforePaddingChange =
-          forcePinToBottom || position.maxScrollExtent - position.pixels < 120;
-    }
-    _lastListBottomPadding = nextPadding;
-    if (previousPadding == null) return;
-    final delta = nextPadding - previousPadding;
-    if (delta.abs() < 1) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      final position = _scrollController.position;
-      final double target;
-      if (forcePinToBottom || _wasNearBottomBeforePaddingChange) {
-        target = position.maxScrollExtent;
-      } else {
-        return;
-      }
-      if (followKeyboardMetrics) {
-        _scrollController.jumpTo(target);
-      } else {
-        _scrollController.animateTo(
-          target,
-          duration: _animationDuration,
-          curve: _animationCurve,
-        );
-      }
-    });
-  }
-
-  void _applyInputChromeLayout({
-    required double listBottomPadding,
-    required bool keyboardTransition,
-    required bool forcePinToBottom,
-  }) {
-    if (_listBottomPadding.value != listBottomPadding) {
-      _listBottomPadding.value = listBottomPadding;
-    }
-    _syncScrollWithBottomPadding(
-      listBottomPadding,
-      forcePinToBottom: forcePinToBottom,
-      followKeyboardMetrics: keyboardTransition,
-    );
-  }
-
   Widget _buildTranscriptColumn({required double listTopPadding}) {
     return _ChatMessageViewport(
       host: this,
       transcript: _transcript,
       shellListenable: _viewportShell,
-      bottomPaddingListenable: _listBottomPadding,
       typingVisible: _typingVisible,
       scrollController: _scrollController,
       topPadding: listTopPadding,
@@ -3995,9 +3961,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             opacity: (_isJumpedToHistory || _newMessageCount > 0) ? 1 : 0,
             child: Center(
               child: _isJumpedToHistory
-                  ? _ReturnToLiveButton(
-                      onTap: () => unawaited(_returnToLive()),
-                    )
+                  ? _ReturnToLiveButton(onTap: () => unawaited(_returnToLive()))
                   : _NewMessagesButton(
                       count: _newMessageCount,
                       onTap: () => scrollToLatest(),
@@ -4011,7 +3975,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final safeTop = MediaQuery.paddingOf(context).top;
+    // padding.bottom changes on every IME tick even though only the stable
+    // status-bar inset is needed here. viewPadding keeps the whole ChatPage
+    // out of the keyboard animation's rebuild set.
+    final safeTop = MediaQuery.viewPaddingOf(context).top;
     final agentAvatarUrl = _agentAvatarUrl;
     final stationTrack = _stationTrack;
     final showStationDock =
@@ -4109,117 +4076,103 @@ class _ChatInputChromeLayer extends StatefulWidget {
 }
 
 class _ChatInputChromeLayerState extends State<_ChatInputChromeLayer> {
-  double _lastKeyboardInset = 0;
-
   _ChatPageState get _host => widget.host;
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    final isKeyboardOpen = bottomInset > 0;
-    final wasKeyboardOpen = _lastKeyboardInset > 0;
-    if (!wasKeyboardOpen && isKeyboardOpen) {
-      _host._pinToBottomDuringKeyboard = true;
-    } else if (wasKeyboardOpen && bottomInset < _lastKeyboardInset) {
-      _host._pinToBottomDuringKeyboard = false;
-    }
-
-    final visiblePanel =
-        _host._panel != ComposerPanel.none ? _host._panel : _host._heldPanel;
+    final visiblePanel = _host._panel != ComposerPanel.none
+        ? _host._panel
+        : _host._heldPanel;
     final visiblePanelHeight = _host._panelHeightFor(visiblePanel);
     final composerHeight = _host._composerHeightForWidth();
-    final keyboardLift = isKeyboardOpen ? bottomInset : 0.0;
     final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
     final tabBarLift = _ChatPageState._tabBarContentHeight + safeBottom;
     final panelVisible = visiblePanel != ComposerPanel.none;
-    final panelSurfaceHeight =
-        panelVisible ? visiblePanelHeight + safeBottom : 0.0;
+    final panelSurfaceHeight = panelVisible
+        ? visiblePanelHeight + safeBottom
+        : 0.0;
     final panelContentHeight = _ChatPageState._composerPanelHeight + safeBottom;
     if (panelVisible) {
       _host._lastDisplayedPanel = visiblePanel;
     }
-    final displayedPanel =
-        panelVisible ? visiblePanel : _host._lastDisplayedPanel;
-    final restLift = panelVisible ? panelSurfaceHeight : tabBarLift;
-    final composerBottom =
-        isKeyboardOpen ? math.max(keyboardLift, restLift) : restLift;
-    final inputSurfaceHeight = composerHeight + composerBottom;
-    _host._syncComposerPanelVisibility(panelVisible);
-    final listBottomPadding = inputSurfaceHeight + 18;
-    final keyboardTransition = isKeyboardOpen || wasKeyboardOpen;
-    final positionDuration =
-        keyboardTransition ? Duration.zero : _ChatPageState._animationDuration;
-    final forceKeyboardPin =
-        _host._pinToBottomDuringKeyboard && keyboardTransition;
-    _host._applyInputChromeLayout(
-      listBottomPadding: listBottomPadding,
-      keyboardTransition: keyboardTransition,
-      forcePinToBottom: forceKeyboardPin,
+    final displayedPanel = panelVisible
+        ? visiblePanel
+        : _host._lastDisplayedPanel;
+    final restLift = ChatScrollPolicy.restLift(
+      tabBarLift: tabBarLift,
+      panelLift: panelSurfaceHeight,
     );
-    _lastKeyboardInset = bottomInset;
-    if (!isKeyboardOpen && wasKeyboardOpen) {
-      _host._pinToBottomDuringKeyboard = false;
-    }
+    _host._syncComposerDockVisibility(panelVisible: panelVisible);
 
     return Stack(
       children: [
-        AnimatedPositioned(
+        Positioned(
           left: 0,
           right: 0,
           bottom: 0,
-          height: inputSurfaceHeight,
-          duration: positionDuration,
-          curve: _ChatPageState._animationCurve,
+          height: composerHeight + restLift,
           child: const IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(color: Color(0xFFF6FDFC)),
-            ),
+            child: ColoredBox(color: Color(0xFFF6FDFC)),
           ),
         ),
-        AnimatedPositioned(
-          left: 0,
-          right: 0,
-          bottom: composerBottom,
-          duration: positionDuration,
-          curve: _ChatPageState._animationCurve,
-          child: RepaintBoundary(
-            child: _Composer(
-              controller: _host._inputController,
-              focusNode: _host._inputFocus,
-              height: composerHeight,
-              activePanel: _host._panel,
-              voiceInputMode: _host._voiceInputMode,
-              sending:
-                  _host._sending ||
-                  _host._uploadingImage ||
-                  _host._preparingVoice ||
-                  _host._recordingVoice ||
-                  _host._transcribingVoice,
-              preparingVoice: _host._preparingVoice,
-              recordingVoice: _host._recordingVoice,
-              transcribingVoice: _host._transcribingVoice,
-              resolvingLink:
-                  _host._linkPreviewInFlightText != null &&
-                  _host._pendingLinkPreview == null,
-              pendingImages: _host._pendingImages,
-              pendingLink: _host._pendingLinkPreview,
-              authToken: _host.widget.api.authToken,
-              onFocusInput: _host._focusInput,
-              onToggleEmoji: () => _host._setPanel(ComposerPanel.emoji),
-              onShowKeyboard: _host._focusInput,
-              onToggleMore: () => _host._setPanel(ComposerPanel.more),
-              onToggleVoiceInput: _host._toggleVoiceInputMode,
-              onSend: _host._sendMessage,
-              onVoicePressStart: _host._handleVoicePressStart,
-              onVoicePressMove: _host._handleVoicePressMove,
-              onVoicePressEnd: _host._handleVoicePressEnd,
-              onVoicePressCancel: _host._handleVoicePressCancel,
-              onRemoveImage: _host._removePendingImage,
-              onPreviewImage: _host._previewPendingImage,
-              onRemoveLink: _host._removePendingLink,
-              onPreviewLink: _host._openPendingLink,
-              onPasteText: _host._handleComposerPasteText,
-              freeMessagesRemaining: _host._composerQuotaBadgeCount,
+        Positioned.fill(
+          child: _ImeChromeFollower(
+            host: _host,
+            restLift: restLift,
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: RepaintBoundary(
+                    child: _Composer(
+                      controller: _host._inputController,
+                      focusNode: _host._inputFocus,
+                      height: composerHeight,
+                      activePanel: _host._panel,
+                      voiceInputMode: _host._voiceInputMode,
+                      sending:
+                          _host._sending ||
+                          _host._uploadingImage ||
+                          _host._preparingVoice ||
+                          _host._recordingVoice ||
+                          _host._transcribingVoice,
+                      preparingVoice: _host._preparingVoice,
+                      recordingVoice: _host._recordingVoice,
+                      transcribingVoice: _host._transcribingVoice,
+                      resolvingLink:
+                          _host._linkPreviewInFlightText != null &&
+                          _host._pendingLinkPreview == null,
+                      pendingImages: _host._pendingImages,
+                      pendingLink: _host._pendingLinkPreview,
+                      authToken: _host.widget.api.authToken,
+                      onFocusInput: _host._focusInput,
+                      onToggleEmoji: () => _host._setPanel(ComposerPanel.emoji),
+                      onShowKeyboard: _host._focusInput,
+                      onToggleMore: () => _host._setPanel(ComposerPanel.more),
+                      onToggleVoiceInput: _host._toggleVoiceInputMode,
+                      onSend: _host._sendMessage,
+                      onVoicePressStart: _host._handleVoicePressStart,
+                      onVoicePressMove: _host._handleVoicePressMove,
+                      onVoicePressEnd: _host._handleVoicePressEnd,
+                      onVoicePressCancel: _host._handleVoicePressCancel,
+                      onRemoveImage: _host._removePendingImage,
+                      onPreviewImage: _host._previewPendingImage,
+                      onRemoveLink: _host._removePendingLink,
+                      onPreviewLink: _host._openPendingLink,
+                      onPasteText: _host._handleComposerPasteText,
+                      freeMessagesRemaining: _host._composerQuotaBadgeCount,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: composerHeight + 12,
+                  child: _host._buildTranscriptOverlay(),
+                ),
+              ],
             ),
           ),
         ),
@@ -4254,27 +4207,121 @@ class _ChatInputChromeLayerState extends State<_ChatInputChromeLayer> {
             ),
           ),
         ),
-        AnimatedPositioned(
-          left: 0,
-          right: 0,
-          bottom: inputSurfaceHeight + 12,
-          duration: _ChatPageState._animationDuration,
-          curve: _ChatPageState._animationCurve,
-          child: _host._buildTranscriptOverlay(),
-        ),
       ],
     );
   }
 }
 
-/// Rebuilds the message list when transcript or bottom padding changes, without
-/// dragging the header/composer into those rebuilds.
+/// Moves the stable composer/overlay subtree as a retained repaint boundary.
+/// IME metrics rebuild this tiny AnimatedBuilder, never the composer, message
+/// list, or shell.
+class _ImeChromeFollower extends StatefulWidget {
+  const _ImeChromeFollower({
+    required this.host,
+    required this.restLift,
+    required this.child,
+  });
+
+  final _ChatPageState host;
+  final double restLift;
+  final Widget child;
+
+  @override
+  State<_ImeChromeFollower> createState() => _ImeChromeFollowerState();
+}
+
+class _ImeChromeFollowerState extends State<_ImeChromeFollower>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _restController;
+  late double _restStart;
+  late double _restEnd;
+  double _lastKeyboardInset = 0;
+  bool _imeClosedScheduled = false;
+
+  double get _animatedRestLift {
+    final progress = _ChatPageState._animationCurve.transform(
+      _restController.value,
+    );
+    return lerpDouble(_restStart, _restEnd, progress)!;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _restStart = widget.restLift;
+    _restEnd = widget.restLift;
+    _restController = AnimationController(
+      vsync: this,
+      duration: _ChatPageState._animationDuration,
+      value: 1,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _ImeChromeFollower oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.restLift == widget.restLift) return;
+    _restStart = _animatedRestLift;
+    _restEnd = widget.restLift;
+    if (_lastKeyboardInset > 0) {
+      _restController.value = 1;
+    } else {
+      _restController.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _restController.dispose();
+    super.dispose();
+  }
+
+  void _scheduleImeClosedIfNeeded(double bottomInset) {
+    if (bottomInset > 0.5) {
+      _imeClosedScheduled = false;
+      return;
+    }
+    final host = widget.host;
+    if (host._inputFocus.hasFocus) return;
+    if (!host._imeDockActive && host._heldPanel == ComposerPanel.none) {
+      return;
+    }
+    if (_imeClosedScheduled) return;
+    _imeClosedScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _imeClosedScheduled = false;
+      if (!mounted) return;
+      if (MediaQuery.viewInsetsOf(context).bottom > 0.5) return;
+      widget.host._onImeFullyClosed();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _restController,
+      child: RepaintBoundary(child: widget.child),
+      builder: (context, child) {
+        final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+        final composerBottom = math.max(bottomInset, _animatedRestLift);
+        final dpr = MediaQuery.devicePixelRatioOf(context);
+        final snapped = (composerBottom * dpr).round() / dpr;
+        _lastKeyboardInset = bottomInset;
+        _scheduleImeClosedIfNeeded(bottomInset);
+        return Transform.translate(offset: Offset(0, -snapped), child: child);
+      },
+    );
+  }
+}
+
+/// Rebuilds the message list when the transcript or viewport shell changes.
+/// Composer rest-gap and keyboard motion are derived locally so chrome build
+/// never has to notify a sibling while the framework is already building.
 class _ChatMessageViewport extends StatefulWidget {
   const _ChatMessageViewport({
     required this.host,
     required this.transcript,
     required this.shellListenable,
-    required this.bottomPaddingListenable,
     required this.typingVisible,
     required this.scrollController,
     required this.topPadding,
@@ -4283,7 +4330,6 @@ class _ChatMessageViewport extends StatefulWidget {
   final _ChatPageState host;
   final ChatTranscriptController transcript;
   final ValueListenable<int> shellListenable;
-  final ValueListenable<double> bottomPaddingListenable;
   final ValueListenable<bool> typingVisible;
   final ScrollController scrollController;
   final double topPadding;
@@ -4293,13 +4339,9 @@ class _ChatMessageViewport extends StatefulWidget {
 }
 
 class _ChatMessageViewportState extends State<_ChatMessageViewport> {
-  late double _bottomPadding;
-
   @override
   void initState() {
     super.initState();
-    _bottomPadding = widget.bottomPaddingListenable.value;
-    widget.bottomPaddingListenable.addListener(_onBottomPaddingChanged);
     widget.transcript.addListener(_onTranscriptChanged);
     widget.shellListenable.addListener(_onShellChanged);
   }
@@ -4307,11 +4349,6 @@ class _ChatMessageViewportState extends State<_ChatMessageViewport> {
   @override
   void didUpdateWidget(covariant _ChatMessageViewport oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.bottomPaddingListenable != widget.bottomPaddingListenable) {
-      oldWidget.bottomPaddingListenable.removeListener(_onBottomPaddingChanged);
-      _bottomPadding = widget.bottomPaddingListenable.value;
-      widget.bottomPaddingListenable.addListener(_onBottomPaddingChanged);
-    }
     if (oldWidget.transcript != widget.transcript) {
       oldWidget.transcript.removeListener(_onTranscriptChanged);
       widget.transcript.addListener(_onTranscriptChanged);
@@ -4324,16 +4361,9 @@ class _ChatMessageViewportState extends State<_ChatMessageViewport> {
 
   @override
   void dispose() {
-    widget.bottomPaddingListenable.removeListener(_onBottomPaddingChanged);
     widget.transcript.removeListener(_onTranscriptChanged);
     widget.shellListenable.removeListener(_onShellChanged);
     super.dispose();
-  }
-
-  void _onBottomPaddingChanged() {
-    final next = widget.bottomPaddingListenable.value;
-    if (next == _bottomPadding) return;
-    setState(() => _bottomPadding = next);
   }
 
   void _onTranscriptChanged() {
@@ -4356,62 +4386,131 @@ class _ChatMessageViewportState extends State<_ChatMessageViewport> {
             onRetry: () => host._loadLatestMessages(showLoading: true),
           ),
         Expanded(
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: host._dismissInputSurfaces,
-            child: transcript.loadingInitial
-                ? const Center(child: CircularProgressIndicator())
-                : _MessageList(
-                    controller: widget.scrollController,
-                    messages: transcript.messages,
-                    isLoadingOlder: transcript.loadingOlder,
-                    showTyping: false,
-                    trackPlaybackUpdates: host.widget.isActive,
-                    bottomPadding: _bottomPadding,
-                    topPadding: widget.topPadding,
-                    onComponentCardTap: host._openComponentCard,
-                    onAchievementTap: host._openAchievementDetail,
-                    onResolveMusicTrack: host._resolveMusicTrack,
-                    onMusicCardActivated: host._activateMusicStationCard,
-                    onMusicPrevious: () =>
-                        unawaited(host._playPreviousStationTrack()),
-                    onMusicNext: () => unawaited(host._playNextStationTrack()),
-                    onMusicFavorite: (track) =>
-                        unawaited(host._toggleMusicFavorite(track)),
-                    onAttachmentTap: host._previewAttachment,
-                    activeMusicMessageId: host._musicStation.activeMessageId,
-                    musicCardPositions: host._musicStation.cardPositions,
-                    favoriteMusicTrackIds: host._favoriteMusicTrackIds,
-                    busyMusicFavoriteIds: host._busyMusicFavoriteIds,
-                    canGoMusicPrevious: host._canGoStationPrevious,
-                    isMusicBusy: host._advancingStation,
-                    stationMessageId: host._musicStation.messageId,
-                    stationMessageKey: host._stationCardKey,
-                    highlightMessageId: transcript.highlightMessageId,
-                    highlightVisible: transcript.highlightVisible,
-                    highlightQuery: transcript.highlightQuery,
-                    highlightMessageKey: host._highlightMessageKey,
-                    agentAvatarUrl: host._agentAvatarUrl,
-                    userAvatarUrl: host.widget.session.userAvatarUrl,
-                    authToken: host.widget.api.authToken,
-                    apiBaseUrl: host.widget.api.baseUrl,
-                    onRetryFailed: host._retryFailedMessage,
-                  ),
+          child: _TranscriptImeSlide(
+            host: host,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: host._dismissInputSurfaces,
+              child: transcript.loadingInitial
+                  ? const Center(child: CircularProgressIndicator())
+                  : _MessageList(
+                      controller: widget.scrollController,
+                      messages: transcript.messages,
+                      isLoadingOlder: transcript.loadingOlder,
+                      trackPlaybackUpdates: host.widget.isActive,
+                      bottomGap: _ComposerRestGap(host: host),
+                      typingVisible: widget.typingVisible,
+                      topPadding: widget.topPadding,
+                      onComponentCardTap: host._openComponentCard,
+                      onAchievementTap: host._openAchievementDetail,
+                      onResolveMusicTrack: host._resolveMusicTrack,
+                      onMusicCardActivated: host._activateMusicStationCard,
+                      onMusicPrevious: () =>
+                          unawaited(host._playPreviousStationTrack()),
+                      onMusicNext: () =>
+                          unawaited(host._playNextStationTrack()),
+                      onMusicFavorite: (track) =>
+                          unawaited(host._toggleMusicFavorite(track)),
+                      onAttachmentTap: host._previewAttachment,
+                      activeMusicMessageId: host._musicStation.activeMessageId,
+                      musicCardPositions: host._musicStation.cardPositions,
+                      favoriteMusicTrackIds: host._favoriteMusicTrackIds,
+                      busyMusicFavoriteIds: host._busyMusicFavoriteIds,
+                      canGoMusicPrevious: host._canGoStationPrevious,
+                      isMusicBusy: host._advancingStation,
+                      stationMessageId: host._musicStation.messageId,
+                      stationMessageKey: host._stationCardKey,
+                      highlightMessageId: transcript.highlightMessageId,
+                      highlightVisible: transcript.highlightVisible,
+                      highlightQuery: transcript.highlightQuery,
+                      highlightMessageKey: host._highlightMessageKey,
+                      agentAvatarUrl: host._agentAvatarUrl,
+                      userAvatarUrl: host.widget.session.userAvatarUrl,
+                      authToken: host.widget.api.authToken,
+                      apiBaseUrl: host.widget.api.baseUrl,
+                      onRetryFailed: host._retryFailedMessage,
+                    ),
+            ),
           ),
         ),
-        ValueListenableBuilder<bool>(
-          valueListenable: widget.typingVisible,
-          builder: (context, typing, _) {
-            if (!typing) return const SizedBox.shrink();
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-              child: _TypingIndicatorRow(
-                agentAvatarUrl: host._agentAvatarUrl,
-              ),
-            );
-          },
-        ),
       ],
+    );
+  }
+}
+
+/// Composites the transcript directly from MediaQuery IME metrics. This widget
+/// is the MediaQuery dependent; its stable repaint-boundary [child] is not
+/// rebuilt or repainted on IME ticks.
+class _TranscriptImeSlide extends StatelessWidget {
+  const _TranscriptImeSlide({required this.host, required this.child});
+
+  final _ChatPageState host;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: ListenableBuilder(
+        listenable: host._composerShell,
+        builder: (context, child) {
+          final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+          final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
+          final visiblePanel = host._panel != ComposerPanel.none
+              ? host._panel
+              : host._heldPanel;
+          final panelLift = visiblePanel != ComposerPanel.none
+              ? host._panelHeightFor(visiblePanel) + safeBottom
+              : 0.0;
+          final restLift = ChatScrollPolicy.restLift(
+            tabBarLift: _ChatPageState._tabBarContentHeight + safeBottom,
+            panelLift: panelLift,
+          );
+          final composerBottom = bottomInset > 0
+              ? math.max(bottomInset, restLift)
+              : restLift;
+          final slide = ChatScrollPolicy.imeSlide(
+            composerBottom: composerBottom,
+            restLift: restLift,
+          );
+          final dpr = MediaQuery.devicePixelRatioOf(context);
+          final snapped = (slide * dpr).round() / dpr;
+          return Transform.translate(offset: Offset(0, -snapped), child: child);
+        },
+        child: RepaintBoundary(child: child),
+      ),
+    );
+  }
+}
+
+/// Occupies only the composer/tab-bar or composer/panel height. IME height is
+/// intentionally excluded because [_TranscriptImeSlide] handles it in paint.
+class _ComposerRestGap extends StatelessWidget {
+  const _ComposerRestGap({required this.host});
+
+  final _ChatPageState host;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: host._composerShell,
+      builder: (context, _) {
+        final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
+        final visiblePanel = host._panel != ComposerPanel.none
+            ? host._panel
+            : host._heldPanel;
+        final panelLift = visiblePanel != ComposerPanel.none
+            ? host._panelHeightFor(visiblePanel) + safeBottom
+            : 0.0;
+        final restLift = ChatScrollPolicy.restLift(
+          tabBarLift: _ChatPageState._tabBarContentHeight + safeBottom,
+          panelLift: panelLift,
+        );
+        final gap = ChatScrollPolicy.restComposerGap(
+          composerHeight: host._composerHeightForWidth(),
+          restLift: restLift,
+        );
+        return SizedBox(height: gap);
+      },
     );
   }
 }
@@ -4712,7 +4811,8 @@ class _StickyMusicDockState extends State<_StickyMusicDock>
                               _MusicCountdownText(
                                 track: widget.track,
                                 isActiveCard: true,
-                                trackPlaybackUpdates: widget.trackPlaybackUpdates,
+                                trackPlaybackUpdates:
+                                    widget.trackPlaybackUpdates,
                                 style: TextStyle(
                                   color: Colors.white.withValues(alpha: 0.66),
                                   fontSize: 11,

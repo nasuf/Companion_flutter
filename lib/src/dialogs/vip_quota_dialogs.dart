@@ -109,7 +109,7 @@ Future<void> showVipUpsellDialog(
   );
   if (choice == null || !context.mounted) return;
   await Navigator.of(context).push<void>(
-    CupertinoPageRoute<void>(
+    CompanionPageRoute<void>(
       builder: (_) => StorePage(
         api: api,
         session: session,
@@ -147,7 +147,7 @@ Future<void> showBuyMusicCouponDialog(
   );
   if (goBuy != true || !context.mounted) return;
   await Navigator.of(context).push<void>(
-    CupertinoPageRoute<void>(
+    CompanionPageRoute<void>(
       builder: (_) => StorePage(api: api, session: session, openBundle: true),
     ),
   );

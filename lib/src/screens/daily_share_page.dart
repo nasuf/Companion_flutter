@@ -15,12 +15,13 @@ class _DailySharePageState extends State<DailySharePage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _breathController;
   late final ScrollController _scrollController;
-  late Future<DailySharePhotosResponse> _photosFuture;
-  late Future<DailyShareLinksResponse> _linksFuture;
+  Future<DailySharePhotosResponse>? _photosFuture;
+  Future<DailyShareLinksResponse>? _linksFuture;
   _DailyShareTab _tab = _DailyShareTab.photo;
   double _heroFade = 0;
   final GlobalKey _titleKey = GlobalKey();
   double _extraPinSpace = 0;
+  bool _loadArmed = false;
 
   @override
   void initState() {
@@ -30,14 +31,24 @@ class _DailySharePageState extends State<DailySharePage>
       duration: const Duration(milliseconds: 13000),
     )..repeat(reverse: true);
     _scrollController = ScrollController()..addListener(_syncHeroFade);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loadArmed || !RouteSettled.of(context)) return;
+    _loadArmed = true;
     _photosFuture = widget.api.listDailySharePhotos();
     _linksFuture = widget.api.listDailyShareLinks();
   }
 
   @override
   Widget build(BuildContext context) {
-    // 每帧结束后核一次 tab 吸顶所需的底部补偿(收敛后不再 setState)。
-    WidgetsBinding.instance.addPostFrameCallback((_) => _syncTabPinSpace());
+    // Pin-space math can setState; wait until the incoming slide has landed
+    // so that extra layout pass does not fight the Cupertino transition.
+    if (RouteSettled.of(context)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _syncTabPinSpace());
+    }
     return _buildScaffold(context);
   }
 
@@ -139,7 +150,8 @@ class _DailySharePageState extends State<DailySharePage>
                         child: _DailyHeader(
                           loading:
                               snapshot.connectionState ==
-                              ConnectionState.waiting,
+                                  ConnectionState.waiting ||
+                              snapshot.connectionState == ConnectionState.none,
                           onBack: () => Navigator.of(context).pop(),
                         ),
                       ),
@@ -231,7 +243,8 @@ class _DailyPhotoContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (snapshot.connectionState == ConnectionState.waiting) {
+    if (snapshot.connectionState == ConnectionState.waiting ||
+        snapshot.connectionState == ConnectionState.none) {
       return const SliverToBoxAdapter(child: _DailyLoadingState());
     }
     if (snapshot.hasError) {
@@ -270,7 +283,7 @@ class _DailyLinkContent extends StatelessWidget {
     required this.onOpen,
   });
 
-  final Future<DailyShareLinksResponse> future;
+  final Future<DailyShareLinksResponse>? future;
   final String? authToken;
   final Future<void> Function() onRetry;
   final ValueChanged<DailyShareLink> onOpen;
@@ -280,7 +293,8 @@ class _DailyLinkContent extends StatelessWidget {
     return FutureBuilder<DailyShareLinksResponse>(
       future: future,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting ||
+            snapshot.connectionState == ConnectionState.none) {
           return const SliverToBoxAdapter(child: _DailyLoadingState());
         }
         if (snapshot.hasError) {

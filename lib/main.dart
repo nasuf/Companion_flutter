@@ -52,6 +52,7 @@ import 'src/widgets/chat/voice_recording_overlay.dart';
 import 'src/widgets/agent_avatar_image.dart';
 import 'src/screens/chat/chat_transcript_controller.dart';
 import 'src/services/display_refresh_rate.dart';
+import 'src/utils/chat_scroll_policy.dart';
 import 'src/utils/platform_effects.dart';
 import 'src/utils/tab_visit_policy.dart';
 
@@ -165,6 +166,7 @@ part 'src/services/push_notification_service.dart';
 part 'src/theme/app_theme.dart';
 part 'src/theme/app_colors.dart';
 part 'src/dialogs/vip_quota_dialogs.dart';
+part 'src/widgets/route_ticker_scope.dart';
 part 'src/widgets/achievement_card.dart';
 part 'src/widgets/achievement_feedback.dart';
 part 'src/widgets/achievement_header.dart';

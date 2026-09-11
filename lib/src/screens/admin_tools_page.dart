@@ -537,7 +537,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
 
   Future<void> _openUserManagement() async {
     await Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) =>
             _AdminUsersPage(api: widget.api, session: widget.session),
       ),
@@ -547,7 +547,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
   void _openMonitoring() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) =>
             _AdminMonitoringPage(api: widget.api, session: widget.session),
       ),
@@ -557,7 +557,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
   void _openOperations() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) =>
             _AdminOperationsPage(api: widget.api, session: widget.session),
       ),
@@ -567,7 +567,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
   void _openResourceMonitoring() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) =>
             _AdminResourcePage(api: widget.api, session: widget.session),
       ),
@@ -577,7 +577,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
   void _openUserFeedbackAdmin() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) =>
             AdminUserFeedbackPage(api: widget.api, session: widget.session),
       ),
@@ -587,7 +587,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
   void _openSystemSettings() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) =>
             _AdminSystemSettingsPage(api: widget.api, session: widget.session),
       ),
@@ -597,7 +597,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
   void _openMealAdmin() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) =>
             _AdminMealPage(api: widget.api, session: widget.session),
       ),
@@ -607,7 +607,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
   void _openGameManagement() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) =>
             _AdminGamesPage(api: widget.api, session: widget.session),
       ),
@@ -617,7 +617,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
   void _openPaymentManagement() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) =>
             _AdminPaymentsPage(api: widget.api, session: widget.session),
       ),
@@ -627,7 +627,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
   void _openModelManagement() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) =>
             _AdminModelsPage(api: widget.api, session: widget.session),
       ),
@@ -637,7 +637,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
   void _openLastWillSmsTest() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => AdminLastWillSmsTestPage(
           api: widget.api,
           session: widget.session,
@@ -649,7 +649,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
   void _openVipSubscriptionManagement() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => _AdminVipSubscriptionPage(
           api: widget.api,
           session: widget.session,
@@ -830,7 +830,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     );
     if (!mounted || action != 'open') return;
     await Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) =>
             OfflineGiftPage(api: widget.api, session: widget.session),
       ),
@@ -866,7 +866,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     );
     if (!mounted || action != 'open') return;
     await Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => OfflineActivityPage(
           api: widget.api,
           session: widget.session,
@@ -1242,7 +1242,7 @@ class _AdminUsersPageState extends State<_AdminUsersPage>
 
   Future<void> _openUserDetail(_AdminUserSummary user) async {
     await Navigator.of(context).push<void>(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => _AdminUserDetailPage(
           api: widget.api,
           session: widget.session,
@@ -1939,7 +1939,7 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
 
   void _openAgentConversations(_AdminAgentSummary agent) {
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => _AdminAgentConversationsPage(
           api: widget.api,
           session: widget.session,
@@ -2355,7 +2355,7 @@ class _AdminAgentConversationsPage extends StatelessWidget {
     _AdminConversation conversation,
   ) {
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => _AdminConversationPage(
           api: api,
           session: session,
@@ -2368,7 +2368,7 @@ class _AdminAgentConversationsPage extends StatelessWidget {
 
   void _openTtsConfig(BuildContext context) {
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) =>
             _AdminAgentTtsPage(api: api, session: session, agent: agent),
       ),

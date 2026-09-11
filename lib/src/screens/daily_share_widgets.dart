@@ -168,8 +168,8 @@ class _DailyAura extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ImageFiltered(
-      imageFilter: ImageFilter.blur(sigmaX: 11, sigmaY: 11),
+    return RouteSettledBlur.image(
+      sigma: 11,
       child: Container(
         width: size,
         height: size,
@@ -201,8 +201,8 @@ class _DailyCircleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(22),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+      child: RouteSettledBlur.backdrop(
+        sigma: 22,
         child: CupertinoButton(
           minimumSize: Size.zero,
           padding: EdgeInsets.zero,

@@ -19,7 +19,7 @@ class GiftPickerPage extends StatefulWidget {
     required String conversationId,
   }) {
     return Navigator.of(context).push<GiftSendResult>(
-      CupertinoPageRoute<GiftSendResult>(
+      CompanionPageRoute<GiftSendResult>(
         fullscreenDialog: true,
         builder: (_) => GiftPickerPage(
           api: api,
@@ -140,7 +140,7 @@ class _GiftPickerPageState extends State<GiftPickerPage> {
 
   Future<void> _openStore() async {
     await Navigator.of(context).push<void>(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => StorePage(
           api: widget.api,
           session: widget.session,

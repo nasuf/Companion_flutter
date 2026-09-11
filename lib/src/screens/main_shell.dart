@@ -36,6 +36,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
   PageRoute<dynamic>? _subscribedRoute;
   OverlayEntry? _notificationOverlay;
   Timer? _notificationTimer;
+  Timer? _routeUncoverTimer;
   StreamSubscription<CheckinNotificationPayload>? _notificationSub;
   StreamSubscription<AppNotificationEvent>? _appNotificationSub;
 
@@ -86,17 +87,32 @@ class _MainShellState extends State<MainShell> with RouteAware {
 
   @override
   void didPushNext() {
+    _routeUncoverTimer?.cancel();
+    DisplayRefreshRate.suppressRecover(
+      DisplayRefreshPolicy.routeRecoverSuppress,
+    );
     _setRouteCovered(true);
   }
 
   @override
   void didPopNext() {
-    _setRouteCovered(false);
+    _routeUncoverTimer?.cancel();
+    DisplayRefreshRate.suppressRecover(
+      DisplayRefreshPolicy.routeRecoverSuppress,
+    );
+    // Cupertino pop is still on screen. Restoring Chat (viewport bump,
+    // transcript publish, capsule scan) in the same frames as the transition
+    // is what made chat → weather/capsule → back feel like a low refresh rate.
+    _routeUncoverTimer = Timer(DisplayRefreshPolicy.routeUncoverDelay, () {
+      if (!mounted) return;
+      _setRouteCovered(false);
+    });
   }
 
   @override
   void dispose() {
     _notificationTimer?.cancel();
+    _routeUncoverTimer?.cancel();
     _removeNotificationOverlay();
     appRouteObserver.unsubscribe(this);
     _notificationSub?.cancel();
@@ -124,7 +140,12 @@ class _MainShellState extends State<MainShell> with RouteAware {
         ..addAll(nextTabs);
     });
     if (leavingOnline) evictOnlinePortalImages();
-    if (changed) DisplayRefreshRate.onTabBecameVisible();
+    if (changed) {
+      DisplayRefreshRate.suppressRecover(
+        DisplayRefreshPolicy.routeRecoverSuppress,
+      );
+      DisplayRefreshRate.onTabBecameVisible();
+    }
   }
 
   void _goToChatTab({bool userInteraction = false}) {
@@ -140,7 +161,12 @@ class _MainShellState extends State<MainShell> with RouteAware {
         ..addAll(nextTabs);
     });
     if (leavingOnline) evictOnlinePortalImages();
-    if (userInteraction) DisplayRefreshRate.onTabBecameVisible();
+    if (userInteraction) {
+      DisplayRefreshRate.suppressRecover(
+        DisplayRefreshPolicy.routeRecoverSuppress,
+      );
+      DisplayRefreshRate.onTabBecameVisible();
+    }
   }
 
   void _setChatSidebarOpen(bool value) {
@@ -185,7 +211,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
   Future<void> _openSidebarDestination(_SidebarDestination destination) async {
     _setChatSidebarOpen(false);
     final result = await Navigator.of(context).push<CapsuleChatDraft>(
-      CupertinoPageRoute<CapsuleChatDraft>(
+      CompanionPageRoute<CapsuleChatDraft>(
         builder: (_) => _SidebarDestinationPage(
           destination: destination,
           api: widget.api,
@@ -211,7 +237,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
     if (!mounted) return;
     _setChatSidebarOpen(false);
     final result = await Navigator.of(context).push<CapsuleChatDraft>(
-      CupertinoPageRoute<CapsuleChatDraft>(
+      CompanionPageRoute<CapsuleChatDraft>(
         builder: (_) => CheckinPage(
           api: widget.api,
           session: widget.session,
@@ -249,7 +275,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
     _activeNotification = event;
     _notificationOverlay = OverlayEntry(
       builder: (context) => Positioned(
-        top: MediaQuery.paddingOf(context).top + 10,
+        top: MediaQuery.viewPaddingOf(context).top + 10,
         left: 18,
         right: 18,
         child: _InAppNotificationBanner(
@@ -324,17 +350,22 @@ class _MainShellState extends State<MainShell> with RouteAware {
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
     // viewPadding (not padding): an open keyboard collapses padding.bottom to
     // 0, which would slide the floating tab bar down ~one safe-area height and
     // back as the keyboard opens/closes. viewPadding stays constant, so the tab
-    // bar holds still through keyboard/panel transitions.
-    final safeBottom = media.viewPadding.bottom;
-    final tabBarWidth = math.min(336.0, media.size.width - 54.0);
+    // bar holds still through keyboard/panel transitions. Aspect-specific
+    // access is critical here: MediaQuery.of subscribes MainShell to
+    // viewInsets and rebuilds every tab, ChatPage, and visible message on each
+    // IME frame.
+    final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
+    final tabBarWidth = math.min(
+      336.0,
+      MediaQuery.sizeOf(context).width - 54.0,
+    );
     final voiceRecordingActive = _voiceRecordingOverlay != null;
-    // The chat composer panel docks to the screen bottom like a keyboard, so
-    // the floating tab bar slides away while it is up (same as the keyboard
-    // covering it) and returns when the panel closes.
+    // The chat composer panel and the IME both dock to the screen bottom,
+    // so the floating tab bar slides away while either is up and returns
+    // when the dock is gone.
     final activeAchievement = _activeAchievement;
     final hideTabBar =
         activeAchievement != null ||
@@ -370,7 +401,10 @@ class _MainShellState extends State<MainShell> with RouteAware {
             key: _onlineTabKey,
             api: widget.api,
             session: widget.session,
-            active: _index == 1,
+            active: tabTickersEnabled(
+              selected: _index == 1,
+              routeCovered: _routeCovered,
+            ),
             onSendToChat: _sendDraftToChat,
           );
         case 2:
@@ -379,14 +413,20 @@ class _MainShellState extends State<MainShell> with RouteAware {
             api: widget.api,
             session: widget.session,
             agentName: widget.session.agentName ?? '伴生',
-            active: _index == 2,
+            active: tabTickersEnabled(
+              selected: _index == 2,
+              routeCovered: _routeCovered,
+            ),
           );
         case 3:
           child = ProfilePage(
             key: _profileTabKey,
             api: widget.api,
             session: widget.session,
-            active: _index == 3,
+            active: tabTickersEnabled(
+              selected: _index == 3,
+              routeCovered: _routeCovered,
+            ),
             onAgentDeleted: _handleAgentDeleted,
             onSessionChanged: widget.onSessionChanged,
             onLogout: widget.onLogout,
@@ -396,7 +436,10 @@ class _MainShellState extends State<MainShell> with RouteAware {
       }
       return RepaintBoundary(
         child: TickerMode(
-          enabled: _index == index,
+          enabled: tabTickersEnabled(
+            selected: _index == index,
+            routeCovered: _routeCovered,
+          ),
           child: child,
         ),
       );
@@ -415,31 +458,31 @@ class _MainShellState extends State<MainShell> with RouteAware {
               children: [
                 IndexedStack(index: _index, children: pages),
                 AnimatedPositioned(
-                    left: 0,
-                    right: 0,
-                    bottom: hideTabBar ? -92 : math.max(10, safeBottom - 2),
-                    duration: const Duration(milliseconds: 260),
-                    curve: Curves.easeOutCubic,
-                    child: IgnorePointer(
-                      ignoring: hideTabBar,
-                      child: AnimatedOpacity(
-                        opacity: hideTabBar ? 0 : 1,
-                        duration: const Duration(milliseconds: 180),
-                        child: Center(
-                          child: SizedBox(
-                            width: tabBarWidth,
-                            child: _FloatingTabBar(
-                              selectedIndex: _index,
-                              onSelected: _selectTab,
-                            ),
+                  left: 0,
+                  right: 0,
+                  bottom: hideTabBar ? -92 : math.max(10, safeBottom - 2),
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  child: IgnorePointer(
+                    ignoring: hideTabBar,
+                    child: AnimatedOpacity(
+                      opacity: hideTabBar ? 0 : 1,
+                      duration: const Duration(milliseconds: 180),
+                      child: Center(
+                        child: SizedBox(
+                          width: tabBarWidth,
+                          child: _FloatingTabBar(
+                            selectedIndex: _index,
+                            onSelected: _selectTab,
                           ),
                         ),
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
           if (activeAchievement != null)
             Positioned.fill(
               child: _AchievementDetailOverlay(
@@ -1041,7 +1084,7 @@ class _ProfilePageState extends State<ProfilePage>
   Future<void> _openAdminPanel() async {
     if (_deleting) return;
     await Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) =>
             AdminToolsPage(api: widget.api, session: widget.session),
       ),
@@ -1055,7 +1098,7 @@ class _ProfilePageState extends State<ProfilePage>
     if (_deleting) return;
     await Navigator.of(
       context,
-    ).push(CupertinoPageRoute<void>(builder: (_) => page));
+    ).push(CompanionPageRoute<void>(builder: (_) => page));
     if (refreshStatsOnReturn && mounted) {
       await _loadMePageData();
     }
@@ -1121,10 +1164,10 @@ class _ProfilePageState extends State<ProfilePage>
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
+    final viewPadding = MediaQuery.viewPaddingOf(context);
     final userName = widget.session.displayNameOr('小星辰');
     final agentName = _displayName(widget.session.agentName, fallback: '小明');
-    final topPadding = media.padding.top + 14;
+    final topPadding = viewPadding.top + 14;
     final mode = AppThemeScope.of(context).mode;
     return Stack(
       fit: StackFit.expand,
@@ -1135,7 +1178,7 @@ class _ProfilePageState extends State<ProfilePage>
           left: 0,
           right: 0,
           // 让内容视口在浮动导航栏上方截止，滚动内容不再显示在导航栏后面。
-          bottom: math.max(10, media.padding.bottom - 2) + 74,
+          bottom: math.max(10, viewPadding.bottom - 2) + 74,
           child: ClipRect(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
@@ -1178,167 +1221,166 @@ class _ProfilePageState extends State<ProfilePage>
                           },
                         ),
                       ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _SettingsDashboardGrid(
-                                  stats: _profileStats,
-                                  loading: _profileStatsLoading,
-                                  error: _profileStatsError,
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _SettingsDashboardGrid(
+                              stats: _profileStats,
+                              loading: _profileStatsLoading,
+                              error: _profileStatsError,
+                            ),
+                            const SizedBox(height: 14),
+                            _SettingsMemberCard(
+                              membership: _membership,
+                              onTap: _showMemberInfo,
+                            ),
+                            const SizedBox(height: 12),
+                            _SettingsBackpackCard(
+                              count:
+                                  _backpackItemCount ??
+                                  _profileStats?.backpackCount ??
+                                  0,
+                              onTap: () => _pushPage(
+                                _BackpackPage(
+                                  api: widget.api,
+                                  session: widget.session,
                                 ),
-                                const SizedBox(height: 14),
-                                _SettingsMemberCard(
-                                  membership: _membership,
-                                  onTap: _showMemberInfo,
-                                ),
-                                const SizedBox(height: 12),
-                                _SettingsBackpackCard(
-                                  count:
-                                      _backpackItemCount ??
-                                      _profileStats?.backpackCount ??
-                                      0,
+                                refreshStatsOnReturn: true,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            _SettingsSectionCard(
+                              label: '消息与互动',
+                              rows: [
+                                _SettingsRowData(
+                                  glyph: _SettingsGlyph.bell,
+                                  iconAccent: _SettingsColors.blue,
+                                  title: '通知设置',
                                   onTap: () => _pushPage(
-                                    _BackpackPage(
+                                    _NotificationSettingsPage(
                                       api: widget.api,
                                       session: widget.session,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            _SettingsSectionCard(
+                              label: '个性化与显示',
+                              rows: [
+                                _SettingsRowData(
+                                  glyph: _SettingsGlyph.moon,
+                                  iconAccent: const Color(0xFF5856D6),
+                                  title: '显示模式',
+                                  value: _themeModeLabel(mode),
+                                  trailing: CupertinoSwitch(
+                                    value: mode == ThemeMode.dark,
+                                    activeTrackColor: _SettingsColors.blueDark,
+                                    onChanged: (value) =>
+                                        AppThemeScope.of(context).setMode(
+                                          value
+                                              ? ThemeMode.dark
+                                              : ThemeMode.light,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            _SettingsSectionCard(
+                              label: '隐私与安全',
+                              rows: [
+                                _SettingsRowData(
+                                  glyph: _SettingsGlyph.lock,
+                                  iconAccent: const Color(0xFF34C759),
+                                  title: '隐私与安全中心',
+                                  onTap: () => _pushPage(
+                                    _PrivacySecurityPage(
+                                      api: widget.api,
+                                      session: widget.session,
+                                      initialStats: _profileStats,
                                     ),
                                     refreshStatsOnReturn: true,
                                   ),
                                 ),
-                                const SizedBox(height: 18),
-                                _SettingsSectionCard(
-                                  label: '消息与互动',
-                                  rows: [
-                                    _SettingsRowData(
-                                      glyph: _SettingsGlyph.bell,
-                                      iconAccent: _SettingsColors.blue,
-                                      title: '通知设置',
-                                      onTap: () => _pushPage(
-                                        _NotificationSettingsPage(
-                                          api: widget.api,
-                                          session: widget.session,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 14),
-                                _SettingsSectionCard(
-                                  label: '个性化与显示',
-                                  rows: [
-                                    _SettingsRowData(
-                                      glyph: _SettingsGlyph.moon,
-                                      iconAccent: const Color(0xFF5856D6),
-                                      title: '显示模式',
-                                      value: _themeModeLabel(mode),
-                                      trailing: CupertinoSwitch(
-                                        value: mode == ThemeMode.dark,
-                                        activeTrackColor:
-                                            _SettingsColors.blueDark,
-                                        onChanged: (value) =>
-                                            AppThemeScope.of(context).setMode(
-                                              value
-                                                  ? ThemeMode.dark
-                                                  : ThemeMode.light,
-                                            ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 14),
-                                _SettingsSectionCard(
-                                  label: '隐私与安全',
-                                  rows: [
-                                    _SettingsRowData(
-                                      glyph: _SettingsGlyph.lock,
-                                      iconAccent: const Color(0xFF34C759),
-                                      title: '隐私与安全中心',
-                                      onTap: () => _pushPage(
-                                        _PrivacySecurityPage(
-                                          api: widget.api,
-                                          session: widget.session,
-                                          initialStats: _profileStats,
-                                        ),
-                                        refreshStatsOnReturn: true,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 14),
-                                _SettingsSectionCard(
-                                  label: '其他与信息',
-                                  rows: [
-                                    _SettingsRowData(
-                                      glyph: _SettingsGlyph.tray,
-                                      iconAccent: const Color(0xFF64B5F6),
-                                      title: '缓存清理',
-                                      onTap: () =>
-                                          _pushPage(const _CacheCleanupPage()),
-                                    ),
-                                    _SettingsRowData(
-                                      glyph: _SettingsGlyph.info,
-                                      iconAccent: _SettingsColors.blue,
-                                      title: '关于我们',
-                                      onTap: () => _pushPage(
-                                        _AboutCompanionPage(
-                                          onContact: () => _pushPage(
-                                            _ContactFeedbackPage(
-                                              api: widget.api,
-                                              session: widget.session,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    _SettingsRowData(
-                                      glyph: _SettingsGlyph.cube,
-                                      iconAccent: const Color(0xFF90A4AE),
-                                      title: '版本信息',
-                                      value: _appVersionLabel,
-                                      secondaryAction: '检查更新',
-                                      onTap: _showVersionDialog,
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 18),
-                                _SettingsAccountActions(
-                                  onLogout: _confirmLogout,
-                                  onDeleteFriend: _confirmDeleteAgent,
-                                  onDeleteAccount: _showDeleteAccountDialog,
-                                ),
-                                if (_deleting) ...[
-                                  const SizedBox(height: 16),
-                                  _DeleteProgressPanel(
-                                    stage: _deleteStages[_deleteStage],
-                                    stats: _deleteStats,
-                                  ),
-                                ],
-                                if (_error != null) ...[
-                                  const SizedBox(height: 14),
-                                  Text(
-                                    _error!,
-                                    style: TextStyle(
-                                      color: _SettingsColors.red,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 0,
-                                    ),
-                                  ),
-                                ],
                               ],
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 14),
+                            _SettingsSectionCard(
+                              label: '其他与信息',
+                              rows: [
+                                _SettingsRowData(
+                                  glyph: _SettingsGlyph.tray,
+                                  iconAccent: const Color(0xFF64B5F6),
+                                  title: '缓存清理',
+                                  onTap: () =>
+                                      _pushPage(const _CacheCleanupPage()),
+                                ),
+                                _SettingsRowData(
+                                  glyph: _SettingsGlyph.info,
+                                  iconAccent: _SettingsColors.blue,
+                                  title: '关于我们',
+                                  onTap: () => _pushPage(
+                                    _AboutCompanionPage(
+                                      onContact: () => _pushPage(
+                                        _ContactFeedbackPage(
+                                          api: widget.api,
+                                          session: widget.session,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                _SettingsRowData(
+                                  glyph: _SettingsGlyph.cube,
+                                  iconAccent: const Color(0xFF90A4AE),
+                                  title: '版本信息',
+                                  value: _appVersionLabel,
+                                  secondaryAction: '检查更新',
+                                  onTap: _showVersionDialog,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 18),
+                            _SettingsAccountActions(
+                              onLogout: _confirmLogout,
+                              onDeleteFriend: _confirmDeleteAgent,
+                              onDeleteAccount: _showDeleteAccountDialog,
+                            ),
+                            if (_deleting) ...[
+                              const SizedBox(height: 16),
+                              _DeleteProgressPanel(
+                                stage: _deleteStages[_deleteStage],
+                                stats: _deleteStats,
+                              ),
+                            ],
+                            if (_error != null) ...[
+                              const SizedBox(height: 14),
+                              Text(
+                                _error!,
+                                style: TextStyle(
+                                  color: _SettingsColors.red,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     ],
                   ),
-                ),
+                ],
               ),
             ),
-        ],
-      );
+          ),
+        ),
+      ],
+    );
   }
 
   /// Agent 名字的兜底。用户名字走 [AuthSession.displayNameOr] —— 那条链的优先级
@@ -2121,9 +2163,7 @@ class _SettingsBackpackCard extends StatelessWidget {
             accent: _SettingsColors.blue,
           ),
           const SizedBox(width: 12),
-          Expanded(
-            child: Text('我的背包', style: _settingsRowTitleStyle()),
-          ),
+          Expanded(child: Text('我的背包', style: _settingsRowTitleStyle())),
           Container(
             constraints: const BoxConstraints(minWidth: 30),
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
@@ -2189,9 +2229,7 @@ class _SettingsMemberCard extends StatelessWidget {
             accent: _SettingsColors.gold,
           ),
           const SizedBox(width: 12),
-          Expanded(
-            child: Text('我的会员 · 尊享特权', style: _settingsRowTitleStyle()),
-          ),
+          Expanded(child: Text('我的会员 · 尊享特权', style: _settingsRowTitleStyle())),
           Text(
             status,
             style: _settingsRowValueStyle(
@@ -2287,9 +2325,7 @@ class _SettingsRow extends StatelessWidget {
         children: [
           _SettingsFlatIcon(glyph: data.glyph, accent: data.iconAccent),
           const SizedBox(width: 12),
-          Expanded(
-            child: Text(data.title, style: _settingsRowTitleStyle()),
-          ),
+          Expanded(child: Text(data.title, style: _settingsRowTitleStyle())),
           if (data.value != null) ...[
             Text(
               data.value!,
@@ -2490,6 +2526,7 @@ class _SettingsFlatIcon extends StatelessWidget {
   final _SettingsGlyph glyph;
   final Color accent;
   final double size;
+
   /// 白色字形直径。统一取圆直径的 0.50 —— 与天气页度量圆标 (24pt / 48pt) 同比,
   /// 让所有圆标里的图标看起来一样大。矢量图标边到边, 不像旧 PNG 自带留白, 所以
   /// 从 0.60 收到 0.50 才不会显得过大。
@@ -2515,11 +2552,7 @@ class _SettingsFlatIcon extends StatelessWidget {
                 ),
               ],
       ),
-      child: Icon(
-        glyph.icon,
-        size: glyphSize,
-        color: Colors.white,
-      ),
+      child: Icon(glyph.icon, size: glyphSize, color: Colors.white),
     );
   }
 }
@@ -2756,9 +2789,10 @@ class _LoginMethodBadge extends StatelessWidget {
     // 微信用它的品牌绿: 这是个品牌标识, 借用 app 的暖/冷强调色反而让人认不出。
     // 手机号走蓝、密码走中性灰 —— 两者都在既有色板内。
     final (Color bg, Color fg) = switch (method.kind) {
-      LoginMethod.wechat => dark
-          ? (const Color(0xFF16301F), const Color(0xFF5FD08A))
-          : (const Color(0xFFE6F6EC), const Color(0xFF2E9E5B)),
+      LoginMethod.wechat =>
+        dark
+            ? (const Color(0xFF16301F), const Color(0xFF5FD08A))
+            : (const Color(0xFFE6F6EC), const Color(0xFF2E9E5B)),
       LoginMethod.phone => (
         _SettingsColors.blueLight,
         _SettingsColors.blueDark,
@@ -2915,7 +2949,7 @@ class _ProfileInfoPageState extends State<_ProfileInfoPage> {
 
     if (!mounted) return;
     final crop = await Navigator.of(context).push<AvatarCropRect>(
-      CupertinoPageRoute<AvatarCropRect>(
+      CompanionPageRoute<AvatarCropRect>(
         builder: (_) => AvatarCropPage(imageBytes: bytes),
       ),
     );
@@ -3432,7 +3466,6 @@ class _SubTitle extends StatelessWidget {
   }
 }
 
-
 class _PrivacySecurityPage extends StatefulWidget {
   const _PrivacySecurityPage({
     required this.api,
@@ -3534,7 +3567,11 @@ class _PrivacySecurityPageState extends State<_PrivacySecurityPage> {
           _SubCard(
             children: [
               const _SubSectionHeader('聊天记录管理'),
-              _SubCardRow(label: '当前消息数', value: messageLabel, showDivider: false),
+              _SubCardRow(
+                label: '当前消息数',
+                value: messageLabel,
+                showDivider: false,
+              ),
             ],
           ),
           if (_error != null) ...[
@@ -3742,7 +3779,7 @@ class _AboutCompanionPage extends StatelessWidget {
                 label: '用户协议',
                 value: '›',
                 onTap: () => Navigator.of(context).push(
-                  CupertinoPageRoute<void>(
+                  CompanionPageRoute<void>(
                     builder: (_) => const _LegalDocumentPage(
                       title: '用户协议',
                       assetPath: 'assets/legal/service_agreement.txt',
@@ -3755,7 +3792,7 @@ class _AboutCompanionPage extends StatelessWidget {
                 value: '›',
                 showDivider: false,
                 onTap: () => Navigator.of(context).push(
-                  CupertinoPageRoute<void>(
+                  CompanionPageRoute<void>(
                     builder: (_) => const _LegalDocumentPage(
                       title: '隐私政策',
                       assetPath: 'assets/legal/privacy_policy.txt',
@@ -3863,7 +3900,9 @@ class _ContactFeedbackPageState extends State<_ContactFeedbackPage> {
       transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (context, _, __) {
         return _FeedbackAttachmentPreviewDialog(
-          attachments: List<_FeedbackAttachmentDraft>.unmodifiable(_attachments),
+          attachments: List<_FeedbackAttachmentDraft>.unmodifiable(
+            _attachments,
+          ),
           initialIndex: index,
           onClose: () => Navigator.of(context).pop(),
         );
@@ -4130,10 +4169,7 @@ class _FeedbackAttachmentPreviewDialogState
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.initialIndex.clamp(
-      0,
-      widget.attachments.length - 1,
-    );
+    _currentIndex = widget.initialIndex.clamp(0, widget.attachments.length - 1);
     _pageController = PageController(initialPage: _currentIndex);
     _thumbController = ScrollController();
     WidgetsBinding.instance.addPostFrameCallback((_) => _centerThumbnail());
@@ -4258,8 +4294,9 @@ class _FeedbackAttachmentPreviewDialogState
                           vertical: 6,
                         ),
                         itemCount: attachments.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(width: _DailyPreviewMetrics.thumbGap),
+                        separatorBuilder: (_, __) => const SizedBox(
+                          width: _DailyPreviewMetrics.thumbGap,
+                        ),
                         itemBuilder: (context, index) {
                           final selected = index == _currentIndex;
                           return GestureDetector(
@@ -4761,7 +4798,7 @@ class _NoAgentPageState extends State<NoAgentPage> {
 
   void _openCreatePage(BuildContext context) {
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => AgentCreatePage(
           api: widget.api,
           session: widget.session,

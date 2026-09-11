@@ -2221,7 +2221,7 @@ class _AdminMonitoringPageState extends State<_AdminMonitoringPage>
 
   void _openOnlineUsers() {
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) =>
             _AdminOnlineUsersPage(api: widget.api, session: widget.session),
       ),

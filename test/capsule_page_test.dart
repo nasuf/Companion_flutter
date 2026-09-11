@@ -78,6 +78,12 @@ void _useDesignCanvas(WidgetTester tester) {
   addTearDown(tester.view.reset);
 }
 
+void _useAndroidPhoneCanvas(WidgetTester tester) {
+  tester.view.devicePixelRatio = 3.0;
+  tester.view.physicalSize = const Size(1080, 2412);
+  addTearDown(tester.view.reset);
+}
+
 /// Widget tests render `Image.asset` as a blank box unless the bytes are
 /// decoded on a real (async) frame, which would leave the goldens empty.
 ///
@@ -326,6 +332,26 @@ void main() {
   });
 
   group('compose', () {
+    testWidgets('the editor toolbar fits a 360 logical pixel Android screen', (
+      tester,
+    ) async {
+      _useAndroidPhoneCanvas(tester);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          home: CapsuleEditorPage(
+            api: _FakeCapsuleApi(const []),
+            session: _session,
+          ),
+        ),
+      );
+      await _pumpFrames(tester);
+
+      expect(find.byType(CapsuleEditorPage), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('the editor is warm capsule orange, not the app purple', (
       tester,
     ) async {

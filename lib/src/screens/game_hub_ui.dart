@@ -2,6 +2,26 @@ part of 'package:companion_flutter/main.dart';
 
 const _hubArt = 'assets/prototype/games/hub-figma';
 
+/// First-paint assets for the games hub. Warmed while the 互动 tab is
+/// visible so the later Cupertino push does not decode them from disk.
+const _gameHubWarmAssetPaths = <String>[
+  '$_hubArt/bg.jpg',
+  '$_hubArt/banner_board_art.png',
+  '$_hubArt/thumb_gomoku.png',
+  '$_hubArt/thumb_go.png',
+  '$_hubArt/thumb_reversi.png',
+  '$_hubArt/thumb_xiangqi.png',
+  '$_hubArt/thumb_chess.png',
+  '$_hubArt/icon_rounds.png',
+  '$_hubArt/icon_hours.png',
+  '$_hubArt/icon_today.png',
+  '$_hubArt/coin_pill.png',
+  '$_hubArt/coin_icon.png',
+  '$_hubArt/coin_plus.png',
+  '$_hubArt/badge_online.png',
+  '$_hubArt/progress_track.png',
+];
+
 const _hubCream = Color(0xFFFFF0DB);
 const _hubSlab = Color(0xFFEFC299);
 const _hubInk = Color(0xFF4B1D08);
@@ -133,20 +153,24 @@ class _HubBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final image = Image.asset(
+      '$_hubArt/bg.jpg',
+      fit: BoxFit.cover,
+      alignment: Alignment.topCenter,
+      filterQuality: FilterQuality.medium,
+    );
+    final settled = RouteSettled.of(context);
     return Positioned.fill(
       child: ClipRect(
-        child: ImageFiltered(
-          imageFilter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
-          child: Transform.scale(
-            scale: 1.04 + progress * 0.03,
-            child: Image.asset(
-              '$_hubArt/bg.jpg',
-              fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-              filterQuality: FilterQuality.medium,
-            ),
-          ),
-        ),
+        child: settled
+            ? ImageFiltered(
+                imageFilter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+                child: Transform.scale(
+                  scale: 1.04 + progress * 0.03,
+                  child: image,
+                ),
+              )
+            : image,
       ),
     );
   }

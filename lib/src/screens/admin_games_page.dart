@@ -668,7 +668,7 @@ class _GameBalanceTabState extends State<_GameBalanceTab> {
 
   Future<void> _openEditor(_AdminGameConfig config) async {
     await Navigator.of(context).push<void>(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => _GameConfigEditorPage(
           api: widget.api,
           session: widget.session,
@@ -1823,7 +1823,7 @@ class _GameRulesTabState extends State<_GameRulesTab> {
 
   Future<void> _openEditor(_GamePointRule rule) async {
     await Navigator.of(context).push<void>(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (_) => _GameRuleEditorPage(
           api: widget.api,
           session: widget.session,

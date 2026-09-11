@@ -30,7 +30,7 @@ class RedPacketSheetPage extends StatefulWidget {
     required ChatComponentCard card,
   }) {
     return Navigator.of(context).push<void>(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         fullscreenDialog: true,
         builder: (_) => RedPacketSheetPage(api: api, card: card),
       ),

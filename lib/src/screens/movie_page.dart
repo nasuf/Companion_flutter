@@ -163,8 +163,8 @@ class _CinemaGlow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ImageFiltered(
-      imageFilter: ImageFilter.blur(sigmaX: 46, sigmaY: 46),
+    return RouteSettledBlur.image(
+      sigma: 46,
       child: Container(
         width: size,
         height: size,
@@ -569,8 +569,8 @@ class _CinemaInlineControls extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(28),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+      child: RouteSettledBlur.backdrop(
+        sigma: 18,
         child: Container(
           height: 62,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -807,8 +807,8 @@ class _RailArrow extends StatelessWidget {
       onPressed: disabled ? null : onTap,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: RouteSettledBlur.backdrop(
+          sigma: 16,
           child: Container(
             width: 38,
             height: 78,

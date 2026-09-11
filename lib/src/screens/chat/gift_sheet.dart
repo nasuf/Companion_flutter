@@ -25,7 +25,7 @@ class GiftSheetPage extends StatefulWidget {
     required ChatComponentCard card,
   }) {
     return Navigator.of(context).push<void>(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         fullscreenDialog: true,
         builder: (_) => GiftSheetPage(api: api, card: card),
       ),

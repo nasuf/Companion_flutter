@@ -185,13 +185,15 @@ class _LastWillPageState extends State<LastWillPage>
       PageRouteBuilder<_LastWillEditResult>(
         transitionDuration: const Duration(milliseconds: 320),
         reverseTransitionDuration: const Duration(milliseconds: 260),
-        pageBuilder: (_, __, ___) => _LastWillEditorPage(
-          initialContent: _content,
-          hasContacts: _contacts.isNotEmpty,
-          allowStart: _canStartFromEditor,
-          canConvertToDraft: _canConvertToDraft,
-          ensureContacts: _ensureContactsForTrigger,
-          onDelete: _current?.hasContent == true ? _deleteCurrentWill : null,
+        pageBuilder: (_, __, ___) => RouteTickerScope(
+          child: _LastWillEditorPage(
+            initialContent: _content,
+            hasContacts: _contacts.isNotEmpty,
+            allowStart: _canStartFromEditor,
+            canConvertToDraft: _canConvertToDraft,
+            ensureContacts: _ensureContactsForTrigger,
+            onDelete: _current?.hasContent == true ? _deleteCurrentWill : null,
+          ),
         ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return SlideTransition(
@@ -368,7 +370,7 @@ class _LastWillPageState extends State<LastWillPage>
 
   Future<void> _openContactsManager() async {
     await Navigator.of(context).push<void>(
-      CupertinoPageRoute(
+      CompanionPageRoute(
         builder: (_) => _LegacyContactsManagePage(
           contacts: _contacts,
           onSave: _saveContacts,

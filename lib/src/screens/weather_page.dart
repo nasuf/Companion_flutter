@@ -167,10 +167,11 @@ class WeatherPage extends StatefulWidget {
 }
 
 class _WeatherPageState extends State<WeatherPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, RouteAware {
   late final AnimationController _breathController;
   late _WeatherForecast _forecast;
   bool _isRefreshing = true;
+  PageRoute<dynamic>? _subscribedRoute;
 
   @override
   void initState() {
@@ -188,6 +189,31 @@ class _WeatherPageState extends State<WeatherPage>
     _refreshForecast(initial: true);
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is! PageRoute<dynamic> || route == _subscribedRoute) return;
+    appRouteObserver.unsubscribe(this);
+    _subscribedRoute = route;
+    appRouteObserver.subscribe(this, route);
+  }
+
+  @override
+  void didPushNext() {
+    _breathController.stop();
+  }
+
+  @override
+  void didPopNext() {
+    _breathController.repeat(reverse: true);
+  }
+
+  @override
+  void didPop() {
+    _breathController.stop();
+  }
+
   String get _forecastCacheKey {
     final agentId = widget.agentId;
     if (agentId != null && agentId.isNotEmpty) return 'agent:$agentId';
@@ -199,6 +225,7 @@ class _WeatherPageState extends State<WeatherPage>
 
   @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
     _breathController.dispose();
     super.dispose();
   }
@@ -245,7 +272,7 @@ class _WeatherPageState extends State<WeatherPage>
 
   void _openFutureForecast(_WeatherForecast forecast) {
     Navigator.of(context).push(
-      CupertinoPageRoute<void>(
+      CompanionPageRoute<void>(
         builder: (context) =>
             _FutureWeatherPage(forecast: forecast, agentName: widget.agentName),
       ),
@@ -254,35 +281,31 @@ class _WeatherPageState extends State<WeatherPage>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _breathController,
-      builder: (context, _) {
-        final progress = Curves.easeInOut.transform(_breathController.value);
-        final scheme = _W2b.resolve(context);
-        return _WeatherScope(
-          scheme: scheme,
-          child: Scaffold(
-            backgroundColor: scheme.base,
-            body: Stack(
-              children: [
-                Positioned.fill(child: _WeatherBackground(progress: progress)),
-                SafeArea(
-                  bottom: false,
-                  child: _WeatherHome(
-                    forecast: _forecast,
-                    agentName: widget.agentName,
-                    progress: progress,
-                    isRefreshing: _isRefreshing,
-                    onBack: _handleBack,
-                    onShowFuture: () => _openFutureForecast(_forecast),
-                    bottomPadding: MediaQuery.paddingOf(context).bottom,
-                  ),
-                ),
-              ],
+    final scheme = _W2b.resolve(context);
+    return _WeatherScope(
+      scheme: scheme,
+      child: Scaffold(
+        backgroundColor: scheme.base,
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: _WeatherBreathBackdrop(animation: _breathController),
             ),
-          ),
-        );
-      },
+            SafeArea(
+              bottom: false,
+              child: _WeatherHome(
+                forecast: _forecast,
+                agentName: widget.agentName,
+                breath: _breathController,
+                isRefreshing: _isRefreshing,
+                onBack: _handleBack,
+                onShowFuture: () => _openFutureForecast(_forecast),
+                bottomPadding: MediaQuery.paddingOf(context).bottom,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -298,8 +321,9 @@ class _FutureWeatherPage extends StatefulWidget {
 }
 
 class _FutureWeatherPageState extends State<_FutureWeatherPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, RouteAware {
   late final AnimationController _breathController;
+  PageRoute<dynamic>? _subscribedRoute;
 
   @override
   void initState() {
@@ -311,41 +335,64 @@ class _FutureWeatherPageState extends State<_FutureWeatherPage>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is! PageRoute<dynamic> || route == _subscribedRoute) return;
+    appRouteObserver.unsubscribe(this);
+    _subscribedRoute = route;
+    appRouteObserver.subscribe(this, route);
+  }
+
+  @override
+  void didPushNext() {
+    _breathController.stop();
+  }
+
+  @override
+  void didPopNext() {
+    _breathController.repeat(reverse: true);
+  }
+
+  @override
+  void didPop() {
+    _breathController.stop();
+  }
+
+  @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
     _breathController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _breathController,
-      builder: (context, _) {
-        final progress = Curves.easeInOut.transform(_breathController.value);
-        final scheme = _W2b.resolve(context);
-        return _WeatherScope(
-          scheme: scheme,
-          child: Scaffold(
-            backgroundColor: scheme.base,
-            body: Stack(
-              children: [
-                Positioned.fill(
-                  child: _WeatherBackground(progress: progress, forecast: true),
-                ),
-                SafeArea(
-                  bottom: false,
-                  child: _FutureWeatherList(
-                    forecast: widget.forecast,
-                    agentName: widget.agentName,
-                    onBack: () => Navigator.of(context).maybePop(),
-                    bottomPadding: MediaQuery.paddingOf(context).bottom,
-                  ),
-                ),
-              ],
+    final scheme = _W2b.resolve(context);
+    return _WeatherScope(
+      scheme: scheme,
+      child: Scaffold(
+        backgroundColor: scheme.base,
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: _WeatherBreathBackdrop(
+                animation: _breathController,
+                forecast: true,
+              ),
             ),
-          ),
-        );
-      },
+            SafeArea(
+              bottom: false,
+              child: _FutureWeatherList(
+                forecast: widget.forecast,
+                agentName: widget.agentName,
+                onBack: () => Navigator.of(context).maybePop(),
+                bottomPadding: MediaQuery.paddingOf(context).bottom,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -354,7 +401,7 @@ class _WeatherHome extends StatelessWidget {
   const _WeatherHome({
     required this.forecast,
     required this.agentName,
-    required this.progress,
+    required this.breath,
     required this.isRefreshing,
     required this.onBack,
     required this.onShowFuture,
@@ -363,7 +410,7 @@ class _WeatherHome extends StatelessWidget {
 
   final _WeatherForecast forecast;
   final String agentName;
-  final double progress;
+  final Animation<double> breath;
   final bool isRefreshing;
   final VoidCallback onBack;
   final VoidCallback onShowFuture;
@@ -388,7 +435,7 @@ class _WeatherHome extends StatelessWidget {
           _WeatherHeroCard(
             day: today,
             current: forecast.current,
-            progress: progress,
+            breath: breath,
           ),
           const Spacer(flex: 3),
           _WeatherMetricGrid(day: today, current: forecast.current),
@@ -627,6 +674,32 @@ class _WeatherBackButton extends StatelessWidget {
   }
 }
 
+/// Isolates the 8600ms glow drift so the weather chrome (top bar, metrics,
+/// hourly strip) is not rebuilt on every breath tick — those rebuilds used
+/// to run through the whole Cupertino pop back to chat.
+class _WeatherBreathBackdrop extends StatelessWidget {
+  const _WeatherBreathBackdrop({
+    required this.animation,
+    this.forecast = false,
+  });
+
+  final Animation<double> animation;
+  final bool forecast;
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: animation,
+        builder: (context, _) => _WeatherBackground(
+          progress: Curves.easeInOut.transform(animation.value),
+          forecast: forecast,
+        ),
+      ),
+    );
+  }
+}
+
 /// Spec 2b：`#E9F0FB` 底色 + 三团柔光渐层（会随呼吸动效轻微游移）。
 class _WeatherBackground extends StatelessWidget {
   const _WeatherBackground({required this.progress, this.forecast = false});
@@ -850,12 +923,12 @@ class _WeatherHeroCard extends StatelessWidget {
   const _WeatherHeroCard({
     required this.day,
     required this.current,
-    required this.progress,
+    required this.breath,
   });
 
   final _WeatherDay day;
   final _WeatherSnapshot? current;
-  final double progress;
+  final Animation<double> breath;
 
   @override
   Widget build(BuildContext context) {
@@ -864,7 +937,6 @@ class _WeatherHeroCard extends StatelessWidget {
     final temp = snapshot.temperature.round();
     final text = _weatherText(snapshot.weatherCode);
     final mood = _weatherMoodLine(day);
-    final wave = (math.sin(progress * math.pi * 2) + 1) / 2;
     final feels = snapshot.apparentTemperature.round();
     final range =
         '${day.minTemperature.round()}–${day.maxTemperature.round()}°';
@@ -889,14 +961,21 @@ class _WeatherHeroCard extends StatelessWidget {
                   ),
                 ),
               ),
-              Transform.translate(
-                offset: Offset(2 * wave, -4 * wave),
-                child: _AnimatedWeatherIcon(
-                  weatherCode: snapshot.weatherCode,
-                  hour: DateTime.now().hour,
-                  size: 102,
-                  progress: progress,
-                ),
+              AnimatedBuilder(
+                animation: breath,
+                builder: (context, _) {
+                  final progress = Curves.easeInOut.transform(breath.value);
+                  final wave = (math.sin(progress * math.pi * 2) + 1) / 2;
+                  return Transform.translate(
+                    offset: Offset(2 * wave, -4 * wave),
+                    child: _AnimatedWeatherIcon(
+                      weatherCode: snapshot.weatherCode,
+                      hour: DateTime.now().hour,
+                      size: 102,
+                      progress: progress,
+                    ),
+                  );
+                },
               ),
             ],
           ),

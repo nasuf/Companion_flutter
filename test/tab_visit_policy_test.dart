@@ -1,4 +1,5 @@
 import 'package:companion_flutter/src/utils/tab_visit_policy.dart';
+import 'package:flutter/animation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -58,5 +59,50 @@ void main() {
     );
     expect(visited.contains(chatTabIndex), isTrue);
     expect(visited, {0, 1});
+  });
+
+  test('covered routes pause every tab, not only chat', () {
+    expect(tabTickersEnabled(selected: true, routeCovered: false), isTrue);
+    expect(tabTickersEnabled(selected: true, routeCovered: true), isFalse);
+    expect(tabTickersEnabled(selected: false, routeCovered: false), isFalse);
+    expect(tabTickersEnabled(selected: false, routeCovered: true), isFalse);
+  });
+
+  test('incoming routes freeze tickers until the push animation completes', () {
+    expect(
+      incomingRouteTickersEnabled(
+        coveredOrPopping: false,
+        animationStatus: AnimationStatus.forward,
+      ),
+      isFalse,
+    );
+    expect(
+      incomingRouteTickersEnabled(
+        coveredOrPopping: false,
+        animationStatus: AnimationStatus.dismissed,
+      ),
+      isFalse,
+    );
+    expect(
+      incomingRouteTickersEnabled(
+        coveredOrPopping: false,
+        animationStatus: AnimationStatus.completed,
+      ),
+      isTrue,
+    );
+    expect(
+      incomingRouteTickersEnabled(
+        coveredOrPopping: false,
+        animationStatus: null,
+      ),
+      isTrue,
+    );
+    expect(
+      incomingRouteTickersEnabled(
+        coveredOrPopping: true,
+        animationStatus: AnimationStatus.completed,
+      ),
+      isFalse,
+    );
   });
 }

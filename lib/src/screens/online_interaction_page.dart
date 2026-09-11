@@ -21,6 +21,7 @@ class OnlineInteractionPage extends StatefulWidget {
 class _OnlineInteractionPageState extends State<OnlineInteractionPage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  bool _warmedDestinations = false;
 
   @override
   void initState() {
@@ -33,11 +34,29 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _maybeWarmDestinations();
+  }
+
+  @override
   void didUpdateWidget(covariant OnlineInteractionPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.active != widget.active) {
       _syncTabMotion();
     }
+    _maybeWarmDestinations();
+  }
+
+  void _maybeWarmDestinations() {
+    if (!widget.active || _warmedDestinations) return;
+    _warmedDestinations = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      for (final path in _gameHubWarmAssetPaths) {
+        precacheImage(AssetImage(path), context);
+      }
+    });
   }
 
   void _syncTabMotion() {
@@ -60,7 +79,7 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
   Future<void> _openPortal(_OnlinePortal portal) async {
     if (portal.disabled) return;
     final result = await Navigator.of(context).push<CapsuleChatDraft>(
-      CupertinoPageRoute<CapsuleChatDraft>(
+      CompanionPageRoute<CapsuleChatDraft>(
         builder: (_) {
           if (portal.id == 'music') {
             return MusicPage(api: widget.api, session: widget.session);
@@ -596,10 +615,26 @@ class _OnlinePortalCard extends StatelessWidget {
 
   // 亮度加权的标准灰度矩阵，用来把"暂未开放"的卡片配图整体去色。
   static const _greyscaleMatrix = <double>[
-    0.2126, 0.7152, 0.0722, 0, 0,
-    0.2126, 0.7152, 0.0722, 0, 0,
-    0.2126, 0.7152, 0.0722, 0, 0,
-    0, 0, 0, 1, 0,
+    0.2126,
+    0.7152,
+    0.0722,
+    0,
+    0,
+    0.2126,
+    0.7152,
+    0.0722,
+    0,
+    0,
+    0.2126,
+    0.7152,
+    0.0722,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
   ];
 
   @override
@@ -661,9 +696,7 @@ class _OnlinePortalCard extends StatelessWidget {
                     return Opacity(
                       opacity: 0.55,
                       child: ColorFiltered(
-                        colorFilter: const ColorFilter.matrix(
-                          _greyscaleMatrix,
-                        ),
+                        colorFilter: const ColorFilter.matrix(_greyscaleMatrix),
                         child: image,
                       ),
                     );

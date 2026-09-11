@@ -292,7 +292,7 @@ class _StorePageState extends State<StorePage> {
 
   Future<void> _openMembershipHistory() async {
     await Navigator.of(context).push<void>(
-      CupertinoPageRoute(
+      CompanionPageRoute(
         builder: (context) => StoreSubscriptionHistoryPage(api: widget.api),
       ),
     );
@@ -302,7 +302,7 @@ class _StorePageState extends State<StorePage> {
 
   Future<void> _openWalletLedger() async {
     await Navigator.of(context).push<void>(
-      CupertinoPageRoute(
+      CompanionPageRoute(
         builder: (context) => StoreWalletLedgerPage(
           api: widget.api,
           currency: _rechargeCurrency,

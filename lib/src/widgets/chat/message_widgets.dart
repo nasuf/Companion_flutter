@@ -5,7 +5,8 @@ class _MessageList extends StatelessWidget {
     required this.controller,
     required this.messages,
     required this.isLoadingOlder,
-    required this.bottomPadding,
+    required this.bottomGap,
+    required this.typingVisible,
     required this.topPadding,
     required this.onComponentCardTap,
     required this.onAchievementTap,
@@ -22,7 +23,6 @@ class _MessageList extends StatelessWidget {
     required this.canGoMusicPrevious,
     required this.isMusicBusy,
     this.trackPlaybackUpdates = true,
-    this.showTyping = false,
     this.stationMessageId,
     this.stationMessageKey,
     this.highlightMessageId,
@@ -39,7 +39,8 @@ class _MessageList extends StatelessWidget {
   final ScrollController controller;
   final List<ChatMessage> messages;
   final bool isLoadingOlder;
-  final double bottomPadding;
+  final Widget bottomGap;
+  final ValueListenable<bool> typingVisible;
   final double topPadding;
   final ValueChanged<ChatComponentCard> onComponentCardTap;
   final ValueChanged<AchievementItem> onAchievementTap;
@@ -57,7 +58,6 @@ class _MessageList extends StatelessWidget {
   final bool canGoMusicPrevious;
   final bool isMusicBusy;
   final bool trackPlaybackUpdates;
-  final bool showTyping;
   final String? stationMessageId;
   final GlobalKey? stationMessageKey;
 
@@ -87,36 +87,70 @@ class _MessageList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (messages.isEmpty && !showTyping) {
-      return Center(
-        child: Text(
-          '还没有聊天记录，发一句话开始吧。',
-          style: TextStyle(color: AppColors.muted),
-        ),
+    if (messages.isEmpty) {
+      return ValueListenableBuilder<bool>(
+        valueListenable: typingVisible,
+        builder: (context, typing, _) {
+          if (!typing) {
+            return Center(
+              child: Text(
+                '还没有聊天记录，发一句话开始吧。',
+                style: TextStyle(color: AppColors.muted),
+              ),
+            );
+          }
+          return _buildConversationList();
+        },
       );
     }
-    // Header (index 0) + message rows + optional trailing typing indicator.
-    final typingSlot = showTyping ? 1 : 0;
-    return ListView.builder(
+    return _buildConversationList();
+  }
+
+  Widget _buildConversationList() {
+    final chronologicalIds = [for (final message in messages) message.id];
+    // reverse: true pins short transcripts to the composer and keeps offset 0
+    // at the newest message. IME height is NOT in these slivers — the page
+    // translates the whole view so keyboard frames never relayout bubbles.
+    return CustomScrollView(
+      reverse: true,
       controller: controller,
-      padding: EdgeInsets.fromLTRB(12, topPadding, 12, bottomPadding),
-      physics: const BouncingScrollPhysics(
-        parent: AlwaysScrollableScrollPhysics(),
-      ),
+      physics: ChatScrollPolicy.listPhysics,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      // Default (250) is too tight for a search-result jump: `_ChatPageState`
-      // estimates a rough scroll offset by index (item heights vary, so it
-      // won't land exactly), then relies on the target already being laid
-      // out to fine-tune with `ensureVisible`. A wider margin absorbs that
-      // estimation error instead of the target staying un-built.
       scrollCacheExtent: const ScrollCacheExtent.pixels(800),
-      itemCount: messages.length + 1 + typingSlot,
-      itemBuilder: (context, index) {
-        if (showTyping && index == messages.length + 1) {
-          return _TypingIndicatorRow(agentAvatarUrl: agentAvatarUrl);
-        }
-        if (index == 0) {
-          return AnimatedSwitcher(
+      slivers: [
+        SliverToBoxAdapter(child: bottomGap),
+        SliverToBoxAdapter(
+          child: ValueListenableBuilder<bool>(
+            valueListenable: typingVisible,
+            builder: (context, typing, _) {
+              if (!typing) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                child: RepaintBoundary(
+                  child: _TypingIndicatorRow(agentAvatarUrl: agentAvatarUrl),
+                ),
+              );
+            },
+          ),
+        ),
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(12, 0, 12, topPadding),
+          sliver: SliverList(
+            delegate: _ChatMessageChildDelegate(
+              childCount: messages.length,
+              findChildIndexCallback: (key) =>
+                  ChatScrollPolicy.childIndexForKey(key, chronologicalIds),
+              builder: (context, index) {
+                return _buildKeyedMessageRow(
+                  messages[messages.length - 1 - index],
+                );
+              },
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: AnimatedSwitcher(
+            key: const ValueKey(ChatScrollPolicy.headerKey),
             duration: const Duration(milliseconds: 180),
             child: isLoadingOlder
                 ? const Padding(
@@ -130,53 +164,64 @@ class _MessageList extends StatelessWidget {
                     ),
                   )
                 : const SizedBox(height: 4),
-          );
-        }
-        final message = messages[index - 1];
-        final isHighlightTarget =
-            highlightMessageId != null && message.id == highlightMessageId;
-        final highlighted = isHighlightTarget && highlightVisible;
-        final row = _MessageRow(
-          message: message,
-          highlighted: highlighted,
-          highlightQuery: highlightQuery,
-          agentAvatarUrl: agentAvatarUrl,
-          userAvatarUrl: userAvatarUrl,
-          onComponentCardTap: onComponentCardTap,
-          onAchievementTap: onAchievementTap,
-          onResolveMusicTrack: onResolveMusicTrack,
-          onMusicCardActivated: onMusicCardActivated,
-          onMusicPrevious: onMusicPrevious,
-          onMusicNext: onMusicNext,
-          onMusicFavorite: onMusicFavorite,
-          onAttachmentTap: onAttachmentTap,
-          activeMusicMessageId: activeMusicMessageId,
-          musicCardPositions: musicCardPositions,
-          favoriteMusicTrackIds: favoriteMusicTrackIds,
-          busyMusicFavoriteIds: busyMusicFavoriteIds,
-          canGoMusicPrevious: canGoMusicPrevious,
-          isMusicBusy: isMusicBusy,
-          trackPlaybackUpdates: trackPlaybackUpdates,
-          authToken: authToken,
-          apiBaseUrl: apiBaseUrl,
-          onRetryFailed: onRetryFailed,
-        );
-        final keyedRow = KeyedSubtree(
-          key: ValueKey('chat-message-${message.id}'),
-          child: row,
-        );
-        if (isHighlightTarget && highlightMessageKey != null) {
-          return KeyedSubtree(key: highlightMessageKey, child: keyedRow);
-        }
-        if (message.id == stationMessageId && stationMessageKey != null) {
-          return RepaintBoundary(
-            child: KeyedSubtree(key: stationMessageKey, child: keyedRow),
-          );
-        }
-        return RepaintBoundary(child: keyedRow);
-      },
+          ),
+        ),
+      ],
     );
   }
+
+  Widget _buildKeyedMessageRow(ChatMessage message) {
+    final isHighlightTarget =
+        highlightMessageId != null && message.id == highlightMessageId;
+    final highlighted = isHighlightTarget && highlightVisible;
+    Widget row = _MessageRow(
+      message: message,
+      highlighted: highlighted,
+      highlightQuery: highlightQuery,
+      agentAvatarUrl: agentAvatarUrl,
+      userAvatarUrl: userAvatarUrl,
+      onComponentCardTap: onComponentCardTap,
+      onAchievementTap: onAchievementTap,
+      onResolveMusicTrack: onResolveMusicTrack,
+      onMusicCardActivated: onMusicCardActivated,
+      onMusicPrevious: onMusicPrevious,
+      onMusicNext: onMusicNext,
+      onMusicFavorite: onMusicFavorite,
+      onAttachmentTap: onAttachmentTap,
+      activeMusicMessageId: activeMusicMessageId,
+      musicCardPositions: musicCardPositions,
+      favoriteMusicTrackIds: favoriteMusicTrackIds,
+      busyMusicFavoriteIds: busyMusicFavoriteIds,
+      canGoMusicPrevious: canGoMusicPrevious,
+      isMusicBusy: isMusicBusy,
+      trackPlaybackUpdates: trackPlaybackUpdates,
+      authToken: authToken,
+      apiBaseUrl: apiBaseUrl,
+      onRetryFailed: onRetryFailed,
+    );
+    if (isHighlightTarget && highlightMessageKey != null) {
+      row = KeyedSubtree(key: highlightMessageKey, child: row);
+    } else if (message.id == stationMessageId && stationMessageKey != null) {
+      row = KeyedSubtree(key: stationMessageKey, child: row);
+    }
+    return RepaintBoundary(
+      key: ValueKey(ChatScrollPolicy.messageKey(message.id)),
+      child: row,
+    );
+  }
+}
+
+class _ChatMessageChildDelegate extends SliverChildBuilderDelegate {
+  _ChatMessageChildDelegate({
+    required NullableIndexedWidgetBuilder builder,
+    required int childCount,
+    ChildIndexGetter? findChildIndexCallback,
+  }) : super(
+         builder,
+         childCount: childCount,
+         findChildIndexCallback: findChildIndexCallback,
+         addRepaintBoundaries: false,
+       );
 }
 
 class _MessageRow extends StatelessWidget {
@@ -458,10 +503,7 @@ class _OfferingReceivedTimelineRow extends StatelessWidget {
                 SizedBox(
                   width: 13,
                   height: 13,
-                  child: _HongbaoGlyph(
-                    size: 13,
-                    bodyColor: iconColor,
-                  ),
+                  child: _HongbaoGlyph(size: 13, bodyColor: iconColor),
                 ),
               const SizedBox(width: 6),
               Flexible(
@@ -1666,18 +1708,10 @@ class _ComponentCardBubble extends StatelessWidget {
       );
     }
     if (card.type == 'red_packet') {
-      return _RedPacketComponentCard(
-        card: card,
-        isMine: isMine,
-        onTap: onTap,
-      );
+      return _RedPacketComponentCard(card: card, isMine: isMine, onTap: onTap);
     }
     if (card.type == 'gift') {
-      return _GiftComponentCard(
-        card: card,
-        isMine: isMine,
-        onTap: onTap,
-      );
+      return _GiftComponentCard(card: card, isMine: isMine, onTap: onTap);
     }
     if (card.type == 'offline_activity') {
       return _OfflineActivityComponentCard(
@@ -1689,11 +1723,7 @@ class _ComponentCardBubble extends StatelessWidget {
       );
     }
     if (card.type == 'location') {
-      return _LocationComponentCard(
-        card: card,
-        isMine: isMine,
-        onTap: onTap,
-      );
+      return _LocationComponentCard(card: card, isMine: isMine, onTap: onTap);
     }
     if (card.type == 'offline_gift') {
       return _OfflineGiftComponentCard(

@@ -29,6 +29,8 @@ class _GamePageState extends State<GamePage>
   late List<_GameGroup> _visibleGroups;
   _GameGroup? _activeGroup;
   String? _error;
+  bool _loadArmed = false;
+  bool _hubCatalogReady = false;
 
   @override
   void initState() {
@@ -39,7 +41,17 @@ class _GamePageState extends State<GamePage>
       value: 0.5,
     );
     _applyVisibleGroups();
-    _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loadArmed || !RouteSettled.of(context)) return;
+    _loadArmed = true;
+    unawaited(_load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _hubCatalogReady = true);
+    });
   }
 
   /// Rebuild the filtered catalog and re-anchor the active group/game to objects
@@ -94,10 +106,12 @@ class _GamePageState extends State<GamePage>
 
   Future<void> _load() async {
     if (!mounted) return;
-    setState(() {
-      _error = null;
-      _statsLoading = true;
-    });
+    if (_error != null || !_statsLoading) {
+      setState(() {
+        _error = null;
+        _statsLoading = true;
+      });
+    }
     // Start every request together so the header loads on one round-trip
     // instead of three sequential ones.
     final walletFuture = widget.api.getGameWallet();
@@ -248,7 +262,7 @@ class _GamePageState extends State<GamePage>
     if (page == null) return;
     await Navigator.of(
       context,
-    ).push(CupertinoPageRoute<void>(builder: (_) => page));
+    ).push(CompanionPageRoute<void>(builder: (_) => page));
     if (!mounted) return;
     // Refresh immediately, then once more shortly after: a mid-game quit settles
     // the point deduction via an async abort event, which can land a moment after
@@ -261,40 +275,44 @@ class _GamePageState extends State<GamePage>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        final progress = Curves.easeInOut.transform(_controller.value);
-        return Scaffold(
-          backgroundColor: const Color(0xFF9FD0E6),
-          // Every card here breathes on a repeating ticker. Behind the level
-          // sheet's frosted backdrop that motion is invisible but would force a
-          // full-screen blur pass every frame, so the hub holds still instead.
-          body: TickerMode(
-            enabled: !_levelSheetOpen,
-            child: Stack(
-              children: [
-                _HubBackground(progress: progress),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    // The design is a 393pt frame; everything scales from there.
-                    final s = constraints.maxWidth / _hubRefWidth;
-                    return CustomScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      slivers: [
-                        SliverToBoxAdapter(child: _topBar(context, s)),
-                        SliverToBoxAdapter(child: _statsHeader(s)),
-                        SliverToBoxAdapter(child: _gameGroupsSection(s)),
-                        SliverToBoxAdapter(child: SizedBox(height: 120 * s)),
-                      ],
-                    );
-                  },
-                ),
-              ],
+    return Scaffold(
+      backgroundColor: const Color(0xFF9FD0E6),
+      // Every card here breathes on a repeating ticker. Behind the level
+      // sheet's frosted backdrop that motion is invisible but would force a
+      // full-screen blur pass every frame, so the hub holds still instead.
+      body: TickerMode(
+        enabled: !_levelSheetOpen,
+        child: Stack(
+          children: [
+            AnimatedBuilder(
+              animation: _controller,
+              builder: (context, _) {
+                final progress = Curves.easeInOut.transform(_controller.value);
+                return _HubBackground(progress: progress);
+              },
             ),
-          ),
-        );
-      },
+            LayoutBuilder(
+              builder: (context, constraints) {
+                // The design is a 393pt frame; everything scales from there.
+                final s = constraints.maxWidth / _hubRefWidth;
+                return CustomScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(child: _topBar(context, s)),
+                    SliverToBoxAdapter(child: _statsHeader(s)),
+                    // Group banners decode many JPEGs and spin per-card
+                    // tickers. Keep them off the incoming Cupertino slide
+                    // and off the landing frame itself.
+                    if (_hubCatalogReady)
+                      SliverToBoxAdapter(child: _gameGroupsSection(s)),
+                    SliverToBoxAdapter(child: SizedBox(height: 120 * s)),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1021,8 +1039,8 @@ class _SoftField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ImageFiltered(
-      imageFilter: ImageFilter.blur(sigmaX: 44, sigmaY: 44),
+    return RouteSettledBlur.image(
+      sigma: 44,
       child: Container(
         width: size.width,
         height: size.height,

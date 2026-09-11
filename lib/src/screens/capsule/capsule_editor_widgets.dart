@@ -596,20 +596,33 @@ class _CapsuleEditorToolbar extends StatelessWidget {
         boxShadow: [w.pillShadow],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _CapsuleToolButton(icon: CupertinoIcons.camera, onTap: onPickImage),
-          _CapsuleToolButton(
-            icon: recording ? CupertinoIcons.stop_circle : CupertinoIcons.mic,
-            active: recording,
-            label: recording ? '${math.max(1, recordSeconds)}s' : null,
-            onTap: onToggleRecord,
+          Expanded(
+            child: _CapsuleToolButton(
+              icon: CupertinoIcons.camera,
+              onTap: onPickImage,
+            ),
           ),
-          _CapsuleToolButton(
-            customIcon: const _CapsuleSkinIcon(),
-            onTap: onPickSkin,
+          Expanded(
+            child: _CapsuleToolButton(
+              icon: recording ? CupertinoIcons.stop_circle : CupertinoIcons.mic,
+              active: recording,
+              label: recording ? '${math.max(1, recordSeconds)}s' : null,
+              onTap: onToggleRecord,
+            ),
           ),
-          _CapsuleToolButton(icon: CupertinoIcons.smiley, onTap: onEmoji),
+          Expanded(
+            child: _CapsuleToolButton(
+              customIcon: const _CapsuleSkinIcon(),
+              onTap: onPickSkin,
+            ),
+          ),
+          Expanded(
+            child: _CapsuleToolButton(
+              icon: CupertinoIcons.smiley,
+              onTap: onEmoji,
+            ),
+          ),
         ],
       ),
     );
@@ -639,7 +652,6 @@ class _CapsuleToolButton extends StatelessWidget {
       padding: EdgeInsets.zero,
       onPressed: onTap,
       child: SizedBox(
-        width: 42,
         height: 42,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
