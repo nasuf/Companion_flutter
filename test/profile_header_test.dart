@@ -13,6 +13,28 @@ class _FakeProfileApi extends CompanionApi {
   _FakeProfileApi() : super(baseUrl: 'http://localhost:8000');
 
   @override
+  Future<StoreInventoryResponse> listStoreInventory() async {
+    return const StoreInventoryResponse(items: []);
+  }
+
+  @override
+  Future<IapMembership> getIapMembership({int historyLimit = 50}) async {
+    return const IapMembership(
+      vip: VipStatus(
+        isVip: false,
+        vipUntil: null,
+        vipTrialAvailable: false,
+        giftTicketBalance: 0,
+        ticketBalance: 0,
+        pointBalance: 0,
+        spendableTickets: 0,
+      ),
+      autoRenewActive: false,
+      history: [],
+    );
+  }
+
+  @override
   Future<ProfileStats> fetchProfileStats({String? workspaceId}) async {
     return const ProfileStats(
       workspaceId: 'workspace',
@@ -62,6 +84,7 @@ Future<void> _pumpProfile(WidgetTester tester, {AuthSession? session}) async {
         body: ProfilePage(
           api: _FakeProfileApi(),
           session: session ?? _session(wechatBound: true),
+          active: true,
           onAgentDeleted: (_) {},
           onSessionChanged: (_) {},
           onLogout: () {},

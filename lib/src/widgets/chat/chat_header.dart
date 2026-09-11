@@ -731,8 +731,8 @@ class _ListeningBadgeState extends State<_ListeningBadge>
         );
       },
       child: ClipOval(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: PlatformBackdropGlass(
+          sigma: 8,
           child: Container(
             width: 18,
             height: 18,

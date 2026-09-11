@@ -22,7 +22,8 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   OfflineHome? _home;
-  bool _locationRequestStarted = false;
+  // Process-wide: remounting this tab on Android must not re-prompt location.
+  static bool _locationAskedThisSession = false;
 
   @override
   void initState() {
@@ -30,7 +31,8 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 21000),
-    )..repeat(reverse: true);
+    );
+    _syncTabMotion();
     _load();
     _requestLocationWhenActive();
   }
@@ -41,8 +43,22 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
     if (oldWidget.session.workspaceId != widget.session.workspaceId) {
       _load();
     }
+    if (oldWidget.active != widget.active) {
+      _syncTabMotion();
+    }
     if (!oldWidget.active && widget.active) {
       _requestLocationWhenActive();
+    }
+  }
+
+  void _syncTabMotion() {
+    if (!mounted) return;
+    if (widget.active) {
+      if (!_controller.isAnimating) {
+        _controller.repeat(reverse: true);
+      }
+    } else {
+      _controller.stop();
     }
   }
 
@@ -72,8 +88,8 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
   }
 
   Future<void> _requestLocationOnce() async {
-    if (_locationRequestStarted) return;
-    _locationRequestStarted = true;
+    if (_locationAskedThisSession) return;
+    _locationAskedThisSession = true;
     await requestCurrentDeviceLocation(
       api: widget.api,
       syncUserProfile: true,
@@ -180,7 +196,7 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
                   28,
                   memoryPanelBottomClearance,
                 ),
-                child: _OfflineMemoryPanel(tags: tags),
+                child: _OfflineMemoryPanel(tags: tags, active: widget.active),
               ),
             ),
           ],
@@ -606,13 +622,15 @@ class _OfflineLiveDot extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: color.withValues(alpha: 0.92 + breath * 0.08),
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.20 + breath * 0.24),
-                      blurRadius: 12 + breath * 14,
-                      offset: Offset(0, 5 + breath * 5),
-                    ),
-                  ],
+                  boxShadow: useLightweightGlassEffects
+                      ? const []
+                      : [
+                          BoxShadow(
+                            color: color.withValues(alpha: 0.20 + breath * 0.24),
+                            blurRadius: 12 + breath * 14,
+                            offset: Offset(0, 5 + breath * 5),
+                          ),
+                        ],
                 ),
               ),
             ),
@@ -674,22 +692,32 @@ class _OfflineFeatureCard extends StatelessWidget {
           border: isDark
               ? Border.all(color: Colors.white.withValues(alpha: 0.10))
               : null,
-          boxShadow: [
-            BoxShadow(
-              color: isDark
-                  ? Colors.black.withValues(alpha: 0.30)
-                  : gradient.first.withValues(alpha: 0.18),
-              blurRadius: 28,
-              offset: const Offset(0, 16),
-            ),
-            BoxShadow(
-              color: isDark
-                  ? Colors.black.withValues(alpha: 0.18)
-                  : gradient.last.withValues(alpha: 0.16),
-              blurRadius: 14,
-              offset: const Offset(0, 5),
-            ),
-          ],
+          boxShadow: useLightweightGlassEffects
+              ? [
+                  BoxShadow(
+                    color: isDark
+                        ? Colors.black.withValues(alpha: 0.22)
+                        : gradient.first.withValues(alpha: 0.14),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: isDark
+                        ? Colors.black.withValues(alpha: 0.30)
+                        : gradient.first.withValues(alpha: 0.18),
+                    blurRadius: 28,
+                    offset: const Offset(0, 16),
+                  ),
+                  BoxShadow(
+                    color: isDark
+                        ? Colors.black.withValues(alpha: 0.18)
+                        : gradient.last.withValues(alpha: 0.16),
+                    blurRadius: 14,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(28),
@@ -869,9 +897,10 @@ class _OfflineCardLinePainter extends CustomPainter {
 }
 
 class _OfflineMemoryPanel extends StatelessWidget {
-  const _OfflineMemoryPanel({required this.tags});
+  const _OfflineMemoryPanel({required this.tags, required this.active});
 
   final List<String> tags;
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
@@ -931,6 +960,7 @@ class _OfflineMemoryPanel extends StatelessWidget {
                   placeholder: display[i].isEmpty,
                   phase: specs[i].phase,
                   width: specs[i].w,
+                  active: active,
                 ),
               ),
           ],
@@ -980,6 +1010,7 @@ class _FloatingMemoryChip extends StatefulWidget {
     required this.color,
     required this.phase,
     required this.width,
+    required this.active,
     this.placeholder = false,
   });
 
@@ -987,6 +1018,7 @@ class _FloatingMemoryChip extends StatefulWidget {
   final Color color;
   final double phase;
   final double width;
+  final bool active;
   final bool placeholder;
 
   @override
@@ -1008,7 +1040,27 @@ class _FloatingMemoryChipState extends State<_FloatingMemoryChip>
       vsync: this,
       duration: const Duration(milliseconds: 4600),
       value: (widget.phase % (math.pi * 2)) / (math.pi * 2),
-    )..repeat();
+    );
+    _syncChipMotion();
+  }
+
+  @override
+  void didUpdateWidget(covariant _FloatingMemoryChip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active != widget.active) {
+      _syncChipMotion();
+    }
+  }
+
+  void _syncChipMotion() {
+    if (!mounted) return;
+    if (widget.active) {
+      if (!_controller.isAnimating) {
+        _controller.repeat();
+      }
+    } else {
+      _controller.stop();
+    }
   }
 
   @override
@@ -1045,15 +1097,17 @@ class _FloatingMemoryChipState extends State<_FloatingMemoryChip>
                   )
                 : color.withValues(alpha: .30),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: (placeholder ? Colors.white : color).withValues(
-                alpha: AppColors.isDark(context) ? 0.05 : 0.13,
-              ),
-              blurRadius: 17,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          boxShadow: useLightweightGlassEffects
+              ? const []
+              : [
+                  BoxShadow(
+                    color: (placeholder ? Colors.white : color).withValues(
+                      alpha: AppColors.isDark(context) ? 0.05 : 0.13,
+                    ),
+                    blurRadius: 17,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
         ),
         child: Center(
           child: placeholder

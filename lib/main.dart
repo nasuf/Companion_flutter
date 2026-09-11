@@ -50,6 +50,10 @@ import 'src/games/reversi_engine.dart';
 import 'src/games/tetris_duel_engine.dart';
 import 'src/widgets/chat/voice_recording_overlay.dart';
 import 'src/widgets/agent_avatar_image.dart';
+import 'src/screens/chat/chat_transcript_controller.dart';
+import 'src/services/display_refresh_rate.dart';
+import 'src/utils/platform_effects.dart';
+import 'src/utils/tab_visit_policy.dart';
 
 part 'src/app/auth_gate.dart';
 part 'src/app/auth_session_store.dart';
@@ -192,6 +196,7 @@ final AppThemeController appThemeController = AppThemeController();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await DisplayRefreshRate.initialize();
   tzdata.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation('Asia/Shanghai'));
   await appThemeController.restore();
@@ -236,6 +241,11 @@ class _CompanionAppState extends State<CompanionApp>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    DisplayRefreshRate.handleAppLifecycleState(state);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: appThemeController,
@@ -262,12 +272,14 @@ class _CompanionAppState extends State<CompanionApp>
               darkTheme: AppTheme.materialTheme(Brightness.dark),
               themeMode: appThemeController.mode,
               builder: (context, child) {
-                return DefaultTextStyle.merge(
-                  style: const TextStyle(
-                    decoration: TextDecoration.none,
-                    decorationColor: Colors.transparent,
+                return DisplayRefreshGate(
+                  child: DefaultTextStyle.merge(
+                    style: const TextStyle(
+                      decoration: TextDecoration.none,
+                      decorationColor: Colors.transparent,
+                    ),
+                    child: child ?? const SizedBox.shrink(),
                   ),
-                  child: child ?? const SizedBox.shrink(),
                 );
               },
               home: const AuthGate(),

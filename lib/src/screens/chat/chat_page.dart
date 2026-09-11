@@ -172,38 +172,52 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _stationCardKey = GlobalKey(debugLabel: 'chat-station-card');
   final _highlightMessageKey = GlobalKey(debugLabel: 'chat-highlight-message');
   final _musicStation = ChatMusicStationState();
-  final List<ChatMessage> _messages = [];
+  final _transcript = ChatTranscriptController();
+  // Keyboard-driven list padding updates every frame; keep it out of [build] so
+  // header + transcript ListenableBuilder are not rebuilt on each inset tick.
+  final _listBottomPadding = ValueNotifier(200.0);
+  final _typingVisible = ValueNotifier(false);
+  // Composer chrome and message-list music UI rebuild independently of the
+  // header / station dock so WS ack/reply does not repaint the whole page.
+  final _composerShell = ValueNotifier(0);
+  final _viewportShell = ValueNotifier(0);
+  bool _transcriptDirty = false;
+  bool _playbackSubscribed = false;
+  bool _conversationMetaDirty = false;
+  bool _chatQuotaDirty = false;
 
-  // A search-result tap that landed outside the live tail replaces
-  // `_messages` with a fixed window around the target (mirrors the retired
-  // ChatMessageContextPage's own rank math) instead of trying to splice a
-  // possibly-huge gap back to "now". `_handleScroll` switches to the
-  // `*Jump` loaders below while this is true; tapping "回到最新" (or
-  // scrolling newer all the way back to rank 0) resolves it by just calling
-  // the existing `_loadLatestMessages`, so none of the live-tail invariants
-  // below ever need to understand a mid-history window.
-  bool _isJumpedToHistory = false;
-  int _jumpOldestRank = 0;
-  int _jumpNewestRank = 0;
-  bool _hasMoreOlderJump = false;
-  bool _hasMoreNewerJump = false;
-  bool _loadingOlderJump = false;
-  bool _loadingNewerJump = false;
+  List<ChatMessage> get _messages => _transcript.messages;
 
-  // `_highlightMessageId` is the *identity* of the row `_highlightMessageKey`
-  // attaches to — it must be set (and the row rebuilt with it) before
-  // `_highlightAndScrollTo` ever looks up `_highlightMessageKey.currentContext`,
-  // otherwise the key is attached to no one and every scroll attempt finds
-  // nothing. `_highlightVisible` is the highlight's own on/off state, kept
-  // separate so the key stays attached (and scrolling stays possible)
-  // through the fade-out too, not just the initial "on" instant.
-  String? _highlightMessageId;
-  bool _highlightVisible = false;
+  bool get _isJumpedToHistory => _transcript.isJumpedToHistory;
+  set _isJumpedToHistory(bool value) => _transcript.isJumpedToHistory = value;
 
-  /// The query whose matches (inside the target message's own text) get a
-  /// background highlight while `_highlightVisible` — set alongside
-  /// `_highlightMessageId` in `_highlightAndScrollTo`.
-  String? _highlightQuery;
+  int get _jumpOldestRank => _transcript.jumpOldestRank;
+  set _jumpOldestRank(int value) => _transcript.jumpOldestRank = value;
+
+  int get _jumpNewestRank => _transcript.jumpNewestRank;
+  set _jumpNewestRank(int value) => _transcript.jumpNewestRank = value;
+
+  bool get _hasMoreOlderJump => _transcript.hasMoreOlderJump;
+  set _hasMoreOlderJump(bool value) => _transcript.hasMoreOlderJump = value;
+
+  bool get _hasMoreNewerJump => _transcript.hasMoreNewerJump;
+  set _hasMoreNewerJump(bool value) => _transcript.hasMoreNewerJump = value;
+
+  bool get _loadingOlderJump => _transcript.loadingOlderJump;
+  set _loadingOlderJump(bool value) => _transcript.loadingOlderJump = value;
+
+  bool get _loadingNewerJump => _transcript.loadingNewerJump;
+  set _loadingNewerJump(bool value) => _transcript.loadingNewerJump = value;
+
+  String? get _highlightMessageId => _transcript.highlightMessageId;
+  set _highlightMessageId(String? value) =>
+      _transcript.highlightMessageId = value;
+
+  bool get _highlightVisible => _transcript.highlightVisible;
+  set _highlightVisible(bool value) => _transcript.highlightVisible = value;
+
+  String? get _highlightQuery => _transcript.highlightQuery;
+  set _highlightQuery(String? value) => _transcript.highlightQuery = value;
 
   // CLAUDE.md 权益项 1: 本地缓存的额度预测, 避免每条消息都发一次 /chat/quota。
   // 会有最多一条消息的滞后 (ack 后才刷新) —— 服务端在 ws.py 仍是权威闸门,
@@ -239,17 +253,28 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   String? _autoShownReadyCapsuleId;
   bool _readyCapsuleNoticeShowing = false;
   Conversation? _conversationMeta;
-  bool _loadingInitial = true;
-  bool _loadingOlder = false;
-  bool _hasOlderMessages = false;
+  bool get _loadingInitial => _transcript.loadingInitial;
+  set _loadingInitial(bool value) => _transcript.loadingInitial = value;
+
+  bool get _loadingOlder => _transcript.loadingOlder;
+  set _loadingOlder(bool value) => _transcript.loadingOlder = value;
+
+  bool get _hasOlderMessages => _transcript.hasOlderMessages;
+  set _hasOlderMessages(bool value) => _transcript.hasOlderMessages = value;
+
   bool _sending = false;
-  String? _historyError;
-  int _loadedServerMessages = 0;
+
+  String? get _historyError => _transcript.historyError;
+  set _historyError(String? value) => _transcript.historyError = value;
+
+  int get _loadedServerMessages => _transcript.loadedServerMessages;
+  set _loadedServerMessages(int value) =>
+      _transcript.loadedServerMessages = value;
   double? _lastListBottomPadding;
-  double _lastKeyboardInset = 0;
   bool _pinToBottomDuringKeyboard = false;
   bool _wasNearBottomBeforePaddingChange = true;
-  int _newMessageCount = 0;
+  int get _newMessageCount => _transcript.newMessageCount;
+  set _newMessageCount(int value) => _transcript.newMessageCount = value;
   ({
     String text,
     String clientId,
@@ -265,7 +290,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _recordingVoice = false;
   bool _transcribingVoice = false;
   bool _voiceInputMode = false;
-  bool _agentTyping = false;
+  bool get _agentTyping => _transcript.agentTyping;
+  set _agentTyping(bool value) => _transcript.agentTyping = value;
   bool _voiceGestureActive = false;
   int _voiceSeconds = 0;
   int _voiceAmplitudeSampleCount = 0;
@@ -299,6 +325,100 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   String get _conversationId => widget.session.conversationId!;
 
+  void _bumpComposerShell() {
+    _composerShell.value = _composerShell.value + 1;
+  }
+
+  void _bumpViewportShell() {
+    if (!widget.isActive) return;
+    _viewportShell.value = _viewportShell.value + 1;
+  }
+
+  void _syncTypingVisible() {
+    if (!widget.isActive) {
+      if (_typingVisible.value) _typingVisible.value = false;
+      return;
+    }
+    if (_typingVisible.value != _agentTyping) {
+      _typingVisible.value = _agentTyping;
+    }
+  }
+
+  void _publishTranscriptIfVisible() {
+    if (!widget.isActive) {
+      _transcriptDirty = true;
+      return;
+    }
+    _transcript.publish();
+    _transcriptDirty = false;
+  }
+
+  void _notifyTranscript([void Function()? patch]) {
+    patch?.call();
+    _syncTypingVisible();
+    _publishTranscriptIfVisible();
+    _syncCoListeningFromMessagesIfNeeded();
+  }
+
+  void _syncCoListeningFromMessagesIfNeeded() {
+    if (!mounted) return;
+    final next =
+        ChatMusicStationState.userCoListeningActiveFromMessages(_messages);
+    if (next == _localUserCoListeningActive) return;
+    _localUserCoListeningActive = next;
+    if (!widget.isActive) return;
+    setState(() {});
+  }
+
+  void _patchShellAndTranscript({
+    required void Function() shell,
+    required void Function() transcript,
+  }) {
+    shell();
+    transcript();
+    _syncTypingVisible();
+    _publishTranscriptIfVisible();
+    if (widget.isActive) {
+      _bumpComposerShell();
+    }
+    _syncCoListeningFromMessagesIfNeeded();
+  }
+
+  void _syncChatVisibility() {
+    if (widget.isActive) {
+      if (!_playbackSubscribed) {
+        _playback.addListener(_handleStationPlaybackChanged);
+        _playbackSubscribed = true;
+      }
+      _scheduleConversationMetaRefresh();
+      _scheduleNextCapsuleScan();
+      _syncTypingVisible();
+      if (_transcriptDirty) {
+        _transcript.publish();
+        _transcriptDirty = false;
+      }
+      final needsShellRebuild = _conversationMetaDirty || _chatQuotaDirty;
+      _conversationMetaDirty = false;
+      _chatQuotaDirty = false;
+      if (needsShellRebuild) setState(() {});
+      _cacheActiveMusicPosition();
+      _bumpViewportShell();
+      _scheduleStationDockCheck();
+      unawaited(_scanReadyCapsules());
+      return;
+    }
+
+    _syncTypingVisible();
+    if (_playbackSubscribed) {
+      _playback.removeListener(_handleStationPlaybackChanged);
+      _playbackSubscribed = false;
+    }
+    _conversationMetaTimer?.cancel();
+    _conversationMetaTimer = null;
+    _capsuleScanTimer?.cancel();
+    _capsuleScanTimer = null;
+  }
+
   String? get _agentAvatarUrl {
     final explicit = widget.session.agentAvatarUrl?.trim();
     if (explicit != null && explicit.isNotEmpty) return explicit;
@@ -313,7 +433,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_handleScroll);
     _inputController.addListener(_handleInputChanged);
-    _playback.addListener(_handleStationPlaybackChanged);
+    if (widget.isActive) {
+      _playback.addListener(_handleStationPlaybackChanged);
+      _playbackSubscribed = true;
+    }
     _playback.configureQuota(widget.api);
     _musicCompleteSub = _playback.completed.listen((_) {
       if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? true)) return;
@@ -376,14 +499,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     try {
       final quota = await widget.api.getChatQuota();
       if (!mounted) return;
-      setState(() {
-        _chatQuota = quota;
-        // mode 回到 free 说明额度周期真的刷新了 (非VIP新的一天 / VIP新的
-        // 一月)，之前问过的"继续扣费"不再适用，允许再问一次。
-        if (quota.mode == ChatQuotaMode.free) {
-          _overageAcknowledged = false;
-        }
-      });
+      _chatQuota = quota;
+      // mode 回到 free 说明额度周期真的刷新了 (非VIP新的一天 / VIP新的
+      // 一月)，之前问过的"继续扣费"不再适用，允许再问一次。
+      if (quota.mode == ChatQuotaMode.free) {
+        _overageAcknowledged = false;
+      }
+      if (!widget.isActive) {
+        _chatQuotaDirty = true;
+        return;
+      }
+      setState(() {});
     } catch (_) {
       // 网络抖动: 保持旧值/null, 发送前判断按"未知则放行"处理, 服务端仍会
       // 通过 quota_blocked 兜底拦截真正超额的消息。
@@ -393,6 +519,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   @override
   void didUpdateWidget(covariant ChatPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.isActive != widget.isActive) {
+      _syncChatVisibility();
+    }
     if (oldWidget.session.conversationId != widget.session.conversationId ||
         oldWidget.api.baseUrl != widget.api.baseUrl) {
       _bootstrapChat();
@@ -412,7 +541,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
     _scrollController.removeListener(_handleScroll);
     _inputController.removeListener(_handleInputChanged);
-    _playback.removeListener(_handleStationPlaybackChanged);
+    if (_playbackSubscribed) {
+      _playback.removeListener(_handleStationPlaybackChanged);
+      _playbackSubscribed = false;
+    }
     _scrollController.dispose();
     _inputController.dispose();
     _inputFocus.dispose();
@@ -431,6 +563,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _musicQuotaSub?.cancel();
     _shareIntentSub?.cancel();
     unawaited(_voiceRecorder.dispose());
+    _listBottomPadding.dispose();
+    _typingVisible.dispose();
+    _composerShell.dispose();
+    _viewportShell.dispose();
+    _transcript.dispose();
     super.dispose();
   }
 
@@ -440,6 +577,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (_preparingVoice || _recordingVoice) {
         unawaited(_cancelVoiceRecording());
       }
+      return;
+    }
+    if (!widget.isActive) {
+      _conversationMetaDirty = true;
       return;
     }
     unawaited(_scanReadyCapsules());
@@ -455,18 +596,36 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _handleInputChanged() {
-    if (mounted) {
-      final previousText = _lastInputText;
-      final currentText = _inputController.text;
-      _lastInputText = currentText;
-      setState(() {});
-      unawaited(
-        _maybePromoteInputLinkToPendingCard(
-          previousText: previousText,
-          currentText: currentText,
-        ),
-      );
+    if (!mounted) return;
+    final previousText = _lastInputText;
+    final currentText = _inputController.text;
+    _lastInputText = currentText;
+    if (_composerLineCountEstimate(previousText) !=
+        _composerLineCountEstimate(currentText)) {
+      _bumpComposerShell();
     }
+    unawaited(
+      _maybePromoteInputLinkToPendingCard(
+        previousText: previousText,
+        currentText: currentText,
+      ),
+    );
+  }
+
+  int _composerLineCountEstimate(String text) {
+    if (!mounted) return 1;
+    final inputWidth = math.max(96.0, MediaQuery.sizeOf(context).width - 220.0);
+    final sample = text.isEmpty ? ' ' : text;
+    final painter = TextPainter(
+      text: TextSpan(
+        text: sample,
+        style: const TextStyle(fontSize: 16, height: 1.25),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 3,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: inputWidth);
+    return painter.computeLineMetrics().length.clamp(1, 3);
   }
 
   Future<void> _bootstrapChat() async {
@@ -482,27 +641,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _capsuleScanTimer?.cancel();
     _conversationMetaTimer?.cancel();
     if (!mounted) return;
+    _transcript.resetForConversationSwitch();
     setState(() {
-      _messages.clear();
       _pendingImages.clear();
       _pendingLinkPreview = null;
       _linkPreviewInFlightText = null;
       _lastInputText = _inputController.text;
       _panel = ComposerPanel.none;
       _heldPanel = ComposerPanel.none;
-      _loadingInitial = true;
-      _loadingOlder = false;
-      _hasOlderMessages = false;
-      _loadedServerMessages = 0;
-      _historyError = null;
-      _newMessageCount = 0;
       _pendingSend = null;
       _uploadingImage = false;
       _preparingVoice = false;
       _recordingVoice = false;
       _transcribingVoice = false;
       _voiceInputMode = false;
-      _agentTyping = false;
       _voiceGestureActive = false;
       _voiceSeconds = 0;
       _voiceAmplitudeSampleCount = 0;
@@ -522,6 +674,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _favoriteMusicTrackIds.clear();
       _busyMusicFavoriteIds.clear();
     });
+    _typingVisible.value = false;
+    _transcript.publish();
     _syncVoiceRecordingOverlay();
     widget.onAchievementOverlayChanged?.call(false);
     await Future.wait([
@@ -547,7 +701,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     try {
       final conversation = await widget.api.getConversation(_conversationId);
       if (!mounted) return;
-      setState(() => _conversationMeta = conversation);
+      _conversationMeta = conversation;
+      if (!widget.isActive) {
+        _conversationMetaDirty = true;
+        return;
+      }
+      setState(() {});
     } catch (_) {
       // Header metadata is decorative; chat should continue when it fails.
     }
@@ -578,7 +737,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           }
           // A reconnect may have missed the reply that would clear the typing
           // indicator; reconciling history below restores the true state.
-          if (_agentTyping) setState(() => _agentTyping = false);
+          if (_agentTyping) _notifyTranscript(() => _agentTyping = false);
           _loadLatestMessages(showLoading: false);
         case ChatSocketStatus.error:
           break;
@@ -661,10 +820,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (match == null || !mounted) return;
     if (_linkPreviewInFlightText != null) return;
     _linkPreviewInFlightText = match;
-    setState(() {
-      _historyError = null;
-      _panel = ComposerPanel.none;
-    });
+    _panel = ComposerPanel.none;
+    _bumpComposerShell();
+    _notifyTranscript(() => _historyError = null);
     try {
       final preview = await widget.api.previewChatLink(
         conversationId: _conversationId,
@@ -680,24 +838,23 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         if (!_textContainsSharedLink(currentText, match)) return;
         _removeSharedLinkFromInput(stripText ?? match);
       }
-      setState(() {
-        _pendingLinkPreview = _PendingLinkPreview(
-          preview: preview,
-          sourceText: match,
-        );
-        _historyError = null;
-        _panel = ComposerPanel.none;
-      });
+      _pendingLinkPreview = _PendingLinkPreview(
+        preview: preview,
+        sourceText: match,
+      );
+      _panel = ComposerPanel.none;
+      _bumpComposerShell();
+      _notifyTranscript(() => _historyError = null);
       _inputFocus.requestFocus();
     } catch (error) {
       debugPrint('Link preview failed: $error');
       if (mounted && showError) {
-        setState(() => _historyError = _asMessage(error));
+        _notifyTranscript(() => _historyError = _asMessage(error));
       }
     } finally {
       if (_linkPreviewInFlightText == match) {
         _linkPreviewInFlightText = null;
-        if (mounted) setState(() {});
+        if (mounted) _bumpComposerShell();
       }
     }
   }
@@ -800,7 +957,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final oldPixels = hadScrollPosition ? _scrollController.position.pixels : 0;
     final wasNearBottom = hadScrollPosition ? _isNearBottomNow() : true;
     if (showLoading) {
-      setState(() {
+      _notifyTranscript(() {
         _loadingInitial = true;
         _historyError = null;
       });
@@ -812,7 +969,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       if (!mounted) return;
       final chronological = newestFirst.reversed.toList();
-      setState(() {
+      _notifyTranscript(() {
         if (showLoading) {
           _replaceWithServerMessages(chronological);
         } else {
@@ -843,10 +1000,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       });
     } catch (error) {
       if (!mounted) return;
-      setState(() => _historyError = _asMessage(error));
+      _notifyTranscript(() => _historyError = _asMessage(error));
     } finally {
       if (mounted && showLoading) {
-        setState(() => _loadingInitial = false);
+        _notifyTranscript(() => _loadingInitial = false);
       }
     }
   }
@@ -873,8 +1030,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ..addAll(unsyncedUserDrafts)
       ..addAll(transientAssistantReplies);
     _messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    _localUserCoListeningActive =
-        ChatMusicStationState.userCoListeningActiveFromMessages(_messages);
   }
 
   void _mergeLatestServerMessages(List<ChatMessage> serverMessages) {
@@ -882,8 +1037,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _upsertServerMessage(serverMessage);
     }
     _messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    _localUserCoListeningActive =
-        ChatMusicStationState.userCoListeningActiveFromMessages(_messages);
   }
 
   void _upsertServerMessage(ChatMessage serverMessage) {
@@ -927,7 +1080,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (_loadingOlder || !_hasOlderMessages) return;
     final oldMaxExtent = _scrollController.position.maxScrollExtent;
     final oldPixels = _scrollController.position.pixels;
-    setState(() {
+    _notifyTranscript(() {
       _loadingOlder = true;
       _historyError = null;
     });
@@ -939,7 +1092,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       if (!mounted) return;
       final chronological = newestFirst.reversed.toList();
-      setState(() {
+      _notifyTranscript(() {
         _prependServerMessages(chronological);
         _hasOlderMessages =
             _countServerMessages(newestFirst) == _messagePageSize;
@@ -957,7 +1110,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       });
     } catch (error) {
       if (mounted) {
-        setState(() {
+        _notifyTranscript(() {
           _historyError = _asMessage(error);
           _loadingOlder = false;
         });
@@ -1120,7 +1273,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         sendComponentMessage(result.agentText, result.card);
       }
     } catch (error) {
-      if (mounted) setState(() => _historyError = _asMessage(error));
+      if (mounted) _notifyTranscript(() => _historyError = _asMessage(error));
     }
   }
 
@@ -1202,7 +1355,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       final ready = await widget.api.listTimeCapsules(state: 'ready');
       if (!mounted) return;
       final nextReady = ready.isEmpty ? null : ready.first;
-      setState(() => _readyCapsule = nextReady);
+      _readyCapsule = nextReady;
+      if (!widget.isActive) return;
+      setState(() {});
       if (nextReady != null &&
           nextReady.id != _autoShownReadyCapsuleId &&
           !_readyCapsuleNoticeShowing &&
@@ -1210,6 +1365,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _autoShownReadyCapsuleId = nextReady.id;
         Future<void>.delayed(const Duration(milliseconds: 360), () {
           if (!mounted ||
+              !widget.isActive ||
               _readyCapsule?.id != nextReady.id ||
               _readyCapsuleNoticeShowing) {
             return;
@@ -1251,7 +1407,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   Future<void> _openReadyCapsuleNotice() async {
     final capsule = _readyCapsule;
-    if (capsule == null || _readyCapsuleNoticeShowing) return;
+    if (capsule == null || _readyCapsuleNoticeShowing || !widget.isActive) {
+      return;
+    }
     _readyCapsuleNoticeShowing = true;
     _dismissInputSurfaces();
     final bool? shouldOpen;
@@ -1301,7 +1459,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         unawaited(_scanReadyCapsules());
       }
     } catch (error) {
-      if (mounted) setState(() => _historyError = _asMessage(error));
+      if (mounted) _notifyTranscript(() => _historyError = _asMessage(error));
     }
   }
 
@@ -1341,7 +1499,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (_loadingInitial) return;
     final start = math.max(0, rank - _jumpWindowRadius);
     const take = _jumpWindowRadius * 2 + 1;
-    setState(() {
+    _notifyTranscript(() {
       _loadingInitial = true;
       _historyError = null;
     });
@@ -1353,7 +1511,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       if (!mounted) return;
       final chronological = newestFirst.reversed.toList();
-      setState(() {
+      _notifyTranscript(() {
         _messages
           ..clear()
           ..addAll(chronological);
@@ -1367,7 +1525,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       unawaited(_highlightAndScrollTo(focusMessageId, query));
     } catch (error) {
       if (!mounted) return;
-      setState(() {
+      _notifyTranscript(() {
         _loadingInitial = false;
         _historyError = _asMessage(error);
       });
@@ -1376,7 +1534,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   Future<void> _loadOlderJump() async {
     if (_loadingOlderJump || !_hasMoreOlderJump) return;
-    setState(() => _loadingOlderJump = true);
+    _notifyTranscript(() => _loadingOlderJump = true);
     try {
       final nextOffset = _jumpOldestRank + 1;
       final newestFirst = await widget.api.loadMessages(
@@ -1385,20 +1543,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         offset: nextOffset,
       );
       if (!mounted) return;
-      setState(() {
+      _notifyTranscript(() {
         _messages.insertAll(0, newestFirst.reversed);
         _jumpOldestRank = nextOffset + newestFirst.length - 1;
         _hasMoreOlderJump = newestFirst.length == _jumpExtendStep;
         _loadingOlderJump = false;
       });
     } catch (_) {
-      if (mounted) setState(() => _loadingOlderJump = false);
+      if (mounted) _notifyTranscript(() => _loadingOlderJump = false);
     }
   }
 
   Future<void> _loadNewerJump() async {
     if (_loadingNewerJump || !_hasMoreNewerJump) return;
-    setState(() => _loadingNewerJump = true);
+    _notifyTranscript(() => _loadingNewerJump = true);
     try {
       final take = math.min(_jumpExtendStep, _jumpNewestRank);
       final nextOffset = _jumpNewestRank - take;
@@ -1408,14 +1566,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         offset: nextOffset,
       );
       if (!mounted) return;
-      setState(() {
+      _notifyTranscript(() {
         _messages.addAll(newestFirst.reversed);
         _jumpNewestRank = nextOffset;
         _hasMoreNewerJump = nextOffset > 0;
         _loadingNewerJump = false;
       });
     } catch (_) {
-      if (mounted) setState(() => _loadingNewerJump = false);
+      if (mounted) _notifyTranscript(() => _loadingNewerJump = false);
     }
   }
 
@@ -1425,7 +1583,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   /// `_hasOlderMessages`, so those keep their original, already-relied-on
   /// meaning untouched.
   Future<void> _returnToLive() async {
-    setState(() => _isJumpedToHistory = false);
+    _notifyTranscript(() => _isJumpedToHistory = false);
     await _loadLatestMessages(showLoading: true);
   }
 
@@ -1446,7 +1604,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   /// precise alignment once it's actually laid out.
   Future<void> _highlightAndScrollTo(String messageId, String query) async {
     final index = _messages.indexWhere((message) => message.id == messageId);
-    setState(() {
+    _notifyTranscript(() {
       _highlightMessageId = messageId;
       _highlightQuery = query;
       _highlightVisible = false;
@@ -1488,12 +1646,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     const holdDuration = Duration(seconds: 2);
     const fadeDuration = Duration(milliseconds: 500);
     if (!mounted) return;
-    setState(() => _highlightVisible = true);
+    _notifyTranscript(() => _highlightVisible = true);
     await Future.delayed(holdDuration);
     if (!mounted) return;
-    setState(() => _highlightVisible = false);
+    _notifyTranscript(() => _highlightVisible = false);
     await Future.delayed(fadeDuration);
-    if (mounted) setState(() => _highlightMessageId = null);
+    if (mounted) _notifyTranscript(() => _highlightMessageId = null);
   }
 
   bool _isMusicStationCard(ChatComponentCard? card) {
@@ -1506,7 +1664,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void _adoptLatestMusicStationFromMessages() {
     final changed = _musicStation.adoptLatestFrom(_messages);
-    if (changed && mounted) setState(() {});
+    if (!changed || !mounted) return;
+    _bumpViewportShell();
+    _scheduleStationDockCheck();
   }
 
   bool _adoptMusicStation(ChatComponentCard card, String messageId) {
@@ -1515,19 +1675,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void _activateMusicStationCard(ChatComponentCard card, String messageId) {
     if (!_isMusicStationCard(card)) return;
-    final beforeMessageId = _musicStation.messageId;
-    final beforeTitle = _musicStation.card?.title;
-    final beforeLibrary = _musicStation.library;
     _musicStation.activate(card, messageId);
-    final changed =
-        beforeTitle != _musicStation.card?.title ||
-        beforeMessageId != _musicStation.messageId ||
-        beforeLibrary != _musicStation.library;
-    if (changed && mounted) {
-      setState(() {});
-    } else if (mounted) {
-      setState(() {});
-    }
+    if (!mounted) return;
+    _bumpViewportShell();
     _scheduleStationDockCheck();
   }
 
@@ -1660,7 +1810,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (shouldRebuild) {
       if (track != null) unawaited(_syncStationPlayback(track));
       _scheduleStationDockCheck();
-      if (mounted) setState(() {});
+      if (mounted) _bumpViewportShell();
     }
   }
 
@@ -1668,7 +1818,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (!_canGoStationPrevious || _advancingStation) return;
     final track = _musicStation.movePrevious();
     if (track == null) return;
-    setState(() {});
+    _bumpViewportShell();
     await _startStationTrack(
       track,
       addToHistory: false,
@@ -1691,7 +1841,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
     var shouldRetry = false;
     _advancingStation = true;
-    if (mounted) setState(() {});
+    if (mounted) _bumpViewportShell();
     try {
       final response = await widget.api.listMusicTracks(
         agentId: agentId,
@@ -1708,14 +1858,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       shouldRetry = !didStart && retryCount < 2;
       if (!didStart && !shouldRetry && mounted && !auto) {
-        setState(() => _historyError = '这首歌暂时播放不了，正在换一首。');
+        _notifyTranscript(() => _historyError = '这首歌暂时播放不了，正在换一首。');
       }
     } catch (error) {
-      if (mounted && !auto) setState(() => _historyError = _asMessage(error));
+      if (mounted && !auto) _notifyTranscript(() => _historyError = _asMessage(error));
     } finally {
       _advancingStation = false;
       _syncStationDockLifecycle();
-      if (mounted) setState(() {});
+      if (mounted) _bumpViewportShell();
     }
     if (mounted && shouldRetry) {
       await _playNextStationTrack(auto: auto, retryCount: retryCount + 1);
@@ -1766,7 +1916,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         ),
       );
     } catch (_) {
-      if (mounted) setState(() => _historyError = '这首歌暂时播放不了，正在换一首。');
+      if (mounted) _notifyTranscript(() => _historyError = '这首歌暂时播放不了，正在换一首。');
     }
   }
 
@@ -1779,14 +1929,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       return;
     }
     final wasFavorite = _favoriteMusicTrackIds.contains(track.id);
-    setState(() {
-      _busyMusicFavoriteIds.add(track.id);
-      if (wasFavorite) {
-        _favoriteMusicTrackIds.remove(track.id);
-      } else {
-        _favoriteMusicTrackIds.add(track.id);
-      }
-    });
+    _busyMusicFavoriteIds.add(track.id);
+    if (wasFavorite) {
+      _favoriteMusicTrackIds.remove(track.id);
+    } else {
+      _favoriteMusicTrackIds.add(track.id);
+    }
+    _bumpViewportShell();
     try {
       if (wasFavorite) {
         await widget.api.removeMusicFavorite(
@@ -1800,26 +1949,25 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           track: track.copyWith(isFavorite: true),
         );
         if (mounted && saved.id != track.id) {
-          setState(() {
-            _favoriteMusicTrackIds
-              ..remove(track.id)
-              ..add(saved.id);
-          });
+          _favoriteMusicTrackIds
+            ..remove(track.id)
+            ..add(saved.id);
+          _bumpViewportShell();
         }
       }
     } catch (_) {
       if (mounted) {
-        setState(() {
-          if (wasFavorite) {
-            _favoriteMusicTrackIds.add(track.id);
-          } else {
-            _favoriteMusicTrackIds.remove(track.id);
-          }
-        });
+        if (wasFavorite) {
+          _favoriteMusicTrackIds.add(track.id);
+        } else {
+          _favoriteMusicTrackIds.remove(track.id);
+        }
+        _bumpViewportShell();
       }
     } finally {
       if (mounted) {
-        setState(() => _busyMusicFavoriteIds.remove(track.id));
+        _busyMusicFavoriteIds.remove(track.id);
+        _bumpViewportShell();
       }
     }
   }
@@ -1849,6 +1997,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void _updateStationCardDocked() {
     if (!mounted) return;
     _stationDockCheckScheduled = false;
+    if (!widget.isActive) return;
     final hasStation = _musicStation.card != null && _stationTrack != null;
     if (!hasStation) {
       if (_stationCardDocked) setState(() => _stationCardDocked = false);
@@ -1868,9 +2017,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       final topLeft = renderObject.localToGlobal(Offset.zero);
       final bottom = topLeft.dy + renderObject.size.height;
       final screenHeight = MediaQuery.sizeOf(this.context).height;
-      final composerHeight = _composerHeightForWidth(
-        MediaQuery.sizeOf(this.context).width,
-      );
+      final composerHeight = _composerHeightForWidth();
       final bottomLimit = screenHeight - composerHeight - _tabBarContentHeight;
       const dockRevealLine = 144.0;
       shouldDock = bottom < dockRevealLine || topLeft.dy > bottomLimit;
@@ -1915,7 +2062,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       unawaited(_loadOlderMessages());
     }
     if (_newMessageCount > 0 && _isNearBottomNow()) {
-      setState(() => _newMessageCount = 0);
+      _notifyTranscript(() => _newMessageCount = 0);
     }
     _scheduleStationDockCheck();
   }
@@ -1930,31 +2077,33 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         // 服务端已经确认收到并落库了这条消息 (哪怕 AI 回复还没生成完),
         // 不再需要"发出去杳无音讯"的超时兜底。
         if (clientId == _inFlightClientId) _clearSendTimeout();
-        setState(() {
-          for (var i = 0; i < _messages.length; i += 1) {
-            final message = _messages[i];
-            if (message.id == clientId || message.clientId == clientId) {
-              _messages[i] = message.copyWith(
-                id: messageId.isEmpty ? message.id : messageId,
-                read: true,
-                pending: false,
-                metadata: {...?message.metadata, 'client_id': clientId},
-              );
-              if (messageId.isNotEmpty) {
-                _musicStation.acknowledgeMessageId(clientId, messageId);
+        _patchShellAndTranscript(
+          shell: () => _sending = false,
+          transcript: () {
+            for (var i = 0; i < _messages.length; i += 1) {
+              final message = _messages[i];
+              if (message.id == clientId || message.clientId == clientId) {
+                _messages[i] = message.copyWith(
+                  id: messageId.isEmpty ? message.id : messageId,
+                  read: true,
+                  pending: false,
+                  metadata: {...?message.metadata, 'client_id': clientId},
+                );
+                if (messageId.isNotEmpty) {
+                  _musicStation.acknowledgeMessageId(clientId, messageId);
+                }
+                break;
               }
-              break;
             }
-          }
-          _sending = false;
-        });
+          },
+        );
         unawaited(_refreshChatQuota());
         break;
       case 'quota_blocked':
         unawaited(_handleChatQuotaBlocked(payload));
         break;
       case 'delay':
-        setState(() => _agentTyping = true);
+        _notifyTranscript(() => _agentTyping = true);
         if (widget.isActive && _isNearBottomNow()) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _scrollToBottom(animated: true);
@@ -1962,10 +2111,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         }
         break;
       case 'pending':
-        setState(() {
-          _sending = false;
-          _agentTyping = true;
-        });
+        _patchShellAndTranscript(
+          shell: () => _sending = false,
+          transcript: () => _agentTyping = true,
+        );
         if (widget.isActive && _isNearBottomNow()) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _scrollToBottom(animated: true);
@@ -2003,40 +2152,43 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         final componentCard = rawComponentCard is Map
             ? ChatComponentCard.fromJson(rawComponentCard)
             : null;
-        setState(() {
-          final metadata = <String, dynamic>{
-            if (componentCard != null) 'component_card': componentCard.toJson(),
-            if (attachments.isNotEmpty)
-              'attachments': attachments.map((item) => item.toJson()).toList(),
-            if (payload['display_mode'] != null)
-              'display_mode': payload['display_mode'],
-            if (payload['ai_emotion'] != null)
-              'ai_emotion': payload['ai_emotion'],
-            if (payload['emotion_intensity'] != null)
-              'emotion_intensity': payload['emotion_intensity'],
-          };
-          final stableId = assistantMessageId?.isNotEmpty == true
-              ? assistantMessageId
-              : messageId?.isNotEmpty == true
-              ? messageId
-              : null;
-          final draft = ChatMessage.draft(
-            conversationId: _conversationId,
-            role: 'assistant',
-            content: text,
-            clientId: stableId,
-            metadata: metadata.isEmpty ? null : metadata,
-          );
-          _messages.add(draft);
-          if (_isMusicStationCard(componentCard)) {
-            _adoptMusicStation(componentCard!, draft.id);
-          }
-          _sending = false;
-          _agentTyping = false;
-          if (!shouldAutoScroll) {
-            _newMessageCount += 1;
-          }
-        });
+        final metadata = <String, dynamic>{
+          if (componentCard != null) 'component_card': componentCard.toJson(),
+          if (attachments.isNotEmpty)
+            'attachments': attachments.map((item) => item.toJson()).toList(),
+          if (payload['display_mode'] != null)
+            'display_mode': payload['display_mode'],
+          if (payload['ai_emotion'] != null) 'ai_emotion': payload['ai_emotion'],
+          if (payload['emotion_intensity'] != null)
+            'emotion_intensity': payload['emotion_intensity'],
+        };
+        final stableId = assistantMessageId?.isNotEmpty == true
+            ? assistantMessageId
+            : messageId?.isNotEmpty == true
+            ? messageId
+            : null;
+        final draft = ChatMessage.draft(
+          conversationId: _conversationId,
+          role: 'assistant',
+          content: text,
+          clientId: stableId,
+          metadata: metadata.isEmpty ? null : metadata,
+        );
+        _patchShellAndTranscript(
+          shell: () {
+            _sending = false;
+            if (_isMusicStationCard(componentCard)) {
+              _adoptMusicStation(componentCard!, draft.id);
+            }
+          },
+          transcript: () {
+            _messages.add(draft);
+            _agentTyping = false;
+            if (!shouldAutoScroll) {
+              _newMessageCount += 1;
+            }
+          },
+        );
         if (shouldEmitInAppNotification) {
           AppNotificationService.instance.emitAgentMessage(
             text: text,
@@ -2063,57 +2215,61 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         final messageId = payload['message_id']?.toString();
         final status = payload['status']?.toString() ?? 'started';
         final actor = payload['actor']?.toString() ?? '';
-        setState(() {
-          if (status == 'ended' && actor == 'user') {
-            _clearStationDock();
-          }
-          if (status == 'started' && actor == 'user') {
-            _localUserCoListeningActive = true;
-          } else if (status == 'ended') {
-            // 服务端对"优雅退出"原因(跟 music.py:_GRACEFUL_USER_EXIT_REASONS
-            // 保持同一份名单)先把用户这一侧标成 ended、隔了老半天等 agent 察
-            // 觉后才真正让 agent 退出并补一句话——这条用户自己的 ended 事件
-            // 不代表共听真的结束了，头像上的耳机徽标要跟着后面那条 agent 的
-            // ended 事件走，不能提前熄灭。其余场景(对方从没加入过 / 服务端
-            // 立即结束的其它退出原因，比如登出)没有后续的 agent ended 事件
-            // 会来，必须在这里就熄灭，否则会一直卡亮。
-            const gracefulUserExitReasons = {
-              'user_pause_timeout',
-              'user_dismissed_dock',
-            };
-            final reason = payload['reason']?.toString() ?? '';
-            final isWaitingForAgentNotice =
-                actor == 'user' && gracefulUserExitReasons.contains(reason);
-            if (!isWaitingForAgentNotice) {
-              _localUserCoListeningActive = false;
+        _patchShellAndTranscript(
+          shell: () {
+            if (status == 'ended' && actor == 'user') {
+              _clearStationDock();
             }
-          }
-          _upsertServerMessage(
-            ChatMessage(
-              id: messageId?.isNotEmpty == true
-                  ? messageId!
-                  : 'music-status-${DateTime.now().microsecondsSinceEpoch}',
-              conversationId: _conversationId,
-              role: 'assistant',
-              content: text,
-              createdAt: DateTime.now(),
-              metadata: {
-                'music_status': status,
-                'music_track_title': payload['track_title']?.toString() ?? '',
-                'music_track_id': payload['track_id']?.toString() ?? '',
-                'music_co_listening': status == 'started',
-                'music_status_actor': actor,
-                'music_status_actor_name':
-                    payload['actor_name']?.toString() ?? '',
-                if (payload['reason'] != null)
-                  'music_ended_reason': payload['reason']?.toString() ?? '',
-              },
-              read: true,
-            ),
-          );
-          _sending = false;
-          _agentTyping = false;
-        });
+            if (status == 'started' && actor == 'user') {
+              _localUserCoListeningActive = true;
+            } else if (status == 'ended') {
+              // 服务端对"优雅退出"原因(跟 music.py:_GRACEFUL_USER_EXIT_REASONS
+              // 保持同一份名单)先把用户这一侧标成 ended、隔了老半天等 agent 察
+              // 觉后才真正让 agent 退出并补一句话——这条用户自己的 ended 事件
+              // 不代表共听真的结束了，头像上的耳机徽标要跟着后面那条 agent 的
+              // ended 事件走，不能提前熄灭。其余场景(对方从没加入过 / 服务端
+              // 立即结束的其它退出原因，比如登出)没有后续的 agent ended 事件
+              // 会来，必须在这里就熄灭，否则会一直卡亮。
+              const gracefulUserExitReasons = {
+                'user_pause_timeout',
+                'user_dismissed_dock',
+              };
+              final reason = payload['reason']?.toString() ?? '';
+              final isWaitingForAgentNotice =
+                  actor == 'user' && gracefulUserExitReasons.contains(reason);
+              if (!isWaitingForAgentNotice) {
+                _localUserCoListeningActive = false;
+              }
+            }
+            _sending = false;
+          },
+          transcript: () {
+            _upsertServerMessage(
+              ChatMessage(
+                id: messageId?.isNotEmpty == true
+                    ? messageId!
+                    : 'music-status-${DateTime.now().microsecondsSinceEpoch}',
+                conversationId: _conversationId,
+                role: 'assistant',
+                content: text,
+                createdAt: DateTime.now(),
+                metadata: {
+                  'music_status': status,
+                  'music_track_title': payload['track_title']?.toString() ?? '',
+                  'music_track_id': payload['track_id']?.toString() ?? '',
+                  'music_co_listening': status == 'started',
+                  'music_status_actor': actor,
+                  'music_status_actor_name':
+                      payload['actor_name']?.toString() ?? '',
+                  if (payload['reason'] != null)
+                    'music_ended_reason': payload['reason']?.toString() ?? '',
+                },
+                read: true,
+              ),
+            );
+            _agentTyping = false;
+          },
+        );
         unawaited(_refreshConversationMeta());
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (shouldAutoScroll) _scrollToBottom(animated: true);
@@ -2126,42 +2282,44 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         final shouldAutoScroll = widget.isActive && _isNearBottomNow();
         final messageId = payload['message_id']?.toString();
         final status = payload['status']?.toString() ?? 'started';
-        setState(() {
-          _messages.add(
-            ChatMessage(
-              id: messageId?.isNotEmpty == true
-                  ? messageId!
-                  : 'game-status-${DateTime.now().microsecondsSinceEpoch}',
-              conversationId: _conversationId,
-              role: 'assistant',
-              content: text,
-              createdAt: DateTime.now(),
-              metadata: {
-                'game_status': status,
-                'game_title': payload['game_title']?.toString() ?? '',
-                'game_session_id': payload['session_id']?.toString() ?? '',
-                'game_status_actor': payload['actor']?.toString() ?? '',
-                'game_status_actor_name':
-                    payload['actor_name']?.toString() ?? '',
-                if (payload['reason'] != null)
-                  'game_ended_reason': payload['reason']?.toString() ?? '',
-              },
-              read: true,
-            ),
-          );
-          _sending = false;
-          _agentTyping = false;
-        });
+        _patchShellAndTranscript(
+          shell: () => _sending = false,
+          transcript: () {
+            _messages.add(
+              ChatMessage(
+                id: messageId?.isNotEmpty == true
+                    ? messageId!
+                    : 'game-status-${DateTime.now().microsecondsSinceEpoch}',
+                conversationId: _conversationId,
+                role: 'assistant',
+                content: text,
+                createdAt: DateTime.now(),
+                metadata: {
+                  'game_status': status,
+                  'game_title': payload['game_title']?.toString() ?? '',
+                  'game_session_id': payload['session_id']?.toString() ?? '',
+                  'game_status_actor': payload['actor']?.toString() ?? '',
+                  'game_status_actor_name':
+                      payload['actor_name']?.toString() ?? '',
+                  if (payload['reason'] != null)
+                    'game_ended_reason': payload['reason']?.toString() ?? '',
+                },
+                read: true,
+              ),
+            );
+            _agentTyping = false;
+          },
+        );
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (shouldAutoScroll) _scrollToBottom(animated: true);
           _scheduleStationDockCheck();
         });
         break;
       case 'done':
-        setState(() {
-          _sending = false;
-          _agentTyping = false;
-        });
+        _patchShellAndTranscript(
+          shell: () => _sending = false,
+          transcript: () => _agentTyping = false,
+        );
         unawaited(_loadLatestMessages(showLoading: false));
         break;
       case 'error':
@@ -2170,24 +2328,27 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         // 也没法重试。现在把当前在途的那条草稿一并标成失败态。
         final inFlightId = _inFlightClientId;
         _clearSendTimeout();
-        setState(() {
-          _sending = false;
-          _agentTyping = false;
-          _historyError = payload['message']?.toString() ?? '聊天失败';
-          if (inFlightId != null) {
-            final index = _messages.indexWhere(
-              (message) =>
-                  message.pending &&
-                  (message.id == inFlightId || message.clientId == inFlightId),
-            );
-            if (index != -1) {
-              _messages[index] = _messages[index].copyWith(
-                pending: false,
-                failed: true,
+        _patchShellAndTranscript(
+          shell: () => _sending = false,
+          transcript: () {
+            _agentTyping = false;
+            _historyError = payload['message']?.toString() ?? '聊天失败';
+            if (inFlightId != null) {
+              final index = _messages.indexWhere(
+                (message) =>
+                    message.pending &&
+                    (message.id == inFlightId ||
+                        message.clientId == inFlightId),
               );
+              if (index != -1) {
+                _messages[index] = _messages[index].copyWith(
+                  pending: false,
+                  failed: true,
+                );
+              }
             }
-          }
-        });
+          },
+        );
         break;
       case 'pong':
       case 'memory_extracted':
@@ -2246,23 +2407,27 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       if (draftIndex != -1) {
         if (clientId == _inFlightClientId) _clearSendTimeout();
-        setState(() {
-          _messages[draftIndex] = ChatMessage(
-            id: messageId.isEmpty ? _messages[draftIndex].id : messageId,
-            conversationId:
-                payload['conversation_id']?.toString() ?? _conversationId,
-            role: role,
-            content: text,
-            createdAt: createdAt,
-            metadata: metadata.isEmpty ? null : metadata,
-            pending: false,
-            read: true,
-          );
-          _sending = false;
-          if (_isMusicStationCard(componentCard)) {
-            _adoptMusicStation(componentCard!, messageId);
-          }
-        });
+        _patchShellAndTranscript(
+          shell: () {
+            _sending = false;
+            if (_isMusicStationCard(componentCard)) {
+              _adoptMusicStation(componentCard!, messageId);
+            }
+          },
+          transcript: () {
+            _messages[draftIndex] = ChatMessage(
+              id: messageId.isEmpty ? _messages[draftIndex].id : messageId,
+              conversationId:
+                  payload['conversation_id']?.toString() ?? _conversationId,
+              role: role,
+              content: text,
+              createdAt: createdAt,
+              metadata: metadata.isEmpty ? null : metadata,
+              pending: false,
+              read: true,
+            );
+          },
+        );
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (shouldAutoScroll) {
             _scrollToBottom(animated: true);
@@ -2276,12 +2441,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _messages.any((message) => message.id == messageId)) {
       return;
     }
-    setState(() {
+    final resolvedMessageId = messageId.isEmpty
+        ? 'ws-${DateTime.now().microsecondsSinceEpoch}-${text.hashCode}'
+        : messageId;
+    _notifyTranscript(() {
       _messages.add(
         ChatMessage(
-          id: messageId.isEmpty
-              ? 'ws-${DateTime.now().microsecondsSinceEpoch}-${text.hashCode}'
-              : messageId,
+          id: resolvedMessageId,
           conversationId:
               payload['conversation_id']?.toString() ?? _conversationId,
           role: role,
@@ -2292,9 +2458,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           read: true,
         ),
       );
-      if (_isMusicStationCard(componentCard)) {
-        _adoptMusicStation(componentCard!, messageId);
-      }
       if (role == 'assistant') {
         _agentTyping = false;
       }
@@ -2302,6 +2465,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _newMessageCount += 1;
       }
     });
+    if (_isMusicStationCard(componentCard)) {
+      _adoptMusicStation(componentCard!, resolvedMessageId);
+      _bumpViewportShell();
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (shouldAutoScroll) {
         _scrollToBottom(animated: true);
@@ -2327,11 +2494,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         'trigger_type': 'gift_thanks',
       },
     );
-    setState(() {
-      _messages.add(draft);
-      _panel = ComposerPanel.none;
-      _sending = false;
-    });
+    _patchShellAndTranscript(
+      shell: () {
+        _panel = ComposerPanel.none;
+        _sending = false;
+      },
+      transcript: () => _messages.add(draft),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToBottom(animated: true);
       _scheduleStationDockCheck();
@@ -2351,7 +2520,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         clientId: clientId,
       );
       if (!mounted) return;
-      setState(() {
+      _notifyTranscript(() {
         for (var i = 0; i < _messages.length; i += 1) {
           final item = _messages[i];
           if (item.id == clientId || item.clientId == clientId) {
@@ -2362,7 +2531,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       });
     } catch (error) {
       if (!mounted) return;
-      setState(() {
+      _notifyTranscript(() {
         _historyError = _asMessage(error);
         for (var i = 0; i < _messages.length; i += 1) {
           final item = _messages[i];
@@ -2387,7 +2556,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       conversationId: _conversationId,
       item: item,
     );
-    setState(() {
+    _notifyTranscript(() {
       _messages.add(message);
       _messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     });
@@ -2458,7 +2627,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void scrollToLatest({bool animated = true}) {
     if (mounted && _newMessageCount > 0) {
-      setState(() => _newMessageCount = 0);
+      _notifyTranscript(() => _newMessageCount = 0);
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -2516,7 +2685,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         DateTime.now();
     final offeringId = notice['offering_id']?.toString() ?? '';
     final shouldAutoScroll = widget.isActive && _isNearBottomNow();
-    setState(() {
+    _notifyTranscript(() {
       final alreadyShown = offeringId.isNotEmpty &&
           _messages.any(
             (message) =>
@@ -2556,7 +2725,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final rawCard = payload['component_card'] ?? payload['componentCard'];
     if (rawCard is! Map) return;
     final card = ChatComponentCard.fromJson(Map<String, dynamic>.from(rawCard));
-    setState(() {
+    _notifyTranscript(() {
       for (var i = 0; i < _messages.length; i += 1) {
         final message = _messages[i];
         final currentId = message.componentCard?.payload['offering_id']
@@ -2892,23 +3061,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _clearSendTimeout();
     }
     ChatMessage? blockedDraft;
-    setState(() {
-      // 优先按 client_id 精确匹配 (用户连发多条时避免摘错草稿); 旧版服务端
-      // 不带 client_id 才退回"摘最后一条待发消息"的启发式。
-      for (var i = _messages.length - 1; i >= 0; i -= 1) {
-        final message = _messages[i];
-        if (!message.pending || !message.isDraft) continue;
-        final matches = blocked.clientId == null
-            ? true
-            : (message.clientId == blocked.clientId || message.id == blocked.clientId);
-        if (matches) {
-          blockedDraft = _messages.removeAt(i);
-          break;
+    _patchShellAndTranscript(
+      shell: () => _sending = false,
+      transcript: () {
+        // 优先按 client_id 精确匹配 (用户连发多条时避免摘错草稿); 旧版服务端
+        // 不带 client_id 才退回"摘最后一条待发消息"的启发式。
+        for (var i = _messages.length - 1; i >= 0; i -= 1) {
+          final message = _messages[i];
+          if (!message.pending || !message.isDraft) continue;
+          final matches = blocked.clientId == null
+              ? true
+              : (message.clientId == blocked.clientId ||
+                  message.id == blocked.clientId);
+          if (matches) {
+            blockedDraft = _messages.removeAt(i);
+            break;
+          }
         }
-      }
-      _sending = false;
-      _agentTyping = false;
-    });
+        _agentTyping = false;
+      },
+    );
     if (blockedDraft != null && _inputController.text.trim().isEmpty) {
       _inputController.text = blockedDraft!.content;
     }
@@ -2992,8 +3164,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _voiceGestureActive = false;
       _voiceReleaseAction = action;
       _pendingVoiceReleaseAction = action;
-      if (tooShort) _historyError = '说话时间太短，请按住后再说。';
     });
+    if (tooShort) {
+      _notifyTranscript(() => _historyError = '说话时间太短，请按住后再说。');
+    }
     _syncVoiceRecordingOverlay();
     if (!_preparingVoice) {
       unawaited(_completeVoiceGesture(action));
@@ -3070,8 +3244,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     setState(() {
       _preparingVoice = true;
       _panel = ComposerPanel.none;
-      _historyError = null;
     });
+    _notifyTranscript(() => _historyError = null);
     _syncVoiceRecordingOverlay();
     _inputFocus.unfocus();
     try {
@@ -3080,8 +3254,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           setState(() {
             _voiceGestureActive = false;
             _pendingVoiceReleaseAction = null;
-            _historyError = '需要麦克风权限才能进行语音输入。';
           });
+          _notifyTranscript(
+            () => _historyError = '需要麦克风权限才能进行语音输入。',
+          );
           _syncVoiceRecordingOverlay();
         }
         return;
@@ -3154,10 +3330,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           _voiceGestureActive = false;
           _voiceRecordingStartedAt = null;
           _pendingVoiceReleaseAction = null;
-          _historyError = error is MissingPluginException
-              ? '语音功能需要完整重启 App 后才能使用。'
-              : _asMessage(error);
         });
+        _notifyTranscript(
+          () => _historyError = error is MissingPluginException
+              ? '语音功能需要完整重启 App 后才能使用。'
+              : _asMessage(error),
+        );
         _syncVoiceRecordingOverlay();
       }
     } finally {
@@ -3226,7 +3404,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         throw Exception('语音文件过大，请录制更短的内容');
       }
       if (mounted && _conversationId == conversationId) {
-        setState(() => _messages.add(processingMessage));
+        _notifyTranscript(() => _messages.add(processingMessage));
         scrollToLatest();
       }
       final result = await widget.api.transcribeChatAudio(
@@ -3240,10 +3418,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       if (!mounted || _conversationId != conversationId) return;
       setState(() {
-        _messages.removeWhere((message) => message.id == processingId);
         _transcribingVoice = false;
         _pendingVoiceReleaseAction = null;
         _voiceSeconds = 0;
+      });
+      _notifyTranscript(() {
+        _messages.removeWhere((message) => message.id == processingId);
         _historyError = null;
       });
       if (action == VoiceReleaseAction.sendText) {
@@ -3257,7 +3437,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
     } catch (error) {
       if (mounted && _conversationId == conversationId) {
-        setState(() {
+        _notifyTranscript(() {
           _messages.removeWhere((message) => message.id == processingId);
           _historyError = error is MissingPluginException
               ? '语音功能需要完整重启 App 后才能使用。'
@@ -3349,25 +3529,29 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     // it and summon the keyboard. Only refocus (keep the keyboard up) when the
     // send happened from the keyboard, so the user can keep picking emoji.
     final panelOpen = _panel != ComposerPanel.none;
-    setState(() {
-      _messages.add(draft);
-      if (_isMusicStationCard(componentCard)) {
-        _musicStation.activate(componentCard!, draft.id);
-      }
-      if (clearComposer) {
-        _inputController.clear();
-        _lastInputText = '';
-        _pendingImages.clear();
-        _pendingLinkPreview = null;
-      }
-      if (!panelOpen) {
-        _panel = ComposerPanel.none;
-      }
-      _sending = true;
-      // Show the typing indicator immediately; the server's pending/delay
-      // events keep it alive and the reply clears it.
-      _agentTyping = true;
-    });
+    _patchShellAndTranscript(
+      shell: () {
+        if (_isMusicStationCard(componentCard)) {
+          _musicStation.activate(componentCard!, draft.id);
+        }
+        if (clearComposer) {
+          _inputController.clear();
+          _lastInputText = '';
+          _pendingImages.clear();
+          _pendingLinkPreview = null;
+        }
+        if (!panelOpen) {
+          _panel = ComposerPanel.none;
+        }
+        _sending = true;
+      },
+      transcript: () {
+        _messages.add(draft);
+        // Show the typing indicator immediately; the server's pending/delay
+        // events keep it alive and the reply clears it.
+        _agentTyping = true;
+      },
+    );
     _armSendTimeout(clientId);
     if (clearComposer && attachments.isEmpty && !panelOpen) {
       _inputFocus.requestFocus();
@@ -3434,14 +3618,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _clearSendTimeout();
       return;
     }
-    setState(() {
-      _messages[index] = _messages[index].copyWith(
-        pending: false,
-        failed: true,
-      );
-      _sending = false;
-      _agentTyping = false;
-    });
+    _patchShellAndTranscript(
+      shell: () => _sending = false,
+      transcript: () {
+        _messages[index] = _messages[index].copyWith(
+          pending: false,
+          failed: true,
+        );
+        _agentTyping = false;
+      },
+    );
     _clearSendTimeout();
   }
 
@@ -3449,7 +3635,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   /// 重发) 并移除这条失败草稿——跟额度弹框取消发送时的体验一致, 用户可以
   /// 直接改口或原样再发一次。
   void _retryFailedMessage(ChatMessage message) {
-    setState(() {
+    _notifyTranscript(() {
       _messages.removeWhere((m) => m.id == message.id);
       if (_inputController.text.trim().isEmpty) {
         _inputController.text = message.content;
@@ -3468,10 +3654,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       if (picked == null) return;
       if (!mounted) return;
-      setState(() {
-        _uploadingImage = true;
-        _panel = ComposerPanel.none;
-      });
+      _uploadingImage = true;
+      _panel = ComposerPanel.none;
+      _bumpComposerShell();
       final bytes = await picked.readAsBytes();
       final mime = picked.mimeType ?? _mimeFromPath(picked.path);
       final attachment = await widget.api.uploadChatImage(
@@ -3494,18 +3679,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         );
       }
       if (!mounted) return;
-      setState(() {
-        _pendingImages.add(
-          _PendingChatImage(localPath: picked.path, attachment: attachment),
-        );
-        _historyError = null;
-      });
+      _pendingImages.add(
+        _PendingChatImage(localPath: picked.path, attachment: attachment),
+      );
+      _bumpComposerShell();
+      _notifyTranscript(() => _historyError = null);
     } catch (error) {
       if (mounted) {
-        setState(() => _historyError = _asMessage(error));
+        _notifyTranscript(() => _historyError = _asMessage(error));
       }
     } finally {
-      if (mounted) setState(() => _uploadingImage = false);
+      if (mounted) {
+        _uploadingImage = false;
+        _bumpComposerShell();
+      }
     }
   }
 
@@ -3528,13 +3715,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _removePendingImage(String id) {
-    setState(
-      () => _pendingImages.removeWhere((item) => item.attachment.id == id),
-    );
+    _pendingImages.removeWhere((item) => item.attachment.id == id);
+    _bumpComposerShell();
   }
 
   void _removePendingLink() {
-    setState(() => _pendingLinkPreview = null);
+    _pendingLinkPreview = null;
+    _bumpComposerShell();
   }
 
   Future<void> _openPendingLink(_PendingLinkPreview pendingLink) async {
@@ -3622,15 +3809,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _panelHoldTimer?.cancel();
     final nextPanel = _panel == panel ? ComposerPanel.none : panel;
     final opening = nextPanel != ComposerPanel.none;
-    setState(() {
-      _heldPanel = ComposerPanel.none;
-      _panel = nextPanel;
-      // Opening the emoji / more panel returns the composer to text mode so
-      // the "按住说话" button is replaced by the text field.
-      if (opening) {
-        _voiceInputMode = false;
-      }
-    });
+    _heldPanel = ComposerPanel.none;
+    _panel = nextPanel;
+    // Opening the emoji / more panel returns the composer to text mode so
+    // the "按住说话" button is replaced by the text field.
+    if (opening) {
+      _voiceInputMode = false;
+    }
+    _bumpComposerShell();
     if (opening) {
       FocusScope.of(context).unfocus();
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -3646,10 +3832,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _pinToBottomDuringKeyboard = true;
     _panelHoldTimer?.cancel();
     final panelToHold = _panel != ComposerPanel.none ? _panel : _heldPanel;
-    setState(() {
-      _panel = ComposerPanel.none;
-      _heldPanel = panelToHold;
-    });
+    _panel = ComposerPanel.none;
+    _heldPanel = panelToHold;
+    _bumpComposerShell();
     _inputFocus.requestFocus();
     // Covers the cases the keyboard-pin cannot: keyboard already open (cursor
     // re-tap, panel -> keyboard switch with unchanged composer offset), where
@@ -3660,7 +3845,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (panelToHold != ComposerPanel.none) {
       _panelHoldTimer = Timer(const Duration(milliseconds: 360), () {
         if (!mounted || _heldPanel == ComposerPanel.none) return;
-        setState(() => _heldPanel = ComposerPanel.none);
+        _heldPanel = ComposerPanel.none;
+        _bumpComposerShell();
       });
     }
   }
@@ -3669,12 +3855,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (_preparingVoice || _recordingVoice || _transcribingVoice) return;
     _panelHoldTimer?.cancel();
     final next = !_voiceInputMode;
-    setState(() {
-      _voiceInputMode = next;
-      _panel = ComposerPanel.none;
-      _heldPanel = ComposerPanel.none;
-      _pinToBottomDuringKeyboard = false;
-    });
+    _voiceInputMode = next;
+    _panel = ComposerPanel.none;
+    _heldPanel = ComposerPanel.none;
+    _pinToBottomDuringKeyboard = false;
+    _bumpComposerShell();
     if (next) {
       FocusScope.of(context).unfocus();
     } else {
@@ -3692,11 +3877,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         !_pinToBottomDuringKeyboard) {
       return;
     }
-    setState(() {
-      _panel = ComposerPanel.none;
-      _heldPanel = ComposerPanel.none;
-      _pinToBottomDuringKeyboard = false;
-    });
+    _panel = ComposerPanel.none;
+    _heldPanel = ComposerPanel.none;
+    _pinToBottomDuringKeyboard = false;
+    _bumpComposerShell();
   }
 
   bool _isNearBottomNow() {
@@ -3705,7 +3889,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     return position.maxScrollExtent - position.pixels < 120;
   }
 
-  double _composerHeightForWidth(double screenWidth) {
+  double _composerHeightForWidth() {
     // Must mirror the real TextField's text area so this predicted line count
     // matches what the field actually renders. The field's usable text width is
     // the input's Expanded width minus its own horizontal contentPadding, so the
@@ -3716,22 +3900,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     // keyboard until the next keystroke. (The composer container also uses this
     // as a minHeight, not a fixed height, so any residual miscount grows the
     // composer to fit rather than clipping it.)
-    final inputWidth = math.max(96.0, screenWidth - 220.0);
-    final text = _inputController.text.isEmpty ? ' ' : _inputController.text;
-    final painter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: const TextStyle(fontSize: 16, height: 1.25),
-      ),
-      textDirection: TextDirection.ltr,
-      maxLines: 3,
-      textScaler: MediaQuery.textScalerOf(context),
-    )..layout(maxWidth: inputWidth);
-    // Use the laid-out line metrics, not height/lineHeight rounding: a CJK glyph
-    // renders a hair taller than the Latin-based preferredLineHeight, so the old
-    // `(painter.height / lineHeight).ceil()` counted a single mixed-script line
-    // (e.g. "哦o") as 2 — inflating the composer and pushing the input box up.
-    final lineCount = painter.computeLineMetrics().length.clamp(1, 3);
+    final lineCount = _composerLineCountEstimate(_inputController.text);
     final hasPendingAttachment =
         _pendingImages.isNotEmpty || _pendingLinkPreview != null;
     final attachmentHeight = hasPendingAttachment ? 86.0 : 0.0;
@@ -3787,95 +3956,66 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    final isKeyboardOpen = bottomInset > 0;
-    final wasKeyboardOpen = _lastKeyboardInset > 0;
-    if (!wasKeyboardOpen && isKeyboardOpen) {
-      // Keyboard opening always pins the list to the newest message (also for
-      // focus paths that bypass _focusInput, e.g. leaving voice input mode).
-      _pinToBottomDuringKeyboard = true;
-    } else if (wasKeyboardOpen && bottomInset < _lastKeyboardInset) {
-      // Keyboard began closing: drop the hard pin so a drag-to-dismiss is not
-      // fought by per-frame bottom jumps. The near-bottom tracking inside
-      // _syncScrollWithBottomPadding still rides the composer down when the
-      // user is at the live end.
-      _pinToBottomDuringKeyboard = false;
+  void _applyInputChromeLayout({
+    required double listBottomPadding,
+    required bool keyboardTransition,
+    required bool forcePinToBottom,
+  }) {
+    if (_listBottomPadding.value != listBottomPadding) {
+      _listBottomPadding.value = listBottomPadding;
     }
-    final visiblePanel = _panel != ComposerPanel.none ? _panel : _heldPanel;
-    final visiblePanelHeight = _panelHeightFor(visiblePanel);
-    final composerHeight = _composerHeightForWidth(
-      MediaQuery.sizeOf(context).width,
-    );
-    // Composer sits directly on the live keyboard inset. (The pinyin
-    // candidate-row "lift" was never a keyboard-height change — it was the
-    // composer height miscount fixed in _composerHeightForWidth — so no
-    // reserve/hold/glide gymnastics are needed here.)
-    final keyboardLift = isKeyboardOpen ? bottomInset : 0.0;
-    final panelHeight = visiblePanelHeight;
-    // Use viewPadding (not padding) for the bottom safe area: an open keyboard
-    // collapses padding.bottom to 0, which would shrink tabBarLift while the
-    // keyboard is up and re-grow it as the keyboard closes. Because that regrow
-    // lags the keyboard's descent, the composer would dip below its rest offset
-    // then rise back ("先下落再回升"). viewPadding stays constant regardless of
-    // the keyboard, keeping the panel/rest target stable for a direct transition.
-    final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
-    final safeTop = MediaQuery.paddingOf(context).top;
-    final tabBarLift = _tabBarContentHeight + safeBottom;
-    final panelVisible = visiblePanel != ComposerPanel.none;
-    // The emoji / more panel docks to the very bottom of the screen and owns
-    // the safe-area strip, mirroring the keyboard (the shell hides the floating
-    // tab bar while it is up — see onComposerPanelChanged). It keeps its own
-    // content height rather than copying the keyboard's: matching the keyboard
-    // left large dead space inside the panel, and the max() below still gives
-    // a direct no-bounce ride between the two heights when switching.
-    final panelSurfaceHeight = panelVisible ? panelHeight + safeBottom : 0.0;
-    // Fixed full height of the panel surface (content + safe area). Used to
-    // slide the panel in/out from below rather than growing its height.
-    final panelContentHeight = _composerPanelHeight + safeBottom;
-    if (panelVisible) {
-      _lastDisplayedPanel = visiblePanel;
-    }
-    // While closing, keep rendering the last panel so it can slide down with
-    // real content; it is cleared in the panel's onEnd once fully off screen.
-    final displayedPanel = panelVisible ? visiblePanel : _lastDisplayedPanel;
-    // Where the composer settles once the keyboard is fully closed: on top of
-    // the docked panel, or above the floating tab bar when nothing is up.
-    final restLift = panelVisible ? panelSurfaceHeight : tabBarLift;
-    // max() keeps the composer from ever dipping below its rest target while
-    // the keyboard animates away (direct transition, no bounce).
-    final composerBottom = isKeyboardOpen
-        ? math.max(keyboardLift, restLift)
-        : restLift;
-    final inputSurfaceHeight = composerHeight + composerBottom;
-    _syncComposerPanelVisibility(panelVisible);
-    final stationTrack = _stationTrack;
-    // 消息列表里那张完整的音乐卡片(含共听功能)还在屏幕上时不要再叠一份顶部
-    // 精简控件——两者互斥,_stationCardDocked 就是"完整卡片是否已经滑出可
-    // 视区域"的实时判定,见 _updateStationCardDocked。
-    final showStationDock =
-        stationTrack != null && _stationDockActive && _stationCardDocked;
-    final listBottomPadding = inputSurfaceHeight + 18;
-    const listTopPadding = 10.0;
-    final keyboardTransition = isKeyboardOpen || wasKeyboardOpen;
-    // Keyboard moves track the OS metrics frame-by-frame (Duration.zero) so the
-    // composer stays glued to the keyboard through open/close; pure panel
-    // opens / switches keep the ease-out transition.
-    final positionDuration = keyboardTransition
-        ? Duration.zero
-        : _animationDuration;
-    final forceKeyboardPin = _pinToBottomDuringKeyboard && keyboardTransition;
     _syncScrollWithBottomPadding(
       listBottomPadding,
-      forcePinToBottom: forceKeyboardPin,
+      forcePinToBottom: forcePinToBottom,
       followKeyboardMetrics: keyboardTransition,
     );
-    _lastKeyboardInset = bottomInset;
-    if (!isKeyboardOpen && wasKeyboardOpen) {
-      _pinToBottomDuringKeyboard = false;
-    }
+  }
+
+  Widget _buildTranscriptColumn({required double listTopPadding}) {
+    return _ChatMessageViewport(
+      host: this,
+      transcript: _transcript,
+      shellListenable: _viewportShell,
+      bottomPaddingListenable: _listBottomPadding,
+      typingVisible: _typingVisible,
+      scrollController: _scrollController,
+      topPadding: listTopPadding,
+    );
+  }
+
+  Widget _buildTranscriptOverlay() {
+    return ListenableBuilder(
+      listenable: _transcript,
+      builder: (context, _) {
+        return IgnorePointer(
+          ignoring: !_isJumpedToHistory && _newMessageCount == 0,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            opacity: (_isJumpedToHistory || _newMessageCount > 0) ? 1 : 0,
+            child: Center(
+              child: _isJumpedToHistory
+                  ? _ReturnToLiveButton(
+                      onTap: () => unawaited(_returnToLive()),
+                    )
+                  : _NewMessagesButton(
+                      count: _newMessageCount,
+                      onTap: () => scrollToLatest(),
+                    ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final safeTop = MediaQuery.paddingOf(context).top;
     final agentAvatarUrl = _agentAvatarUrl;
+    final stationTrack = _stationTrack;
+    final showStationDock =
+        stationTrack != null && _stationDockActive && _stationCardDocked;
 
     return DecoratedBox(
       decoration: const BoxDecoration(color: Color(0xFFF6FDFC)),
@@ -3883,201 +4023,40 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         children: [
           Column(
             children: [
-              _ChatHeader(
-                agentName: widget.session.agentName ?? 'Companion',
-                topInset: safeTop,
-                interactionDays: _conversationMeta?.interactionDays,
-                aiStatus: _conversationMeta?.aiStatus,
-                aiStatusLabel: _conversationMeta?.aiStatusLabel,
-                aiActivity: _conversationMeta?.aiActivity,
-                avatarUrl: agentAvatarUrl,
-                isMusicListening: _isUserCoListening,
-                isMusicPlaying:
-                    _conversationMeta?.musicCoListening?.isPlaying ?? false,
-                onMusicTap: _openActiveMusic,
-                onAvatarDoubleTap: _showDemoAchievementNotice,
-                onInteractionTap: _openInteractionDetail,
-                onOpenSidebar: widget.onOpenSidebar,
-              ),
-              if (_historyError != null)
-                _InlineBanner(
-                  text: _historyError!,
-                  onRetry: () => _loadLatestMessages(showLoading: true),
+              RepaintBoundary(
+                child: _ChatHeader(
+                  agentName: widget.session.agentName ?? 'Companion',
+                  topInset: safeTop,
+                  interactionDays: _conversationMeta?.interactionDays,
+                  aiStatus: _conversationMeta?.aiStatus,
+                  aiStatusLabel: _conversationMeta?.aiStatusLabel,
+                  aiActivity: _conversationMeta?.aiActivity,
+                  avatarUrl: agentAvatarUrl,
+                  isMusicListening: _isUserCoListening,
+                  isMusicPlaying:
+                      _conversationMeta?.musicCoListening?.isPlaying ?? false,
+                  onMusicTap: _openActiveMusic,
+                  onAvatarDoubleTap: _showDemoAchievementNotice,
+                  onInteractionTap: _openInteractionDetail,
+                  onOpenSidebar: widget.onOpenSidebar,
                 ),
+              ),
               Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onTap: _dismissInputSurfaces,
-                  child: _loadingInitial
-                      ? const Center(child: CircularProgressIndicator())
-                      : _MessageList(
-                          controller: _scrollController,
-                          messages: _messages,
-                          isLoadingOlder: _loadingOlder,
-                          showTyping: _agentTyping,
-                          bottomPadding: listBottomPadding,
-                          topPadding: listTopPadding,
-                          onComponentCardTap: _openComponentCard,
-                          onAchievementTap: _openAchievementDetail,
-                          onResolveMusicTrack: _resolveMusicTrack,
-                          onMusicCardActivated: _activateMusicStationCard,
-                          onMusicPrevious: () =>
-                              unawaited(_playPreviousStationTrack()),
-                          onMusicNext: () => unawaited(_playNextStationTrack()),
-                          onMusicFavorite: (track) =>
-                              unawaited(_toggleMusicFavorite(track)),
-                          onAttachmentTap: _previewAttachment,
-                          activeMusicMessageId: _musicStation.activeMessageId,
-                          musicCardPositions: _musicStation.cardPositions,
-                          favoriteMusicTrackIds: _favoriteMusicTrackIds,
-                          busyMusicFavoriteIds: _busyMusicFavoriteIds,
-                          canGoMusicPrevious: _canGoStationPrevious,
-                          isMusicBusy: _advancingStation,
-                          stationMessageId: _musicStation.messageId,
-                          stationMessageKey: _stationCardKey,
-                          highlightMessageId: _highlightMessageId,
-                          highlightVisible: _highlightVisible,
-                          highlightQuery: _highlightQuery,
-                          highlightMessageKey: _highlightMessageKey,
-                          agentAvatarUrl: agentAvatarUrl,
-                          userAvatarUrl: widget.session.userAvatarUrl,
-                          authToken: widget.api.authToken,
-                          apiBaseUrl: widget.api.baseUrl,
-                          onRetryFailed: _retryFailedMessage,
-                        ),
+                child: RepaintBoundary(
+                  child: _buildTranscriptColumn(listTopPadding: 10),
                 ),
               ),
             ],
           ),
-          AnimatedPositioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: inputSurfaceHeight,
-            duration: positionDuration,
-            curve: _animationCurve,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: const BoxDecoration(color: Color(0xFFF6FDFC)),
-              ),
-            ),
-          ),
-          AnimatedPositioned(
-            left: 0,
-            right: 0,
-            bottom: composerBottom,
-            duration: positionDuration,
-            curve: _animationCurve,
-            child: _Composer(
-              controller: _inputController,
-              focusNode: _inputFocus,
-              height: composerHeight,
-              activePanel: _panel,
-              voiceInputMode: _voiceInputMode,
-              sending:
-                  _sending ||
-                  _uploadingImage ||
-                  _preparingVoice ||
-                  _recordingVoice ||
-                  _transcribingVoice,
-              preparingVoice: _preparingVoice,
-              recordingVoice: _recordingVoice,
-              transcribingVoice: _transcribingVoice,
-              resolvingLink:
-                  _linkPreviewInFlightText != null &&
-                  _pendingLinkPreview == null,
-              pendingImages: _pendingImages,
-              pendingLink: _pendingLinkPreview,
-              authToken: widget.api.authToken,
-              onFocusInput: _focusInput,
-              onToggleEmoji: () => _setPanel(ComposerPanel.emoji),
-              onShowKeyboard: _focusInput,
-              onToggleMore: () => _setPanel(ComposerPanel.more),
-              onToggleVoiceInput: _toggleVoiceInputMode,
-              onSend: _sendMessage,
-              onVoicePressStart: _handleVoicePressStart,
-              onVoicePressMove: _handleVoicePressMove,
-              onVoicePressEnd: _handleVoicePressEnd,
-              onVoicePressCancel: _handleVoicePressCancel,
-              onRemoveImage: _removePendingImage,
-              onPreviewImage: _previewPendingImage,
-              onRemoveLink: _removePendingLink,
-              onPreviewLink: _openPendingLink,
-              onPasteText: _handleComposerPasteText,
-              freeMessagesRemaining: _composerQuotaBadgeCount,
-            ),
-          ),
-          AnimatedPositioned(
-            left: 0,
-            right: 0,
-            // Slide the whole panel up from below the screen (like the
-            // keyboard) instead of growing its height in place: fixed height +
-            // animated offset keeps content from squishing. Uses its own
-            // duration (not the keyboard-synced positionDuration) so the slide
-            // also plays during keyboard <-> panel switches.
-            bottom: panelVisible ? 0 : -panelContentHeight,
-            height: panelContentHeight,
-            duration: _animationDuration,
-            curve: _animationCurve,
-            onEnd: () {
-              if (!panelVisible &&
-                  mounted &&
-                  _lastDisplayedPanel != ComposerPanel.none) {
-                setState(() => _lastDisplayedPanel = ComposerPanel.none);
-              }
-            },
-            child: ClipRect(
-              child: _ChatPanel(
-                panel: displayedPanel,
-                bottomInset: safeBottom,
-                onEmojiTap: _appendEmoji,
-                onPickPhoto: () =>
-                    unawaited(_pickChatImage(ImageSource.gallery)),
-                onTakePhoto: () =>
-                    unawaited(_pickChatImage(ImageSource.camera)),
-                onSendRedPacket: () => unawaited(_onSendRedPacket()),
-                onSendGift: () => unawaited(_onSendGift()),
-                onSendLocation: () => unawaited(_onSendLocation()),
-                onSearch: () => unawaited(_openChatSearch()),
-              ),
-            ),
-          ),
-          AnimatedPositioned(
-            left: 0,
-            right: 0,
-            bottom: inputSurfaceHeight + 12,
-            duration: _animationDuration,
-            curve: _animationCurve,
-            child: IgnorePointer(
-              ignoring: !_isJumpedToHistory && _newMessageCount == 0,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOutCubic,
-                opacity: (_isJumpedToHistory || _newMessageCount > 0) ? 1 : 0,
-                child: Center(
-                  child: _isJumpedToHistory
-                      ? _ReturnToLiveButton(
-                          onTap: () => unawaited(_returnToLive()),
-                        )
-                      : _NewMessagesButton(
-                          count: _newMessageCount,
-                          onTap: () => scrollToLatest(),
-                        ),
-                ),
-              ),
-            ),
+          ValueListenableBuilder<int>(
+            valueListenable: _composerShell,
+            builder: (context, _, __) => _ChatInputChromeLayer(host: this),
           ),
           Positioned(
-            // 顶部间距 = header 自身高度 (safeTop + 76) 再留 12 的呼吸空间，
-            // 不要紧贴 header 底边缘。
             top: safeTop + 76 + 12,
             left: 26,
             right: 24,
             child: AnimatedSlide(
-              // 手指滑走已经用 Dismissible 自己的位移动画划出屏幕了；这里再
-              // 叠一层默认的 280ms 上滑退场,会先把已经飞走的卡片按原位置重新
-              // 画出来再滑走,变成"原地闪现一下再往上消失"。划走触发的隐藏用
-              // 0 时长跳过这层动画;暂停超时之类的自动隐藏仍走原有的滑出效果。
               duration: _stationDockHideImmediately
                   ? Duration.zero
                   : const Duration(milliseconds: 280),
@@ -4099,6 +4078,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           isLoading: _isStationLoading || _advancingStation,
                           canGoPrevious: _canGoStationPrevious,
                           isBusy: _advancingStation,
+                          trackPlaybackUpdates: widget.isActive,
                           onTap: _openStationMusic,
                           onPrevious: () =>
                               unawaited(_playPreviousStationTrack()),
@@ -4113,6 +4093,325 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Hosts composer + emoji/more panel + keyboard tracking without rebuilding
+/// the message list column on every [MediaQuery.viewInsets] tick.
+class _ChatInputChromeLayer extends StatefulWidget {
+  const _ChatInputChromeLayer({required this.host});
+
+  final _ChatPageState host;
+
+  @override
+  State<_ChatInputChromeLayer> createState() => _ChatInputChromeLayerState();
+}
+
+class _ChatInputChromeLayerState extends State<_ChatInputChromeLayer> {
+  double _lastKeyboardInset = 0;
+
+  _ChatPageState get _host => widget.host;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final isKeyboardOpen = bottomInset > 0;
+    final wasKeyboardOpen = _lastKeyboardInset > 0;
+    if (!wasKeyboardOpen && isKeyboardOpen) {
+      _host._pinToBottomDuringKeyboard = true;
+    } else if (wasKeyboardOpen && bottomInset < _lastKeyboardInset) {
+      _host._pinToBottomDuringKeyboard = false;
+    }
+
+    final visiblePanel =
+        _host._panel != ComposerPanel.none ? _host._panel : _host._heldPanel;
+    final visiblePanelHeight = _host._panelHeightFor(visiblePanel);
+    final composerHeight = _host._composerHeightForWidth();
+    final keyboardLift = isKeyboardOpen ? bottomInset : 0.0;
+    final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
+    final tabBarLift = _ChatPageState._tabBarContentHeight + safeBottom;
+    final panelVisible = visiblePanel != ComposerPanel.none;
+    final panelSurfaceHeight =
+        panelVisible ? visiblePanelHeight + safeBottom : 0.0;
+    final panelContentHeight = _ChatPageState._composerPanelHeight + safeBottom;
+    if (panelVisible) {
+      _host._lastDisplayedPanel = visiblePanel;
+    }
+    final displayedPanel =
+        panelVisible ? visiblePanel : _host._lastDisplayedPanel;
+    final restLift = panelVisible ? panelSurfaceHeight : tabBarLift;
+    final composerBottom =
+        isKeyboardOpen ? math.max(keyboardLift, restLift) : restLift;
+    final inputSurfaceHeight = composerHeight + composerBottom;
+    _host._syncComposerPanelVisibility(panelVisible);
+    final listBottomPadding = inputSurfaceHeight + 18;
+    final keyboardTransition = isKeyboardOpen || wasKeyboardOpen;
+    final positionDuration =
+        keyboardTransition ? Duration.zero : _ChatPageState._animationDuration;
+    final forceKeyboardPin =
+        _host._pinToBottomDuringKeyboard && keyboardTransition;
+    _host._applyInputChromeLayout(
+      listBottomPadding: listBottomPadding,
+      keyboardTransition: keyboardTransition,
+      forcePinToBottom: forceKeyboardPin,
+    );
+    _lastKeyboardInset = bottomInset;
+    if (!isKeyboardOpen && wasKeyboardOpen) {
+      _host._pinToBottomDuringKeyboard = false;
+    }
+
+    return Stack(
+      children: [
+        AnimatedPositioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: inputSurfaceHeight,
+          duration: positionDuration,
+          curve: _ChatPageState._animationCurve,
+          child: const IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: Color(0xFFF6FDFC)),
+            ),
+          ),
+        ),
+        AnimatedPositioned(
+          left: 0,
+          right: 0,
+          bottom: composerBottom,
+          duration: positionDuration,
+          curve: _ChatPageState._animationCurve,
+          child: RepaintBoundary(
+            child: _Composer(
+              controller: _host._inputController,
+              focusNode: _host._inputFocus,
+              height: composerHeight,
+              activePanel: _host._panel,
+              voiceInputMode: _host._voiceInputMode,
+              sending:
+                  _host._sending ||
+                  _host._uploadingImage ||
+                  _host._preparingVoice ||
+                  _host._recordingVoice ||
+                  _host._transcribingVoice,
+              preparingVoice: _host._preparingVoice,
+              recordingVoice: _host._recordingVoice,
+              transcribingVoice: _host._transcribingVoice,
+              resolvingLink:
+                  _host._linkPreviewInFlightText != null &&
+                  _host._pendingLinkPreview == null,
+              pendingImages: _host._pendingImages,
+              pendingLink: _host._pendingLinkPreview,
+              authToken: _host.widget.api.authToken,
+              onFocusInput: _host._focusInput,
+              onToggleEmoji: () => _host._setPanel(ComposerPanel.emoji),
+              onShowKeyboard: _host._focusInput,
+              onToggleMore: () => _host._setPanel(ComposerPanel.more),
+              onToggleVoiceInput: _host._toggleVoiceInputMode,
+              onSend: _host._sendMessage,
+              onVoicePressStart: _host._handleVoicePressStart,
+              onVoicePressMove: _host._handleVoicePressMove,
+              onVoicePressEnd: _host._handleVoicePressEnd,
+              onVoicePressCancel: _host._handleVoicePressCancel,
+              onRemoveImage: _host._removePendingImage,
+              onPreviewImage: _host._previewPendingImage,
+              onRemoveLink: _host._removePendingLink,
+              onPreviewLink: _host._openPendingLink,
+              onPasteText: _host._handleComposerPasteText,
+              freeMessagesRemaining: _host._composerQuotaBadgeCount,
+            ),
+          ),
+        ),
+        AnimatedPositioned(
+          left: 0,
+          right: 0,
+          bottom: panelVisible ? 0 : -panelContentHeight,
+          height: panelContentHeight,
+          duration: _ChatPageState._animationDuration,
+          curve: _ChatPageState._animationCurve,
+          onEnd: () {
+            if (!panelVisible &&
+                mounted &&
+                _host._lastDisplayedPanel != ComposerPanel.none) {
+              _host._lastDisplayedPanel = ComposerPanel.none;
+              _host._bumpComposerShell();
+            }
+          },
+          child: ClipRect(
+            child: _ChatPanel(
+              panel: displayedPanel,
+              bottomInset: safeBottom,
+              onEmojiTap: _host._appendEmoji,
+              onPickPhoto: () =>
+                  unawaited(_host._pickChatImage(ImageSource.gallery)),
+              onTakePhoto: () =>
+                  unawaited(_host._pickChatImage(ImageSource.camera)),
+              onSendRedPacket: () => unawaited(_host._onSendRedPacket()),
+              onSendGift: () => unawaited(_host._onSendGift()),
+              onSendLocation: () => unawaited(_host._onSendLocation()),
+              onSearch: () => unawaited(_host._openChatSearch()),
+            ),
+          ),
+        ),
+        AnimatedPositioned(
+          left: 0,
+          right: 0,
+          bottom: inputSurfaceHeight + 12,
+          duration: _ChatPageState._animationDuration,
+          curve: _ChatPageState._animationCurve,
+          child: _host._buildTranscriptOverlay(),
+        ),
+      ],
+    );
+  }
+}
+
+/// Rebuilds the message list when transcript or bottom padding changes, without
+/// dragging the header/composer into those rebuilds.
+class _ChatMessageViewport extends StatefulWidget {
+  const _ChatMessageViewport({
+    required this.host,
+    required this.transcript,
+    required this.shellListenable,
+    required this.bottomPaddingListenable,
+    required this.typingVisible,
+    required this.scrollController,
+    required this.topPadding,
+  });
+
+  final _ChatPageState host;
+  final ChatTranscriptController transcript;
+  final ValueListenable<int> shellListenable;
+  final ValueListenable<double> bottomPaddingListenable;
+  final ValueListenable<bool> typingVisible;
+  final ScrollController scrollController;
+  final double topPadding;
+
+  @override
+  State<_ChatMessageViewport> createState() => _ChatMessageViewportState();
+}
+
+class _ChatMessageViewportState extends State<_ChatMessageViewport> {
+  late double _bottomPadding;
+
+  @override
+  void initState() {
+    super.initState();
+    _bottomPadding = widget.bottomPaddingListenable.value;
+    widget.bottomPaddingListenable.addListener(_onBottomPaddingChanged);
+    widget.transcript.addListener(_onTranscriptChanged);
+    widget.shellListenable.addListener(_onShellChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChatMessageViewport oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.bottomPaddingListenable != widget.bottomPaddingListenable) {
+      oldWidget.bottomPaddingListenable.removeListener(_onBottomPaddingChanged);
+      _bottomPadding = widget.bottomPaddingListenable.value;
+      widget.bottomPaddingListenable.addListener(_onBottomPaddingChanged);
+    }
+    if (oldWidget.transcript != widget.transcript) {
+      oldWidget.transcript.removeListener(_onTranscriptChanged);
+      widget.transcript.addListener(_onTranscriptChanged);
+    }
+    if (oldWidget.shellListenable != widget.shellListenable) {
+      oldWidget.shellListenable.removeListener(_onShellChanged);
+      widget.shellListenable.addListener(_onShellChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.bottomPaddingListenable.removeListener(_onBottomPaddingChanged);
+    widget.transcript.removeListener(_onTranscriptChanged);
+    widget.shellListenable.removeListener(_onShellChanged);
+    super.dispose();
+  }
+
+  void _onBottomPaddingChanged() {
+    final next = widget.bottomPaddingListenable.value;
+    if (next == _bottomPadding) return;
+    setState(() => _bottomPadding = next);
+  }
+
+  void _onTranscriptChanged() {
+    setState(() {});
+  }
+
+  void _onShellChanged() {
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final host = widget.host;
+    final transcript = widget.transcript;
+    return Column(
+      children: [
+        if (transcript.historyError != null)
+          _InlineBanner(
+            text: transcript.historyError!,
+            onRetry: () => host._loadLatestMessages(showLoading: true),
+          ),
+        Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: host._dismissInputSurfaces,
+            child: transcript.loadingInitial
+                ? const Center(child: CircularProgressIndicator())
+                : _MessageList(
+                    controller: widget.scrollController,
+                    messages: transcript.messages,
+                    isLoadingOlder: transcript.loadingOlder,
+                    showTyping: false,
+                    trackPlaybackUpdates: host.widget.isActive,
+                    bottomPadding: _bottomPadding,
+                    topPadding: widget.topPadding,
+                    onComponentCardTap: host._openComponentCard,
+                    onAchievementTap: host._openAchievementDetail,
+                    onResolveMusicTrack: host._resolveMusicTrack,
+                    onMusicCardActivated: host._activateMusicStationCard,
+                    onMusicPrevious: () =>
+                        unawaited(host._playPreviousStationTrack()),
+                    onMusicNext: () => unawaited(host._playNextStationTrack()),
+                    onMusicFavorite: (track) =>
+                        unawaited(host._toggleMusicFavorite(track)),
+                    onAttachmentTap: host._previewAttachment,
+                    activeMusicMessageId: host._musicStation.activeMessageId,
+                    musicCardPositions: host._musicStation.cardPositions,
+                    favoriteMusicTrackIds: host._favoriteMusicTrackIds,
+                    busyMusicFavoriteIds: host._busyMusicFavoriteIds,
+                    canGoMusicPrevious: host._canGoStationPrevious,
+                    isMusicBusy: host._advancingStation,
+                    stationMessageId: host._musicStation.messageId,
+                    stationMessageKey: host._stationCardKey,
+                    highlightMessageId: transcript.highlightMessageId,
+                    highlightVisible: transcript.highlightVisible,
+                    highlightQuery: transcript.highlightQuery,
+                    highlightMessageKey: host._highlightMessageKey,
+                    agentAvatarUrl: host._agentAvatarUrl,
+                    userAvatarUrl: host.widget.session.userAvatarUrl,
+                    authToken: host.widget.api.authToken,
+                    apiBaseUrl: host.widget.api.baseUrl,
+                    onRetryFailed: host._retryFailedMessage,
+                  ),
+          ),
+        ),
+        ValueListenableBuilder<bool>(
+          valueListenable: widget.typingVisible,
+          builder: (context, typing, _) {
+            if (!typing) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+              child: _TypingIndicatorRow(
+                agentAvatarUrl: host._agentAvatarUrl,
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }
@@ -4228,6 +4527,7 @@ class _StickyMusicDock extends StatefulWidget {
     required this.isLoading,
     required this.canGoPrevious,
     required this.isBusy,
+    this.trackPlaybackUpdates = true,
     required this.onTap,
     required this.onPrevious,
     required this.onNext,
@@ -4240,6 +4540,7 @@ class _StickyMusicDock extends StatefulWidget {
   final bool isLoading;
   final bool canGoPrevious;
   final bool isBusy;
+  final bool trackPlaybackUpdates;
   final VoidCallback onTap;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
@@ -4320,8 +4621,8 @@ class _StickyMusicDockState extends State<_StickyMusicDock>
         onTap: widget.onTap,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(32),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: PlatformBackdropGlass(
+            sigma: 18,
             child: Container(
               height: 64,
               decoration: BoxDecoration(
@@ -4411,6 +4712,7 @@ class _StickyMusicDockState extends State<_StickyMusicDock>
                               _MusicCountdownText(
                                 track: widget.track,
                                 isActiveCard: true,
+                                trackPlaybackUpdates: widget.trackPlaybackUpdates,
                                 style: TextStyle(
                                   color: Colors.white.withValues(alpha: 0.66),
                                   fontSize: 11,

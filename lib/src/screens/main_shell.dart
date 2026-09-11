@@ -19,7 +19,13 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> with RouteAware {
+  static const _tabCount = 4;
+
   int _index = 0;
+  final Set<int> _visitedTabs = {0};
+  final _onlineTabKey = GlobalKey();
+  final _offlineTabKey = GlobalKey();
+  final _profileTabKey = GlobalKey();
   bool _chatSidebarOpen = false;
   bool _routeCovered = false;
   bool _composerPanelOpen = false;
@@ -103,6 +109,40 @@ class _MainShellState extends State<MainShell> with RouteAware {
     setState(() => _routeCovered = value);
   }
 
+  void _selectTab(int index) {
+    if (index < 0 || index >= _tabCount) return;
+    final changed = _index != index;
+    final leavingOnline = changed && _index == 1;
+    final nextTabs = nextVisitedTabs(
+      current: _visitedTabs,
+      selectedIndex: index,
+    );
+    setState(() {
+      _index = index;
+      _visitedTabs
+        ..clear()
+        ..addAll(nextTabs);
+    });
+    if (leavingOnline) evictOnlinePortalImages();
+    if (changed) DisplayRefreshRate.onTabBecameVisible();
+  }
+
+  void _goToChatTab({bool userInteraction = false}) {
+    final leavingOnline = _index == 1;
+    final nextTabs = nextVisitedTabs(
+      current: _visitedTabs,
+      selectedIndex: chatTabIndex,
+    );
+    setState(() {
+      _index = chatTabIndex;
+      _visitedTabs
+        ..clear()
+        ..addAll(nextTabs);
+    });
+    if (leavingOnline) evictOnlinePortalImages();
+    if (userInteraction) DisplayRefreshRate.onTabBecameVisible();
+  }
+
   void _setChatSidebarOpen(bool value) {
     if (_chatSidebarOpen == value) return;
     if (value) {
@@ -156,7 +196,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
     if (!mounted) return;
     _chatPageKey.currentState?.refreshReadyCapsules();
     if (result == null) return;
-    setState(() => _index = 0);
+    _goToChatTab();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _chatPageKey.currentState?.sendComponentMessage(
         result.agentText,
@@ -183,7 +223,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
       ),
     );
     if (!mounted || result == null) return;
-    setState(() => _index = 0);
+    _goToChatTab();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _chatPageKey.currentState?.sendComponentMessage(
         result.agentText,
@@ -262,12 +302,12 @@ class _MainShellState extends State<MainShell> with RouteAware {
       unawaited(_openSidebarDestination(_SidebarDestination.achievement));
       return;
     }
-    setState(() => _index = 0);
+    _goToChatTab();
     _chatPageKey.currentState?.scrollToLatest();
   }
 
   void _sendDraftToChat(CapsuleChatDraft draft) {
-    setState(() => _index = 0);
+    _goToChatTab();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _chatPageKey.currentState?.sendComponentMessage(
         draft.agentText,
@@ -278,7 +318,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
 
   void _handleAgentDeleted(AuthSession session) {
     _setChatSidebarOpen(false);
-    setState(() => _index = 0);
+    _goToChatTab();
     widget.onSessionChanged(session);
   }
 
@@ -317,45 +357,64 @@ class _MainShellState extends State<MainShell> with RouteAware {
             onVoiceRecordingOverlayChanged: _setVoiceRecordingOverlay,
             onComposerPanelChanged: _setComposerPanelOpen,
           );
-    final pages = [
-      chatPage,
-      OnlineInteractionPage(
-        api: widget.api,
-        session: widget.session,
-        onSendToChat: _sendDraftToChat,
-      ),
-      OfflineInteractionPage(
-        api: widget.api,
-        session: widget.session,
-        agentName: widget.session.agentName ?? '伴生',
-        active: _index == 2,
-      ),
-      ProfilePage(
-        api: widget.api,
-        session: widget.session,
-        onAgentDeleted: _handleAgentDeleted,
-        onSessionChanged: widget.onSessionChanged,
-        onLogout: widget.onLogout,
-      ),
-    ];
+    Widget tabPlaceholder(int index) {
+      if (!_visitedTabs.contains(index)) {
+        return const SizedBox.shrink();
+      }
+      final Widget child;
+      switch (index) {
+        case 0:
+          child = chatPage;
+        case 1:
+          child = OnlineInteractionPage(
+            key: _onlineTabKey,
+            api: widget.api,
+            session: widget.session,
+            active: _index == 1,
+            onSendToChat: _sendDraftToChat,
+          );
+        case 2:
+          child = OfflineInteractionPage(
+            key: _offlineTabKey,
+            api: widget.api,
+            session: widget.session,
+            agentName: widget.session.agentName ?? '伴生',
+            active: _index == 2,
+          );
+        case 3:
+          child = ProfilePage(
+            key: _profileTabKey,
+            api: widget.api,
+            session: widget.session,
+            active: _index == 3,
+            onAgentDeleted: _handleAgentDeleted,
+            onSessionChanged: widget.onSessionChanged,
+            onLogout: widget.onLogout,
+          );
+        default:
+          child = const SizedBox.shrink();
+      }
+      return RepaintBoundary(
+        child: TickerMode(
+          enabled: _index == index,
+          child: child,
+        ),
+      );
+    }
+
+    final pages = List<Widget>.generate(_tabCount, tabPlaceholder);
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
-          AnimatedScale(
+          PlatformSidebarDim(
+            enabled: _chatSidebarOpen,
             scale: _chatSidebarOpen ? 0.985 : 1,
-            duration: const Duration(milliseconds: 240),
-            curve: Curves.easeOutCubic,
-            child: ImageFiltered(
-              imageFilter: ImageFilter.blur(
-                sigmaX: _chatSidebarOpen ? 9 : 0,
-                sigmaY: _chatSidebarOpen ? 9 : 0,
-              ),
-              child: Stack(
-                children: [
-                  IndexedStack(index: _index, children: pages),
-                  AnimatedPositioned(
+            child: Stack(
+              children: [
+                IndexedStack(index: _index, children: pages),
+                AnimatedPositioned(
                     left: 0,
                     right: 0,
                     bottom: hideTabBar ? -92 : math.max(10, safeBottom - 2),
@@ -371,8 +430,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
                             width: tabBarWidth,
                             child: _FloatingTabBar(
                               selectedIndex: _index,
-                              onSelected: (value) =>
-                                  setState(() => _index = value),
+                              onSelected: _selectTab,
                             ),
                           ),
                         ),
@@ -382,7 +440,6 @@ class _MainShellState extends State<MainShell> with RouteAware {
                 ],
               ),
             ),
-          ),
           if (activeAchievement != null)
             Positioned.fill(
               child: _AchievementDetailOverlay(
@@ -689,6 +746,7 @@ class ProfilePage extends StatefulWidget {
     super.key,
     required this.api,
     required this.session,
+    required this.active,
     required this.onAgentDeleted,
     required this.onSessionChanged,
     required this.onLogout,
@@ -696,6 +754,7 @@ class ProfilePage extends StatefulWidget {
 
   final CompanionApi api;
   final AuthSession session;
+  final bool active;
   final ValueChanged<AuthSession> onAgentDeleted;
 
   /// 昵称 / 头像改动的回传口。与 [onAgentDeleted] 分开是因为后者还要顺带把
@@ -766,9 +825,21 @@ class _ProfilePageState extends State<ProfilePage>
     _motionController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 9600),
-    )..repeat();
+    );
+    _syncTabMotion();
     _loadMePageData();
     _loadAppVersionLabel();
+  }
+
+  void _syncTabMotion() {
+    if (!mounted) return;
+    if (widget.active) {
+      if (!_motionController.isAnimating) {
+        _motionController.repeat();
+      }
+    } else {
+      _motionController.stop();
+    }
   }
 
   Future<void> _loadAppVersionLabel() async {
@@ -788,6 +859,9 @@ class _ProfilePageState extends State<ProfilePage>
   @override
   void didUpdateWidget(covariant ProfilePage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.active != widget.active) {
+      _syncTabMotion();
+    }
     if (oldWidget.session.workspaceId != widget.session.workspaceId ||
         oldWidget.session.agentId != widget.session.agentId ||
         oldWidget.session.token != widget.session.token) {
@@ -1051,56 +1125,59 @@ class _ProfilePageState extends State<ProfilePage>
     final userName = widget.session.displayNameOr('小星辰');
     final agentName = _displayName(widget.session.agentName, fallback: '小明');
     final topPadding = media.padding.top + 14;
-    return AnimatedBuilder(
-      animation: _motionController,
-      builder: (context, _) {
-        final motion = _motionController.value;
-        final mode = AppThemeScope.of(context).mode;
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            ColoredBox(color: _SettingsColors.page),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              // 让内容视口在浮动导航栏上方截止，滚动内容不再显示在导航栏后面。
-              bottom: math.max(10, media.padding.bottom - 2) + 74,
-              child: ClipRect(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Stack(
-                    clipBehavior: Clip.none,
+    final mode = AppThemeScope.of(context).mode;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ColoredBox(color: _SettingsColors.page),
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          // 让内容视口在浮动导航栏上方截止，滚动内容不再显示在导航栏后面。
+          bottom: math.max(10, media.padding.bottom - 2) + 74,
+          child: ClipRect(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _SettingsRelationHeader(
-                            progress: motion,
-                            topPadding: topPadding,
-                            userName: userName,
-                            agentName: agentName,
-                            userAvatarUrl: widget.session.userAvatarUrl,
-                            agentAvatarUrl: widget.session.agentAvatarUrl,
-                            memberActive: _membership?.vip.isVip ?? false,
-                            showAdminEntry:
-                                widget.session.role == UserRole.admin,
-                            onUserTap: () => _pushPage(
-                              _ProfileInfoPage(
-                                api: widget.api,
-                                session: widget.session,
-                                onSessionChanged: widget.onSessionChanged,
+                      RepaintBoundary(
+                        child: AnimatedBuilder(
+                          animation: _motionController,
+                          builder: (context, _) {
+                            return _SettingsRelationHeader(
+                              progress: _motionController.value,
+                              topPadding: topPadding,
+                              userName: userName,
+                              agentName: agentName,
+                              userAvatarUrl: widget.session.userAvatarUrl,
+                              agentAvatarUrl: widget.session.agentAvatarUrl,
+                              memberActive: _membership?.vip.isVip ?? false,
+                              showAdminEntry:
+                                  widget.session.role == UserRole.admin,
+                              onUserTap: () => _pushPage(
+                                _ProfileInfoPage(
+                                  api: widget.api,
+                                  session: widget.session,
+                                  onSessionChanged: widget.onSessionChanged,
+                                ),
                               ),
-                            ),
-                            onAgentTap: () => _pushPage(
-                              _AiAppearancePage(
-                                agentName: agentName,
-                                agentAvatarUrl: widget.session.agentAvatarUrl,
+                              onAgentTap: () => _pushPage(
+                                _AiAppearancePage(
+                                  agentName: agentName,
+                                  agentAvatarUrl: widget.session.agentAvatarUrl,
+                                ),
                               ),
-                            ),
-                            onAdminTap: _openAdminPanel,
-                          ),
+                              onAdminTap: _openAdminPanel,
+                            );
+                          },
+                        ),
+                      ),
                           Padding(
                             padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
                             child: Column(
@@ -1260,10 +1337,8 @@ class _ProfilePageState extends State<ProfilePage>
                 ),
               ),
             ),
-          ],
-        );
-      },
-    );
+        ],
+      );
   }
 
   /// Agent 名字的兜底。用户名字走 [AuthSession.displayNameOr] —— 那条链的优先级

@@ -21,6 +21,7 @@ class _MessageList extends StatelessWidget {
     required this.busyMusicFavoriteIds,
     required this.canGoMusicPrevious,
     required this.isMusicBusy,
+    this.trackPlaybackUpdates = true,
     this.showTyping = false,
     this.stationMessageId,
     this.stationMessageKey,
@@ -55,6 +56,7 @@ class _MessageList extends StatelessWidget {
   final Set<String> busyMusicFavoriteIds;
   final bool canGoMusicPrevious;
   final bool isMusicBusy;
+  final bool trackPlaybackUpdates;
   final bool showTyping;
   final String? stationMessageId;
   final GlobalKey? stationMessageKey;
@@ -107,7 +109,7 @@ class _MessageList extends StatelessWidget {
       // won't land exactly), then relies on the target already being laid
       // out to fine-tune with `ensureVisible`. A wider margin absorbs that
       // estimation error instead of the target staying un-built.
-      scrollCacheExtent: const ScrollCacheExtent.pixels(1500),
+      scrollCacheExtent: const ScrollCacheExtent.pixels(800),
       itemCount: messages.length + 1 + typingSlot,
       itemBuilder: (context, index) {
         if (showTyping && index == messages.length + 1) {
@@ -154,6 +156,7 @@ class _MessageList extends StatelessWidget {
           busyMusicFavoriteIds: busyMusicFavoriteIds,
           canGoMusicPrevious: canGoMusicPrevious,
           isMusicBusy: isMusicBusy,
+          trackPlaybackUpdates: trackPlaybackUpdates,
           authToken: authToken,
           apiBaseUrl: apiBaseUrl,
           onRetryFailed: onRetryFailed,
@@ -166,9 +169,11 @@ class _MessageList extends StatelessWidget {
           return KeyedSubtree(key: highlightMessageKey, child: keyedRow);
         }
         if (message.id == stationMessageId && stationMessageKey != null) {
-          return KeyedSubtree(key: stationMessageKey, child: keyedRow);
+          return RepaintBoundary(
+            child: KeyedSubtree(key: stationMessageKey, child: keyedRow),
+          );
         }
-        return keyedRow;
+        return RepaintBoundary(child: keyedRow);
       },
     );
   }
@@ -193,6 +198,7 @@ class _MessageRow extends StatelessWidget {
     required this.busyMusicFavoriteIds,
     required this.canGoMusicPrevious,
     required this.isMusicBusy,
+    this.trackPlaybackUpdates = true,
     this.agentAvatarUrl,
     this.userAvatarUrl,
     this.authToken,
@@ -224,6 +230,7 @@ class _MessageRow extends StatelessWidget {
   final Set<String> busyMusicFavoriteIds;
   final bool canGoMusicPrevious;
   final bool isMusicBusy;
+  final bool trackPlaybackUpdates;
   final String? agentAvatarUrl;
   final String? userAvatarUrl;
   final String? authToken;
@@ -287,6 +294,7 @@ class _MessageRow extends StatelessWidget {
             busyMusicFavoriteIds: busyMusicFavoriteIds,
             canGoMusicPrevious: canGoMusicPrevious,
             isMusicBusy: isMusicBusy,
+            trackPlaybackUpdates: trackPlaybackUpdates,
             authToken: authToken,
             apiBaseUrl: apiBaseUrl,
             onRetryFailed: onRetryFailed,
@@ -605,6 +613,7 @@ class _Bubble extends StatelessWidget {
     required this.busyMusicFavoriteIds,
     required this.canGoMusicPrevious,
     required this.isMusicBusy,
+    this.trackPlaybackUpdates = true,
     this.authToken,
     this.apiBaseUrl,
     this.onRetryFailed,
@@ -627,6 +636,7 @@ class _Bubble extends StatelessWidget {
   final Set<String> busyMusicFavoriteIds;
   final bool canGoMusicPrevious;
   final bool isMusicBusy;
+  final bool trackPlaybackUpdates;
   final String? authToken;
   final String? apiBaseUrl;
   final ValueChanged<ChatMessage>? onRetryFailed;
@@ -707,6 +717,7 @@ class _Bubble extends StatelessWidget {
             canGoMusicPrevious:
                 activeMusicMessageId == message.id && canGoMusicPrevious,
             isMusicBusy: isMusicBusy,
+            trackPlaybackUpdates: trackPlaybackUpdates,
             authToken: authToken,
             apiBaseUrl: apiBaseUrl,
           )
@@ -1603,6 +1614,7 @@ class _ComponentCardBubble extends StatelessWidget {
     required this.busyMusicFavoriteIds,
     required this.canGoMusicPrevious,
     required this.isMusicBusy,
+    this.trackPlaybackUpdates = true,
     this.authToken,
     this.apiBaseUrl,
   });
@@ -1621,6 +1633,7 @@ class _ComponentCardBubble extends StatelessWidget {
   final Set<String> busyMusicFavoriteIds;
   final bool canGoMusicPrevious;
   final bool isMusicBusy;
+  final bool trackPlaybackUpdates;
   final String? authToken;
   final String? apiBaseUrl;
 
@@ -1642,6 +1655,7 @@ class _ComponentCardBubble extends StatelessWidget {
         busyMusicFavoriteIds: busyMusicFavoriteIds,
         canGoPrevious: canGoMusicPrevious,
         isBusy: isMusicBusy,
+        trackPlaybackUpdates: trackPlaybackUpdates,
       );
     }
     if (card.type == 'meal_voucher') {
@@ -1982,6 +1996,7 @@ class _MusicComponentCard extends StatefulWidget {
     required this.busyMusicFavoriteIds,
     required this.canGoPrevious,
     required this.isBusy,
+    this.trackPlaybackUpdates = true,
   });
 
   final ChatComponentCard card;
@@ -1998,6 +2013,7 @@ class _MusicComponentCard extends StatefulWidget {
   final Set<String> busyMusicFavoriteIds;
   final bool canGoPrevious;
   final bool isBusy;
+  final bool trackPlaybackUpdates;
 
   @override
   State<_MusicComponentCard> createState() => _MusicComponentCardState();
@@ -2010,6 +2026,7 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
   MusicTrack? _resolvedTrack;
   bool _loadingPlayback = false;
   String? _lastPlaybackSignature;
+  bool _playbackListening = false;
 
   @override
   void initState() {
@@ -2019,22 +2036,37 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
       duration: const Duration(milliseconds: 18000),
     );
     _lastPlaybackSignature = _playbackSignature;
-    _playback.addListener(_handlePlaybackChanged);
+    _syncPlaybackSubscription(widget.trackPlaybackUpdates);
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncDiscAnimation());
   }
 
   @override
   void didUpdateWidget(covariant _MusicComponentCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.trackPlaybackUpdates != widget.trackPlaybackUpdates) {
+      _syncPlaybackSubscription(widget.trackPlaybackUpdates);
+    }
     _lastPlaybackSignature = _playbackSignature;
     _syncDiscAnimation();
   }
 
   @override
   void dispose() {
-    _playback.removeListener(_handlePlaybackChanged);
+    _syncPlaybackSubscription(false);
     _discController.dispose();
     super.dispose();
+  }
+
+  void _syncPlaybackSubscription(bool enabled) {
+    if (enabled && !_playbackListening) {
+      _playback.addListener(_handlePlaybackChanged);
+      _playbackListening = true;
+      return;
+    }
+    if (!enabled && _playbackListening) {
+      _playback.removeListener(_handlePlaybackChanged);
+      _playbackListening = false;
+    }
   }
 
   void _handlePlaybackChanged() {
@@ -2209,6 +2241,7 @@ class _MusicComponentCardState extends State<_MusicComponentCard>
                           _MusicCountdownText(
                             track: track,
                             isActiveCard: widget.isActiveCard,
+                            trackPlaybackUpdates: widget.trackPlaybackUpdates,
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.68),
                               fontSize: 12,
@@ -2381,11 +2414,13 @@ class _MusicCountdownText extends StatefulWidget {
     required this.track,
     required this.isActiveCard,
     required this.style,
+    this.trackPlaybackUpdates = true,
   });
 
   final MusicTrack? track;
   final bool isActiveCard;
   final TextStyle style;
+  final bool trackPlaybackUpdates;
 
   @override
   State<_MusicCountdownText> createState() => _MusicCountdownTextState();
@@ -2394,24 +2429,40 @@ class _MusicCountdownText extends StatefulWidget {
 class _MusicCountdownTextState extends State<_MusicCountdownText> {
   final _playback = MusicPlaybackController.instance;
   String? _lastLabel;
+  bool _playbackListening = false;
 
   @override
   void initState() {
     super.initState();
     _lastLabel = _label;
-    _playback.addListener(_handlePlaybackChanged);
+    _syncPlaybackSubscription(widget.trackPlaybackUpdates);
   }
 
   @override
   void didUpdateWidget(covariant _MusicCountdownText oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.trackPlaybackUpdates != widget.trackPlaybackUpdates) {
+      _syncPlaybackSubscription(widget.trackPlaybackUpdates);
+    }
     _lastLabel = _label;
   }
 
   @override
   void dispose() {
-    _playback.removeListener(_handlePlaybackChanged);
+    _syncPlaybackSubscription(false);
     super.dispose();
+  }
+
+  void _syncPlaybackSubscription(bool enabled) {
+    if (enabled && !_playbackListening) {
+      _playback.addListener(_handlePlaybackChanged);
+      _playbackListening = true;
+      return;
+    }
+    if (!enabled && _playbackListening) {
+      _playback.removeListener(_handlePlaybackChanged);
+      _playbackListening = false;
+    }
   }
 
   void _handlePlaybackChanged() {

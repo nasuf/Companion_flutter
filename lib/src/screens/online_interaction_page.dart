@@ -5,11 +5,13 @@ class OnlineInteractionPage extends StatefulWidget {
     super.key,
     required this.api,
     required this.session,
+    required this.active,
     this.onSendToChat,
   });
 
   final CompanionApi api;
   final AuthSession session;
+  final bool active;
   final ValueChanged<CapsuleChatDraft>? onSendToChat;
 
   @override
@@ -26,7 +28,27 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 18000),
-    )..repeat(reverse: true);
+    );
+    _syncTabMotion();
+  }
+
+  @override
+  void didUpdateWidget(covariant OnlineInteractionPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active != widget.active) {
+      _syncTabMotion();
+    }
+  }
+
+  void _syncTabMotion() {
+    if (!mounted) return;
+    if (widget.active) {
+      if (!_controller.isAnimating) {
+        _controller.repeat(reverse: true);
+      }
+    } else {
+      _controller.stop();
+    }
   }
 
   @override
@@ -68,8 +90,8 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
   static const _portalColumnStagger = 28.0;
 
   Widget _buildPortalColumn(
-    List<int> indices,
-    double progress, {
+    List<int> indices, {
+    required Animation<double> animation,
     required bool staggerAtTop,
   }) {
     final spacer = const SizedBox(height: _portalColumnStagger);
@@ -82,7 +104,7 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
             child: _OnlinePortalCard(
               portal: _onlinePortals[indices[i]],
               index: indices[i],
-              progress: progress,
+              animation: animation,
               onTap: () => _openPortal(_onlinePortals[indices[i]]),
             ),
           ),
@@ -100,61 +122,66 @@ class _OnlineInteractionPageState extends State<OnlineInteractionPage>
     // 让位都收紧一点，让卡片区拿到更多高度——卡片高度 = 剩余高度/2，因此
     // 变高之后每张卡片就从近正方形变成竖长方形。
     const gridBottomClearance = 112.0; // 留给 main_shell 悬浮 tab bar 的空间。
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        final progress = Curves.easeInOut.transform(_controller.value);
-        return Stack(
+    // Same isolation as the 陪伴 tab: background / hero floaters / each portal
+    // image animate locally. Static titles and card chrome stay out of the
+    // 18s rebuild.
+    return Stack(
+      children: [
+        RepaintBoundary(
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              final progress = Curves.easeInOut.transform(_controller.value);
+              return _OnlineBackground(progress: progress);
+            },
+          ),
+        ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _OnlineBackground(progress: progress),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    34,
-                    MediaQuery.paddingOf(context).top + 24,
-                    20,
-                    0,
-                  ),
-                  child: _OnlineHero(progress: progress),
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                34,
+                MediaQuery.paddingOf(context).top + 24,
+                20,
+                0,
+              ),
+              child: _OnlineHero(animation: _controller),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  gridBottomClearance,
                 ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      16,
-                      0,
-                      16,
-                      gridBottomClearance,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: _buildPortalColumn(
+                        const [0, 2],
+                        animation: _controller,
+                        staggerAtTop: false,
+                      ),
                     ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          child: _buildPortalColumn(
-                            const [0, 2],
-                            progress,
-                            staggerAtTop: false,
-                          ),
-                        ),
-                        const SizedBox(width: _portalGridSpacing),
-                        Expanded(
-                          child: _buildPortalColumn(
-                            // 右列上下对调：music(3) 到右上、movie(1) 到右下。
-                            const [3, 1],
-                            progress,
-                            staggerAtTop: true,
-                          ),
-                        ),
-                      ],
+                    const SizedBox(width: _portalGridSpacing),
+                    Expanded(
+                      child: _buildPortalColumn(
+                        // 右列上下对调：music(3) 到右上、movie(1) 到右下。
+                        const [3, 1],
+                        animation: _controller,
+                        staggerAtTop: true,
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ],
-        );
-      },
+        ),
+      ],
     );
   }
 }
@@ -263,24 +290,14 @@ class _OnlineAura extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ImageFiltered(
-      imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-      child: Container(
-        width: size.width,
-        height: size.height,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          color: color,
-        ),
-      ),
-    );
+    return PlatformSoftAura(size: size, color: color, blur: blur);
   }
 }
 
 class _OnlineHero extends StatelessWidget {
-  const _OnlineHero({required this.progress});
+  const _OnlineHero({required this.animation});
 
-  final double progress;
+  final Animation<double> animation;
 
   @override
   Widget build(BuildContext context) {
@@ -292,33 +309,54 @@ class _OnlineHero extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Positioned(
-            right: -2 + math.cos(progress * math.pi * 2) * 5,
-            top: 4 + math.sin(progress * math.pi * 2) * 4,
-            child: Transform.rotate(
-              angle:
-                  (13 + math.sin(progress * math.pi * 2) * 1.4) * math.pi / 180,
-              child: const _OnlinePrimaryFloater(),
-            ),
-          ),
-          Positioned(
-            right: 50 + math.cos(progress * math.pi * 2 + 0.6) * 3,
-            top: 108 - math.sin(progress * math.pi * 2 + 0.6) * 3,
-            child: Transform.rotate(
-              angle:
-                  (10 + math.sin(progress * math.pi * 2 + 0.6) * 1.2) *
-                  math.pi /
-                  180,
-              child: const _OnlineGlassTile(),
-            ),
-          ),
-          Positioned(
-            right: 60 + math.cos(progress * math.pi * 2 + 1.2) * 3,
-            top: 86 + math.sin(progress * math.pi * 2 + 1.2) * 2.5,
-            child: Transform.rotate(
-              angle:
-                  (8 - math.sin(progress * math.pi * 2) * 2.2) * math.pi / 180,
-              child: const _OnlineGlassOrb(),
+          Positioned.fill(
+            child: RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: animation,
+                builder: (context, _) {
+                  final progress = Curves.easeInOut.transform(animation.value);
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned(
+                        right: -2 + math.cos(progress * math.pi * 2) * 5,
+                        top: 4 + math.sin(progress * math.pi * 2) * 4,
+                        child: Transform.rotate(
+                          angle:
+                              (13 + math.sin(progress * math.pi * 2) * 1.4) *
+                              math.pi /
+                              180,
+                          child: const _OnlinePrimaryFloater(),
+                        ),
+                      ),
+                      Positioned(
+                        right: 50 + math.cos(progress * math.pi * 2 + 0.6) * 3,
+                        top: 108 - math.sin(progress * math.pi * 2 + 0.6) * 3,
+                        child: Transform.rotate(
+                          angle:
+                              (10 +
+                                  math.sin(progress * math.pi * 2 + 0.6) *
+                                      1.2) *
+                              math.pi /
+                              180,
+                          child: const _OnlineGlassTile(),
+                        ),
+                      ),
+                      Positioned(
+                        right: 60 + math.cos(progress * math.pi * 2 + 1.2) * 3,
+                        top: 86 + math.sin(progress * math.pi * 2 + 1.2) * 2.5,
+                        child: Transform.rotate(
+                          angle:
+                              (8 - math.sin(progress * math.pi * 2) * 2.2) *
+                              math.pi /
+                              180,
+                          child: const _OnlineGlassOrb(),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
           Positioned(
@@ -372,13 +410,15 @@ class _OnlinePrimaryFloater extends StatelessWidget {
           colors: [Color(0x8F3D9EFF), Color(0x4718C6C0)],
           stops: [0, 1],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF5B8FDE).withValues(alpha: 0.18),
-            blurRadius: 30,
-            offset: const Offset(0, 18),
-          ),
-        ],
+        boxShadow: useLightweightGlassEffects
+            ? const []
+            : [
+                BoxShadow(
+                  color: const Color(0xFF5B8FDE).withValues(alpha: 0.18),
+                  blurRadius: 30,
+                  offset: const Offset(0, 18),
+                ),
+              ],
       ),
       foregroundDecoration: BoxDecoration(
         borderRadius: BorderRadius.circular(56),
@@ -400,8 +440,8 @@ class _OnlineGlassTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(28),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+      child: PlatformBackdropGlass(
+        sigma: 18,
         child: Container(
           width: 84,
           height: 84,
@@ -416,13 +456,15 @@ class _OnlineGlassTile extends StatelessWidget {
               ],
             ),
             border: Border.all(color: Colors.white.withValues(alpha: 0.50)),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF5184BE).withValues(alpha: 0.20),
-                blurRadius: 26,
-                offset: const Offset(0, 16),
-              ),
-            ],
+            boxShadow: useLightweightGlassEffects
+                ? const []
+                : [
+                    BoxShadow(
+                      color: const Color(0xFF5184BE).withValues(alpha: 0.20),
+                      blurRadius: 26,
+                      offset: const Offset(0, 16),
+                    ),
+                  ],
           ),
           foregroundDecoration: BoxDecoration(
             borderRadius: BorderRadius.circular(28),
@@ -450,8 +492,8 @@ class _OnlineGlassOrb extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(36),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+      child: PlatformBackdropGlass(
+        sigma: 18,
         child: Container(
           width: 104,
           height: 104,
@@ -466,13 +508,15 @@ class _OnlineGlassOrb extends StatelessWidget {
               ],
             ),
             border: Border.all(color: Colors.white.withValues(alpha: 0.58)),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF548BC4).withValues(alpha: 0.18),
-                blurRadius: 24,
-                offset: const Offset(0, 14),
-              ),
-            ],
+            boxShadow: useLightweightGlassEffects
+                ? const []
+                : [
+                    BoxShadow(
+                      color: const Color(0xFF548BC4).withValues(alpha: 0.18),
+                      blurRadius: 24,
+                      offset: const Offset(0, 14),
+                    ),
+                  ],
           ),
           child: Stack(
             children: [
@@ -523,12 +567,14 @@ class _OrbitDot extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: const Color(0xFFE8FEFF).withValues(alpha: opacity),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.accent.withValues(alpha: 0.24),
-              blurRadius: 18,
-            ),
-          ],
+          boxShadow: useLightweightGlassEffects
+              ? const []
+              : [
+                  BoxShadow(
+                    color: AppColors.accent.withValues(alpha: 0.24),
+                    blurRadius: 18,
+                  ),
+                ],
         ),
       ),
     );
@@ -539,13 +585,13 @@ class _OnlinePortalCard extends StatelessWidget {
   const _OnlinePortalCard({
     required this.portal,
     required this.index,
-    required this.progress,
+    required this.animation,
     required this.onTap,
   });
 
   final _OnlinePortal portal;
   final int index;
-  final double progress;
+  final Animation<double> animation;
   final VoidCallback onTap;
 
   // 亮度加权的标准灰度矩阵，用来把"暂未开放"的卡片配图整体去色。
@@ -579,42 +625,50 @@ class _OnlinePortalCard extends StatelessWidget {
                   ? Colors.white.withValues(alpha: 0.10)
                   : Colors.white.withValues(alpha: 0.86),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: isDark
-                    ? Colors.black.withValues(alpha: 0.30)
-                    : const Color(0xFF40546A).withValues(alpha: 0.14),
-                blurRadius: 28,
-                offset: const Offset(0, 16),
-              ),
-              BoxShadow(
-                color: portal.accent.withValues(alpha: 0.12),
-                blurRadius: 30,
-                offset: const Offset(0, 14),
-              ),
-            ],
+            boxShadow: useLightweightGlassEffects
+                ? const []
+                : [
+                    BoxShadow(
+                      color: isDark
+                          ? Colors.black.withValues(alpha: 0.30)
+                          : const Color(0xFF40546A).withValues(alpha: 0.14),
+                      blurRadius: 28,
+                      offset: const Offset(0, 16),
+                    ),
+                    BoxShadow(
+                      color: portal.accent.withValues(alpha: 0.12),
+                      blurRadius: 30,
+                      offset: const Offset(0, 14),
+                    ),
+                  ],
           ),
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Opacity(
-                opacity: disabled ? 0.55 : 1,
-                child: disabled
-                    ? ColorFiltered(
+              RepaintBoundary(
+                child: AnimatedBuilder(
+                  animation: animation,
+                  builder: (context, _) {
+                    final progress = Curves.easeInOut.transform(
+                      animation.value,
+                    );
+                    final image = _BreathingPortalImage(
+                      portal: portal,
+                      progress: progress,
+                      phaseOffset: index * 0.72,
+                    );
+                    if (!disabled) return image;
+                    return Opacity(
+                      opacity: 0.55,
+                      child: ColorFiltered(
                         colorFilter: const ColorFilter.matrix(
                           _greyscaleMatrix,
                         ),
-                        child: _BreathingPortalImage(
-                          portal: portal,
-                          progress: progress,
-                          phaseOffset: index * 0.72,
-                        ),
-                      )
-                    : _BreathingPortalImage(
-                        portal: portal,
-                        progress: progress,
-                        phaseOffset: index * 0.72,
+                        child: image,
                       ),
+                    );
+                  },
+                ),
               ),
               const _PortalBottomBlur(),
               _PortalText(portal: portal),
@@ -679,6 +733,12 @@ class _BreathingPortalImage extends StatelessWidget {
     final dy =
         lerpDouble(portal.motion.startY, portal.motion.endY, eased)! * 0.52;
     final scale = lerpDouble(1.065, 1.085, eased)!;
+    int? cacheWidth;
+    if (useLightweightGlassEffects) {
+      final dpr = MediaQuery.devicePixelRatioOf(context);
+      final logicalWidth = MediaQuery.sizeOf(context).width / 2;
+      cacheWidth = (logicalWidth * dpr).round().clamp(360, 720);
+    }
     return Transform.translate(
       offset: Offset(dx, dy),
       child: Transform.scale(
@@ -687,6 +747,7 @@ class _BreathingPortalImage extends StatelessWidget {
           portal.asset,
           fit: BoxFit.cover,
           alignment: portal.alignment,
+          cacheWidth: cacheWidth,
         ),
       ),
     );
@@ -699,52 +760,50 @@ class _PortalBottomBlur extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = AppColors.isDark(context);
+    final fade = BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: isDark
+            ? [
+                Colors.black.withValues(alpha: 0),
+                Colors.black.withValues(alpha: 0.34),
+                Colors.black.withValues(alpha: 0.68),
+                Colors.black.withValues(alpha: 0.84),
+              ]
+            : [
+                Colors.white.withValues(alpha: 0),
+                Colors.white.withValues(alpha: 0.50),
+                Colors.white.withValues(alpha: 0.88),
+                Colors.white,
+              ],
+        stops: const [0, 0.30, 0.56, 1],
+      ),
+    );
+    final fill = Container(height: 174, decoration: fade);
     return Align(
       alignment: Alignment.bottomCenter,
-      child: ShaderMask(
-        shaderCallback: (rect) {
-          return const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.transparent,
-              Color(0x5C000000),
-              Color(0xEA000000),
-              Colors.black,
-            ],
-            stops: [0, 0.18, 0.46, 1],
-          ).createShader(rect);
-        },
-        blendMode: BlendMode.dstIn,
-        child: ClipRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: Container(
-              height: 174,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
+      child: useLightweightGlassEffects
+          ? fill
+          : ShaderMask(
+              shaderCallback: (rect) {
+                return const LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: isDark
-                      ? [
-                          Colors.black.withValues(alpha: 0),
-                          Colors.black.withValues(alpha: 0.34),
-                          Colors.black.withValues(alpha: 0.68),
-                          Colors.black.withValues(alpha: 0.84),
-                        ]
-                      : [
-                          Colors.white.withValues(alpha: 0),
-                          Colors.white.withValues(alpha: 0.50),
-                          Colors.white.withValues(alpha: 0.88),
-                          Colors.white,
-                        ],
-                  stops: const [0, 0.30, 0.56, 1],
-                ),
+                  colors: [
+                    Colors.transparent,
+                    Color(0x5C000000),
+                    Color(0xEA000000),
+                    Colors.black,
+                  ],
+                  stops: [0, 0.18, 0.46, 1],
+                ).createShader(rect);
+              },
+              blendMode: BlendMode.dstIn,
+              child: ClipRect(
+                child: PlatformBackdropGlass(sigma: 18, child: fill),
               ),
             ),
-          ),
-        ),
-      ),
     );
   }
 }

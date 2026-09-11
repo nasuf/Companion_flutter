@@ -5,23 +5,24 @@ class MusicPlaybackController extends ChangeNotifier {
     _positionSub = _player.onPositionChanged.listen((value) {
       if (_seeking) return;
       _position = value;
-      notifyListeners();
+      _maybeNotifyPositionTick(value);
     });
     _durationSub = _player.onDurationChanged.listen((value) {
       if (value.inMilliseconds <= 0) return;
       _duration = value;
-      notifyListeners();
+      _notifyPlaybackStateChange();
     });
     _stateSub = _player.onPlayerStateChanged.listen((state) {
       final playing = state == PlayerState.playing;
       if (_isPlaying == playing) return;
       _isPlaying = playing;
-      notifyListeners();
+      _notifyPlaybackStateChange();
     });
     _completeSub = _player.onPlayerComplete.listen((_) {
       _isPlaying = false;
       _position = Duration.zero;
-      notifyListeners();
+      _lastNotifiedPositionSecond = 0;
+      _notifyPlaybackStateChange();
       _completed.add(null);
     });
   }
@@ -58,6 +59,20 @@ class MusicPlaybackController extends ChangeNotifier {
   bool _isLoading = false;
   bool _seeking = false;
   String? _loadingTrackId;
+  int? _lastNotifiedPositionSecond;
+
+  /// UI only shows mm:ss — avoid fanning notifyListeners() on every audio tick.
+  void _maybeNotifyPositionTick(Duration value) {
+    final second = value.inSeconds;
+    if (_lastNotifiedPositionSecond == second) return;
+    _lastNotifiedPositionSecond = second;
+    notifyListeners();
+  }
+
+  void _notifyPlaybackStateChange() {
+    _lastNotifiedPositionSecond = _position.inSeconds;
+    notifyListeners();
+  }
 
   MusicTrack? get track => _track;
   Duration get position => _position;
@@ -93,7 +108,7 @@ class MusicPlaybackController extends ChangeNotifier {
     _quotaPendingSeconds = report.pendingSeconds;
     if (_isPlaying) {
       _isPlaying = false;
-      notifyListeners();
+      _notifyPlaybackStateChange();
       try {
         await _player.pause();
       } catch (_) {
@@ -120,12 +135,12 @@ class MusicPlaybackController extends ChangeNotifier {
     if (_quotaAwaitingResponse) return;
     if (_track != null && !_isPlaying) {
       _isPlaying = true;
-      notifyListeners();
+      _notifyPlaybackStateChange();
       try {
         await _player.resume();
       } catch (_) {
         _isPlaying = false;
-        notifyListeners();
+        _notifyPlaybackStateChange();
       }
     }
   }
@@ -142,7 +157,7 @@ class MusicPlaybackController extends ChangeNotifier {
 
   void adoptIfCurrent(MusicTrack track) {
     if (!isCurrentTrack(track)) return;
-    notifyListeners();
+    _notifyPlaybackStateChange();
   }
 
   Future<bool> playTrack(
@@ -151,18 +166,19 @@ class MusicPlaybackController extends ChangeNotifier {
     bool preserveIfCurrent = false,
   }) async {
     if (preserveIfCurrent && isCurrentTrack(track)) {
-      notifyListeners();
+      _notifyPlaybackStateChange();
       return true;
     }
     _track = track;
     _position = position;
+    _lastNotifiedPositionSecond = position.inSeconds;
     _duration = Duration(
       seconds: track.durationSec > 0 ? track.durationSec : _duration.inSeconds,
     );
     _isPlaying = false;
     _isLoading = track.url.isNotEmpty;
     _loadingTrackId = _isLoading ? track.id : null;
-    notifyListeners();
+    _notifyPlaybackStateChange();
     if (track.url.isEmpty) return false;
     try {
       await _player.stop();
@@ -175,7 +191,7 @@ class MusicPlaybackController extends ChangeNotifier {
     } finally {
       _isLoading = false;
       _loadingTrackId = null;
-      notifyListeners();
+      _notifyPlaybackStateChange();
     }
   }
 
@@ -185,13 +201,13 @@ class MusicPlaybackController extends ChangeNotifier {
     }
     if (_isPlaying) {
       _isPlaying = false;
-      notifyListeners();
+      _notifyPlaybackStateChange();
       await _player.pause();
       return true;
     } else {
       _isLoading = true;
       _loadingTrackId = track.id;
-      notifyListeners();
+      _notifyPlaybackStateChange();
       try {
         if (_player.state == PlayerState.paused) {
           await _player.resume();
@@ -209,7 +225,7 @@ class MusicPlaybackController extends ChangeNotifier {
       } finally {
         _isLoading = false;
         _loadingTrackId = null;
-        notifyListeners();
+        _notifyPlaybackStateChange();
       }
     }
   }
@@ -217,21 +233,22 @@ class MusicPlaybackController extends ChangeNotifier {
   Future<void> seek(Duration target) async {
     _seeking = true;
     _position = target;
-    notifyListeners();
+    _notifyPlaybackStateChange();
     await _player.seek(target);
     await Future<void>.delayed(const Duration(milliseconds: 120));
     _seeking = false;
     _position = target;
-    notifyListeners();
+    _notifyPlaybackStateChange();
   }
 
   Future<void> stop() async {
     _track = null;
     _position = Duration.zero;
+    _lastNotifiedPositionSecond = 0;
     _isPlaying = false;
     _isLoading = false;
     _loadingTrackId = null;
-    notifyListeners();
+    _notifyPlaybackStateChange();
     await _player.stop();
   }
 
