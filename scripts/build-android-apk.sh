@@ -2,7 +2,11 @@
 # Release APK counterpart of build-testflight.sh.
 # Version comes from the same pubspec.yaml line both stores ship
 # (`0.5.0+3` → versionName + versionCode). Output is copied to
-#   build/android/bansheng-dev-0.5.0+3.apk
+#   build/android/bansheng-prod-0.5.0+3.apk
+#
+# Default flavor is prod: WeChat Android only allows one package name, and
+# that must be com.bansheng.prod (same as the store). Flavor dev still
+# exists for side-by-side installs, but WeChat login will fail on it.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -16,14 +20,14 @@ prompt_for_flavor() {
   fi
 
   if [[ ! -t 0 ]]; then
-    FLAVOR="dev"
-    echo "No interactive terminal detected; defaulting to FLAVOR=dev"
+    FLAVOR="prod"
+    echo "No interactive terminal detected; defaulting to FLAVOR=prod"
     return
   fi
 
   echo "Which build do you want?"
-  echo "  1) dev  — com.bansheng.dev   internal sideload"
-  echo "  2) prod — com.bansheng.prod  production package"
+  echo "  1) prod — com.bansheng.prod  WeChat / store package"
+  echo "  2) dev  — com.bansheng.dev   side-by-side only (WeChat login will fail)"
   local choice=""
   if ! read -r -p "Select [1]: " choice; then
     echo >&2
@@ -31,10 +35,10 @@ prompt_for_flavor() {
     exit 1
   fi
   case "${choice:-1}" in
-    1 | dev) FLAVOR="dev" ;;
-    2 | prod) FLAVOR="prod" ;;
+    1 | prod) FLAVOR="prod" ;;
+    2 | dev) FLAVOR="dev" ;;
     *)
-      echo "Invalid selection: '$choice' (expected 1/dev or 2/prod)." >&2
+      echo "Invalid selection: '$choice' (expected 1/prod or 2/dev)." >&2
       exit 1
       ;;
   esac
@@ -149,6 +153,26 @@ verify_apk_identity() {
   echo "Verified versionCode:   $actual_code"
 }
 
+print_wechat_signature() {
+  local apk="$1"
+  local sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+  if [[ -z "$sdk" && -d "$HOME/Library/Android/sdk" ]]; then
+    sdk="$HOME/Library/Android/sdk"
+  fi
+  local apksigner=""
+  if [[ -n "$sdk" ]]; then
+    apksigner="$(ls -1d "$sdk"/build-tools/*/apksigner 2>/dev/null | tail -1 || true)"
+  fi
+  if [[ -z "$apksigner" || ! -x "$apksigner" ]]; then
+    return
+  fi
+  local md5
+  md5="$("$apksigner" verify --print-certs "$apk" 2>/dev/null | sed -n "s/.*MD5 digest: *//p" | head -1 | tr -d '[:space:]')"
+  if [[ -n "$md5" ]]; then
+    echo "WeChat Android signature (MD5): $md5"
+  fi
+}
+
 # Worktree gate first: no point asking which flavor to build only to reject the
 # run over uncommitted changes.
 require_clean_git_worktree
@@ -187,27 +211,14 @@ suggested_build_number="$((current_build_number + 1))"
 echo "Flavor:                     $FLAVOR"
 echo "Application ID:             $APPLICATION_ID"
 echo "Build mode:                 $BUILD_MODE"
-if [[ "$FLAVOR" == "dev" ]]; then
-  echo "Current app version:        $current_build_name"
-  echo "Current build number:       $current_build_number"
-  echo "Suggested next app version: $suggested_build_name"
-  echo "Suggested next build no.:   $suggested_build_number"
-else
-  # Only dev maintains the version line; prod ships whatever dev last built.
-  echo "Version (pinned to dev):    $current_build_name (build $current_build_number)"
-fi
+echo "Current app version:        $current_build_name"
+echo "Current build number:       $current_build_number"
+echo "Suggested next app version: $suggested_build_name"
+echo "Suggested next build no.:   $suggested_build_number"
 echo "API_BASE_URL:               $API_BASE_URL"
 echo
 
-if [[ "$FLAVOR" != "dev" ]]; then
-  if [[ -n "${BUILD_VERSION:-}" || -n "${BUILD_NAME:-}" || -n "${BUILD_NUMBER:-}" ]]; then
-    echo "BUILD_VERSION / BUILD_NAME / BUILD_NUMBER are not accepted for FLAVOR=$FLAVOR." >&2
-    echo "Prod ships dev's current version ($current). Run a dev build first to move it." >&2
-    exit 1
-  fi
-  build_name="$current_build_name"
-  build_number="$current_build_number"
-elif [[ -n "${BUILD_VERSION:-}" && "$BUILD_VERSION" == *+* ]]; then
+if [[ -n "${BUILD_VERSION:-}" && "$BUILD_VERSION" == *+* ]]; then
   build_name="${BUILD_VERSION%%+*}"
   build_number="${BUILD_VERSION##*+}"
   echo "Using BUILD_VERSION=$BUILD_VERSION"
@@ -300,26 +311,25 @@ if [[ ! "$apk_path" -nt "$build_started_marker" ]]; then
 fi
 
 verify_apk_identity "$apk_path"
+print_wechat_signature "$apk_path"
 
 output_dir="$ROOT_DIR/build/android"
 mkdir -p "$output_dir"
 output_apk="$output_dir/$output_name"
 cp "$apk_path" "$output_apk"
 
-# Only dev maintains the version line. Prod is pinned to what it read, so it has
-# nothing to write back — same contract as build-testflight.sh.
-if [[ "$FLAVOR" == "dev" ]]; then
-  if [[ "$selected_version" != "$current" ]]; then
-    CURRENT="$current" NEXT="$selected_version" perl -0pi -e \
-      's/^version:\s*\Q$ENV{CURRENT}\E\s*$/version: $ENV{NEXT}/m' pubspec.yaml
+# Android sideload is the WeChat test channel, so either flavor may move the
+# shared pubspec line. (iOS TestFlight still keeps prod read-only.)
+if [[ "$selected_version" != "$current" ]]; then
+  CURRENT="$current" NEXT="$selected_version" perl -0pi -e \
+    's/^version:\s*\Q$ENV{CURRENT}\E\s*$/version: $ENV{NEXT}/m' pubspec.yaml
 
-    if ! grep -q "version: $selected_version" pubspec.yaml; then
-      echo "Could not update pubspec.yaml from $current to $selected_version" >&2
-      exit 1
-    fi
-
-    commit_version_change "$selected_version"
+  if ! grep -q "version: $selected_version" pubspec.yaml; then
+    echo "Could not update pubspec.yaml from $current to $selected_version" >&2
+    exit 1
   fi
+
+  commit_version_change "$selected_version"
 fi
 
 echo "APK output: $output_apk"
@@ -327,11 +337,7 @@ echo "Built flavor: $FLAVOR"
 echo "Built mode: $BUILD_MODE"
 echo "Built Android app version: $build_name"
 echo "Built Android build number: $build_number"
-if [[ "$FLAVOR" == "dev" ]]; then
-  echo "Flutter pubspec app+build version: $selected_version"
-else
-  echo "Flutter pubspec app+build version: $current (unchanged)"
-fi
+echo "Flutter pubspec app+build version: $selected_version"
 
 if [[ "$(uname -s)" == "Darwin" && "${OPEN_OUTPUT:-1}" != "0" ]]; then
   echo "Revealing APK in Finder: $output_apk"

@@ -4,7 +4,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ANDROID_DEVICE_ID="${ANDROID_DEVICE_ID:-}"
-FLAVOR="${FLAVOR:-dev}"
+# WeChat's Android app accepts one package name. Use prod (com.bansheng.prod)
+# so debug `flutter run` matches the store package + backup debug signature.
+FLAVOR="${FLAVOR:-prod}"
 DEV_API_BASE_URL="${DEV_API_BASE_URL:-https://banshengcomp.com/api}"
 FLUTTER_RUN_MODE="${FLUTTER_RUN_MODE:-debug}"
 
@@ -37,6 +39,8 @@ if [[ -z "$ANDROID_DEVICE_ID" ]]; then
   echo "Set ANDROID_DEVICE_ID=<device-id> and retry." >&2
   exit 1
 fi
+
+echo "Running $FLAVOR (com.bansheng.$FLAVOR) $FLUTTER_RUN_MODE on $ANDROID_DEVICE_ID"
 
 flutter pub get
 
