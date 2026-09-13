@@ -284,35 +284,34 @@ class _MessageRow extends StatelessWidget {
   static const _avatarSize = 40.0;
   static const _avatarGap = 10.0;
 
-  @override
-  Widget build(BuildContext context) {
-    if (message.isAchievement) {
-      final item = message.achievementItem;
-      if (item == null) return const SizedBox.shrink();
-      return _AchievementTimelineRow(
-        item: item,
-        onTap: () => onAchievementTap(item),
-      );
-    }
-    if (message.isMusicStatus) {
-      return _MusicStatusTimelineRow(message: message);
-    }
-    if (message.isGameStatus) {
-      return _GameStatusTimelineRow(message: message);
-    }
-    if (message.isOfferingReceived) {
-      return _OfferingReceivedTimelineRow(message: message);
-    }
+  bool get _splitTextAndCard => _messageShowsSplitTextAndCard(message);
 
-    final avatar = _Avatar(
+  Widget _buildAvatar({
+    required bool isMine,
+    required String? agentAvatarUrl,
+    required String? userAvatarUrl,
+  }) {
+    return _Avatar(
       size: _avatarSize,
-      label: message.isMine ? '我' : '伴',
-      imageUrl: message.isMine ? userAvatarUrl : agentAvatarUrl,
-      gradient: message.isMine
+      label: isMine ? '我' : '伴',
+      imageUrl: isMine ? userAvatarUrl : agentAvatarUrl,
+      gradient: isMine
           ? const [Color(0xFFE8F3FF), Color(0xFFF8FBFF)]
           : const [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
     );
+  }
 
+  Widget _buildAvatarBubbleRow(
+    BuildContext context, {
+    required _BubbleSegment segment,
+    required bool showTimestamp,
+    bool showSendStatus = true,
+  }) {
+    final avatar = _buildAvatar(
+      isMine: message.isMine,
+      agentAvatarUrl: agentAvatarUrl,
+      userAvatarUrl: userAvatarUrl,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
@@ -326,6 +325,9 @@ class _MessageRow extends StatelessWidget {
             message: message,
             highlighted: highlighted,
             highlightQuery: highlightQuery,
+            segment: segment,
+            showTimestamp: showTimestamp,
+            showSendStatus: showSendStatus,
             onComponentCardTap: onComponentCardTap,
             onResolveMusicTrack: onResolveMusicTrack,
             onMusicCardActivated: onMusicCardActivated,
@@ -349,6 +351,73 @@ class _MessageRow extends StatelessWidget {
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    if (message.isAchievement) {
+      final item = message.achievementItem;
+      if (item == null) return const SizedBox.shrink();
+      return _AchievementTimelineRow(
+        item: item,
+        onTap: () => onAchievementTap(item),
+      );
+    }
+    if (message.isMusicStatus) {
+      return _MusicStatusTimelineRow(message: message);
+    }
+    if (message.isGameStatus) {
+      return _GameStatusTimelineRow(message: message);
+    }
+    if (message.isOfferingReceived) {
+      return _OfferingReceivedTimelineRow(message: message);
+    }
+
+    if (_splitTextAndCard) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildAvatarBubbleRow(
+            context,
+            segment: _BubbleSegment.textOnly,
+            showTimestamp: false,
+            showSendStatus: false,
+          ),
+          const SizedBox(height: 8),
+          _buildAvatarBubbleRow(
+            context,
+            segment: _BubbleSegment.cardOnly,
+            showTimestamp: true,
+            showSendStatus: true,
+          ),
+        ],
+      );
+    }
+
+    return _buildAvatarBubbleRow(
+      context,
+      segment: _BubbleSegment.all,
+      showTimestamp: true,
+    );
+  }
+}
+
+enum _BubbleSegment { all, textOnly, cardOnly }
+
+bool _messageShowsSplitTextAndCard(ChatMessage message) {
+  final componentCard = message.componentCard;
+  if (componentCard == null) return false;
+  final shouldHideExternalLinkText =
+      componentCard.type == 'external_link' &&
+      _isShareTextRepresentedByExternalLinkCard(
+        message.content,
+        componentCard,
+      );
+  final showTextWithCard =
+      (componentCard.type == 'music_track' ||
+          (componentCard.type == 'external_link' &&
+              !shouldHideExternalLinkText)) &&
+      message.content.trim().isNotEmpty;
+  return showTextWithCard;
 }
 
 class _GameStatusTimelineRow extends StatelessWidget {
@@ -642,6 +711,9 @@ class _Bubble extends StatelessWidget {
     required this.message,
     this.highlighted = false,
     this.highlightQuery,
+    this.segment = _BubbleSegment.all,
+    this.showTimestamp = true,
+    this.showSendStatus = true,
     required this.onComponentCardTap,
     required this.onResolveMusicTrack,
     required this.onMusicCardActivated,
@@ -664,6 +736,9 @@ class _Bubble extends StatelessWidget {
   final ChatMessage message;
   final bool highlighted;
   final String? highlightQuery;
+  final _BubbleSegment segment;
+  final bool showTimestamp;
+  final bool showSendStatus;
   final ValueChanged<ChatComponentCard> onComponentCardTap;
   final Future<MusicTrack?> Function(MusicTrack track) onResolveMusicTrack;
   final void Function(ChatComponentCard card, String messageId)
@@ -708,6 +783,18 @@ class _Bubble extends StatelessWidget {
         message.content.trim().isNotEmpty;
     final showTextWithAttachments =
         imageAttachments.isNotEmpty && message.content.trim().isNotEmpty;
+    final includeText =
+        segment != _BubbleSegment.cardOnly &&
+        (showTextWithCard ||
+            showTextWithAttachments ||
+            (segment == _BubbleSegment.all &&
+                componentCard == null &&
+                !message.isVoiceTranscriptionPending &&
+                !message.isVoiceUploadPending &&
+                audioAttachment == null &&
+                imageAttachments.isEmpty));
+    final includeCard =
+        segment != _BubbleSegment.textOnly && componentCard != null;
 
     final Widget bubbleColumn = Column(
       mainAxisSize: MainAxisSize.min,
@@ -715,7 +802,17 @@ class _Bubble extends StatelessWidget {
           ? CrossAxisAlignment.end
           : CrossAxisAlignment.start,
       children: [
-        if (showTextWithCard) ...[
+        if (includeText &&
+            showTextWithCard &&
+            segment != _BubbleSegment.all) ...[
+          _MessageTextBubble(
+            message: message,
+            highlighted: highlighted,
+            highlightQuery: highlightQuery,
+          ),
+        ] else if (includeText &&
+            showTextWithCard &&
+            segment == _BubbleSegment.all) ...[
           _MessageTextBubble(
             message: message,
             highlighted: highlighted,
@@ -723,13 +820,15 @@ class _Bubble extends StatelessWidget {
           ),
           const SizedBox(height: 8),
         ],
-        if (message.isVoiceTranscriptionPending)
+        if (message.isVoiceTranscriptionPending &&
+            segment != _BubbleSegment.cardOnly)
           const _VoiceTranscriptionPendingBubble()
-        else if (message.isVoiceUploadPending)
+        else if (message.isVoiceUploadPending &&
+            segment != _BubbleSegment.cardOnly)
           _VoiceUploadPendingBubble(
             durationSeconds: message.voicePendingDurationSeconds ?? 1,
           )
-        else if (componentCard != null)
+        else if (includeCard)
           _ComponentCardBubble(
             card: componentCard,
             isMine: message.isMine,
@@ -763,7 +862,7 @@ class _Bubble extends StatelessWidget {
             authToken: authToken,
             apiBaseUrl: apiBaseUrl,
           )
-        else if (audioAttachment != null)
+        else if (audioAttachment != null && segment != _BubbleSegment.cardOnly)
           _VoiceMessageBubble(
             attachment: audioAttachment,
             isMine: message.isMine,
@@ -771,7 +870,8 @@ class _Bubble extends StatelessWidget {
             authToken: authToken,
             apiBaseUrl: apiBaseUrl,
           )
-        else if (imageAttachments.isNotEmpty) ...[
+        else if (imageAttachments.isNotEmpty &&
+            segment != _BubbleSegment.cardOnly) ...[
           _ImageAttachmentBubble(
             attachments: imageAttachments,
             isMine: message.isMine,
@@ -786,7 +886,9 @@ class _Bubble extends StatelessWidget {
               highlightQuery: highlightQuery,
             ),
           ],
-        ] else
+        ] else if (includeText &&
+            segment != _BubbleSegment.cardOnly &&
+            !showTextWithCard)
           _MessageTextBubble(
             message: message,
             highlighted: highlighted,
@@ -803,7 +905,7 @@ class _Bubble extends StatelessWidget {
         children: [
           // Own messages carry a read/unread status circle to the left of the
           // bubble (Figma 281:1509); AI messages render the bubble alone.
-          if (message.isMine)
+          if (message.isMine && showSendStatus)
             Row(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -819,13 +921,17 @@ class _Bubble extends StatelessWidget {
                 bubbleColumn,
               ],
             )
+          else if (message.isMine)
+            bubbleColumn
           else
             bubbleColumn,
-          const SizedBox(height: 3),
-          Text(
-            _formatTime(message.createdAt),
-            style: TextStyle(color: AppColors.muted, fontSize: 10),
-          ),
+          if (showTimestamp) ...[
+            const SizedBox(height: 3),
+            Text(
+              _formatTime(message.createdAt),
+              style: TextStyle(color: AppColors.muted, fontSize: 10),
+            ),
+          ],
         ],
       ),
     );
@@ -1952,8 +2058,10 @@ String _externalLinkPlatformName(ChatComponentCard card) {
 
 String _externalLinkOriginalText(ChatComponentCard card) {
   for (final value in [
-    card.payload['original_text'],
+    card.payload['summary'],
+    card.payload['page_title'],
     card.payload['content_text'],
+    card.payload['original_text'],
     card.body,
   ]) {
     final text = value?.toString().trim() ?? '';
