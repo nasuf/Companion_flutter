@@ -169,6 +169,34 @@ class _AdminChatManagementPageState extends State<_AdminChatManagementPage> {
   Future<void> _patchRuntimeConfig(Map<String, dynamic> patch) =>
       _patchRuntimeConfigWithKey('proactive_trending', patch);
 
+  String _proactiveTriggerReasonLabel(String? reason) {
+    switch (reason) {
+      case 'conversation_missing':
+        return '缺少聊天会话：请先进入与该 Agent 的聊天页后再试（或更新 App 后重试，系统会自动创建会话）。';
+      case 'workspace_missing':
+      case 'workspace_or_state_missing':
+        return '找不到有效的 workspace / 主动消息状态，请确认 Agent ID 正确且 workspace 处于 active。';
+      case 'empty_or_skip':
+        return 'LLM 未生成有效回复（可能主动消息模板被停用，或模型返回过短 / SKIP）。';
+      case 'memory_source_empty':
+        return '记忆主动消息抽不到可用记忆，请换 silence_wakeup 或 scheduled_scene 测试。';
+      case 'music_source_not_idle':
+        return '当前 AI 不在空闲状态，音乐类主动消息被跳过。';
+      case 'silence_exhausted':
+        return '该会话主动消息已进入衰减永久停止状态。';
+      case 'generation_or_limit_blocked':
+        return '生成或限流被拦截，请查看具体 reason 字段或后端日志。';
+      default:
+        if (reason == null || reason.isEmpty) {
+          return 'generation_or_limit_blocked';
+        }
+        if (reason.startsWith('state_not_sendable:')) {
+          return '主动消息状态不可发送（${reason.substring('state_not_sendable:'.length)}），请稍后重试或更新后端。';
+        }
+        return reason;
+    }
+  }
+
   Future<void> _pickAndTriggerProactive() async {
     if (_triggeringProactive) return;
     final selected = await showCupertinoModalPopup<String>(
@@ -300,8 +328,7 @@ class _AdminChatManagementPageState extends State<_AdminChatManagementPage> {
         setState(() {
           _triggeringProactive = false;
           _proactiveTriggerOk = false;
-          _proactiveTriggerFeedback =
-              result.reason ?? 'generation_or_limit_blocked';
+          _proactiveTriggerFeedback = _proactiveTriggerReasonLabel(result.reason);
         });
         return;
       }
@@ -477,9 +504,13 @@ class _AdminReplyDelayCardState extends State<_AdminReplyDelayCard> {
     super.dispose();
   }
 
+  bool get _maxDirty => _maxDraft.clamp(1, 3600) != widget.maxSeconds;
+
   void _commitMax() {
+    FocusManager.instance.primaryFocus?.unfocus();
     final next = _maxDraft.clamp(1, 3600);
-    _maxDraft = next;
+    setState(() => _maxDraft = next);
+    _maxController.text = '$next';
     if (next != widget.maxSeconds) widget.onCommitMaxSeconds(next);
   }
 
@@ -544,8 +575,16 @@ class _AdminReplyDelayCardState extends State<_AdminReplyDelayCard> {
               if (parsed != null) setState(() => _maxDraft = parsed);
             },
             onSubmitted: (_) => _commitMax(),
-            onEditingComplete: _commitMax,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: _AdminChatSettingsSaveButton(
+              label: widget.saving ? '保存中…' : '保存',
+              enabled: !controlsDisabled && _maxDirty,
+              onPressed: _commitMax,
+            ),
           ),
         ],
       ),
@@ -782,9 +821,13 @@ class _AdminProactiveTrendingCardState extends State<_AdminProactiveTrendingCard
     if (next != widget.linkPercent) widget.onCommitLinkPercent(next);
   }
 
+  bool get _ttlDirty => _ttlDraft.clamp(60, 86400) != widget.cacheTtlSeconds;
+
   void _commitTtl() {
+    FocusManager.instance.primaryFocus?.unfocus();
     final next = _ttlDraft.clamp(60, 86400);
-    _ttlDraft = next;
+    setState(() => _ttlDraft = next);
+    _ttlController.text = '$next';
     if (next != widget.cacheTtlSeconds) widget.onCommitCacheTtl(next);
   }
 
@@ -911,10 +954,54 @@ class _AdminProactiveTrendingCardState extends State<_AdminProactiveTrendingCard
               if (parsed != null) setState(() => _ttlDraft = parsed);
             },
             onSubmitted: (_) => _commitTtl(),
-            onEditingComplete: _commitTtl,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: _AdminChatSettingsSaveButton(
+              label: widget.saving ? '保存中…' : '保存',
+              enabled: !controlsDisabled && _ttlDirty,
+              onPressed: _commitTtl,
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _AdminChatSettingsSaveButton extends StatelessWidget {
+  const _AdminChatSettingsSaveButton({
+    required this.label,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoButton(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      minimumSize: const Size(72, 32),
+      borderRadius: BorderRadius.circular(999),
+      color: enabled ? const Color(0xFFD4A843) : null,
+      onPressed: enabled ? onPressed : null,
+      child: Text(
+        label,
+        style: TextStyle(
+          color: enabled
+              ? Colors.white
+              : (AppColors.isDark(context)
+                  ? const Color(0x66EBF2EE)
+                  : AppColors.muted),
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+          decoration: TextDecoration.none,
+        ),
       ),
     );
   }
