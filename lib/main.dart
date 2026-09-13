@@ -62,6 +62,7 @@ part 'src/auth/wechat_login_service.dart';
 part 'src/screens/admin_feedback_page.dart';
 part 'src/screens/admin_tools_page.dart';
 part 'src/screens/admin_dashboard_page.dart';
+part 'src/screens/admin_chat_settings_page.dart';
 part 'src/screens/admin_meal_page.dart';
 part 'src/screens/admin_games_page.dart';
 part 'src/screens/admin_models_page.dart';

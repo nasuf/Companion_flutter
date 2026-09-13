@@ -389,16 +389,33 @@ const List<String> _kRuntimeConfigKeys = [
   // Managed by the 全局模块开关 page; listed here so the models page
   // round-trips it on PUT instead of clearing it (full-document semantics).
   'web_search_enabled',
+  'proactive_trending_enabled',
+  'proactive_trending_probability',
+  'proactive_trending_link_probability',
+  'proactive_trending_cache_ttl_s',
+  'reply_delay_enabled',
+  'reply_delay_max_seconds',
+  'user_message_aggregation_enabled',
 ];
 
 class _RuntimeConfigBundle {
-  const _RuntimeConfigBundle({required this.config, required this.resolved});
+  const _RuntimeConfigBundle({
+    required this.config,
+    required this.resolved,
+    this.envGates = const {},
+  });
 
   /// Nullable configured values (null = inherit env / upstream).
   final Map<String, dynamic> config;
 
   /// Fully resolved effective values (never null).
   final Map<String, dynamic> resolved;
+
+  /// Read-only env gates returned by GET /runtime-config.
+  final Map<String, dynamic> envGates;
+
+  bool get proactiveLinkRecommendationEnabled =>
+      envGates['proactive_link_recommendation_enabled'] != false;
 
   factory _RuntimeConfigBundle.fromJson(Map<String, dynamic> json) {
     Map<String, dynamic> section(String key) {
@@ -410,6 +427,7 @@ class _RuntimeConfigBundle {
     return _RuntimeConfigBundle(
       config: section('config'),
       resolved: section('resolved'),
+      envGates: section('env_gates'),
     );
   }
 }

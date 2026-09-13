@@ -3168,21 +3168,22 @@ class _AdminHealthBlock extends StatelessWidget {
 }
 
 // ===========================================================================
-// 系统设置 (System settings — global module switches)
+// 全局模块开关 (offline modules / web search / TTS / achievement)
 // ===========================================================================
 
-class _AdminSystemSettingsPage extends StatefulWidget {
-  const _AdminSystemSettingsPage({required this.api, required this.session});
+class _AdminGlobalModuleSettingsPage extends StatefulWidget {
+  const _AdminGlobalModuleSettingsPage({required this.api, required this.session});
 
   final CompanionApi api;
   final AuthSession session;
 
   @override
-  State<_AdminSystemSettingsPage> createState() =>
-      _AdminSystemSettingsPageState();
+  State<_AdminGlobalModuleSettingsPage> createState() =>
+      _AdminGlobalModuleSettingsPageState();
 }
 
-class _AdminSystemSettingsPageState extends State<_AdminSystemSettingsPage> {
+class _AdminGlobalModuleSettingsPageState
+    extends State<_AdminGlobalModuleSettingsPage> {
   bool _loading = true;
   String? _error;
   _OfflineSettings? _offline;
@@ -3190,7 +3191,7 @@ class _AdminSystemSettingsPageState extends State<_AdminSystemSettingsPage> {
   // Runtime config bundle (from /admin-api/runtime-config) — carries the
   // web_search_enabled flag managed on this page.
   _RuntimeConfigBundle? _runtime;
-  String? _savingKey; // 'activity' | 'gift' | 'achievement' | 'websearch'
+  String? _savingKey; // activity | gift | achievement | websearch | tts
 
   @override
   void initState() {
@@ -3262,22 +3263,19 @@ class _AdminSystemSettingsPageState extends State<_AdminSystemSettingsPage> {
     return resolved is num ? resolved.round().clamp(0, 100).toInt() : 0;
   }
 
-  Future<void> _toggleWebSearch(bool next) async {
+  Future<void> _patchRuntimeConfig(
+    Map<String, dynamic> patch, {
+    required String savingKey,
+  }) async {
     final runtime = _runtime;
     if (runtime == null || _savingKey != null) return;
     setState(() {
-      _savingKey = 'websearch';
+      _savingKey = savingKey;
       _error = null;
     });
     try {
       widget.api.authToken = widget.session.token;
-      // Full-document PUT semantics: round-trip every config field and only
-      // flip the web search flag, so model routing edits are preserved.
-      final payload = <String, dynamic>{
-        for (final key in _kRuntimeConfigKeys) key: runtime.config[key],
-      };
-      payload['web_search_enabled'] = next;
-      final updated = await widget.api.updateAdminRuntimeConfig(payload);
+      final updated = await widget.api.updateAdminRuntimeConfig(patch);
       if (!mounted) return;
       setState(() {
         _runtime = updated;
@@ -3290,6 +3288,13 @@ class _AdminSystemSettingsPageState extends State<_AdminSystemSettingsPage> {
         _savingKey = null;
       });
     }
+  }
+
+  Future<void> _toggleWebSearch(bool next) async {
+    await _patchRuntimeConfig(
+      {'web_search_enabled': next},
+      savingKey: 'websearch',
+    );
   }
 
   Future<void> _changeTtsProbability(int next) async {
@@ -3397,8 +3402,8 @@ class _AdminSystemSettingsPageState extends State<_AdminSystemSettingsPage> {
   @override
   Widget build(BuildContext context) {
     return _AdminScaffold(
-      title: '系统设置',
-      subtitle: '全局模块开关 · 切换即保存',
+      title: '全局模块开关',
+      subtitle: '线下 / 联网 / 语音 / 成就 · 切换即保存',
       child: _buildBody(),
     );
   }
@@ -3413,7 +3418,8 @@ class _AdminSystemSettingsPageState extends State<_AdminSystemSettingsPage> {
       children: [
         _AdminCard(
           child: Text(
-            '控制线下模块主动推送、联网搜索与成就系统运行模式，切换后即时保存。已产生的条目及其查看 / 操作不受影响。',
+            '控制线下模块主动推送、联网搜索、语音输出与成就系统运行模式，切换后即时保存。'
+            '已产生的条目及其查看 / 操作不受影响。',
             style: TextStyle(
               color: AppColors.isDark(context)
                   ? const Color(0x9EEBF2EE)

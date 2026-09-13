@@ -503,6 +503,16 @@ Color _adminAuthMethodColor(String type) {
   };
 }
 
+class _AdminProactiveTestOptions {
+  const _AdminProactiveTestOptions({
+    required this.useWebSearch,
+    required this.useLinkCard,
+  });
+
+  final bool useWebSearch;
+  final bool useLinkCard;
+}
+
 class AdminToolsPage extends StatefulWidget {
   const AdminToolsPage({super.key, required this.api, required this.session});
 
@@ -519,6 +529,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
   bool _generatingActivity = false;
   bool _clearingActivities = false;
   bool _injectingGift = false;
+  bool _triggeringProactive = false;
 
   @override
   void initState() {
@@ -584,12 +595,26 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     );
   }
 
-  void _openSystemSettings() {
+  void _openGlobalModuleSettings() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
       CompanionPageRoute<void>(
-        builder: (_) =>
-            _AdminSystemSettingsPage(api: widget.api, session: widget.session),
+        builder: (_) => _AdminGlobalModuleSettingsPage(
+          api: widget.api,
+          session: widget.session,
+        ),
+      ),
+    );
+  }
+
+  void _openChatManagementSettings() {
+    widget.api.authToken = widget.session.token;
+    Navigator.of(context).push(
+      CompanionPageRoute<void>(
+        builder: (_) => _AdminChatManagementPage(
+          api: widget.api,
+          session: widget.session,
+        ),
       ),
     );
   }
@@ -656,6 +681,193 @@ class _AdminToolsPageState extends State<AdminToolsPage>
         ),
       ),
     );
+  }
+
+  Future<void> _pickProactiveTriggerType() async {
+    if (_triggeringProactive) return;
+    final selected = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (context) {
+        return CupertinoActionSheet(
+          title: const Text('选择主动聊天类型'),
+          message: const Text('会跳过日限/疲劳检查，方便连续测试'),
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(context).pop('silence_wakeup'),
+              child: const Text('沉默唤醒 (silence_wakeup)'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(context).pop('scheduled_scene'),
+              child: const Text('定时情景 (scheduled_scene)'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(context).pop('special_date'),
+              child: const Text('特殊日期 (special_date)'),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+        );
+      },
+    );
+    if (selected == null || !mounted) return;
+    final options = await _pickProactiveTestOptions(triggerType: selected);
+    if (options == null || !mounted) return;
+    await _triggerProactiveChat(
+      triggerType: selected,
+      useWebSearch: options.useWebSearch,
+      useLinkCard: options.useLinkCard,
+    );
+  }
+
+  Future<_AdminProactiveTestOptions?> _pickProactiveTestOptions({
+    required String triggerType,
+  }) async {
+    var useWebSearch = false;
+    var useLinkCard = false;
+    return showCupertinoDialog<_AdminProactiveTestOptions>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return CupertinoAlertDialog(
+              title: const Text('主动交流测试选项'),
+              content: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Text(
+                    '类型：$triggerType',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          '触发网络搜索',
+                          style: TextStyle(fontSize: 15),
+                        ),
+                      ),
+                      CupertinoSwitch(
+                        value: useWebSearch,
+                        onChanged: (value) {
+                          setDialogState(() => useWebSearch = value);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          '触发链接卡片',
+                          style: TextStyle(fontSize: 15),
+                        ),
+                      ),
+                      CupertinoSwitch(
+                        value: useLinkCard,
+                        onChanged: (value) {
+                          setDialogState(() => useLinkCard = value);
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                CupertinoDialogAction(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('取消'),
+                ),
+                CupertinoDialogAction(
+                  isDefaultAction: true,
+                  onPressed: () => Navigator.of(context).pop(
+                    _AdminProactiveTestOptions(
+                      useWebSearch: useWebSearch,
+                      useLinkCard: useLinkCard,
+                    ),
+                  ),
+                  child: const Text('确认触发'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _triggerProactiveChat({
+    required String triggerType,
+    required bool useWebSearch,
+    required bool useLinkCard,
+  }) async {
+    if (_triggeringProactive) return;
+    final workspaceId = widget.session.workspaceId?.trim();
+    final agentId = widget.session.agentId?.trim();
+    if ((workspaceId == null || workspaceId.isEmpty) &&
+        (agentId == null || agentId.isEmpty)) {
+      await _showActivityResult(
+        title: '无法触发',
+        message: '当前登录会话缺少 workspaceId / agentId，请先进入聊天页后再试。',
+      );
+      return;
+    }
+
+    setState(() => _triggeringProactive = true);
+    var progressOpen = true;
+    unawaited(
+      showCupertinoDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const _AdminProgressDialog(
+          title: '正在触发主动聊天',
+          message: '正在生成并推送一条 AI 主动消息...',
+        ),
+      ).whenComplete(() {
+        progressOpen = false;
+      }),
+    );
+
+    try {
+      widget.api.authToken = widget.session.token;
+      final result = await widget.api.triggerAdminProactiveChat(
+        workspaceId: workspaceId,
+        agentId: agentId,
+        triggerType: triggerType,
+        useWebSearch: useWebSearch,
+        useLinkCard: useLinkCard,
+      );
+      if (!mounted) return;
+      if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
+      setState(() => _triggeringProactive = false);
+      if (!result.ok) {
+        await _showActivityResult(
+          title: '主动聊天未发出',
+          message: result.reason ?? 'generation_or_limit_blocked',
+        );
+        return;
+      }
+      final preview = (result.message ?? '').trim();
+      final flags = [
+        '联网搜索：${result.webSearchUsed ? '已注入' : '未注入'}',
+        '链接卡片：${result.linkCardUsed ? '已附带' : '未附带'}',
+      ].join('\n');
+      await _showActivityResult(
+        title: '主动聊天已触发',
+        message: preview.isEmpty
+            ? '消息已发送，请到聊天页查看。\n类型：${result.triggerType}\n$flags'
+            : '类型：${result.triggerType}\n$flags\n\n$preview',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
+      setState(() => _triggeringProactive = false);
+      await _showActivityResult(title: '触发失败', message: _asMessage(error));
+    }
   }
 
   Future<void> _triggerActivityGeneration() async {
@@ -1054,15 +1266,22 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                       const SizedBox(height: 16),
                       _ProfileSectionV6(
                         title: '系统设置',
-                        trailing: '全局开关',
+                        trailing: '全局 · 聊天 · 模型',
                         child: Column(
                           children: [
                             _ProfileSettingRowV6(
                               icon: CupertinoIcons.slider_horizontal_3,
                               title: '全局模块开关',
-                              subtitle: '线下活动 / 礼物推荐 / 成就系统运行模式',
+                              subtitle: '线下活动 / 礼物 / 联网搜索 / 语音 / 成就',
                               accent: const Color(0xFFD4A843),
-                              onTap: _openSystemSettings,
+                              onTap: _openGlobalModuleSettings,
+                            ),
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.chat_bubble_text_fill,
+                              title: '聊天管理',
+                              subtitle: '主动消息热点参考 · 链接卡概率 · 缓存 TTL',
+                              accent: const Color(0xFF2D73FF),
+                              onTap: _openChatManagementSettings,
                             ),
                             _ProfileSettingRowV6(
                               icon: CupertinoIcons.cube_box_fill,
@@ -1090,6 +1309,16 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                               enabled:
                                   !_generatingActivity && !_clearingActivities,
                               onTap: _triggerActivityGeneration,
+                            ),
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.chat_bubble_2_fill,
+                              title: _triggeringProactive
+                                  ? '正在触发主动聊天'
+                                  : '测试主动聊天',
+                              subtitle: '立即推送一条 AI 主动消息（沉默/情景/特殊日期）',
+                              accent: const Color(0xFF7A5BE3),
+                              enabled: !_triggeringProactive,
+                              onTap: _pickProactiveTriggerType,
                             ),
                             _ProfileSettingRowV6(
                               icon: CupertinoIcons.trash_fill,

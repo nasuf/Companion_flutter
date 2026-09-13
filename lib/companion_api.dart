@@ -17,6 +17,35 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+class AdminProactiveTriggerResult {
+  const AdminProactiveTriggerResult({
+    required this.ok,
+    required this.triggerType,
+    this.message,
+    this.reason,
+    this.webSearchUsed = false,
+    this.linkCardUsed = false,
+  });
+
+  final bool ok;
+  final String triggerType;
+  final String? message;
+  final String? reason;
+  final bool webSearchUsed;
+  final bool linkCardUsed;
+
+  factory AdminProactiveTriggerResult.fromJson(Map<String, dynamic> json) {
+    return AdminProactiveTriggerResult(
+      ok: json['ok'] == true,
+      triggerType: json['trigger_type']?.toString() ?? '',
+      message: json['message']?.toString(),
+      reason: json['reason']?.toString(),
+      webSearchUsed: json['web_search_used'] == true,
+      linkCardUsed: json['link_card_used'] == true,
+    );
+  }
+}
+
 class CompanionApi {
   CompanionApi({required this.baseUrl});
 
@@ -582,6 +611,33 @@ class CompanionApi {
 
   /// 管理员测试：为当前用户注入一份走 mock 链路的礼物（含物流轨迹）。
   /// [delivered] 为 true 时直接注入「已送达」礼物并推送送达消息。
+  /// Admin QA: manually fire one proactive chat message for the current user.
+  Future<AdminProactiveTriggerResult> triggerAdminProactiveChat({
+    String? workspaceId,
+    String? agentId,
+    String triggerType = 'silence_wakeup',
+    bool skipLimits = true,
+    bool useWebSearch = false,
+    bool useLinkCard = false,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/admin-api/proactive/trigger',
+              body: {
+                if (workspaceId != null && workspaceId.isNotEmpty)
+                  'workspace_id': workspaceId,
+                if (agentId != null && agentId.isNotEmpty) 'agent_id': agentId,
+                'trigger_type': triggerType,
+                'skip_limits': skipLimits,
+                'use_web_search': useWebSearch,
+                'use_link_card': useLinkCard,
+              },
+            )
+            as Map<String, dynamic>;
+    return AdminProactiveTriggerResult.fromJson(json);
+  }
+
   Future<RealWorldGift> createMockGift({
     String? workspaceId,
     bool delivered = false,
