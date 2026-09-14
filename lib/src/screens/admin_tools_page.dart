@@ -852,9 +852,15 @@ class _AdminToolsPageState extends State<AdminToolsPage>
         return;
       }
       final preview = (result.message ?? '').trim();
+      final skipReasonStr = (result.linkCardSkipReason ?? '').trim();
+      final cardLine = result.linkCardUsed
+          ? '链接卡片：已附带'
+          : (skipReasonStr.isEmpty
+              ? '链接卡片：未附带'
+              : '链接卡片：未附带（原因：$skipReasonStr）');
       final flags = [
         '联网搜索：${result.webSearchUsed ? '已注入' : '未注入'}',
-        '链接卡片：${result.linkCardUsed ? '已附带' : '未附带'}',
+        cardLine,
       ].join('\n');
       await _showActivityResult(
         title: '主动聊天已触发',

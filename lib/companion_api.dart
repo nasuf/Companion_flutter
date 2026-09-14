@@ -25,6 +25,7 @@ class AdminProactiveTriggerResult {
     this.reason,
     this.webSearchUsed = false,
     this.linkCardUsed = false,
+    this.linkCardSkipReason,
   });
 
   final bool ok;
@@ -33,6 +34,10 @@ class AdminProactiveTriggerResult {
   final String? reason;
   final bool webSearchUsed;
   final bool linkCardUsed;
+  // 2026-09-14 (server task#12): linkCardUsed=false 时说明具体原因,
+  // 如 metadata_unusable_partial (微博/知乎需登录, 抓不到内容) /
+  // preselected_no_url / gate_rejected / exception_XXX. linkCardUsed=true 时 null.
+  final String? linkCardSkipReason;
 
   factory AdminProactiveTriggerResult.fromJson(Map<String, dynamic> json) {
     return AdminProactiveTriggerResult(
@@ -42,6 +47,7 @@ class AdminProactiveTriggerResult {
       reason: json['reason']?.toString(),
       webSearchUsed: json['web_search_used'] == true,
       linkCardUsed: json['link_card_used'] == true,
+      linkCardSkipReason: json['link_card_skip_reason']?.toString(),
     );
   }
 }
