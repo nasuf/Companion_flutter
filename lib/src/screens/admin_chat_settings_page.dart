@@ -178,6 +178,8 @@ class _AdminChatManagementPageState extends State<_AdminChatManagementPage> {
         return '找不到有效的 workspace / 主动消息状态，请确认 Agent ID 正确且 workspace 处于 active。';
       case 'empty_or_skip':
         return 'LLM 未生成有效回复（可能主动消息模板被停用，或模型返回过短 / SKIP）。';
+      case 'llm_skip_literal':
+        return 'LLM 主动返回了 SKIP —— 通常代表模型认为当前上下文不适合发起主动消息。';
       case 'memory_source_empty':
         return '记忆主动消息抽不到可用记忆，请换 silence_wakeup 或 scheduled_scene 测试。';
       case 'music_source_not_idle':
@@ -192,6 +194,15 @@ class _AdminChatManagementPageState extends State<_AdminChatManagementPage> {
         }
         if (reason.startsWith('state_not_sendable:')) {
           return '主动消息状态不可发送（${reason.substring('state_not_sendable:'.length)}），请稍后重试或更新后端。';
+        }
+        if (reason.startsWith('prompt_disabled:')) {
+          return '主动消息 prompt 被停用（${reason.substring('prompt_disabled:'.length)}），请到后台提示词管理开启。';
+        }
+        if (reason.startsWith('llm_response_too_short:')) {
+          return 'LLM 返回过短（${reason.substring('llm_response_too_short:'.length)}），已判定为无效回复。若持续出现请检查模型健康。';
+        }
+        if (reason.startsWith('llm_error:')) {
+          return 'LLM 调用失败（${reason.substring('llm_error:'.length)}），请查看后端日志排查网络或配额。';
         }
         return reason;
     }
