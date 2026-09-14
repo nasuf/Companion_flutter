@@ -2057,9 +2057,15 @@ String _externalLinkPlatformName(ChatComponentCard card) {
 }
 
 String _externalLinkOriginalText(ChatComponentCard card) {
+  // 2026-09-14 顺序调整: page_title (真实视频/帖子标题) 优先.
+  // 之前 summary (页面描述) 排第一, 导致 B站视频卡片主体位显示的是长段描述而不是
+  // 视频真名 (用户截图: "上海浦东机场与虹桥机场各有特色..." 其实是描述, 真名
+  // 反被埋在 page_title). 帖子/视频真名短、具体、指向性强, 是"这条卡在讲什么"
+  // 的核心信息; summary 是补充上下文, 应作次要.
+  // 对全部 6 个支持平台 (微博/小红书/B站/知乎/抖音/头条) 一视同仁.
   for (final value in [
-    card.payload['summary'],
     card.payload['page_title'],
+    card.payload['summary'],
     card.payload['content_text'],
     card.payload['original_text'],
     card.body,

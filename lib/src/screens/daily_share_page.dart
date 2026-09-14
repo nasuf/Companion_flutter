@@ -491,13 +491,17 @@ class _DailyLinkCard extends StatelessWidget {
   }
 
   String _dailyLinkOriginalText(DailyShareLink link) {
+    // 2026-09-14 顺序调整 (跟 message_widgets._externalLinkOriginalText 对齐):
+    // user 手动分享时 original_text (那段话) 是主意图, 保留在最前;
+    // AI 主动/程序化 card 没有 original_text, 让真实页面标题 (link.title = page_title
+    // 后端来源) 优先, 长段 summary/description 作 fallback.
     for (final value in [
       link.componentCard.payload['original_text'],
       link.componentCard.payload['content_text'],
+      link.title,
       link.componentCard.body,
       link.summary,
       link.description,
-      link.title,
     ]) {
       final text = value?.toString().trim() ?? '';
       if (text.isNotEmpty) return text;
