@@ -619,6 +619,16 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     );
   }
 
+  void _openModelManagement() {
+    widget.api.authToken = widget.session.token;
+    Navigator.of(context).push(
+      CompanionPageRoute<void>(
+        builder: (_) =>
+            _AdminModelsPage(api: widget.api, session: widget.session),
+      ),
+    );
+  }
+
   void _openMealAdmin() {
     widget.api.authToken = widget.session.token;
     Navigator.of(context).push(
@@ -645,16 +655,6 @@ class _AdminToolsPageState extends State<AdminToolsPage>
       CompanionPageRoute<void>(
         builder: (_) =>
             _AdminPaymentsPage(api: widget.api, session: widget.session),
-      ),
-    );
-  }
-
-  void _openModelManagement() {
-    widget.api.authToken = widget.session.token;
-    Navigator.of(context).push(
-      CompanionPageRoute<void>(
-        builder: (_) =>
-            _AdminModelsPage(api: widget.api, session: widget.session),
       ),
     );
   }
@@ -800,6 +800,47 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     );
   }
 
+  String _proactiveTriggerReasonLabel(String? reason) {
+    // 与后端 sender._generate_message / _log_skip 的 skip_reason 词表对齐.
+    // 未识别 reason 原样返, 兜底 empty_or_skip 保持向后兼容.
+    switch (reason) {
+      case 'conversation_missing':
+        return '缺少聊天会话：请先进入与该 Agent 的聊天页后再试（或更新 App 后重试，系统会自动创建会话）。';
+      case 'workspace_missing':
+      case 'workspace_or_state_missing':
+        return '找不到有效的 workspace / 主动消息状态，请确认 Agent ID 正确且 workspace 处于 active。';
+      case 'empty_or_skip':
+        return 'LLM 未生成有效回复（可能主动消息模板被停用，或模型返回过短 / SKIP）。';
+      case 'llm_skip_literal':
+        return 'LLM 主动返回了 SKIP —— 通常代表模型认为当前上下文不适合发起主动消息。';
+      case 'memory_source_empty':
+        return '记忆主动消息抽不到可用记忆，请换 silence_wakeup 或 scheduled_scene 测试。';
+      case 'music_source_not_idle':
+        return '当前 AI 不在空闲状态，音乐类主动消息被跳过。';
+      case 'silence_exhausted':
+        return '该会话主动消息已进入衰减永久停止状态。';
+      case 'generation_or_limit_blocked':
+        return '生成或限流被拦截，请查看具体 reason 字段或后端日志。';
+      default:
+        if (reason == null || reason.isEmpty) {
+          return 'generation_or_limit_blocked';
+        }
+        if (reason.startsWith('state_not_sendable:')) {
+          return '主动消息状态不可发送（${reason.substring('state_not_sendable:'.length)}），请稍后重试或更新后端。';
+        }
+        if (reason.startsWith('prompt_disabled:')) {
+          return '主动消息 prompt 被停用（${reason.substring('prompt_disabled:'.length)}），请到后台提示词管理开启。';
+        }
+        if (reason.startsWith('llm_response_too_short:')) {
+          return 'LLM 返回过短（${reason.substring('llm_response_too_short:'.length)}），已判定为无效回复。若持续出现请检查模型健康。';
+        }
+        if (reason.startsWith('llm_error:')) {
+          return 'LLM 调用失败（${reason.substring('llm_error:'.length)}），请查看后端日志排查网络或配额。';
+        }
+        return reason;
+    }
+  }
+
   Future<void> _triggerProactiveChat({
     required String triggerType,
     required bool useWebSearch,
@@ -847,7 +888,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
       if (!result.ok) {
         await _showActivityResult(
           title: '主动聊天未发出',
-          message: result.reason ?? 'generation_or_limit_blocked',
+          message: _proactiveTriggerReasonLabel(result.reason),
         );
         return;
       }
