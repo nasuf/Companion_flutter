@@ -7,7 +7,6 @@ class _ChatHeader extends StatelessWidget {
     this.interactionDays,
     this.aiStatus,
     this.aiStatusLabel,
-    this.aiActivity,
     this.avatarUrl,
     this.isMusicListening = false,
     this.isMusicPlaying = false,
@@ -22,7 +21,6 @@ class _ChatHeader extends StatelessWidget {
   final int? interactionDays;
   final String? aiStatus;
   final String? aiStatusLabel;
-  final String? aiActivity;
   final String? avatarUrl;
   final bool isMusicListening;
   final bool isMusicPlaying;
@@ -33,10 +31,9 @@ class _ChatHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusLabel = _formatAgentStatusLabel(
+    final statusLabel = formatAgentStatusLabel(
       status: aiStatus,
       label: aiStatusLabel,
-      activity: aiActivity,
     );
     final statusColor = _agentStatusColor(aiStatus);
     return Container(
@@ -98,13 +95,10 @@ class _ChatHeader extends StatelessWidget {
                 ),
                 if (statusLabel != null) ...[
                   const SizedBox(height: 3),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 156),
-                    child: _HeaderPill(
-                      foreground: statusColor.foreground,
-                      background: statusColor.background,
-                      label: statusLabel,
-                    ),
+                  _HeaderPill(
+                    foreground: statusColor.foreground,
+                    background: statusColor.background,
+                    label: statusLabel,
                   ),
                 ],
               ],
@@ -154,38 +148,6 @@ class _ChatHeader extends StatelessWidget {
       background: const Color(0xFFF2F5F8),
     ),
   };
-}
-
-String? _formatAgentStatusLabel({
-  required String? status,
-  required String? label,
-  required String? activity,
-}) {
-  final cleanStatus = status?.trim();
-  final statusText = _firstNonEmpty(label, switch (cleanStatus) {
-    'idle' => '空闲',
-    'busy' => '忙碌',
-    'very_busy' => '很忙',
-    'sleep' => '睡眠',
-    _ => cleanStatus,
-  });
-  if (statusText == null) return null;
-
-  final cleanActivity = activity?.trim();
-  if (cleanActivity == null ||
-      cleanActivity.isEmpty ||
-      cleanActivity == statusText) {
-    return statusText;
-  }
-  return '$statusText · $cleanActivity';
-}
-
-String? _firstNonEmpty(String? primary, String? fallback) {
-  final cleanPrimary = primary?.trim();
-  if (cleanPrimary != null && cleanPrimary.isNotEmpty) return cleanPrimary;
-  final cleanFallback = fallback?.trim();
-  if (cleanFallback != null && cleanFallback.isNotEmpty) return cleanFallback;
-  return null;
 }
 
 class _InteractionMarkIcon extends StatelessWidget {

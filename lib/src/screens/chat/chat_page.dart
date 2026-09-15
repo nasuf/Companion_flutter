@@ -3997,7 +3997,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   interactionDays: _conversationMeta?.interactionDays,
                   aiStatus: _conversationMeta?.aiStatus,
                   aiStatusLabel: _conversationMeta?.aiStatusLabel,
-                  aiActivity: _conversationMeta?.aiActivity,
                   avatarUrl: agentAvatarUrl,
                   isMusicListening: _isUserCoListening,
                   isMusicPlaying:
