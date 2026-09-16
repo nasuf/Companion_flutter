@@ -11,6 +11,10 @@ class _RedPacketComponentCard extends StatelessWidget {
   final bool isMine;
   final VoidCallback onTap;
 
+  int get _ticketAmount => redPacketTicketAmountFromCard(card);
+
+  String get _blessing => redPacketBlessingFromCard(card);
+
   @override
   Widget build(BuildContext context) {
     const accent = Color(0xFFFF4D5F);
@@ -112,15 +116,27 @@ class _RedPacketComponentCard extends StatelessWidget {
                                     height: 1.2,
                                   ),
                                 ),
+                                if (_ticketAmount > 0)
+                                  Text(
+                                    '$_ticketAmount 钞票',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: accent,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1.3,
+                                    ),
+                                  ),
                                 Text(
-                                  card.body.isEmpty ? '给你的一点心意' : card.body,
-                                  maxLines: 1,
+                                  _blessing,
+                                  maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     color: isDark
                                         ? const Color(0xFFC9A8AD)
                                         : const Color(0xFF9D6E74),
-                                    fontSize: 10,
+                                    fontSize: 12,
                                     fontWeight: FontWeight.w600,
                                     height: 1.35,
                                   ),

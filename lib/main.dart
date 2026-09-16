@@ -188,6 +188,7 @@ part 'src/widgets/chat/location_component_card.dart';
 part 'src/widgets/chat/panels.dart';
 part 'src/widgets/chat/chat_search_result_rows.dart';
 part 'src/screens/chat/red_packet_sheet.dart';
+part 'src/screens/chat/red_packet_send_sheet.dart';
 part 'src/screens/chat/gift_sheet.dart';
 part 'src/screens/chat/gift_picker_page.dart';
 part 'src/screens/chat/location_confirm_page.dart';

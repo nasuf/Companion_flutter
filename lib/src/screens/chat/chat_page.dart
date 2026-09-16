@@ -2749,11 +2749,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         await _showInsufficientTicketsForRedPacket();
         return;
       }
-      final amount = await _askRedPacketAmount(wallet.ticketBalance);
-      if (!mounted || amount == null) return;
+      final draft = await RedPacketSendSheet.push(
+        context,
+        ticketBalance: wallet.ticketBalance,
+      );
+      if (!mounted || draft == null) return;
       final result = await widget.api.sendRedPacket(
         conversationId: _conversationId,
-        ticketAmount: amount,
+        ticketAmount: draft.ticketAmount,
+        blessing: draft.blessing,
       );
       if (!mounted) return;
       sendComponentMessage('', result.componentCard);
@@ -2825,80 +2829,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _showRedPacketToast('位置发送失败：${_asMessage(error)}');
     } finally {
       _sendingLocation = false;
-    }
-  }
-
-  Future<int?> _askRedPacketAmount(num balance) async {
-    final controller = TextEditingController();
-    try {
-      return await showCupertinoDialog<int>(
-        context: context,
-        builder: (dialogContext) {
-          var errorText = '';
-          return StatefulBuilder(
-            builder: (context, setDialogState) {
-              return CupertinoAlertDialog(
-                title: const Text('发红包'),
-                content: Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        '当前余额 ${formatTicketAmount(balance)} 钞票',
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                      const SizedBox(height: 12),
-                      CupertinoTextField(
-                        controller: controller,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        placeholder: '输入钞票数量',
-                        autofocus: true,
-                      ),
-                      if (errorText.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          errorText,
-                          style: const TextStyle(
-                            color: Color(0xFFFF4D5F),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                actions: [
-                  CupertinoDialogAction(
-                    onPressed: () => Navigator.of(dialogContext).pop(),
-                    child: const Text('取消'),
-                  ),
-                  CupertinoDialogAction(
-                    isDefaultAction: true,
-                    onPressed: () {
-                      final value = parseRedPacketTicketAmount(controller.text);
-                      if (value == null) {
-                        setDialogState(() {
-                          errorText = '请输入 1 到 1000000 的整数';
-                        });
-                        return;
-                      }
-                      Navigator.of(dialogContext).pop(value);
-                    },
-                    child: const Text('发送'),
-                  ),
-                ],
-              );
-            },
-          );
-        },
-      );
-    } finally {
-      controller.dispose();
     }
   }
 

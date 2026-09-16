@@ -50,8 +50,9 @@ class _RedPacketSheetPageState extends State<RedPacketSheetPage> {
 
   bool get _received => _card.payload['status']?.toString() == 'received';
 
-  int get _amount =>
-      int.tryParse(_card.payload['ticket_amount']?.toString() ?? '') ?? 0;
+  int get _amount => redPacketTicketAmountFromCard(_card);
+
+  String get _blessing => redPacketBlessingFromCard(_card);
 
   @override
   void initState() {
@@ -248,6 +249,19 @@ class _RedPacketSheetPageState extends State<RedPacketSheetPage> {
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
+                                    if (_blessing.isNotEmpty) ...[
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        _blessing,
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: ink,
+                                          fontSize: 15,
+                                          height: 1.45,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
                                     const SizedBox(height: 16),
                                     Container(
                                       padding: const EdgeInsets.symmetric(

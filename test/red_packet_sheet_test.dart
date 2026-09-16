@@ -9,18 +9,20 @@ ChatComponentCard _card({
   required String offeringId,
   required int amount,
   required String status,
+  String? blessing,
 }) {
   return ChatComponentCard(
     type: 'red_packet',
     title: '红包',
-    subtitle: status == 'received' ? '已领取' : '待领取',
-    body: '给你的一点心意',
+    subtitle: '$amount 钞票',
+    body: blessing ?? '给你的一点心意',
     footer: '点击查看',
     accent: '#FF4D5F',
     payload: {
       'offering_id': offeringId,
       'ticket_amount': amount,
       'status': status,
+      if (blessing != null) 'blessing': blessing,
     },
   );
 }
@@ -89,6 +91,7 @@ void main() {
     expect(find.text('100'), findsOneWidget);
     expect(find.text('待领取'), findsOneWidget);
     expect(find.text('还没拆开'), findsOneWidget);
+    expect(find.text('给你的一点心意'), findsOneWidget);
     expect(api.getCalls, 1);
     expect(tester.takeException(), isNull);
   });
@@ -98,7 +101,12 @@ void main() {
   ) async {
     _useDesignCanvas(tester);
 
-    final card = _card(offeringId: 'off-2', amount: 18, status: 'received');
+    final card = _card(
+      offeringId: 'off-2',
+      amount: 18,
+      status: 'received',
+      blessing: '早点休息呀',
+    );
     final api = _FakeRedPacketApi(
       RedPacketSendResult(
         offering: RedPacketOffering(
@@ -139,6 +147,7 @@ void main() {
     expect(find.text('已经收下了'), findsOneWidget);
     expect(find.text('已领取'), findsOneWidget);
     expect(find.text('这份心意已被接收'), findsOneWidget);
+    expect(find.text('早点休息呀'), findsOneWidget);
     expect(find.text('这份心意已经到账'), findsNothing);
     expect(find.text('封'), findsNothing);
 

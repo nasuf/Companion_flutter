@@ -17,6 +17,16 @@ void main() {
     expect(parseRedPacketTicketAmount('abc'), isNull);
   });
 
+  test('normalizeRedPacketBlessing trims and caps at 40 chars', () {
+    expect(normalizeRedPacketBlessing(null), isNull);
+    expect(normalizeRedPacketBlessing('   '), isNull);
+    expect(normalizeRedPacketBlessing('  早点休息  '), '早点休息');
+    expect(
+      normalizeRedPacketBlessing('啊' * 41),
+      '啊' * 40,
+    );
+  });
+
   test('red packet send result parses offering and card', () {
     final result = RedPacketSendResult.fromJson({
       'offering': {
@@ -25,20 +35,22 @@ void main() {
         'ticket_amount': 18,
         'agent_value_yuan': 18,
         'status': 'sent',
+        'blessing': '早点休息呀',
         'agent_id': 'agent-1',
         'created_at': '2026-08-20T08:00:00Z',
       },
       'component_card': {
         'type': 'red_packet',
         'title': '红包',
-        'subtitle': '',
-        'body': '给你的一点心意',
+        'subtitle': '18 钞票',
+        'body': '早点休息呀',
         'footer': '点击查看',
         'accent': '#FF4D5F',
         'payload': {
           'offering_id': 'off-1',
           'ticket_amount': 18,
           'status': 'sent',
+          'blessing': '早点休息呀',
         },
       },
       'wallet': {
@@ -50,9 +62,12 @@ void main() {
 
     expect(result.offering.id, 'off-1');
     expect(result.offering.ticketAmount, 18);
+    expect(result.offering.blessing, '早点休息呀');
     expect(result.offering.isReceived, isFalse);
     expect(result.componentCard.type, 'red_packet');
     expect(result.componentCard.payload['offering_id'], 'off-1');
+    expect(redPacketTicketAmountFromCard(result.componentCard), 18);
+    expect(redPacketBlessingFromCard(result.componentCard), '早点休息呀');
     expect(result.wallet?.ticketBalance, 82);
   });
 

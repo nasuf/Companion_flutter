@@ -1264,6 +1264,36 @@ int? parseRedPacketTicketAmount(String raw) {
   return value;
 }
 
+const kRedPacketBlessingMaxChars = 40;
+const kRedPacketDefaultBody = '给你的一点心意';
+
+class RedPacketSendDraft {
+  const RedPacketSendDraft({required this.ticketAmount, this.blessing});
+
+  final int ticketAmount;
+  final String? blessing;
+}
+
+String? normalizeRedPacketBlessing(String? raw) {
+  final trimmed = (raw ?? '').trim();
+  if (trimmed.isEmpty) return null;
+  if (trimmed.length <= kRedPacketBlessingMaxChars) return trimmed;
+  return trimmed.substring(0, kRedPacketBlessingMaxChars);
+}
+
+int redPacketTicketAmountFromCard(ChatComponentCard card) {
+  final raw = card.payload['ticket_amount'];
+  if (raw is num) return raw.round();
+  return int.tryParse(raw?.toString() ?? '') ?? 0;
+}
+
+String redPacketBlessingFromCard(ChatComponentCard card) {
+  final fromPayload = card.payload['blessing']?.toString().trim() ?? '';
+  if (fromPayload.isNotEmpty) return fromPayload;
+  final body = card.body.trim();
+  return body.isEmpty ? kRedPacketDefaultBody : body;
+}
+
 class RedPacketOffering {
   const RedPacketOffering({
     required this.id,
