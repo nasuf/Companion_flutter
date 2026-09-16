@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:companion_flutter/models.dart';
+
 /// Schedules read + typing UI feedback to align with server-side reply delay.
 class ReplyUiDelayController {
   ReplyUiDelayController({required this.onApply});
@@ -48,3 +50,53 @@ double replyUiDelaySeconds(Object? raw) {
 }
 
 bool replyUiDefer(Object? raw) => raw == true;
+
+int? findReadReceiptMessageIndex(
+  List<ChatMessage> messages, {
+  required String clientId,
+  String? messageId,
+}) {
+  for (var i = 0; i < messages.length; i += 1) {
+    final message = messages[i];
+    final matchesClient =
+        message.id == clientId || message.clientId == clientId;
+    final matchesMessageId =
+        messageId != null &&
+        messageId.isNotEmpty &&
+        message.id == messageId;
+    if (matchesClient || matchesMessageId) {
+      return i;
+    }
+  }
+  return null;
+}
+
+/// When one user message becomes read, every earlier user message in the
+/// same uninterrupted streak should also show read (later timers can fire
+/// first when each message carries its own delay budget).
+List<ChatMessage> applyReadReceiptCascade(
+  List<ChatMessage> messages, {
+  required String clientId,
+  String? messageId,
+}) {
+  final matchedIndex = findReadReceiptMessageIndex(
+    messages,
+    clientId: clientId,
+    messageId: messageId,
+  );
+  if (matchedIndex == null) {
+    return messages;
+  }
+
+  final updated = List<ChatMessage>.from(messages);
+  for (var i = matchedIndex; i >= 0; i -= 1) {
+    final message = updated[i];
+    if (!message.isMine) {
+      break;
+    }
+    if (!message.read || message.pending) {
+      updated[i] = message.copyWith(read: true, pending: false);
+    }
+  }
+  return updated;
+}

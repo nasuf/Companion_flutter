@@ -1050,6 +1050,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _upsertServerMessage(ChatMessage serverMessage) {
+    if (serverMessage.isAchievement) {
+      final achievementId = serverMessage.achievementItem?.id;
+      if (achievementId != null) {
+        final existingIndex = _messages.indexWhere(
+          (message) =>
+              message.isAchievement &&
+              message.achievementItem?.id == achievementId,
+        );
+        if (existingIndex != -1) {
+          _messages[existingIndex] = serverMessage;
+          return;
+        }
+      }
+    }
     final serverClientId = serverMessage.clientId;
     final exactIndex = _messages.indexWhere((message) {
       if (message.id == serverMessage.id) return true;
@@ -2659,6 +2673,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _showAchievementNotice(AchievementItem item) {
+    if (_messages.any(
+      (message) =>
+          message.isAchievement && message.achievementItem?.id == item.id,
+    )) {
+      return;
+    }
     final shouldAutoScroll = widget.isActive && _isNearBottomNow();
     final message = ChatMessage.achievement(
       conversationId: _conversationId,
@@ -3687,18 +3707,23 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     required String clientId,
     String? messageId,
   }) {
+    _replyUiDelay.cancel();
     _notifyTranscript(() {
-      for (var i = 0; i < _messages.length; i += 1) {
-        final message = _messages[i];
-        final matchesClient =
-            message.id == clientId || message.clientId == clientId;
-        final matchesMessageId =
-            messageId != null &&
-            messageId.isNotEmpty &&
-            message.id == messageId;
-        if (!matchesClient && !matchesMessageId) continue;
-        _messages[i] = message.copyWith(read: true, pending: false);
-        break;
+      final matchedIndex = findReadReceiptMessageIndex(
+        _messages,
+        clientId: clientId,
+        messageId: messageId,
+      );
+      if (matchedIndex != null) {
+        for (var i = matchedIndex; i >= 0; i -= 1) {
+          final message = _messages[i];
+          if (!message.isMine) {
+            break;
+          }
+          if (!message.read || message.pending) {
+            _messages[i] = message.copyWith(read: true, pending: false);
+          }
+        }
       }
       _agentTyping = true;
     });
