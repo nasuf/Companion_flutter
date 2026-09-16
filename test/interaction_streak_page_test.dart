@@ -88,9 +88,16 @@ class _FakeInteractionApi extends CompanionApi {
   }
 }
 
-void _usePhoneCanvas(WidgetTester tester) {
+void _usePhoneCanvas(
+  WidgetTester tester, {
+  Size size = const Size(390, 844),
+  double topInset = 0,
+  double bottomInset = 0,
+}) {
   tester.view.devicePixelRatio = 1.0;
-  tester.view.physicalSize = const Size(390, 844);
+  tester.view.physicalSize = size;
+  tester.view.padding = FakeViewPadding(top: topInset, bottom: bottomInset);
+  tester.view.viewPadding = FakeViewPadding(top: topInset, bottom: bottomInset);
   addTearDown(tester.view.reset);
 }
 
@@ -140,9 +147,52 @@ void main() {
     expect(find.text('0'), findsOneWidget);
     expect(find.byKey(const Key('interaction-back')), findsOneWidget);
     expect(find.byKey(const Key('interaction-calendar')), findsOneWidget);
-    expect(find.text('32-60天', skipOffstage: false), findsOneWidget);
-    expect(find.text('31-60天', skipOffstage: false), findsNothing);
-    expect(find.text('连续互动标识', skipOffstage: false), findsOneWidget);
+    expect(find.text('32-60天'), findsOneWidget);
+    expect(find.text('31-60天'), findsNothing);
+    expect(find.text('连续互动标识'), findsOneWidget);
+    expect(find.text('补签卡 x2'), findsOneWidget);
+  });
+
+  testWidgets('collapsed layout fits a notched phone without scrolling', (
+    tester,
+  ) async {
+    _usePhoneCanvas(tester, topInset: 59, bottomInset: 34);
+    await tester.pumpWidget(
+      _app(_FakeInteractionApi(_overview(streak: 3, cards: 2))),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('连续互动标识'), findsOneWidget);
+    expect(find.text('100天以上'), findsOneWidget);
+    expect(find.text('补签卡 x2'), findsOneWidget);
+    expect(find.text('32-60天'), findsOneWidget);
+
+    final list = tester.widget<ListView>(
+      find.byKey(const Key('interaction-scroll')),
+    );
+    expect(list.physics, isA<NeverScrollableScrollPhysics>());
+  });
+
+  testWidgets('collapsed layout fits a short phone without scrolling', (
+    tester,
+  ) async {
+    _usePhoneCanvas(
+      tester,
+      size: const Size(375, 667),
+      topInset: 20,
+      bottomInset: 0,
+    );
+    await tester.pumpWidget(
+      _app(_FakeInteractionApi(_overview(streak: 0, cards: 0))),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('连续互动标识'), findsOneWidget);
+    expect(find.text('补签卡 x0'), findsOneWidget);
+    final list = tester.widget<ListView>(
+      find.byKey(const Key('interaction-scroll')),
+    );
+    expect(list.physics, isA<NeverScrollableScrollPhysics>());
   });
 
   testWidgets('tapping a missable day confirms and consumes a makeup card', (

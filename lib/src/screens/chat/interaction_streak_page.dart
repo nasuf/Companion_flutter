@@ -41,6 +41,60 @@ DateTime? _parseIsoDate(String? raw) {
   return DateTime.tryParse(text.substring(0, 10));
 }
 
+/// Spacing for the collapsed (no-scroll) layout. Calendar expand still scrolls.
+class _InteractionFit {
+  const _InteractionFit({
+    required this.headerPadTop,
+    required this.headerPadBottom,
+    required this.summaryHeight,
+    required this.sectionGap,
+    required this.bottomPad,
+  });
+
+  final double headerPadTop;
+  final double headerPadBottom;
+  final double summaryHeight;
+  final double sectionGap;
+  final double bottomPad;
+
+  static const navHeight = 36.0;
+  static const makeupBlock = 28.0;
+  static const makeupGap = 8.0;
+
+  factory _InteractionFit.header(double safeHeight) {
+    final tight = safeHeight < 700;
+    return _InteractionFit(
+      headerPadTop: tight ? 4 : 8,
+      headerPadBottom: tight ? 6 : 10,
+      summaryHeight: 183,
+      sectionGap: 12,
+      bottomPad: 12,
+    );
+  }
+
+  /// [viewportHeight] is the body below the nav, inside SafeArea.
+  factory _InteractionFit.body(double viewportHeight) {
+    final tight = viewportHeight < 640;
+    final bottomPad = tight ? 8.0 : 12.0;
+    final gap = tight ? 8.0 : (viewportHeight < 720 ? 10.0 : 14.0);
+    final innerH = viewportHeight - bottomPad;
+    final leftover =
+        innerH - _kCheckinCalendarCollapsed - makeupBlock - makeupGap - gap * 2;
+    const minMarks = 88.0;
+    final target = (leftover * 0.36).clamp(96.0, 183.0);
+    final summaryHeight = leftover <= minMarks
+        ? leftover * 0.4
+        : math.min(target, leftover - minMarks);
+    return _InteractionFit(
+      headerPadTop: 8,
+      headerPadBottom: 10,
+      summaryHeight: summaryHeight,
+      sectionGap: gap,
+      bottomPad: bottomPad,
+    );
+  }
+}
+
 class InteractionStreakPage extends StatefulWidget {
   const InteractionStreakPage({
     super.key,
@@ -309,6 +363,9 @@ class _InteractionStreakPageState extends State<InteractionStreakPage> {
     final tokens = _tokens(context);
     final w = _W2b.resolve(context);
     final stage = interactionFlameStage(_streak);
+    final media = MediaQuery.of(context);
+    final safeHeight = media.size.height - media.padding.vertical;
+    final headerFit = _InteractionFit.header(safeHeight);
     return Scaffold(
       backgroundColor: tokens.page,
       body: Stack(
@@ -318,9 +375,14 @@ class _InteractionStreakPageState extends State<InteractionStreakPage> {
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    headerFit.headerPadTop,
+                    16,
+                    headerFit.headerPadBottom,
+                  ),
                   child: SizedBox(
-                    height: 36,
+                    height: _InteractionFit.navHeight,
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
@@ -349,73 +411,124 @@ class _InteractionStreakPageState extends State<InteractionStreakPage> {
                   ),
                 ),
                 Expanded(
-                  child: ListView(
-                    key: const Key('interaction-scroll'),
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-                    physics: const BouncingScrollPhysics(),
-                    children: [
-                      _InteractionSummaryCard(
-                        agentAvatarUrl: widget.agentAvatarUrl,
-                        userAvatarUrl: widget.userAvatarUrl,
-                        days: _streak,
-                        progress: interactionStageProgress(_streak),
-                        stage: stage,
-                        glass: w,
-                      ),
-                      const SizedBox(height: 16),
-                      _CheckinCalendarCard(
-                        selectedDate: _selectedDate,
-                        visibleWeek: _visibleWeek,
-                        visibleMonth: _visibleMonth,
-                        expanded: _calendarExpanded,
-                        markFor: _markFor,
-                        onSelected: _onDaySelected,
-                        onVisibleWeekChanged: (week) =>
-                            setState(() => _visibleWeek = week),
-                        onVisibleMonthChanged: _onVisibleMonthChanged,
-                        onExpandedChanged: (expanded) =>
-                            setState(() => _calendarExpanded = expanded),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final fit = _InteractionFit.body(constraints.maxHeight);
+                      return _buildBody(
+                        constraints: constraints,
+                        fit: fit,
                         tokens: tokens,
-                        calendarKey: 'interaction-calendar',
-                        dayKeyPrefix: 'interaction',
-                        today: _today,
-                      ),
-                      if (_error != null) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          _error!,
-                          style: TextStyle(
-                            color: tokens.subtitle,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 24),
-                      _InteractionMarksCard(currentStage: stage, glass: w),
-                      const SizedBox(height: 20),
-                      GestureDetector(
-                        key: const Key('interaction-makeup-count'),
-                        behavior: HitTestBehavior.opaque,
-                        onTap: _makeupCards <= 0 ? _openStore : null,
-                        child: Text(
-                          '补签卡 x$_makeupCards',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: _makeupCards <= 0
-                                ? _interactionAccent
-                                : tokens.subtitle,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
+                        glass: w,
+                        stage: stage,
+                      );
+                    },
                   ),
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildBody({
+    required BoxConstraints constraints,
+    required _InteractionFit fit,
+    required _CheckinTokens tokens,
+    required _W2b glass,
+    required int stage,
+  }) {
+    final pad = EdgeInsets.fromLTRB(16, 0, 16, fit.bottomPad);
+    final innerH = constraints.maxHeight - pad.vertical;
+    final calendar = _CheckinCalendarCard(
+      selectedDate: _selectedDate,
+      visibleWeek: _visibleWeek,
+      visibleMonth: _visibleMonth,
+      expanded: _calendarExpanded,
+      markFor: _markFor,
+      onSelected: _onDaySelected,
+      onVisibleWeekChanged: (week) => setState(() => _visibleWeek = week),
+      onVisibleMonthChanged: _onVisibleMonthChanged,
+      onExpandedChanged: (expanded) =>
+          setState(() => _calendarExpanded = expanded),
+      tokens: tokens,
+      calendarKey: 'interaction-calendar',
+      dayKeyPrefix: 'interaction',
+      today: _today,
+    );
+    final summary = _InteractionSummaryCard(
+      agentAvatarUrl: widget.agentAvatarUrl,
+      userAvatarUrl: widget.userAvatarUrl,
+      days: _streak,
+      progress: interactionStageProgress(_streak),
+      stage: stage,
+      glass: glass,
+      height: fit.summaryHeight,
+    );
+    final marks = _InteractionMarksCard(currentStage: stage, glass: glass);
+    final makeup = _makeupCount(tokens);
+    final pinToViewport = !_calendarExpanded && _error == null && innerH >= 480;
+    if (pinToViewport) {
+      return ListView(
+        key: const Key('interaction-scroll'),
+        padding: pad,
+        physics: const NeverScrollableScrollPhysics(),
+        children: [
+          SizedBox(
+            height: innerH,
+            child: Column(
+              children: [
+                summary,
+                SizedBox(height: fit.sectionGap),
+                calendar,
+                SizedBox(height: fit.sectionGap),
+                Expanded(child: marks),
+                const SizedBox(height: _InteractionFit.makeupGap),
+                makeup,
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+    return ListView(
+      key: const Key('interaction-scroll'),
+      padding: pad,
+      physics: const BouncingScrollPhysics(),
+      children: [
+        summary,
+        SizedBox(height: fit.sectionGap),
+        calendar,
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Text(_error!, style: TextStyle(color: tokens.subtitle, fontSize: 13)),
+        ],
+        SizedBox(height: fit.sectionGap),
+        SizedBox(height: math.max(260, innerH * 0.42), child: marks),
+        const SizedBox(height: _InteractionFit.makeupGap),
+        makeup,
+      ],
+    );
+  }
+
+  Widget _makeupCount(_CheckinTokens tokens) {
+    return GestureDetector(
+      key: const Key('interaction-makeup-count'),
+      behavior: HitTestBehavior.opaque,
+      onTap: _makeupCards <= 0 ? _openStore : null,
+      child: SizedBox(
+        height: _InteractionFit.makeupBlock - 8,
+        child: Text(
+          '补签卡 x$_makeupCards',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            height: 1.2,
+            color: _makeupCards <= 0 ? _interactionAccent : tokens.subtitle,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
     );
   }
@@ -485,6 +598,7 @@ class _InteractionSummaryCard extends StatelessWidget {
     required this.progress,
     required this.stage,
     required this.glass,
+    this.height = 183,
   });
 
   final String? agentAvatarUrl;
@@ -493,11 +607,16 @@ class _InteractionSummaryCard extends StatelessWidget {
   final double progress;
   final int stage;
   final _W2b glass;
+  final double height;
+
+  static const _designHeight = 183.0;
 
   @override
   Widget build(BuildContext context) {
+    final s = (height / _designHeight).clamp(0.68, 1.0);
+    final avatar = 64 * s;
     return Container(
-      height: 183,
+      height: height,
       decoration: BoxDecoration(
         color: glass.glass,
         borderRadius: BorderRadius.circular(20),
@@ -507,25 +626,25 @@ class _InteractionSummaryCard extends StatelessWidget {
       child: Stack(
         children: [
           Positioned(
-            left: 24,
-            top: 24,
+            left: 24 * s,
+            top: 16 * s,
             child: Column(
               children: [
                 SizedBox(
-                  width: 120,
-                  height: 64,
+                  width: 120 * s,
+                  height: avatar,
                   child: Stack(
                     children: [
                       _Avatar(
-                        size: 64,
+                        size: avatar,
                         label: '我',
                         imageUrl: userAvatarUrl,
                         gradient: const [Color(0xFFE8F3FF), Color(0xFFF8FBFF)],
                       ),
                       Positioned(
-                        left: 56,
+                        left: 56 * s,
                         child: _Avatar(
-                          size: 64,
+                          size: avatar,
                           label: '伴',
                           imageUrl: agentAvatarUrl,
                           gradient: const [
@@ -537,29 +656,29 @@ class _InteractionSummaryCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8 * s),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    const Text(
+                    Text(
                       '连续互动',
-                      style: TextStyle(fontSize: 14, color: Colors.black),
+                      style: TextStyle(fontSize: 14 * s, color: Colors.black),
                     ),
-                    const SizedBox(width: 5),
+                    SizedBox(width: 5 * s),
                     Text(
                       '$days',
-                      style: const TextStyle(
-                        fontSize: 24,
+                      style: TextStyle(
+                        fontSize: 24 * s,
                         height: 1,
                         color: _interactionAccent,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(width: 5),
-                    const Text(
+                    SizedBox(width: 5 * s),
+                    Text(
                       '天',
-                      style: TextStyle(fontSize: 14, color: Colors.black),
+                      style: TextStyle(fontSize: 14 * s, color: Colors.black),
                     ),
                   ],
                 ),
@@ -567,19 +686,23 @@ class _InteractionSummaryCard extends StatelessWidget {
             ),
           ),
           Positioned(
-            right: 11,
-            top: 16,
-            child: _CurrentInteractionMark(stage: stage),
+            right: 11 * s,
+            top: 8 * s,
+            child: Transform.scale(
+              scale: s,
+              alignment: Alignment.topRight,
+              child: _CurrentInteractionMark(stage: stage),
+            ),
           ),
           Positioned(
-            left: 24,
-            right: 26,
-            bottom: 24,
+            left: 24 * s,
+            right: 26 * s,
+            bottom: 18 * s,
             child: Stack(
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  height: 20,
+                  height: 20 * s,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(999),
@@ -601,7 +724,7 @@ class _InteractionSummaryCard extends StatelessWidget {
                     child: FractionallySizedBox(
                       widthFactor: progress,
                       child: Container(
-                        height: 14,
+                        height: 14 * s,
                         decoration: BoxDecoration(
                           color: _interactionAccent,
                           borderRadius: BorderRadius.circular(999),
@@ -610,10 +733,10 @@ class _InteractionSummaryCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                const Positioned(
-                  right: -18,
-                  top: -16,
-                  child: _InteractionMarkIcon(size: 40, stage: 1),
+                Positioned(
+                  right: -18 * s,
+                  top: -16 * s,
+                  child: _InteractionMarkIcon(size: 40 * s, stage: 1),
                 ),
               ],
             ),
@@ -644,59 +767,76 @@ class _InteractionMarksCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 340,
-      padding: const EdgeInsets.fromLTRB(24, 22, 24, 24),
-      decoration: BoxDecoration(
-        color: glass.glass,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: glass.glassBorder),
-        boxShadow: glass.panelShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final padV = (constraints.maxHeight * 0.06).clamp(10.0, 22.0);
+        final padH = (constraints.maxWidth * 0.06).clamp(14.0, 24.0);
+        final titleGap = (constraints.maxHeight * 0.045).clamp(8.0, 20.0);
+        final spacing = (constraints.maxHeight * 0.05).clamp(8.0, 20.0);
+        return Container(
+          padding: EdgeInsets.fromLTRB(padH, padV, padH, padV),
+          decoration: BoxDecoration(
+            color: glass.glass,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: glass.glassBorder),
+            boxShadow: glass.panelShadow,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _SectionSparkleIcon(size: 16),
-              SizedBox(width: 4),
-              Text(
-                '连续互动标识',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              const Row(
+                children: [
+                  _SectionSparkleIcon(size: 16),
+                  SizedBox(width: 4),
+                  Text(
+                    '连续互动标识',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+              SizedBox(height: titleGap),
+              Expanded(
+                child: Column(
+                  children: [
+                    for (var row = 0; row < 2; row++) ...[
+                      if (row > 0) SizedBox(height: spacing),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            for (var col = 0; col < 3; col++) ...[
+                              if (col > 0) SizedBox(width: spacing),
+                              Expanded(child: _markCell(row * 3 + col)),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 24),
-          Expanded(
-            child: GridView.builder(
-              padding: EdgeInsets.zero,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _ranges.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                mainAxisSpacing: 24,
-                crossAxisSpacing: 24,
-                childAspectRatio: 0.82,
-              ),
-              itemBuilder: (context, index) {
-                return Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _InteractionMarkIcon(size: 84, stage: index),
-                    const SizedBox(height: 4),
-                    Text(
-                      _ranges[index],
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: index <= currentStage
-                            ? Colors.black
-                            : const Color(0xFF5E5E5E),
-                      ),
-                    ),
-                  ],
-                );
-              },
+        );
+      },
+    );
+  }
+
+  Widget _markCell(int index) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _InteractionMarkIcon(size: 84, stage: index),
+          const SizedBox(height: 4),
+          Text(
+            _ranges[index],
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              color: index <= currentStage
+                  ? Colors.black
+                  : const Color(0xFF5E5E5E),
             ),
           ),
         ],
