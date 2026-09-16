@@ -78,23 +78,24 @@ class _ChatHeader extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  agentName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    height: 1.1,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black,
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: Text(
+                    agentName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      height: 1.1,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black,
+                    ),
                   ),
                 ),
                 if (statusLabel != null) ...[
-                  const SizedBox(height: 3),
+                  const SizedBox(width: 6),
                   _HeaderPill(
                     foreground: statusColor.foreground,
                     background: statusColor.background,
