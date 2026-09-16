@@ -316,8 +316,8 @@ class _InteractionStreakPageState extends State<InteractionStreakPage> {
       context: context,
       builder: (dialogContext) {
         return CupertinoAlertDialog(
-          title: const Text('补签卡不足'),
-          content: const Text('去商店看看补签卡礼包？'),
+          title: const Text('暂无补签卡'),
+          content: const Text('补签卡已用完，可前往商城购买补签卡礼包。'),
           actions: [
             CupertinoDialogAction(
               onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -326,7 +326,7 @@ class _InteractionStreakPageState extends State<InteractionStreakPage> {
             CupertinoDialogAction(
               isDefaultAction: true,
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('去商店'),
+              child: const Text('去商城'),
             ),
           ],
         );
@@ -556,7 +556,7 @@ class _InteractionStreakPageState extends State<InteractionStreakPage> {
     return GestureDetector(
       key: const Key('interaction-makeup-count'),
       behavior: HitTestBehavior.opaque,
-      onTap: _makeupCards <= 0 ? _openStore : null,
+      onTap: _makeupCards <= 0 ? _promptBuyCards : null,
       child: SizedBox(
         height: _InteractionFit.makeupBlock - 8,
         child: Text(

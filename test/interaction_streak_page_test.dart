@@ -251,7 +251,29 @@ void main() {
     await tester.tap(find.byKey(const Key('interaction-week-day-2026-09-15')));
     await tester.pumpAndSettle();
 
-    expect(find.text('补签卡不足'), findsOneWidget);
-    expect(find.text('去商店看看补签卡礼包？'), findsOneWidget);
+    expect(find.text('暂无补签卡'), findsOneWidget);
+    expect(find.text('补签卡已用完，可前往商城购买补签卡礼包。'), findsOneWidget);
+  });
+
+  testWidgets('confirming store prompt opens the bundle tab', (tester) async {
+    _usePhoneCanvas(
+      tester,
+      size: const Size(390, 844),
+    );
+    await tester.pumpWidget(
+      _app(_FakeInteractionApi(_overview(streak: 0, cards: 0))),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('interaction-week-day-2026-09-15')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(CupertinoDialogAction, '去商城'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(StorePage), findsOneWidget);
+    final store = tester.widget<StorePage>(find.byType(StorePage));
+    expect(store.openBundle, isTrue);
+    final pageView = tester.widget<PageView>(find.byType(PageView));
+    expect(pageView.controller!.initialPage, 1);
   });
 }
