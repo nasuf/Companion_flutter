@@ -368,7 +368,8 @@ class AdminUserFeedbackItem {
       content: json['content'] as String? ?? '',
       contact: json['contact'] as String? ?? '',
       occurredAt: json['occurred_at'] as String?,
-      imageUrls: (json['image_urls'] as List?)
+      imageUrls:
+          (json['image_urls'] as List?)
               ?.map((item) => item.toString())
               .toList(growable: false) ??
           const [],
@@ -530,6 +531,68 @@ class Conversation {
               Map<String, dynamic>.from(json['music_co_listening'] as Map),
             )
           : null,
+    );
+  }
+}
+
+class WorkspaceInteractionDay {
+  const WorkspaceInteractionDay({
+    required this.date,
+    this.source,
+    required this.makeupEligible,
+  });
+
+  final String date;
+  final String? source;
+  final bool makeupEligible;
+
+  factory WorkspaceInteractionDay.fromJson(Map<String, dynamic> json) {
+    return WorkspaceInteractionDay(
+      date: json['date'] as String? ?? '',
+      source: json['source'] as String?,
+      makeupEligible: json['makeup_eligible'] as bool? ?? false,
+    );
+  }
+}
+
+class WorkspaceInteractionOverview {
+  const WorkspaceInteractionOverview({
+    required this.currentStreak,
+    required this.today,
+    required this.todayMarked,
+    required this.makeupCards,
+    required this.lookbackDays,
+    required this.workspaceCreatedOn,
+    this.month,
+    required this.days,
+  });
+
+  final int currentStreak;
+  final String today;
+  final bool todayMarked;
+  final int makeupCards;
+  final int lookbackDays;
+  final String workspaceCreatedOn;
+  final String? month;
+  final List<WorkspaceInteractionDay> days;
+
+  factory WorkspaceInteractionOverview.fromJson(Map<String, dynamic> json) {
+    return WorkspaceInteractionOverview(
+      currentStreak: (json['current_streak'] as num?)?.round() ?? 0,
+      today: json['today'] as String? ?? '',
+      todayMarked: json['today_marked'] as bool? ?? false,
+      makeupCards: (json['makeup_cards'] as num?)?.round() ?? 0,
+      lookbackDays: (json['lookback_days'] as num?)?.round() ?? 30,
+      workspaceCreatedOn: json['workspace_created_on'] as String? ?? '',
+      month: json['month'] as String?,
+      days: (json['days'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map(
+            (row) => WorkspaceInteractionDay.fromJson(
+              Map<String, dynamic>.from(row),
+            ),
+          )
+          .toList(),
     );
   }
 }
@@ -1739,11 +1802,7 @@ GamePointRules? seedGamePointRules(String gameKey) {
         {'tile': 1024, 'points': 15},
         {'tile': 2048, 'points': 25},
       ],
-      'quit_below_threshold': {
-        'threshold': 128,
-        'below': -2,
-        'at_or_above': 0,
-      },
+      'quit_below_threshold': {'threshold': 128, 'below': -2, 'at_or_above': 0},
     },
     _ => null,
   };
@@ -1896,7 +1955,9 @@ class IapMembership {
 
   factory IapMembership.fromJson(Map<String, dynamic> json) {
     return IapMembership(
-      vip: VipStatus.fromJson(Map<String, dynamic>.from(json['vip'] as Map? ?? const {})),
+      vip: VipStatus.fromJson(
+        Map<String, dynamic>.from(json['vip'] as Map? ?? const {}),
+      ),
       subscription: json['subscription'] == null
           ? null
           : IapSubscriptionStatus.fromJson(
@@ -1905,9 +1966,8 @@ class IapMembership {
       autoRenewActive: json['auto_renew_active'] == true,
       history: (json['history'] as List? ?? const [])
           .map(
-            (item) => IapHistoryItem.fromJson(
-              Map<String, dynamic>.from(item as Map),
-            ),
+            (item) =>
+                IapHistoryItem.fromJson(Map<String, dynamic>.from(item as Map)),
           )
           .toList(),
     );

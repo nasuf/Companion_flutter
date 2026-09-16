@@ -408,6 +408,33 @@ class CompanionApi {
     return Conversation.fromJson(json);
   }
 
+  Future<WorkspaceInteractionOverview> getWorkspaceInteraction(
+    String workspaceId, {
+    int? year,
+    int? month,
+  }) async {
+    final params = <String, String>{};
+    if (year != null) params['year'] = '$year';
+    if (month != null) params['month'] = '$month';
+    final query = Uri(queryParameters: params).query;
+    final path = query.isEmpty
+        ? '/workspaces/$workspaceId/interaction'
+        : '/workspaces/$workspaceId/interaction?$query';
+    final json = await _request('GET', path) as Map<String, dynamic>;
+    return WorkspaceInteractionOverview.fromJson(json);
+  }
+
+  Future<void> applyWorkspaceInteractionMakeup(
+    String workspaceId, {
+    required String date,
+  }) async {
+    await _request(
+      'POST',
+      '/workspaces/$workspaceId/interaction/makeup',
+      body: {'date': date},
+    );
+  }
+
   Future<AgentProfile> getAgent(String agentId) async {
     final json =
         await _request('GET', '/agents/$agentId') as Map<String, dynamic>;
@@ -457,10 +484,7 @@ class CompanionApi {
     int limit = 50,
     int offset = 0,
   }) async {
-    final params = <String, String>{
-      'limit': '$limit',
-      'offset': '$offset',
-    };
+    final params = <String, String>{'limit': '$limit', 'offset': '$offset'};
     if (status != null && status.isNotEmpty) {
       params['status'] = status;
     }
@@ -1509,10 +1533,7 @@ class CompanionApi {
     int limit = 50,
     int offset = 0,
   }) async {
-    final params = <String, String>{
-      'limit': '$limit',
-      'offset': '$offset',
-    };
+    final params = <String, String>{'limit': '$limit', 'offset': '$offset'};
     if (currency != null && currency.isNotEmpty) {
       params['currency'] = currency;
     }
@@ -1526,9 +1547,8 @@ class CompanionApi {
             as List<dynamic>;
     return json
         .map(
-          (item) => WalletLedgerItem.fromJson(
-            Map<String, dynamic>.from(item as Map),
-          ),
+          (item) =>
+              WalletLedgerItem.fromJson(Map<String, dynamic>.from(item as Map)),
         )
         .toList();
   }

@@ -13,6 +13,12 @@ enum _CheckinDayMark {
 
   /// Everything on that day is ticked — an accent disc with a check.
   done,
+
+  /// Interaction calendar: a missed day that can be filled with a makeup card.
+  missable,
+
+  /// Interaction calendar: filled by a makeup card rather than a real message.
+  makeup,
 }
 
 const String _kCheckinAsset = 'assets/checkin/';

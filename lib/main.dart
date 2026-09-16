@@ -75,6 +75,7 @@ part 'src/screens/avatar_crop_page.dart';
 part 'src/screens/achievement_page.dart';
 part 'src/screens/chat/chat_music_station_state.dart';
 part 'src/screens/chat/chat_page.dart';
+part 'src/screens/chat/interaction_streak_page.dart';
 part 'src/screens/checkin_page.dart';
 part 'src/screens/checkin/checkin_calendar.dart';
 part 'src/screens/checkin/checkin_date_utils.dart';

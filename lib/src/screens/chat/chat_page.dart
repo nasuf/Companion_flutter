@@ -2556,17 +2556,22 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     widget.onAchievementOverlayChanged?.call(true);
   }
 
-  void _openInteractionDetail() {
+  Future<void> _openInteractionDetail() async {
     _dismissInputSurfaces();
-    Navigator.of(context).push(
+    final workspaceId =
+        _conversationMeta?.workspaceId ?? widget.session.workspaceId ?? '';
+    await Navigator.of(context).push(
       CompanionPageRoute<void>(
-        builder: (_) => _InteractionStreakPage(
+        builder: (_) => InteractionStreakPage(
+          api: widget.api,
+          session: widget.session,
+          workspaceId: workspaceId,
           agentAvatarUrl: _agentAvatarUrl,
           userAvatarUrl: widget.session.userAvatarUrl,
-          interactionDays: _conversationMeta?.interactionDays ?? 0,
         ),
       ),
     );
+    if (mounted) unawaited(_refreshConversationMeta());
   }
 
   void _showDemoAchievementNotice() {

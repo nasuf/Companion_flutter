@@ -56,6 +56,10 @@ class _CheckinCalendarCard extends StatefulWidget {
     required this.onVisibleWeekChanged,
     required this.onVisibleMonthChanged,
     required this.onExpandedChanged,
+    this.tokens,
+    this.calendarKey = 'checkin-calendar',
+    this.dayKeyPrefix = 'checkin',
+    this.today,
   });
 
   final DateTime selectedDate;
@@ -67,6 +71,13 @@ class _CheckinCalendarCard extends StatefulWidget {
   final ValueChanged<DateTime> onVisibleWeekChanged;
   final ValueChanged<DateTime> onVisibleMonthChanged;
   final ValueChanged<bool> onExpandedChanged;
+  final _CheckinTokens? tokens;
+  final String calendarKey;
+  final String dayKeyPrefix;
+
+  /// Calendar day used for the solid "today" pill. Check-in keeps the device
+  /// local date; interaction passes the UTC+8 day from the server.
+  final DateTime? today;
 
   @override
   State<_CheckinCalendarCard> createState() => _CheckinCalendarCardState();
@@ -166,7 +177,7 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
 
   @override
   Widget build(BuildContext context) {
-    final tokens = _CheckinTokens.of(context);
+    final tokens = widget.tokens ?? _CheckinTokens.of(context);
     // A six-row month makes the open card taller; ease that change so paging
     // into one does not snap the task list down the screen.
     return TweenAnimationBuilder<double>(
@@ -204,7 +215,7 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
           onVerticalDragUpdate: _handleDragUpdate,
           onVerticalDragEnd: _handleDragEnd,
           child: Container(
-            key: const Key('checkin-calendar'),
+            key: Key(widget.calendarKey),
             height: height,
             decoration: BoxDecoration(
               color: tokens.card,
@@ -473,10 +484,10 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
     bool dimmed = false,
   }) {
     final selected = _isSameDate(date, widget.selectedDate);
-    final isToday = _isSameDate(date, DateTime.now());
+    final isToday = _isSameDate(date, widget.today ?? DateTime.now());
     final mark = widget.markFor(date);
     return GestureDetector(
-      key: Key('checkin-$keyPrefix-day-${_dateKey(date)}'),
+      key: Key('${widget.dayKeyPrefix}-$keyPrefix-day-${_dateKey(date)}'),
       behavior: HitTestBehavior.opaque,
       onTap: () => widget.onSelected(_dateOnlyTime(date)),
       child: Container(
@@ -580,6 +591,15 @@ class _CheckinDayMarker extends StatelessWidget {
           size: _size,
           color: marked,
           checkColor: onAccent ? tokens.accent : Colors.white,
+        ),
+        _CheckinDayMark.makeup => _CheckinCheckBadge(
+          size: _size,
+          color: onAccent ? Colors.white : const Color(0xFFE0A73C),
+          checkColor: onAccent ? const Color(0xFFE0A73C) : Colors.white,
+        ),
+        _CheckinDayMark.missable => _CheckinRingMark(
+          size: _size,
+          color: marked.withValues(alpha: onAccent ? 0.85 : 0.7),
         ),
         _CheckinDayMark.partial => _CheckinRingMark(size: _size, color: marked),
         _CheckinDayMark.pending => _dot(marked),
