@@ -67,163 +67,157 @@ class _RedPacketSendSheetState extends State<RedPacketSendSheet> {
     final media = MediaQuery.of(context);
     final keyboard = media.viewInsets.bottom;
     final half = media.size.height * 0.5;
-    final available = media.size.height - keyboard;
-    final height = math.min(half, available);
+    // Paint the sheet through the IME slot so iOS keyboard corner radii do
+    // not punch holes in a transparent pad. Only the form is inset.
+    final sheetHeight = math.min(half + keyboard, media.size.height);
     final bottomInset = media.padding.bottom;
+    final contentBottom = keyboard > 0 ? keyboard + 12 : 16 + bottomInset;
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: keyboard),
-      child: SizedBox(
-        key: const Key('red-packet-send-sheet'),
-        height: height,
-        width: double.infinity,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(30),
-              ),
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: w.isDark
-                    ? const [Color(0xFF1A1013), Color(0xFF0C0709)]
-                    : const [Color(0xFFFFF1F2), Color(0xFFE9F0FB)],
-              ),
-              boxShadow: w.panelShadow,
-            ),
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(30),
-              ),
-              child: Stack(
-                children: [
-                  Positioned(
-                    top: -40,
-                    right: -20,
-                    child: IgnorePointer(
-                      child: Container(
-                        width: 180,
-                        height: 180,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _redPacketSendAccent.withValues(
-                            alpha: w.isDark ? 0.16 : 0.14,
-                          ),
-                        ),
+    return SizedBox(
+      key: const Key('red-packet-send-sheet'),
+      height: sheetHeight,
+      width: double.infinity,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(30),
+          ),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: w.isDark
+                ? const [Color(0xFF1A1013), Color(0xFF0C0709)]
+                : const [Color(0xFFFFF1F2), Color(0xFFE9F0FB)],
+          ),
+          boxShadow: w.panelShadow,
+        ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(30),
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                top: -40,
+                right: -20,
+                child: IgnorePointer(
+                  child: Container(
+                    width: 180,
+                    height: 180,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _redPacketSendAccent.withValues(
+                        alpha: w.isDark ? 0.16 : 0.14,
                       ),
                     ),
                   ),
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      20,
-                      0,
-                      20,
-                      16 + bottomInset,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const _SheetGrabber(
-                          color: Color(0x99FF4D5F),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '发红包',
-                          style: TextStyle(
-                            color: w.ink,
-                            fontSize: 20,
-                            height: 1.25,
-                            fontWeight: FontWeight.w800,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '当前余额 ${formatTicketAmount(widget.ticketBalance)} 钞票',
-                          style: TextStyle(
-                            color: w.inkSoft,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Expanded(
-                          child: SingleChildScrollView(
-                            keyboardDismissBehavior:
-                                ScrollViewKeyboardDismissBehavior.onDrag,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _RedPacketSendField(
-                                  controller: _amountController,
-                                  fieldKey: const Key('red-packet-send-amount'),
-                                  keyboardType: TextInputType.number,
-                                  inputFormatters: [
-                                    FilteringTextInputFormatter.digitsOnly,
-                                  ],
-                                  placeholder: '输入钞票数量',
-                                  autofocus: true,
-                                  onChanged: (_) {
-                                    if (_errorText.isNotEmpty) {
-                                      setState(() => _errorText = '');
-                                    }
-                                  },
-                                ),
-                                const SizedBox(height: 12),
-                                _RedPacketSendField(
-                                  controller: _blessingController,
-                                  fieldKey: const Key(
-                                    'red-packet-send-blessing',
-                                  ),
-                                  placeholder: '写一句话给对方（选填）',
-                                  maxLines: 3,
-                                  maxLength: kRedPacketBlessingMaxChars,
-                                  onChanged: (_) => setState(() {}),
-                                ),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: Text(
-                                    '${_blessingController.text.length}/$kRedPacketBlessingMaxChars',
-                                    style: TextStyle(
-                                      color: w.inkFaint,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      decoration: TextDecoration.none,
-                                    ),
-                                  ),
-                                ),
-                                if (_errorText.isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    _errorText,
-                                    style: const TextStyle(
-                                      color: _redPacketSendAccent,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      decoration: TextDecoration.none,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _RedPacketSendActionButton(
-                          key: const Key('red-packet-send-submit'),
-                          label: '发送',
-                          onTap: _submit,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(20, 0, 20, contentBottom),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const _SheetGrabber(
+                      color: Color(0x99FF4D5F),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '发红包',
+                      style: TextStyle(
+                        color: w.ink,
+                        fontSize: 20,
+                        height: 1.25,
+                        fontWeight: FontWeight.w800,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '当前余额 ${formatTicketAmount(widget.ticketBalance)} 钞票',
+                      style: TextStyle(
+                        color: w.inkSoft,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _RedPacketSendField(
+                              controller: _amountController,
+                              fieldKey: const Key('red-packet-send-amount'),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                              ],
+                              placeholder: '输入钞票数量',
+                              autofocus: true,
+                              onChanged: (_) {
+                                if (_errorText.isNotEmpty) {
+                                  setState(() => _errorText = '');
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            _RedPacketSendField(
+                              controller: _blessingController,
+                              fieldKey: const Key(
+                                'red-packet-send-blessing',
+                              ),
+                              placeholder: '写一句话给对方（选填）',
+                              maxLines: 3,
+                              maxLength: kRedPacketBlessingMaxChars,
+                              onChanged: (_) => setState(() {}),
+                            ),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                '${_blessingController.text.length}/$kRedPacketBlessingMaxChars',
+                                style: TextStyle(
+                                  color: w.inkFaint,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  decoration: TextDecoration.none,
+                                ),
+                              ),
+                            ),
+                            if (_errorText.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                _errorText,
+                                style: const TextStyle(
+                                  color: _redPacketSendAccent,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  decoration: TextDecoration.none,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _RedPacketSendActionButton(
+                      key: const Key('red-packet-send-submit'),
+                      label: '发送',
+                      onTap: _submit,
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-      );
+      ),
+    );
   }
 }
 

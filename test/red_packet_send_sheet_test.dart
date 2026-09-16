@@ -46,6 +46,39 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('sheet background extends through the keyboard inset', (
+    tester,
+  ) async {
+    _useDesignCanvas(tester);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Builder(
+          builder: (context) => Center(
+            child: CupertinoButton(
+              onPressed: () => RedPacketSendSheet.push(
+                context,
+                ticketBalance: 80,
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    final sheetSize =
+        tester.getSize(find.byKey(const Key('red-packet-send-sheet')));
+    expect(sheetSize.height, closeTo(722, 1));
+    expect(sheetSize.width, closeTo(390, 1));
+    expect(find.text('发送'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('red packet send sheet returns amount and blessing', (
     tester,
   ) async {
