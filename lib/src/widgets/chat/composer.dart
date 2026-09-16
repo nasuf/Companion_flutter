@@ -1,5 +1,41 @@
 part of 'package:companion_flutter/main.dart';
 
+/// Compliance watermark: sits in the gap above the composer, not in a bubble.
+class _AiGeneratedHint extends StatelessWidget {
+  const _AiGeneratedHint();
+
+  static const _label = '回复由AI生成';
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Semantics(
+        label: _label,
+        child: SizedBox(
+          height: ChatScrollPolicy.aiGeneratedHintHeight,
+          width: double.infinity,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Text(
+                _label,
+                style: TextStyle(
+                  fontSize: 10,
+                  height: 1,
+                  letterSpacing: 0.8,
+                  fontWeight: FontWeight.w400,
+                  color: AppColors.muted.withValues(alpha: 0.32),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Composer extends StatelessWidget {
   const _Composer({
     required this.controller,

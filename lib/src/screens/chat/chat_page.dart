@@ -234,6 +234,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   StreamSubscription<MusicQuotaReport>? _musicQuotaSub;
   StreamSubscription<List<SharedMediaFile>>? _shareIntentSub;
   ComposerPanel _panel = ComposerPanel.none;
+
+  /// Occupancy-only placeholder after the user asks for the keyboard. Must not
+  /// be used to paint the emoji/more sheet — otherwise the IME overlays it.
   ComposerPanel _heldPanel = ComposerPanel.none;
   // The panel type kept on screen during a slide-out (the panel translates off
   // the bottom before its content is dropped), so the closing animation still
@@ -3792,8 +3795,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _panel = ComposerPanel.none;
     _heldPanel = panelToHold;
     // Hide the tab bar on this frame, matching the already-open-panel path.
-    // Keep [_heldPanel] until IME inset is gone so restLift cannot jump
-    // while the keyboard is still covering that occupancy.
+    // Keep [_heldPanel] occupancy until IME inset is gone so restLift cannot
+    // jump while the keyboard is covering that height. Do not paint it —
+    // the sheet itself must dismiss before (or as) the IME comes up.
     _setImeDockActive(true);
     DisplayRefreshRate.suppressRecover(
       DisplayRefreshPolicy.routeRecoverSuppress,
@@ -4014,29 +4018,36 @@ class _ChatInputChromeLayerState extends State<_ChatInputChromeLayer> {
 
   @override
   Widget build(BuildContext context) {
-    final visiblePanel = _host._panel != ComposerPanel.none
+    final occupancyPanel = _host._panel != ComposerPanel.none
         ? _host._panel
         : _host._heldPanel;
-    final visiblePanelHeight = _host._panelHeightFor(visiblePanel);
+    final paintedPanel = _host._panel;
+    final occupancyPanelHeight = _host._panelHeightFor(occupancyPanel);
     final composerHeight = _host._composerHeightForWidth();
     final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
     final tabBarLift = _ChatPageState._tabBarContentHeight + safeBottom;
-    final panelVisible = visiblePanel != ComposerPanel.none;
-    final panelSurfaceHeight = panelVisible
-        ? visiblePanelHeight + safeBottom
+    final panelVisible = paintedPanel != ComposerPanel.none;
+    final panelSurfaceHeight =
+        ChatScrollPolicy.keepPanelOccupancy(
+          panelOpen: panelVisible,
+          holdingOccupancy: _host._heldPanel != ComposerPanel.none,
+        )
+        ? occupancyPanelHeight + safeBottom
         : 0.0;
     final panelContentHeight = _ChatPageState._composerPanelHeight + safeBottom;
     if (panelVisible) {
-      _host._lastDisplayedPanel = visiblePanel;
+      _host._lastDisplayedPanel = paintedPanel;
     }
     final displayedPanel = panelVisible
-        ? visiblePanel
+        ? paintedPanel
         : _host._lastDisplayedPanel;
     final restLift = ChatScrollPolicy.restLift(
       tabBarLift: tabBarLift,
       panelLift: panelSurfaceHeight,
     );
-    _host._syncComposerDockVisibility(panelVisible: panelVisible);
+    _host._syncComposerDockVisibility(
+      panelVisible: panelVisible || _host._heldPanel != ComposerPanel.none,
+    );
 
     return Stack(
       children: [
@@ -4103,7 +4114,8 @@ class _ChatInputChromeLayerState extends State<_ChatInputChromeLayer> {
                 Positioned(
                   left: 0,
                   right: 0,
-                  bottom: composerHeight + 12,
+                  bottom:
+                      composerHeight + ChatScrollPolicy.aiGeneratedHintHeight,
                   child: _host._buildTranscriptOverlay(),
                 ),
               ],
@@ -4115,7 +4127,12 @@ class _ChatInputChromeLayerState extends State<_ChatInputChromeLayer> {
           right: 0,
           bottom: panelVisible ? 0 : -panelContentHeight,
           height: panelContentHeight,
-          duration: _ChatPageState._animationDuration,
+          // Snap away when the IME is coming up so the sheet is not left
+          // painted under the keyboard. User-dismiss (tap transcript) still
+          // slides off.
+          duration: panelVisible || !_host._imeDockActive
+              ? _ChatPageState._animationDuration
+              : Duration.zero,
           curve: _ChatPageState._animationCurve,
           onEnd: () {
             if (!panelVisible &&
@@ -4389,11 +4406,15 @@ class _TranscriptImeSlide extends StatelessWidget {
         builder: (context, child) {
           final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
           final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
-          final visiblePanel = host._panel != ComposerPanel.none
+          final occupancyPanel = host._panel != ComposerPanel.none
               ? host._panel
               : host._heldPanel;
-          final panelLift = visiblePanel != ComposerPanel.none
-              ? host._panelHeightFor(visiblePanel) + safeBottom
+          final panelLift =
+              ChatScrollPolicy.keepPanelOccupancy(
+                panelOpen: host._panel != ComposerPanel.none,
+                holdingOccupancy: host._heldPanel != ComposerPanel.none,
+              )
+              ? host._panelHeightFor(occupancyPanel) + safeBottom
               : 0.0;
           final restLift = ChatScrollPolicy.restLift(
             tabBarLift: _ChatPageState._tabBarContentHeight + safeBottom,
@@ -4408,7 +4429,23 @@ class _TranscriptImeSlide extends StatelessWidget {
           );
           final dpr = MediaQuery.devicePixelRatioOf(context);
           final snapped = (slide * dpr).round() / dpr;
-          return Transform.translate(offset: Offset(0, -snapped), child: child);
+          final composerHeight = host._composerHeightForWidth();
+          // Paint behind the list so bubbles cover the hint; keep it in this
+          // slide so it stays glued to the composer through IME motion.
+          return Transform.translate(
+            offset: Offset(0, -snapped),
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: composerHeight + restLift,
+                  child: const IgnorePointer(child: _AiGeneratedHint()),
+                ),
+                if (child != null) child,
+              ],
+            ),
+          );
         },
         child: RepaintBoundary(child: child),
       ),
@@ -4429,11 +4466,15 @@ class _ComposerRestGap extends StatelessWidget {
       listenable: host._composerShell,
       builder: (context, _) {
         final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
-        final visiblePanel = host._panel != ComposerPanel.none
+        final occupancyPanel = host._panel != ComposerPanel.none
             ? host._panel
             : host._heldPanel;
-        final panelLift = visiblePanel != ComposerPanel.none
-            ? host._panelHeightFor(visiblePanel) + safeBottom
+        final panelLift =
+            ChatScrollPolicy.keepPanelOccupancy(
+              panelOpen: host._panel != ComposerPanel.none,
+              holdingOccupancy: host._heldPanel != ComposerPanel.none,
+            )
+            ? host._panelHeightFor(occupancyPanel) + safeBottom
             : 0.0;
         final restLift = ChatScrollPolicy.restLift(
           tabBarLift: _ChatPageState._tabBarContentHeight + safeBottom,

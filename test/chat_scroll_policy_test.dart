@@ -75,10 +75,37 @@ void main() {
     },
   );
 
+  test('held occupancy is not the same as painting the panel', () {
+    expect(
+      ChatScrollPolicy.keepPanelOccupancy(
+        panelOpen: false,
+        holdingOccupancy: true,
+      ),
+      isTrue,
+    );
+    expect(
+      ChatScrollPolicy.keepPanelOccupancy(
+        panelOpen: false,
+        holdingOccupancy: false,
+      ),
+      isFalse,
+    );
+    expect(
+      ChatScrollPolicy.keepPanelOccupancy(
+        panelOpen: true,
+        holdingOccupancy: false,
+      ),
+      isTrue,
+    );
+  });
+
   test('rest composer gap does not include keyboard height', () {
     expect(
       ChatScrollPolicy.restComposerGap(composerHeight: 56, restLift: 80),
-      56 + 80 + ChatScrollPolicy.composerListGap,
+      56 +
+          80 +
+          ChatScrollPolicy.composerListGap +
+          ChatScrollPolicy.aiGeneratedHintHeight,
     );
   });
 

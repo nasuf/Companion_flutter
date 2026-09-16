@@ -11,6 +11,9 @@ class ChatScrollPolicy {
   static const double oldestEdgeThreshold = 80;
   static const double composerListGap = 18;
 
+  /// Thin watermark strip between the newest bubble and the composer.
+  static const double aiGeneratedHintHeight = 16;
+
   static ScrollPhysics get listPhysics =>
       const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics());
 
@@ -25,6 +28,18 @@ class ChatScrollPolicy {
     required double tabBarLift,
     required double panelLift,
   }) => panelLift > 0 ? panelLift : tabBarLift;
+
+  /// Whether restLift should keep the emoji/more panel's height.
+  ///
+  /// [panelOpen] is the painted sheet. [holdingOccupancy] is the IME-switch
+  /// placeholder: after the user taps the field we dismiss the painted panel
+  /// immediately, but keep this occupancy until the keyboard inset is gone so
+  /// the transcript slide cannot jump. Mixing the two (painting the held
+  /// panel) lets the IME overlay a still-visible sheet.
+  static bool keepPanelOccupancy({
+    required bool panelOpen,
+    required bool holdingOccupancy,
+  }) => panelOpen || holdingOccupancy;
 
   /// Hide the floating tab bar while a composer panel is docked or the IME
   /// is covering the same bottom strip. Cold-keyboard and panel-keyboard
@@ -49,7 +64,7 @@ class ChatScrollPolicy {
   static double restComposerGap({
     required double composerHeight,
     required double restLift,
-  }) => composerHeight + restLift + composerListGap;
+  }) => composerHeight + restLift + composerListGap + aiGeneratedHintHeight;
 
   /// True when the viewport is glued to the composer / newest messages.
   ///
