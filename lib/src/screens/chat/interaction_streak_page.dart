@@ -41,7 +41,7 @@ DateTime? _parseIsoDate(String? raw) {
   return DateTime.tryParse(text.substring(0, 10));
 }
 
-/// Spacing for the collapsed (no-scroll) layout. Calendar expand still scrolls.
+/// Spacing for the collapsed (no-scroll) layout. Calendar expand scrolls.
 class _InteractionFit {
   const _InteractionFit({
     required this.headerPadTop,
@@ -49,6 +49,7 @@ class _InteractionFit {
     required this.summaryHeight,
     required this.sectionGap,
     required this.bottomPad,
+    required this.marksHeight,
   });
 
   final double headerPadTop;
@@ -56,10 +57,13 @@ class _InteractionFit {
   final double summaryHeight;
   final double sectionGap;
   final double bottomPad;
+  final double marksHeight;
 
   static const navHeight = 36.0;
   static const makeupBlock = 28.0;
   static const makeupGap = 8.0;
+  static const marksDesignHeight = 292.0;
+  static const marksMinHeight = 220.0;
 
   factory _InteractionFit.header(double safeHeight) {
     final tight = safeHeight < 700;
@@ -69,6 +73,7 @@ class _InteractionFit {
       summaryHeight: 183,
       sectionGap: 12,
       bottomPad: 12,
+      marksHeight: marksDesignHeight,
     );
   }
 
@@ -78,19 +83,22 @@ class _InteractionFit {
     final bottomPad = tight ? 8.0 : 12.0;
     final gap = tight ? 8.0 : (viewportHeight < 720 ? 10.0 : 14.0);
     final innerH = viewportHeight - bottomPad;
-    final leftover =
-        innerH - _kCheckinCalendarCollapsed - makeupBlock - makeupGap - gap * 2;
-    const minMarks = 88.0;
-    final target = (leftover * 0.36).clamp(96.0, 183.0);
-    final summaryHeight = leftover <= minMarks
-        ? leftover * 0.4
-        : math.min(target, leftover - minMarks);
+    final fixed = _kCheckinCalendarCollapsed +
+        makeupBlock +
+        makeupGap +
+        gap * 2;
+    final flex = innerH - fixed;
+    final marksHeight = math
+        .min(marksDesignHeight, (flex * 0.52).clamp(marksMinHeight, marksDesignHeight))
+        .toDouble();
+    final summaryHeight = (flex - marksHeight).clamp(120.0, 183.0).toDouble();
     return _InteractionFit(
       headerPadTop: 8,
       headerPadBottom: 10,
       summaryHeight: summaryHeight,
       sectionGap: gap,
       bottomPad: bottomPad,
+      marksHeight: marksHeight,
     );
   }
 }
@@ -121,6 +129,7 @@ class _InteractionStreakPageState extends State<InteractionStreakPage> {
   late DateTime _visibleMonth;
   late DateTime _today;
   bool _calendarExpanded = false;
+  double _calendarExpansion = 0;
   bool _applying = false;
   String? _error;
   int _streak = 0;
@@ -358,6 +367,47 @@ class _InteractionStreakPageState extends State<InteractionStreakPage> {
     await _load(year: month.year, month: month.month);
   }
 
+  void _onCalendarExpansionProgress(double progress) {
+    final next = progress.clamp(0.0, 1.0);
+    if ((next - _calendarExpansion).abs() < 0.002) return;
+    setState(() => _calendarExpansion = next);
+  }
+
+  void _onCalendarExpandedChanged(bool expanded) {
+    setState(() {
+      _calendarExpanded = expanded;
+      _calendarExpansion = expanded ? 1 : 0;
+    });
+  }
+
+  bool _shouldScrollBody({required double viewportHeight}) {
+    if (_error != null) return true;
+    if (_calendarExpanded || _calendarExpansion > 0.001) return true;
+    return viewportHeight < 480;
+  }
+
+  double _marksCardHeight(_InteractionFit fit) {
+    if (_calendarExpanded || _calendarExpansion > 0.001) {
+      return _InteractionFit.marksDesignHeight;
+    }
+    return fit.marksHeight;
+  }
+
+  double _bottomSpacerHeight({
+    required double viewportHeight,
+    required _InteractionFit fit,
+    required double marksHeight,
+  }) {
+    if (_shouldScrollBody(viewportHeight: viewportHeight)) return 0;
+    final used = fit.summaryHeight +
+        fit.sectionGap * 2 +
+        _kCheckinCalendarCollapsed +
+        marksHeight +
+        _InteractionFit.makeupGap +
+        _InteractionFit.makeupBlock;
+    return math.max(0, viewportHeight - used);
+  }
+
   @override
   Widget build(BuildContext context) {
     final tokens = _tokens(context);
@@ -440,7 +490,14 @@ class _InteractionStreakPageState extends State<InteractionStreakPage> {
     required int stage,
   }) {
     final pad = EdgeInsets.fromLTRB(16, 0, 16, fit.bottomPad);
-    final innerH = constraints.maxHeight - pad.vertical;
+    final viewportHeight = constraints.maxHeight;
+    final scrollEnabled = _shouldScrollBody(viewportHeight: viewportHeight);
+    final marksHeight = _marksCardHeight(fit);
+    final bottomSpacer = _bottomSpacerHeight(
+      viewportHeight: viewportHeight,
+      fit: fit,
+      marksHeight: marksHeight,
+    );
     final calendar = _CheckinCalendarCard(
       selectedDate: _selectedDate,
       visibleWeek: _visibleWeek,
@@ -450,8 +507,8 @@ class _InteractionStreakPageState extends State<InteractionStreakPage> {
       onSelected: _onDaySelected,
       onVisibleWeekChanged: (week) => setState(() => _visibleWeek = week),
       onVisibleMonthChanged: _onVisibleMonthChanged,
-      onExpandedChanged: (expanded) =>
-          setState(() => _calendarExpanded = expanded),
+      onExpandedChanged: _onCalendarExpandedChanged,
+      onExpansionProgress: _onCalendarExpansionProgress,
       tokens: tokens,
       calendarKey: 'interaction-calendar',
       dayKeyPrefix: 'interaction',
@@ -466,36 +523,18 @@ class _InteractionStreakPageState extends State<InteractionStreakPage> {
       glass: glass,
       height: fit.summaryHeight,
     );
-    final marks = _InteractionMarksCard(currentStage: stage, glass: glass);
+    final marks = _InteractionMarksCard(
+      currentStage: stage,
+      glass: glass,
+      compact: marksHeight < _InteractionFit.marksDesignHeight - 8,
+    );
     final makeup = _makeupCount(tokens);
-    final pinToViewport = !_calendarExpanded && _error == null && innerH >= 480;
-    if (pinToViewport) {
-      return ListView(
-        key: const Key('interaction-scroll'),
-        padding: pad,
-        physics: const NeverScrollableScrollPhysics(),
-        children: [
-          SizedBox(
-            height: innerH,
-            child: Column(
-              children: [
-                summary,
-                SizedBox(height: fit.sectionGap),
-                calendar,
-                SizedBox(height: fit.sectionGap),
-                Expanded(child: marks),
-                const SizedBox(height: _InteractionFit.makeupGap),
-                makeup,
-              ],
-            ),
-          ),
-        ],
-      );
-    }
     return ListView(
       key: const Key('interaction-scroll'),
       padding: pad,
-      physics: const BouncingScrollPhysics(),
+      physics: scrollEnabled
+          ? const BouncingScrollPhysics()
+          : const NeverScrollableScrollPhysics(),
       children: [
         summary,
         SizedBox(height: fit.sectionGap),
@@ -505,9 +544,10 @@ class _InteractionStreakPageState extends State<InteractionStreakPage> {
           Text(_error!, style: TextStyle(color: tokens.subtitle, fontSize: 13)),
         ],
         SizedBox(height: fit.sectionGap),
-        SizedBox(height: math.max(260, innerH * 0.42), child: marks),
+        SizedBox(height: marksHeight, child: marks),
         const SizedBox(height: _InteractionFit.makeupGap),
         makeup,
+        if (bottomSpacer > 0) SizedBox(height: bottomSpacer),
       ],
     );
   }
@@ -751,10 +791,12 @@ class _InteractionMarksCard extends StatelessWidget {
   const _InteractionMarksCard({
     required this.currentStage,
     required this.glass,
+    this.compact = false,
   });
 
   final int currentStage;
   final _W2b glass;
+  final bool compact;
 
   static const _ranges = [
     '0-7天',
@@ -769,10 +811,22 @@ class _InteractionMarksCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final padV = (constraints.maxHeight * 0.06).clamp(10.0, 22.0);
-        final padH = (constraints.maxWidth * 0.06).clamp(14.0, 24.0);
-        final titleGap = (constraints.maxHeight * 0.045).clamp(8.0, 20.0);
-        final spacing = (constraints.maxHeight * 0.05).clamp(8.0, 20.0);
+        final padV = compact
+            ? 12.0
+            : (constraints.maxHeight * 0.06).clamp(16.0, 22.0);
+        final padH = compact
+            ? 16.0
+            : (constraints.maxWidth * 0.06).clamp(18.0, 24.0);
+        const titleBlock = 16.0 + 4.0 + 16.0;
+        final titleGap = compact ? 10.0 : 16.0;
+        final spacing = compact ? 10.0 : 14.0;
+        final gridHeight =
+            constraints.maxHeight - padV * 2 - titleBlock - titleGap - spacing;
+        final rowHeight = math.max(0, (gridHeight - spacing) / 2);
+        final iconSize = math
+            .min(compact ? 72.0 : 84.0, rowHeight - 18)
+            .clamp(48.0, 84.0)
+            .toDouble();
         return Container(
           padding: EdgeInsets.fromLTRB(padH, padV, padH, padV),
           decoration: BoxDecoration(
@@ -805,7 +859,9 @@ class _InteractionMarksCard extends StatelessWidget {
                           children: [
                             for (var col = 0; col < 3; col++) ...[
                               if (col > 0) SizedBox(width: spacing),
-                              Expanded(child: _markCell(row * 3 + col)),
+                              Expanded(
+                                child: _markCell(row * 3 + col, iconSize),
+                              ),
                             ],
                           ],
                         ),
@@ -821,13 +877,14 @@ class _InteractionMarksCard extends StatelessWidget {
     );
   }
 
-  Widget _markCell(int index) {
+  Widget _markCell(int index, double iconSize) {
     return FittedBox(
       fit: BoxFit.scaleDown,
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          _InteractionMarkIcon(size: 84, stage: index),
+          _InteractionMarkIcon(size: iconSize, stage: index),
           const SizedBox(height: 4),
           Text(
             _ranges[index],

@@ -195,6 +195,31 @@ void main() {
     expect(list.physics, isA<NeverScrollableScrollPhysics>());
   });
 
+  testWidgets('expanded calendar scrolls instead of compressing the marks card', (
+    tester,
+  ) async {
+    _usePhoneCanvas(tester, topInset: 59, bottomInset: 34);
+    await tester.pumpWidget(
+      _app(_FakeInteractionApi(_overview(streak: 9, cards: 34))),
+    );
+    await tester.pumpAndSettle();
+
+    final collapsedList = tester.widget<ListView>(
+      find.byKey(const Key('interaction-scroll')),
+    );
+    expect(collapsedList.physics, isA<NeverScrollableScrollPhysics>());
+
+    await tester.drag(find.byKey(const Key('interaction-calendar')), const Offset(0, 180));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+
+    final expandedList = tester.widget<ListView>(
+      find.byKey(const Key('interaction-scroll')),
+    );
+    expect(expandedList.physics, isA<BouncingScrollPhysics>());
+    expect(find.text('100天以上'), findsOneWidget);
+  });
+
   testWidgets('tapping a missable day confirms and consumes a makeup card', (
     tester,
   ) async {

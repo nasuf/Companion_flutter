@@ -56,6 +56,7 @@ class _CheckinCalendarCard extends StatefulWidget {
     required this.onVisibleWeekChanged,
     required this.onVisibleMonthChanged,
     required this.onExpandedChanged,
+    this.onExpansionProgress,
     this.tokens,
     this.calendarKey = 'checkin-calendar',
     this.dayKeyPrefix = 'checkin',
@@ -71,6 +72,10 @@ class _CheckinCalendarCard extends StatefulWidget {
   final ValueChanged<DateTime> onVisibleWeekChanged;
   final ValueChanged<DateTime> onVisibleMonthChanged;
   final ValueChanged<bool> onExpandedChanged;
+
+  /// 0 = week strip, 1 = full month. Used by interaction streak to enable
+  /// page scroll while the user is dragging the calendar open.
+  final ValueChanged<double>? onExpansionProgress;
   final _CheckinTokens? tokens;
   final String calendarKey;
   final String dayKeyPrefix;
@@ -102,6 +107,7 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
       duration: const Duration(milliseconds: 280),
       value: widget.expanded ? 1 : 0,
     );
+    _expansion.addListener(_notifyExpansionProgress);
     _weekPages = PageController(
       initialPage: _checkinWeekIndex(widget.visibleWeek),
     );
@@ -149,6 +155,10 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
     _weekPages.dispose();
     _monthPages.dispose();
     super.dispose();
+  }
+
+  void _notifyExpansionProgress() {
+    widget.onExpansionProgress?.call(_expansion.value);
   }
 
   void _handleDragUpdate(DragUpdateDetails details) {
