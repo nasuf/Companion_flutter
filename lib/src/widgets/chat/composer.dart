@@ -154,7 +154,7 @@ class _Composer extends StatelessWidget {
                             child: child,
                           );
                         },
-                        child: TextField(
+                        child: ExtendedTextField(
                           controller: controller,
                           focusNode: focusNode,
                           cursorColor: chatVoiceAccent,
@@ -163,7 +163,16 @@ class _Composer extends StatelessWidget {
                           keyboardType: TextInputType.multiline,
                           textInputAction: TextInputAction.newline,
                           onTap: onFocusInput,
-                          contextMenuBuilder: _buildContextMenu,
+                          specialTextSpanBuilder: EmojiTextSpanBuilder(
+                            emojiSize: 18,
+                          ),
+                          strutStyle: const StrutStyle(),
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.25,
+                            color: AppColors.text,
+                          ),
+                          extendedContextMenuBuilder: _buildContextMenu,
                           decoration: InputDecoration(
                             hintText: '发消息...',
                             hintStyle: const TextStyle(
@@ -248,7 +257,8 @@ class _Composer extends StatelessWidget {
                               style: FilledButton.styleFrom(
                                 minimumSize: const Size(58, 38),
                                 fixedSize: const Size.fromHeight(38),
-                                padding: sending || freeMessagesRemaining == null
+                                padding:
+                                    sending || freeMessagesRemaining == null
                                     ? EdgeInsets.zero
                                     : const EdgeInsets.symmetric(
                                         horizontal: 12,
@@ -296,7 +306,7 @@ class _Composer extends StatelessWidget {
 
   Widget _buildContextMenu(
     BuildContext context,
-    EditableTextState editableTextState,
+    ExtendedEditableTextState editableTextState,
   ) {
     final items = editableTextState.contextMenuButtonItems
         .map(

@@ -70,7 +70,11 @@ class MonthHeaderDelegate extends SliverPersistentHeaderDelegate {
   double get maxExtent => height;
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
     return Container(
       color: background,
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
@@ -217,7 +221,11 @@ class SearchTextResultRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseStyle = TextStyle(color: AppColors.text, fontSize: 14, height: 1.4);
+    final baseStyle = TextStyle(
+      color: AppColors.text,
+      fontSize: 14,
+      height: 1.4,
+    );
     final highlightStyle = baseStyle.copyWith(
       color: AppColors.accent,
       fontWeight: FontWeight.w700,
@@ -238,11 +246,16 @@ class SearchTextResultRow extends StatelessWidget {
           ),
           Text.rich(
             TextSpan(
-              children: highlightedSpans(
+              children: emojiAwareSpans(
                 text: hit.message.content,
-                query: highlightQuery ?? '',
                 baseStyle: baseStyle,
-                highlightStyle: highlightStyle,
+                emojiSize: 16,
+                wrapPlainText: (chunk) => highlightedSpans(
+                  text: chunk,
+                  query: highlightQuery ?? '',
+                  baseStyle: baseStyle,
+                  highlightStyle: highlightStyle,
+                ),
               ),
             ),
             maxLines: 3,

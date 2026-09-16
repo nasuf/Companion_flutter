@@ -408,10 +408,7 @@ bool _messageShowsSplitTextAndCard(ChatMessage message) {
   if (componentCard == null) return false;
   final shouldHideExternalLinkText =
       componentCard.type == 'external_link' &&
-      _isShareTextRepresentedByExternalLinkCard(
-        message.content,
-        componentCard,
-      );
+      _isShareTextRepresentedByExternalLinkCard(message.content, componentCard);
   final showTextWithCard =
       (componentCard.type == 'music_track' ||
           (componentCard.type == 'external_link' &&
@@ -1171,11 +1168,16 @@ class _MessageTextBubble extends StatelessWidget {
               );
               return Text.rich(
                 TextSpan(
-                  children: highlightedSpans(
+                  children: emojiAwareSpans(
                     text: message.content,
-                    query: highlightQuery ?? '',
                     baseStyle: baseStyle,
-                    highlightStyle: highlightStyle,
+                    emojiSize: 18,
+                    wrapPlainText: (chunk) => highlightedSpans(
+                      text: chunk,
+                      query: highlightQuery ?? '',
+                      baseStyle: baseStyle,
+                      highlightStyle: highlightStyle,
+                    ),
                   ),
                 ),
               );

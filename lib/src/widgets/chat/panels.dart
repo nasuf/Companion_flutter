@@ -121,77 +121,13 @@ class _EmojiPanelState extends State<_EmojiPanel> {
   late final PageController _pageController;
   int _page = 0;
 
-  static const _emojis = [
-    '😊',
-    '😂',
-    '🥹',
-    '🤍',
-    '🙌',
-    '🌧️',
-    '☀️',
-    '🎧',
-    '🍿',
-    '🎮',
-    '📚',
-    '🍰',
-    '🧋',
-    '🌙',
-    '✨',
-    '🫶',
-    '😌',
-    '😵‍💫',
-    '😭',
-    '👍',
-    '👀',
-    '💬',
-    '🪄',
-    '🌿',
-    '❤️',
-    '💕',
-    '🥰',
-    '😘',
-    '😆',
-    '😎',
-    '🤔',
-    '😴',
-    '🥳',
-    '😤',
-    '😇',
-    '🤗',
-    '😋',
-    '🤩',
-    '🙈',
-    '🤝',
-    '💪',
-    '👏',
-    '🙏',
-    '👌',
-    '✌️',
-    '🔥',
-    '⭐',
-    '🌈',
-    '🌸',
-    '🍀',
-    '🍵',
-    '🍜',
-    '🍭',
-    '🎁',
-    '🎵',
-    '🎬',
-    '🏖️',
-    '🛋️',
-    '📝',
-    '📷',
-    '💡',
-    '💤',
-    '💭',
-    '🔆',
-  ];
-
   List<List<String>> get _pages {
     return [
-      for (var index = 0; index < _emojis.length; index += _perPage)
-        _emojis.sublist(index, math.min(index + _perPage, _emojis.length)),
+      for (var index = 0; index < kChatEmojiCatalog.length; index += _perPage)
+        kChatEmojiCatalog.sublist(
+          index,
+          math.min(index + _perPage, kChatEmojiCatalog.length),
+        ),
     ];
   }
 
@@ -213,14 +149,8 @@ class _EmojiPanelState extends State<_EmojiPanel> {
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => widget.onEmojiTap(emoji),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppColors.surfaceMuted,
-            borderRadius: BorderRadius.circular(13),
-          ),
-          child: Center(
-            child: Text(emoji, style: const TextStyle(fontSize: 21)),
-          ),
+        child: Center(
+          child: UnifiedEmoji(emoji, size: widget.compact ? 30 : 36),
         ),
       );
     }
@@ -229,8 +159,8 @@ class _EmojiPanelState extends State<_EmojiPanel> {
       return LayoutBuilder(
         builder: (context, constraints) {
           final tileWidth =
-              (constraints.maxWidth - (_columns - 1) * 8) / _columns;
-          final tileHeight = (constraints.maxHeight - (_rows - 1) * 8) / _rows;
+              (constraints.maxWidth - (_columns - 1) * 4) / _columns;
+          final tileHeight = (constraints.maxHeight - (_rows - 1) * 4) / _rows;
           final childAspectRatio =
               tileWidth / math.max(1.0, math.min(tileWidth, tileHeight));
           return GridView.builder(
@@ -240,8 +170,8 @@ class _EmojiPanelState extends State<_EmojiPanel> {
             itemCount: emojis.length,
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: _columns,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
+              mainAxisSpacing: 4,
+              crossAxisSpacing: 4,
               childAspectRatio: childAspectRatio,
             ),
             itemBuilder: (context, index) => emojiTile(emojis[index]),
@@ -271,12 +201,12 @@ class _EmojiPanelState extends State<_EmojiPanel> {
           if (widget.compact)
             LayoutBuilder(
               builder: (context, constraints) {
-                final tileSize = (constraints.maxWidth - 56) / 8;
+                final tileSize = (constraints.maxWidth - 28) / 8;
                 return Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                  spacing: 4,
+                  runSpacing: 4,
                   children: [
-                    for (final emoji in _emojis.take(24))
+                    for (final emoji in kChatEmojiCatalog.take(24))
                       SizedBox(
                         width: tileSize,
                         height: tileSize,
@@ -359,7 +289,12 @@ class _MorePanel extends StatelessWidget {
       Color(0xFF22C66B),
       _ToolAction.location,
     ),
-    _ToolSpec('查找', CupertinoIcons.search, Color(0xFF7C3CFF), _ToolAction.search),
+    _ToolSpec(
+      '查找',
+      CupertinoIcons.search,
+      Color(0xFF7C3CFF),
+      _ToolAction.search,
+    ),
     _ToolSpec('礼物', CupertinoIcons.gift, Color(0xFFFF8A3D), _ToolAction.gift),
   ];
 

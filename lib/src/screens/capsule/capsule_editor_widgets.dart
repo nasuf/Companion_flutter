@@ -43,7 +43,7 @@ class _CapsuleLetterPaper extends StatelessWidget {
                   Positioned.fill(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(20, 18, 20, 86),
-                      child: TextField(
+                      child: ExtendedTextField(
                         controller: controller,
                         readOnly: readOnly,
                         showCursor: !readOnly,
@@ -54,6 +54,10 @@ class _CapsuleLetterPaper extends StatelessWidget {
                         textInputAction: TextInputAction.newline,
                         cursorHeight: 23,
                         cursorColor: skin.accent,
+                        specialTextSpanBuilder: EmojiTextSpanBuilder(
+                          emojiSize: 20,
+                        ),
+                        strutStyle: const StrutStyle(),
                         style: TextStyle(
                           color: skin.text,
                           fontSize: 17,

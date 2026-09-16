@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:extended_text_field/extended_text_field.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -52,6 +53,10 @@ import 'src/widgets/chat/voice_recording_overlay.dart';
 import 'src/widgets/agent_avatar_image.dart';
 import 'src/screens/chat/chat_transcript_controller.dart';
 import 'src/services/display_refresh_rate.dart';
+import 'src/emoji/emoji_catalog.dart';
+import 'src/emoji/emoji_spans.dart';
+import 'src/emoji/emoji_text_span_builder.dart';
+import 'src/emoji/unified_emoji.dart';
 import 'src/utils/agent_status_label.dart';
 import 'src/utils/chat_scroll_policy.dart';
 import 'src/utils/platform_effects.dart';
