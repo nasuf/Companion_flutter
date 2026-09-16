@@ -107,7 +107,11 @@ class _MessageList extends StatelessWidget {
   }
 
   Widget _buildConversationList() {
-    final chronologicalIds = [for (final message in messages) message.id];
+    final processed = preprocessGameActivityMessages(messages);
+    final visibleMessages = processed.$1;
+    final chronologicalIds = [
+      for (final message in visibleMessages) message.id,
+    ];
     // reverse: true pins short transcripts to the composer and keeps offset 0
     // at the newest message. IME height is NOT in these slivers — the page
     // translates the whole view so keyboard frames never relayout bubbles.
@@ -137,12 +141,12 @@ class _MessageList extends StatelessWidget {
           padding: EdgeInsets.fromLTRB(12, 0, 12, topPadding),
           sliver: SliverList(
             delegate: _ChatMessageChildDelegate(
-              childCount: messages.length,
+              childCount: visibleMessages.length,
               findChildIndexCallback: (key) =>
                   ChatScrollPolicy.childIndexForKey(key, chronologicalIds),
               builder: (context, index) {
                 return _buildKeyedMessageRow(
-                  messages[messages.length - 1 - index],
+                  visibleMessages[visibleMessages.length - 1 - index],
                 );
               },
             ),
@@ -365,8 +369,8 @@ class _MessageRow extends StatelessWidget {
     if (message.isMusicStatus) {
       return _MusicStatusTimelineRow(message: message);
     }
-    if (message.isGameStatus) {
-      return _GameStatusTimelineRow(message: message);
+    if (message.isGameActivityTimeline) {
+      return GameActivityBurstRow(message: message);
     }
     if (message.isOfferingReceived) {
       return _OfferingReceivedTimelineRow(message: message);
@@ -415,122 +419,6 @@ bool _messageShowsSplitTextAndCard(ChatMessage message) {
               !shouldHideExternalLinkText)) &&
       message.content.trim().isNotEmpty;
   return showTextWithCard;
-}
-
-class _GameStatusTimelineRow extends StatelessWidget {
-  const _GameStatusTimelineRow({required this.message});
-
-  final ChatMessage message;
-
-  @override
-  Widget build(BuildContext context) {
-    final status = message.metadata?['game_status']?.toString().trim();
-    final isEnded = status == 'ended';
-    final gameTitle = message.metadata?['game_title']?.toString().trim();
-    final actorName = message.metadata?['game_status_actor_name']
-        ?.toString()
-        .trim();
-    final prefix = actorName?.isNotEmpty == true ? '$actorName 和你' : '你们';
-    final title = gameTitle?.isNotEmpty == true ? gameTitle! : '游戏';
-    final label = '$prefix已${isEnded ? '退出' : '进入'}游戏《$title》';
-    final isDark = AppColors.isDark(context);
-    final accent = isEnded
-        ? (isDark ? const Color(0xFF9AA8B8) : const Color(0xFF64748B))
-        : (isDark ? AppColors.accent : const Color(0xFF177DDC));
-    final fill = isDark
-        ? AppColors.surfaceMuted.withValues(alpha: 0.76)
-        : (isEnded ? const Color(0xFFF1F5F9) : const Color(0xFFEAF4FF));
-    final border = isDark
-        ? Colors.white.withValues(alpha: 0.12)
-        : (isEnded ? const Color(0xFFD5DEE9) : const Color(0xFFBFDDFF));
-    final iconFill = isDark
-        ? accent.withValues(alpha: 0.16)
-        : (isEnded ? const Color(0xFFE2E8F0) : const Color(0xFFDCEEFF));
-    final maxBubbleWidth = math.min(
-      320.0,
-      MediaQuery.sizeOf(context).width - 72,
-    );
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-          child: IntrinsicWidth(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: fill,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: border),
-                boxShadow: [
-                  BoxShadow(
-                    color: accent.withValues(alpha: 0.06),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 7, 12, 6),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 22,
-                          height: 22,
-                          decoration: BoxDecoration(
-                            color: iconFill,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            isEnded
-                                ? CupertinoIcons.game_controller
-                                : CupertinoIcons.game_controller_solid,
-                            size: 12,
-                            color: accent,
-                          ),
-                        ),
-                        const SizedBox(width: 7),
-                        Flexible(
-                          child: Text(
-                            label,
-                            maxLines: 2,
-                            softWrap: true,
-                            overflow: TextOverflow.visible,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: accent,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              height: 1.12,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _formatTime(message.createdAt),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: accent.withValues(alpha: 0.56),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        height: 1.0,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _OfferingReceivedTimelineRow extends StatelessWidget {

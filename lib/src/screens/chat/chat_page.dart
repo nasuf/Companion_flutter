@@ -2262,6 +2262,63 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           _scheduleStationDockCheck();
         });
         break;
+      case 'game_activity_burst':
+        final text = payload['text']?.toString() ?? '';
+        if (text.isEmpty) return;
+        final shouldAutoScroll = widget.isActive && _isNearBottomNow();
+        final messageId = payload['message_id']?.toString();
+        final segmentsRaw = payload['segments'];
+        final segments = segmentsRaw is List ? segmentsRaw : const [];
+        _patchShellAndTranscript(
+          shell: () => _sending = false,
+          transcript: () {
+            DateTime createdAt = DateTime.now();
+            if (messageId?.isNotEmpty == true) {
+              final existingIndex = _messages.indexWhere(
+                (message) => message.id == messageId,
+              );
+              if (existingIndex >= 0) {
+                createdAt = _messages[existingIndex].createdAt;
+              }
+            }
+            final nextMessage = ChatMessage(
+              id: messageId?.isNotEmpty == true
+                  ? messageId!
+                  : 'game-burst-${DateTime.now().microsecondsSinceEpoch}',
+              conversationId: _conversationId,
+              role: 'assistant',
+              content: text,
+              createdAt: createdAt,
+              metadata: {
+                'kind': 'game_activity_burst',
+                'game_key': payload['game_key']?.toString() ?? '',
+                'game_title': payload['game_title']?.toString() ?? '',
+                'game_status_actor_name':
+                    payload['actor_name']?.toString() ?? '',
+                'segments': segments,
+              },
+              read: true,
+            );
+            if (messageId?.isNotEmpty == true) {
+              final existingIndex = _messages.indexWhere(
+                (message) => message.id == messageId,
+              );
+              if (existingIndex >= 0) {
+                _messages[existingIndex] = nextMessage;
+              } else {
+                _messages.add(nextMessage);
+              }
+            } else {
+              _messages.add(nextMessage);
+            }
+            _agentTyping = false;
+          },
+        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (shouldAutoScroll) _scrollToBottom(animated: true);
+          _scheduleStationDockCheck();
+        });
+        break;
       case 'game_status':
         final text = payload['text']?.toString() ?? '';
         if (text.isEmpty) return;
