@@ -320,6 +320,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   // 新模式。
   Timer? _sendTimeoutTimer;
   String? _inFlightClientId;
+  late final ReplyUiDelayController _replyUiDelay = ReplyUiDelayController(
+    onApply: ({required clientId, messageId}) {
+      _applyDelayedReplyUiFeedback(
+        clientId: clientId,
+        messageId: messageId,
+      );
+    },
+  );
   static const _sendTimeoutDuration = Duration(seconds: 20);
   final Set<String> _favoriteMusicTrackIds = {};
   final Set<String> _busyMusicFavoriteIds = {};
@@ -564,6 +572,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _conversationMetaTimer?.cancel();
     _stationPauseTimer?.cancel();
     _sendTimeoutTimer?.cancel();
+    _replyUiDelay.dispose();
     _musicCompleteSub?.cancel();
     _musicQuotaSub?.cancel();
     _shareIntentSub?.cancel();
@@ -2059,6 +2068,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         final clientId = payload['client_id']?.toString() ?? '';
         final messageId = payload['message_id']?.toString() ?? '';
         if (clientId.isEmpty) return;
+        final uiDelaySeconds = replyUiDelaySeconds(payload['ui_delay_seconds']);
+        final deferUi = replyUiDefer(payload['defer_ui']);
         // 服务端已经确认收到并落库了这条消息 (哪怕 AI 回复还没生成完),
         // 不再需要"发出去杳无音讯"的超时兜底。
         if (clientId == _inFlightClientId) _clearSendTimeout();
@@ -2070,7 +2081,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               if (message.id == clientId || message.clientId == clientId) {
                 _messages[i] = message.copyWith(
                   id: messageId.isEmpty ? message.id : messageId,
-                  read: true,
+                  read: deferUi || uiDelaySeconds > 0 ? message.read : true,
                   pending: false,
                   metadata: {...?message.metadata, 'client_id': clientId},
                 );
@@ -2082,13 +2093,40 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             }
           },
         );
+        if (deferUi) {
+          // Aggregation windows defer read/typing until a later processing event.
+        } else if (uiDelaySeconds > 0) {
+          _replyUiDelay.schedule(
+            clientId: clientId,
+            messageId: messageId.isEmpty ? null : messageId,
+            delaySeconds: uiDelaySeconds,
+          );
+        } else {
+          _applyDelayedReplyUiFeedback(
+            clientId: clientId,
+            messageId: messageId.isEmpty ? null : messageId,
+          );
+        }
         unawaited(_refreshChatQuota());
+        break;
+      case 'processing':
+        final clientId = payload['client_id']?.toString() ?? '';
+        final messageId = payload['message_id']?.toString() ?? '';
+        final uiDelaySeconds = replyUiDelaySeconds(payload['ui_delay_seconds']);
+        final resolvedClientId = clientId.isNotEmpty
+            ? clientId
+            : _clientIdForMessageId(messageId);
+        if (resolvedClientId == null && messageId.isEmpty) return;
+        _replyUiDelay.schedule(
+          clientId: resolvedClientId ?? messageId,
+          messageId: messageId.isEmpty ? null : messageId,
+          delaySeconds: uiDelaySeconds,
+        );
         break;
       case 'quota_blocked':
         unawaited(_handleChatQuotaBlocked(payload));
         break;
       case 'delay':
-        _notifyTranscript(() => _agentTyping = true);
         if (widget.isActive && _isNearBottomNow()) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _scrollToBottom(animated: true);
@@ -2098,7 +2136,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       case 'pending':
         _patchShellAndTranscript(
           shell: () => _sending = false,
-          transcript: () => _agentTyping = true,
         );
         if (widget.isActive && _isNearBottomNow()) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2115,6 +2152,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         break;
       case 'reply':
       case 'proactive':
+        _replyUiDelay.cancel();
         final text = payload['text']?.toString() ?? '';
         final rawAttachments = payload['attachments'];
         final attachments = rawAttachments is List
@@ -2195,10 +2233,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         });
         break;
       case 'music_status':
-        final text = payload['text']?.toString() ?? '';
-        if (text.isEmpty) return;
         final shouldAutoScroll = widget.isActive && _isNearBottomNow();
-        final messageId = payload['message_id']?.toString();
         final status = payload['status']?.toString() ?? 'started';
         final actor = payload['actor']?.toString() ?? '';
         _patchShellAndTranscript(
@@ -2209,13 +2244,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             if (status == 'started' && actor == 'user') {
               _localUserCoListeningActive = true;
             } else if (status == 'ended') {
-              // 服务端对"优雅退出"原因(跟 music.py:_GRACEFUL_USER_EXIT_REASONS
-              // 保持同一份名单)先把用户这一侧标成 ended、隔了老半天等 agent 察
-              // 觉后才真正让 agent 退出并补一句话——这条用户自己的 ended 事件
-              // 不代表共听真的结束了，头像上的耳机徽标要跟着后面那条 agent 的
-              // ended 事件走，不能提前熄灭。其余场景(对方从没加入过 / 服务端
-              // 立即结束的其它退出原因，比如登出)没有后续的 agent ended 事件
-              // 会来，必须在这里就熄灭，否则会一直卡亮。
               const gracefulUserExitReasons = {
                 'user_pause_timeout',
                 'user_dismissed_dock',
@@ -2230,33 +2258,67 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             _sending = false;
           },
           transcript: () {
-            _upsertServerMessage(
-              ChatMessage(
-                id: messageId?.isNotEmpty == true
-                    ? messageId!
-                    : 'music-status-${DateTime.now().microsecondsSinceEpoch}',
-                conversationId: _conversationId,
-                role: 'assistant',
-                content: text,
-                createdAt: DateTime.now(),
-                metadata: {
-                  'music_status': status,
-                  'music_track_title': payload['track_title']?.toString() ?? '',
-                  'music_track_id': payload['track_id']?.toString() ?? '',
-                  'music_co_listening': status == 'started',
-                  'music_status_actor': actor,
-                  'music_status_actor_name':
-                      payload['actor_name']?.toString() ?? '',
-                  if (payload['reason'] != null)
-                    'music_ended_reason': payload['reason']?.toString() ?? '',
-                },
-                read: true,
-              ),
-            );
             _agentTyping = false;
           },
         );
         unawaited(_refreshConversationMeta());
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (shouldAutoScroll) _scrollToBottom(animated: true);
+          _scheduleStationDockCheck();
+        });
+        break;
+      case 'music_activity_burst':
+        final text = payload['text']?.toString() ?? '';
+        if (text.isEmpty) return;
+        final shouldAutoScroll = widget.isActive && _isNearBottomNow();
+        final messageId = payload['message_id']?.toString();
+        final segmentsRaw = payload['segments'];
+        final segments = segmentsRaw is List ? segmentsRaw : const [];
+        _patchShellAndTranscript(
+          shell: () => _sending = false,
+          transcript: () {
+            DateTime createdAt = DateTime.now();
+            if (messageId?.isNotEmpty == true) {
+              final existingIndex = _messages.indexWhere(
+                (message) => message.id == messageId,
+              );
+              if (existingIndex >= 0) {
+                createdAt = _messages[existingIndex].createdAt;
+              }
+            }
+            final nextMessage = ChatMessage(
+              id: messageId?.isNotEmpty == true
+                  ? messageId!
+                  : 'music-burst-${DateTime.now().microsecondsSinceEpoch}',
+              conversationId: _conversationId,
+              role: 'assistant',
+              content: text,
+              createdAt: createdAt,
+              metadata: {
+                'kind': 'music_activity_burst',
+                'music_track_id': payload['track_id']?.toString() ?? '',
+                'music_track_title': payload['track_title']?.toString() ?? '',
+                'music_status_actor_name':
+                    payload['actor_name']?.toString() ?? '',
+                'segments': segments,
+              },
+              read: true,
+            );
+            if (messageId?.isNotEmpty == true) {
+              final existingIndex = _messages.indexWhere(
+                (message) => message.id == messageId,
+              );
+              if (existingIndex >= 0) {
+                _messages[existingIndex] = nextMessage;
+              } else {
+                _messages.add(nextMessage);
+              }
+            } else {
+              _messages.add(nextMessage);
+            }
+            _agentTyping = false;
+          },
+        );
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (shouldAutoScroll) _scrollToBottom(animated: true);
           _scheduleStationDockCheck();
@@ -2359,6 +2421,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         });
         break;
       case 'done':
+        _replyUiDelay.cancel();
         _patchShellAndTranscript(
           shell: () => _sending = false,
           transcript: () => _agentTyping = false,
@@ -2366,6 +2429,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         unawaited(_loadLatestMessages(showLoading: false));
         break;
       case 'error':
+        _replyUiDelay.cancel();
         // 之前这里只清全局状态、完全不碰 _messages —— 那条草稿会永久停在
         // "发送中", 用户只看到一条独立的错误横条, 分不清是哪句话没发出去、
         // 也没法重试。现在把当前在途的那条草稿一并标成失败态。
@@ -3028,6 +3092,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   /// (语音/卡片/多意图重试等) 没有预检时的兜底: 把被拒的草稿从会话里摘掉、
   /// 文本还给输入框, 再弹跟预检同样的确认框, 确认后按 paidConfirmed 重发。
   Future<void> _handleChatQuotaBlocked(Map<String, dynamic> payload) async {
+    _replyUiDelay.cancel();
     final blocked = ChatQuotaBlocked.fromJson(payload);
     if (blocked.clientId == null || blocked.clientId == _inFlightClientId) {
       _clearSendTimeout();
@@ -3551,9 +3616,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       },
       transcript: () {
         _messages.add(draft);
-        // Show the typing indicator immediately; the server's pending/delay
-        // events keep it alive and the reply clears it.
-        _agentTyping = true;
       },
     );
     _armSendTimeout(clientId);
@@ -3608,6 +3670,42 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _sendTimeoutTimer?.cancel();
     _sendTimeoutTimer = null;
     _inFlightClientId = null;
+  }
+
+  String? _clientIdForMessageId(String messageId) {
+    if (messageId.isEmpty) return null;
+    for (final message in _messages) {
+      if (message.id == messageId) {
+        return message.clientId ?? message.id;
+      }
+    }
+    return null;
+  }
+
+  void _applyDelayedReplyUiFeedback({
+    required String clientId,
+    String? messageId,
+  }) {
+    _notifyTranscript(() {
+      for (var i = 0; i < _messages.length; i += 1) {
+        final message = _messages[i];
+        final matchesClient =
+            message.id == clientId || message.clientId == clientId;
+        final matchesMessageId =
+            messageId != null &&
+            messageId.isNotEmpty &&
+            message.id == messageId;
+        if (!matchesClient && !matchesMessageId) continue;
+        _messages[i] = message.copyWith(read: true, pending: false);
+        break;
+      }
+      _agentTyping = true;
+    });
+    if (widget.isActive && _isNearBottomNow()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToBottom(animated: true);
+      });
+    }
   }
 
   /// 发送后 [_sendTimeoutDuration] 内既没有 ack, 也没有 reply/quota_blocked/

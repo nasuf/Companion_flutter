@@ -627,6 +627,10 @@ class ChatMessage {
   bool get isMine => role == 'user';
   bool get isAchievement => role == 'achievement';
   bool get isMusicStatus => metadata?['music_status'] != null;
+  bool get isMusicActivityBurst =>
+      metadata?['kind']?.toString() == 'music_activity_burst';
+  bool get isMusicActivityTimeline =>
+      isMusicActivityBurst || isMusicStatus;
   bool get isGameStatus => metadata?['game_status'] != null;
   bool get isGameActivityBurst =>
       metadata?['kind']?.toString() == 'game_activity_burst';

@@ -42,6 +42,14 @@ class ChatMusicStationState {
     for (final message in messages) {
       final metadata = message.metadata;
       if (metadata == null) continue;
+      if (message.isMusicActivityBurst) {
+        for (final segment in musicActivitySegmentsFromMetadata(metadata)) {
+          if (segment.isListened) {
+            active = false;
+          }
+        }
+        continue;
+      }
       final status = metadata['music_status']?.toString();
       final actor = metadata['music_status_actor']?.toString();
       if (status == 'started' && actor == 'user') {

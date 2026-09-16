@@ -107,7 +107,7 @@ class _MessageList extends StatelessWidget {
   }
 
   Widget _buildConversationList() {
-    final processed = preprocessGameActivityMessages(messages);
+    final processed = preprocessTimelineActivityMessages(messages);
     final visibleMessages = processed.$1;
     final chronologicalIds = [
       for (final message in visibleMessages) message.id,
@@ -366,8 +366,8 @@ class _MessageRow extends StatelessWidget {
         onTap: () => onAchievementTap(item),
       );
     }
-    if (message.isMusicStatus) {
-      return _MusicStatusTimelineRow(message: message);
+    if (message.isMusicActivityTimeline) {
+      return MusicActivityBurstRow(message: message);
     }
     if (message.isGameActivityTimeline) {
       return GameActivityBurstRow(message: message);
@@ -473,117 +473,6 @@ class _OfferingReceivedTimelineRow extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MusicStatusTimelineRow extends StatelessWidget {
-  const _MusicStatusTimelineRow({required this.message});
-
-  final ChatMessage message;
-
-  @override
-  Widget build(BuildContext context) {
-    final status = message.metadata?['music_status']?.toString().trim();
-    final isEnded = status == 'ended';
-    final actor = message.metadata?['music_status_actor']?.toString().trim();
-    final actorName = message.metadata?['music_status_actor_name']
-        ?.toString()
-        .trim();
-    final prefix = switch (actor) {
-      'user' => '你',
-      'agent' => (actorName?.isNotEmpty == true ? actorName! : '对方'),
-      _ => '',
-    };
-    final label = '$prefix${isEnded ? '已退出共听' : '已加入共听'}';
-    final isDark = AppColors.isDark(context);
-    final accent = isEnded
-        ? (isDark ? const Color(0xFF9AA8B8) : const Color(0xFF64748B))
-        : (isDark ? const Color(0xFF35D487) : const Color(0xFF149249));
-    final fill = isDark
-        ? AppColors.surfaceMuted.withValues(alpha: 0.76)
-        : (isEnded ? const Color(0xFFF1F5F9) : const Color(0xFFEAF8EF));
-    final border = isDark
-        ? Colors.white.withValues(alpha: 0.12)
-        : (isEnded ? const Color(0xFFD5DEE9) : const Color(0xFFBDEBCB));
-    final iconFill = isDark
-        ? accent.withValues(alpha: 0.16)
-        : (isEnded ? const Color(0xFFE2E8F0) : const Color(0xFFD9F5E4));
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 190),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: fill,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: border),
-              boxShadow: [
-                BoxShadow(
-                  color: accent.withValues(alpha: 0.06),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 7, 12, 6),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 22,
-                        height: 22,
-                        decoration: BoxDecoration(
-                          color: iconFill,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          isEnded
-                              ? CupertinoIcons.music_note_list
-                              : CupertinoIcons.music_note_2,
-                          size: 12,
-                          color: accent,
-                        ),
-                      ),
-                      const SizedBox(width: 7),
-                      Flexible(
-                        child: Text(
-                          label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: accent,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            height: 1.08,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _formatTime(message.createdAt),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: accent.withValues(alpha: 0.56),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      height: 1.0,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ),
         ),
       ),
