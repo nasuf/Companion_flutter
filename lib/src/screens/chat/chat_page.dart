@@ -2136,6 +2136,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       case 'pending':
         _patchShellAndTranscript(
           shell: () => _sending = false,
+          transcript: () {},
         );
         if (widget.isActive && _isNearBottomNow()) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
