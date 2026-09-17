@@ -316,6 +316,9 @@ class _HubBreathingArtState extends State<_HubBreathingArt>
   }
 }
 
+/// Frosted circle matching the back control on the weather and capsule pages,
+/// keeping the hub's own press animation. The tint stays the hub blue so it
+/// still reads as part of this page rather than borrowing weather's accent.
 class _HubRoundButton extends StatelessWidget {
   const _HubRoundButton({required this.icon, required this.onTap});
 
@@ -328,25 +331,25 @@ class _HubRoundButton extends StatelessWidget {
       onTap: onTap,
       pressedScale: 0.9,
       child: Container(
-        width: 34,
-        height: 34,
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF63B9EA), Color(0xFF2E86C8)],
-          ),
-          borderRadius: BorderRadius.circular(11),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.55)),
-          boxShadow: [
+          // Flat translucent white rather than a BackdropFilter: the hub
+          // breathes its card art every frame, and a live blur here would be
+          // re-sampled along with it.
+          color: Colors.white.withValues(alpha: 0.55),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.85)),
+          boxShadow: const [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.25),
-              blurRadius: 4,
-              offset: const Offset(0, 3),
+              color: Color(0x1A234878),
+              blurRadius: 12,
+              offset: Offset(0, 4),
             ),
           ],
         ),
-        child: Icon(icon, size: 17, color: Colors.white),
+        child: Icon(icon, size: 20, color: const Color(0xFF2E86C8)),
       ),
     );
   }
