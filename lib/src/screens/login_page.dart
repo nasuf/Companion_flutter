@@ -47,20 +47,19 @@ class _LoginPageState extends State<LoginPage>
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: false,
       backgroundColor: Colors.transparent,
       barrierColor: const Color(0x52101824),
       builder: (sheetContext) {
-        return AnimatedPadding(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
-          ),
-          child: _UsernamePasswordLoginSheet(
-            apiBaseController: _apiBaseController,
-            accountController: _accountController,
-            passwordController: _passwordController,
-            onAuthenticated: widget.onAuthenticated,
+        return _loginSheetHost(
+          child: _LoginSheetLayout(
+            heightFraction: 0.54,
+            child: _UsernamePasswordLoginSheet(
+              apiBaseController: _apiBaseController,
+              accountController: _accountController,
+              passwordController: _passwordController,
+              onAuthenticated: widget.onAuthenticated,
+            ),
           ),
         );
       },
@@ -71,18 +70,16 @@ class _LoginPageState extends State<LoginPage>
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: false,
       backgroundColor: Colors.transparent,
       barrierColor: const Color(0x52101824),
       builder: (sheetContext) {
-        return AnimatedPadding(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
-          ),
-          child: _PhoneLoginSheet(
-            apiBaseController: _apiBaseController,
-            onAuthenticated: widget.onAuthenticated,
+        return _loginSheetHost(
+          child: _LoginSheetLayout(
+            child: _PhoneLoginSheet(
+              apiBaseController: _apiBaseController,
+              onAuthenticated: widget.onAuthenticated,
+            ),
           ),
         );
       },
@@ -778,6 +775,60 @@ class _SecondaryLoginButton extends StatelessWidget {
   }
 }
 
+/// Transparent scaffold root for login bottom sheets with text fields.
+Widget _loginSheetHost({required Widget child}) {
+  return Scaffold(
+    resizeToAvoidBottomInset: false,
+    backgroundColor: Colors.transparent,
+    body: Align(
+      alignment: Alignment.bottomCenter,
+      child: child,
+    ),
+  );
+}
+
+/// Login form bottom sheet shell — background extends behind the keyboard
+/// (RedPacketSendSheet / AdminSheetLayout geometry). [child] is padded above
+/// the IME.
+class _LoginSheetLayout extends StatelessWidget {
+  const _LoginSheetLayout({
+    required this.child,
+    this.heightFraction = 0.52,
+  });
+
+  final Widget child;
+  final double heightFraction;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final keyboard = media.viewInsets.bottom;
+    final baseHeight = media.size.height * heightFraction;
+    // Grow through the IME slot so iOS keyboard corner radii show sheet color.
+    final sheetHeight = math.min(baseHeight + keyboard, media.size.height);
+    final contentBottom =
+        keyboard > 0 ? keyboard + 12 : 12 + media.padding.bottom;
+
+    return SizedBox(
+      height: sheetHeight,
+      width: double.infinity,
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: ColoredBox(
+            color: const Color(0xFFF7FFFD).withValues(alpha: 0.98),
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(24, 12, 24, contentBottom),
+              child: child,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _UsernamePasswordLoginSheet extends StatefulWidget {
   const _UsernamePasswordLoginSheet({
     required this.apiBaseController,
@@ -847,129 +898,123 @@ class _UsernamePasswordLoginSheetState
   @override
   Widget build(BuildContext context) {
     const accent = Color(0xFF06C893);
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: ColoredBox(
-          color: const Color(0xFFF7FFFD).withValues(alpha: 0.98),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Align(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD5DBDA),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-                  const Text(
-                    '用户名密码登录',
-                    style: TextStyle(
-                      color: Color(0xFF111111),
-                      fontSize: 22,
-                      height: 1.25,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    '使用已有的伴生账号继续',
-                    style: TextStyle(
-                      color: Color(0xFF7B8582),
-                      fontSize: 14,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-                  _CredentialField(
-                    controller: widget.accountController,
-                    label: '用户名',
-                    icon: CupertinoIcons.person,
-                    textInputAction: TextInputAction.next,
-                    onSubmitted: (_) => _passwordFocus.requestFocus(),
-                  ),
-                  const SizedBox(height: 12),
-                  _CredentialField(
-                    controller: widget.passwordController,
-                    focusNode: _passwordFocus,
-                    label: '密码',
-                    icon: CupertinoIcons.lock,
-                    obscureText: _obscurePassword,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) => _submit(),
-                    trailing: IconButton(
-                      tooltip: _obscurePassword ? '显示密码' : '隐藏密码',
-                      onPressed: () =>
-                          setState(() => _obscurePassword = !_obscurePassword),
-                      icon: Icon(
-                        _obscurePassword
-                            ? CupertinoIcons.eye
-                            : CupertinoIcons.eye_slash,
-                        color: const Color(0xFF7B8582),
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 180),
-                    alignment: Alignment.topCenter,
-                    child: _error == null
-                        ? const SizedBox(height: 18)
-                        : Padding(
-                            padding: const EdgeInsets.only(top: 12, bottom: 2),
-                            child: Text(
-                              _error!,
-                              style: const TextStyle(
-                                color: Color(0xFFD84E4E),
-                                fontSize: 13,
-                                height: 1.35,
-                              ),
-                            ),
-                          ),
-                  ),
-                  FilledButton(
-                    onPressed: _submitting ? null : _submit,
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(52),
-                      backgroundColor: accent,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: const Color(0xFF9DE2D2),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: _submitting
-                        ? const SizedBox.square(
-                            dimension: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text(
-                            '登录',
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                  ),
-                ],
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          child: Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFFD5DBDA),
+              borderRadius: BorderRadius.circular(999),
             ),
           ),
         ),
-      ),
+        const SizedBox(height: 22),
+        const Text(
+          '用户名密码登录',
+          style: TextStyle(
+            color: Color(0xFF111111),
+            fontSize: 22,
+            height: 1.25,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          '使用已有的伴生账号继续',
+          style: TextStyle(
+            color: Color(0xFF7B8582),
+            fontSize: 14,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 22),
+        Expanded(
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _CredentialField(
+                  controller: widget.accountController,
+                  label: '用户名',
+                  icon: CupertinoIcons.person,
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => _passwordFocus.requestFocus(),
+                ),
+                const SizedBox(height: 12),
+                _CredentialField(
+                  controller: widget.passwordController,
+                  focusNode: _passwordFocus,
+                  label: '密码',
+                  icon: CupertinoIcons.lock,
+                  obscureText: _obscurePassword,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _submit(),
+                  trailing: IconButton(
+                    tooltip: _obscurePassword ? '显示密码' : '隐藏密码',
+                    onPressed: () =>
+                        setState(() => _obscurePassword = !_obscurePassword),
+                    icon: Icon(
+                      _obscurePassword
+                          ? CupertinoIcons.eye
+                          : CupertinoIcons.eye_slash,
+                      color: const Color(0xFF7B8582),
+                      size: 20,
+                    ),
+                  ),
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 180),
+                  alignment: Alignment.topCenter,
+                  child: _error == null
+                      ? const SizedBox(height: 18)
+                      : Padding(
+                          padding: const EdgeInsets.only(top: 12, bottom: 2),
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(
+                              color: Color(0xFFD84E4E),
+                              fontSize: 13,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        FilledButton(
+          onPressed: _submitting ? null : _submit,
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(52),
+            backgroundColor: accent,
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: const Color(0xFF9DE2D2),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          child: _submitting
+              ? const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text(
+                  '登录',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+        ),
+      ],
     );
   }
 }
@@ -1114,143 +1159,137 @@ class _PhoneLoginSheetState extends State<_PhoneLoginSheet> {
         : _sending
         ? '发送中…'
         : '获取验证码';
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: ColoredBox(
-          color: const Color(0xFFF7FFFD).withValues(alpha: 0.98),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Align(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD5DBDA),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-                  const Text(
-                    '手机号登录',
-                    style: TextStyle(
-                      color: Color(0xFF111111),
-                      fontSize: 22,
-                      height: 1.25,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    '未注册的手机号验证后将自动创建账号',
-                    style: TextStyle(
-                      color: Color(0xFF7B8582),
-                      fontSize: 14,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-                  _CredentialField(
-                    controller: _phoneController,
-                    label: '手机号',
-                    icon: CupertinoIcons.device_phone_portrait,
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(11),
-                    ],
-                    textInputAction: TextInputAction.next,
-                    onSubmitted: (_) => _codeFocus.requestFocus(),
-                  ),
-                  const SizedBox(height: 12),
-                  _CredentialField(
-                    controller: _codeController,
-                    focusNode: _codeFocus,
-                    label: '验证码',
-                    icon: CupertinoIcons.shield,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(6),
-                    ],
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) => _submit(),
-                    trailing: Padding(
-                      padding: const EdgeInsets.only(right: 4),
-                      child: TextButton(
-                        onPressed: _sending || _countdown > 0 || !_phoneValid
-                            ? null
-                            : () => unawaited(_sendCode()),
-                        style: TextButton.styleFrom(
-                          foregroundColor: accent,
-                          disabledForegroundColor: const Color(0xFF9BB0AA),
-                          textStyle: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        child: Text(sendLabel),
-                      ),
-                    ),
-                  ),
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 180),
-                    alignment: Alignment.topCenter,
-                    child: _error == null
-                        ? const SizedBox(height: 18)
-                        : Padding(
-                            padding: const EdgeInsets.only(top: 12, bottom: 2),
-                            child: Text(
-                              _error!,
-                              style: const TextStyle(
-                                color: Color(0xFFD84E4E),
-                                fontSize: 13,
-                                height: 1.35,
-                              ),
-                            ),
-                          ),
-                  ),
-                  FilledButton(
-                    onPressed: _submitting ? null : _submit,
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(52),
-                      backgroundColor: accent,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: const Color(0xFF9DE2D2),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: _submitting
-                        ? const SizedBox.square(
-                            dimension: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text(
-                            '登录 / 注册',
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                  ),
-                ],
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          child: Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFFD5DBDA),
+              borderRadius: BorderRadius.circular(999),
             ),
           ),
         ),
-      ),
+        const SizedBox(height: 22),
+        const Text(
+          '手机号登录',
+          style: TextStyle(
+            color: Color(0xFF111111),
+            fontSize: 22,
+            height: 1.25,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          '未注册的手机号验证后将自动创建账号',
+          style: TextStyle(
+            color: Color(0xFF7B8582),
+            fontSize: 14,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 22),
+        Expanded(
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _CredentialField(
+                  controller: _phoneController,
+                  label: '手机号',
+                  icon: CupertinoIcons.device_phone_portrait,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(11),
+                  ],
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => _codeFocus.requestFocus(),
+                ),
+                const SizedBox(height: 12),
+                _CredentialField(
+                  controller: _codeController,
+                  focusNode: _codeFocus,
+                  label: '验证码',
+                  icon: CupertinoIcons.shield,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(6),
+                  ],
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _submit(),
+                  trailing: Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: TextButton(
+                      onPressed: _sending || _countdown > 0 || !_phoneValid
+                          ? null
+                          : () => unawaited(_sendCode()),
+                      style: TextButton.styleFrom(
+                        foregroundColor: accent,
+                        disabledForegroundColor: const Color(0xFF9BB0AA),
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      child: Text(sendLabel),
+                    ),
+                  ),
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 180),
+                  alignment: Alignment.topCenter,
+                  child: _error == null
+                      ? const SizedBox(height: 18)
+                      : Padding(
+                          padding: const EdgeInsets.only(top: 12, bottom: 2),
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(
+                              color: Color(0xFFD84E4E),
+                              fontSize: 13,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        FilledButton(
+          onPressed: _submitting ? null : _submit,
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(52),
+            backgroundColor: accent,
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: const Color(0xFF9DE2D2),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          child: _submitting
+              ? const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text(
+                  '登录 / 注册',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+        ),
+      ],
     );
   }
 }
