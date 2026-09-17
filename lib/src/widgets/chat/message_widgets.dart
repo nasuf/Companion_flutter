@@ -1586,11 +1586,7 @@ class _ComponentCardBubble extends StatelessWidget {
       );
     }
     if (card.type == 'meal_voucher') {
-      return _MealVoucherComponentCard(
-        card: card,
-        isMine: isMine,
-        onTap: onTap,
-      );
+      return const SizedBox.shrink();
     }
     if (card.type == 'red_packet') {
       return _RedPacketComponentCard(card: card, isMine: isMine, onTap: onTap);
