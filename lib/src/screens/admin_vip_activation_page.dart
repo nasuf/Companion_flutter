@@ -382,13 +382,6 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
     }
   }
 
-  Future<void> _copyCode(String code) async {
-    final display = _formatVipActivationCodeDisplay(code);
-    await Clipboard.setData(ClipboardData(text: display));
-    if (!mounted) return;
-    setState(() => _codesNotice = '已复制 $display');
-  }
-
   int get _codesEnabledCount => _codes.where((c) => c.enabled).length;
 
   Future<void> _toggleCode(_AdminVipCodeItem item) async {
@@ -566,7 +559,6 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
                   for (final item in _codes) ...[
                     _VipActivationCodeCard(
                       item: item,
-                      onCopy: () => _copyCode(item.code),
                       onToggle: () => _toggleCode(item),
                     ),
                     const SizedBox(height: 8),
@@ -715,110 +707,152 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
   }
 }
 
-class _VipActivationCodeCard extends StatelessWidget {
+class _VipActivationCodeCard extends StatefulWidget {
   const _VipActivationCodeCard({
     required this.item,
-    required this.onCopy,
     required this.onToggle,
   });
 
   final _AdminVipCodeItem item;
-  final VoidCallback onCopy;
   final VoidCallback onToggle;
 
   @override
+  State<_VipActivationCodeCard> createState() => _VipActivationCodeCardState();
+}
+
+class _VipActivationCodeCardState extends State<_VipActivationCodeCard> {
+  bool _copied = false;
+  Timer? _copiedTimer;
+
+  @override
+  void dispose() {
+    _copiedTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _handleCopy() async {
+    final display = _formatVipActivationCodeDisplay(widget.item.code);
+    await Clipboard.setData(ClipboardData(text: display));
+    if (!mounted) return;
+    _copiedTimer?.cancel();
+    setState(() => _copied = true);
+    _copiedTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final item = widget.item;
     final display = _formatVipActivationCodeDisplay(item.code);
     final redeemed = item.maxRedemptions == null
         ? '${item.redemptionCount} 次'
         : '${item.redemptionCount}/${item.maxRedemptions}';
+    const copiedGreen = Color(0xFF1FA97A);
     return _AdminCard(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: GestureDetector(
-                  onTap: onCopy,
-                  behavior: HitTestBehavior.opaque,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        display,
-                        style: TextStyle(
-                          color: AppColors.text,
-                          fontFamily: 'Menlo',
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.2,
-                          decoration: TextDecoration.none,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '点击复制',
-                        style: TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w600,
-                          decoration: TextDecoration.none,
-                        ),
-                      ),
-                    ],
+                child: Text(
+                  display,
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontFamily: 'Menlo',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.1,
+                    decoration: TextDecoration.none,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ),
               _StatusPill(
-                text: item.enabled ? '启用' : '停用',
+                text: item.enabled ? '已启用' : '已停用',
                 positive: item.enabled,
+              ),
+              const SizedBox(width: 6),
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                onPressed: _handleCopy,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 28,
+                  height: 28,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: (_copied ? copiedGreen : AppColors.muted)
+                        .withValues(alpha: _copied ? 0.14 : 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: (_copied ? copiedGreen : AppColors.muted)
+                          .withValues(alpha: _copied ? 0.35 : 0.2),
+                    ),
+                  ),
+                  child: Icon(
+                    _copied
+                        ? CupertinoIcons.checkmark
+                        : CupertinoIcons.doc_on_doc,
+                    size: 14,
+                    color: _copied ? copiedGreen : AppColors.muted,
+                  ),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Row(
             children: [
               _VipActivationMetaChip(
                 icon: CupertinoIcons.calendar,
                 label: '${item.durationDays} 天',
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               _VipActivationMetaChip(
                 icon: CupertinoIcons.ticket,
                 label: _vipActivationRedemptionLimitLabel(item),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               _VipActivationMetaChip(
                 icon: CupertinoIcons.person_2,
                 label: '已兑 $redeemed',
               ),
+              const Spacer(),
+              CupertinoButton(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                minimumSize: Size.zero,
+                onPressed: widget.onToggle,
+                child: Text(
+                  item.enabled ? '停用' : '启用',
+                  style: TextStyle(
+                    color: AppColors.of(context).accent,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ),
             ],
           ),
           if (item.note != null && item.note!.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               item.note!,
-              maxLines: 2,
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: AppColors.muted,
-                fontSize: 12,
+                fontSize: 11.5,
                 fontWeight: FontWeight.w500,
                 decoration: TextDecoration.none,
               ),
             ),
           ],
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: _AdminGamesSecondaryButton(
-              label: item.enabled ? '停用' : '启用',
-              onPressed: onToggle,
-            ),
-          ),
         ],
       ),
     );
