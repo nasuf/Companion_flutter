@@ -255,7 +255,8 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
 
   int _redemptionsPage = 0;
   int _redemptionsTotal = 0;
-  bool _redemptionsLoading = true;
+  bool _redemptionsLoading = false;
+  bool _redemptionsLoadedOnce = false;
   String? _redemptionsError;
   String? _redemptionsNotice;
   final _userIdCtrl = TextEditingController();
@@ -321,6 +322,7 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
         _redemptions = result.items;
         _redemptionsTotal = result.total;
         _redemptionsLoading = false;
+        _redemptionsLoadedOnce = true;
       });
     } catch (error) {
       if (!mounted) return;
@@ -438,7 +440,7 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
 
   void _switchSubTab(int tab) {
     setState(() => _subTab = tab);
-    if (tab == 1 && _redemptions.isEmpty && !_redemptionsLoading) {
+    if (tab == 1 && !_redemptionsLoadedOnce && !_redemptionsLoading) {
       _loadRedemptions();
     }
   }
