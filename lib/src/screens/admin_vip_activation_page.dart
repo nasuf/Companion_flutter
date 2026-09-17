@@ -766,3 +766,23 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
     );
   }
 }
+
+// ===========================================================================
+// Entry page: VIP 激活码管理（与 VIP 订阅管理同级独立入口）
+// ===========================================================================
+
+class _AdminVipActivationPage extends StatelessWidget {
+  const _AdminVipActivationPage({required this.api, required this.session});
+
+  final CompanionApi api;
+  final AuthSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    return _AdminScaffold(
+      title: 'VIP 激活码',
+      subtitle: '生成 / 启停 · 兑换记录与撤销',
+      child: _VipActivationCodesTab(api: api, session: session),
+    );
+  }
+}

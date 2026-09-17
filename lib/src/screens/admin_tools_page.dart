@@ -683,6 +683,18 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     );
   }
 
+  void _openVipActivationManagement() {
+    widget.api.authToken = widget.session.token;
+    Navigator.of(context).push(
+      CompanionPageRoute<void>(
+        builder: (_) => _AdminVipActivationPage(
+          api: widget.api,
+          session: widget.session,
+        ),
+      ),
+    );
+  }
+
   Future<void> _pickProactiveTriggerType() async {
     if (_triggeringProactive) return;
     final selected = await showCupertinoModalPopup<String>(
@@ -1258,6 +1270,13 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                               subtitle: 'VIP 订阅用户 / 钞票充值记录 · 详情审计',
                               accent: const Color(0xFF7C5CFF),
                               onTap: _openVipSubscriptionManagement,
+                            ),
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.tickets_fill,
+                              title: 'VIP 激活码',
+                              subtitle: '生成 / 启停 · 兑换记录与撤销',
+                              accent: const Color(0xFF5B8DEF),
+                              onTap: _openVipActivationManagement,
                             ),
                           ],
                         ),

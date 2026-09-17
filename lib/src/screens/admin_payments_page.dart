@@ -750,7 +750,6 @@ enum _PaymentResource {
   ticket('钞票'),
   point('积分'),
   vip('会员'),
-  activationCode('激活码'),
   quota('额度');
 
   const _PaymentResource(this.label);
@@ -783,25 +782,16 @@ class _AdminPaymentsPageState extends State<_AdminPaymentsPage> {
     _PaymentResource.ticket: '钞票余额 · 手动发放 · 流水审计',
     _PaymentResource.point: '商城积分余额 · 手动发放 · 流水审计',
     _PaymentResource.vip: 'VIP 状态 · 设置/延长/结束 · 限时钞票流水',
-    _PaymentResource.activationCode: 'VIP 激活码 · 生成/启停 · 兑换记录与撤销',
     _PaymentResource.quota: '对话额度 · 查看用量 · 重置当前周期',
   };
 
-  // quota / activationCode 没有"管理/流水"两种视图。
-  bool get _resourceHasViews =>
-      _resource != _PaymentResource.quota &&
-      _resource != _PaymentResource.activationCode;
-
-  // ticket/point/vip 仍占 0-5；activationCode=6、quota=7（固定下标，避免 enum 扩容时算错）。
-  static const _activationCodeStackIndex = 6;
-  static const _quotaStackIndex = 7;
+  // quota 没有"管理/流水"两种视图。
+  bool get _resourceHasViews => _resource != _PaymentResource.quota;
 
   int get _stackIndex {
     if (_resource == _PaymentResource.quota) {
-      return _quotaStackIndex;
-    }
-    if (_resource == _PaymentResource.activationCode) {
-      return _activationCodeStackIndex;
+      // quota 追加在 ticket/point/vip 的 6 个 (3×2) 视图之后，下标固定为 6。
+      return (_PaymentResource.values.length - 1) * _PaymentView.values.length;
     }
     return _resource.index * _PaymentView.values.length + _view.index;
   }
@@ -868,7 +858,6 @@ class _AdminPaymentsPageState extends State<_AdminPaymentsPage> {
                 _PointLedgerTab(api: widget.api, session: widget.session),
                 _VipBalancesTab(api: widget.api, session: widget.session),
                 _VipLedgerTab(api: widget.api, session: widget.session),
-                _VipActivationCodesTab(api: widget.api, session: widget.session),
                 _ChatQuotaTab(api: widget.api, session: widget.session),
               ],
             ),
