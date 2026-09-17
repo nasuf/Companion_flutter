@@ -170,21 +170,39 @@ class _GamePageState extends State<GamePage>
     }
   }
 
-  void _showPointsInfoDialog() {
-    showCupertinoDialog<void>(
+  /// The coin bar's ＋ offers a top-up: points are only sold in the store's
+  /// 礼包 tab, so confirming takes the player straight there.
+  Future<void> _promptPointsTopUp() async {
+    final goToStore = await showCupertinoDialog<bool>(
       context: context,
-      builder: (context) => CupertinoAlertDialog(
+      builder: (dialogContext) => CupertinoAlertDialog(
         title: const Text('游戏积分'),
-        content: const Text('每天会自动赠送一份游戏积分，玩过的对局也会累计成陪玩等级。'),
+        content: const Text('每天会自动赠送一份游戏积分。想要更多，可以到商城的礼包里购买。'),
         actions: [
           CupertinoDialogAction(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
             isDefaultAction: true,
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('知道了'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('去商城'),
           ),
         ],
       ),
     );
+    if (goToStore != true || !mounted) return;
+    await Navigator.of(context).push<void>(
+      CompanionPageRoute<void>(
+        builder: (_) => StorePage(
+          api: widget.api,
+          session: widget.session,
+          openBundle: true,
+        ),
+      ),
+    );
+    // A purchase changes the balance the coin bar is showing.
+    if (mounted) unawaited(_load());
   }
 
   /// Compact durations for the header pills: `142H` / `35m` / `48s`.
@@ -350,7 +368,7 @@ class _GamePageState extends State<GamePage>
           _HubCoinBar(
             scale: s,
             balance: _gameWallet?.balance,
-            onPlus: _showPointsInfoDialog,
+            onPlus: _promptPointsTopUp,
           ),
         ],
       ),
