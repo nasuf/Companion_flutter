@@ -426,7 +426,7 @@ class _StorePageState extends State<StorePage> {
             const SizedBox(height: 8),
             CupertinoTextField(
               controller: codeCtrl,
-              placeholder: '请输入激活码',
+              placeholder: 'XXXX-XXXX',
               autocorrect: false,
               textCapitalization: TextCapitalization.characters,
             ),

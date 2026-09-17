@@ -234,37 +234,49 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
         // 恢复购买：Apple 审核硬性要求（有订阅必须提供）。换设备/重装后据此
         // 恢复订阅态；消耗型钞票不参与恢复（符合预期）。
         Center(
-          child: CupertinoButton(
-            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
-            minimumSize: Size.zero,
-            onPressed: widget.subscribing ? null : widget.onRestore,
-            child: Text(
-              '恢复购买',
-              style: TextStyle(
-                color: _W2b.resolve(context).inkSoft,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0,
-                decoration: TextDecoration.none,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CupertinoButton(
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                minimumSize: Size.zero,
+                onPressed: widget.subscribing ? null : widget.onRestore,
+                child: Text(
+                  '恢复购买',
+                  style: TextStyle(
+                    color: _W2b.resolve(context).inkSoft,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
               ),
-            ),
-          ),
-        ),
-        Center(
-          child: CupertinoButton(
-            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
-            minimumSize: Size.zero,
-            onPressed: widget.subscribing ? null : widget.onRedeemCode,
-            child: Text(
-              '我有激活码',
-              style: TextStyle(
-                color: _W2b.resolve(context).inkSoft,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0,
-                decoration: TextDecoration.none,
+              Text(
+                '|',
+                style: TextStyle(
+                  color: _W2b.resolve(context).inkSoft.withValues(alpha: 0.45),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  decoration: TextDecoration.none,
+                ),
               ),
-            ),
+              CupertinoButton(
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                minimumSize: Size.zero,
+                onPressed: widget.subscribing ? null : widget.onRedeemCode,
+                child: Text(
+                  '兑换激活码',
+                  style: TextStyle(
+                    color: _W2b.resolve(context).inkSoft,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],

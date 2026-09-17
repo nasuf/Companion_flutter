@@ -17,6 +17,24 @@ String _vipActivationErrorText(Object error) {
   return _asMessage(error);
 }
 
+String _formatVipActivationCodeDisplay(String code) {
+  final cleaned = code.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+  if (cleaned.length == 8) {
+    return '${cleaned.substring(0, 4)}-${cleaned.substring(4)}';
+  }
+  if (cleaned.startsWith('VIP') && cleaned.length == 11) {
+    final body = cleaned.substring(3);
+    return 'VIP-${body.substring(0, 4)}-${body.substring(4)}';
+  }
+  return code;
+}
+
+String _vipActivationRedemptionLimitLabel(_AdminVipCodeItem item) {
+  if (item.maxRedemptions == null) return '无限次';
+  if (item.maxRedemptions == 1) return '一次性';
+  return '最多 ${item.maxRedemptions} 次';
+}
+
 extension _AdminVipActivationApi on CompanionApi {
   Future<_AdminVipCodeListResponse> fetchVipActivationCodes({
     String? q,
@@ -321,6 +339,9 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
     );
 
     if (created != null && created.isNotEmpty && mounted) {
+      final formatted = created
+          .map((c) => _formatVipActivationCodeDisplay(c.code))
+          .toList();
       setState(() {
         _codesNotice = '已生成 ${created.length} 个激活码';
         _codesPage = 0;
@@ -329,8 +350,25 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
         context: context,
         builder: (ctx) => CupertinoAlertDialog(
           title: const Text('生成成功'),
-          content: Text(created.map((c) => c.code).join('\n')),
+          content: SingleChildScrollView(
+            child: Text(
+              formatted.join('\n'),
+              style: const TextStyle(
+                fontFamily: 'Menlo',
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
           actions: [
+            CupertinoDialogAction(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: formatted.join('\n')));
+                Navigator.of(ctx).pop();
+              },
+              child: const Text('复制全部'),
+            ),
             CupertinoDialogAction(
               onPressed: () => Navigator.of(ctx).pop(),
               child: const Text('确定'),
@@ -341,6 +379,15 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
       _loadCodes();
     }
   }
+
+  Future<void> _copyCode(String code) async {
+    final display = _formatVipActivationCodeDisplay(code);
+    await Clipboard.setData(ClipboardData(text: display));
+    if (!mounted) return;
+    setState(() => _codesNotice = '已复制 $display');
+  }
+
+  int get _codesEnabledCount => _codes.where((c) => c.enabled).length;
 
   Future<void> _toggleCode(_AdminVipCodeItem item) async {
     widget.api.authToken = widget.session.token;
@@ -389,29 +436,27 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
     }
   }
 
+  void _switchSubTab(int tab) {
+    setState(() => _subTab = tab);
+    if (tab == 1 && _redemptions.isEmpty && !_redemptionsLoading) {
+      _loadRedemptions();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 4),
-          child: CupertinoSlidingSegmentedControl<int>(
-            groupValue: _subTab,
-            onValueChanged: (v) {
-              if (v == null) return;
-              setState(() => _subTab = v);
-              if (v == 1 && _redemptions.isEmpty) _loadRedemptions();
-            },
-            children: const {
-              0: Padding(
-                padding: EdgeInsets.symmetric(vertical: 6),
-                child: Text('激活码', style: TextStyle(fontSize: 13)),
-              ),
-              1: Padding(
-                padding: EdgeInsets.symmetric(vertical: 6),
-                child: Text('兑换记录', style: TextStyle(fontSize: 13)),
-              ),
-            },
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+          child: _AdminFilterSegmented(
+            label: '视图',
+            value: _subTab == 0 ? 'codes' : 'redemptions',
+            options: const [
+              ('激活码', 'codes'),
+              ('兑换记录', 'redemptions'),
+            ],
+            onChanged: (v) => _switchSubTab(v == 'codes' ? 0 : 1),
           ),
         ),
         Expanded(
@@ -422,119 +467,129 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
   }
 
   Widget _buildCodesPanel() {
-    final totalPages = (_codesTotal / _vipActivationPageSize).ceil().clamp(1, 9999);
+    final totalPages =
+        (_codesTotal / _vipActivationPageSize).ceil().clamp(1, 9999);
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
-          child: Row(
-            children: [
-              Expanded(
-                child: CupertinoTextField(
-                  controller: _codesSearchCtrl,
-                  placeholder: '搜索激活码 / 备注',
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                ),
-              ),
-              const SizedBox(width: 8),
-              CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                onPressed: () {
-                  setState(() {
-                    _codesSearch = _codesSearchCtrl.text.trim();
-                    _codesPage = 0;
-                  });
-                  _loadCodes();
-                },
-                child: const Text('查询'),
-              ),
-              CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                onPressed: _openCreateSheet,
-                child: const Text('生成'),
-              ),
-            ],
-          ),
-        ),
-        if (_codesNotice != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(_codesNotice!, style: const TextStyle(color: CupertinoColors.activeGreen)),
-          ),
-        if (_codesError != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(_codesError!, style: const TextStyle(color: CupertinoColors.destructiveRed)),
-          ),
         Expanded(
-          child: _codesLoading
-              ? const Center(child: CupertinoActivityIndicator())
-              : ListView.builder(
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.all(18),
-                  itemCount: _codes.length,
-                  itemBuilder: (context, index) {
-                    final item = _codes[index];
-                    final limit = item.maxRedemptions == null
-                        ? '∞'
-                        : '${item.redemptionCount}/${item.maxRedemptions}';
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: CupertinoColors.secondarySystemGroupedBackground
-                            .resolveFrom(context),
-                        borderRadius: BorderRadius.circular(12),
+          child: RefreshIndicator(
+            onRefresh: _loadCodes,
+            child: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+              children: [
+                _AdminCard(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _AdminGamesTextField(
+                        label: '搜索激活码 / 备注',
+                        controller: _codesSearchCtrl,
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: 10),
+                      Row(
                         children: [
-                          Text(
-                            item.code,
-                            style: const TextStyle(
-                              fontFamily: 'Menlo',
-                              fontWeight: FontWeight.w700,
+                          Expanded(
+                            child: _AdminGamesSecondaryButton(
+                              label: _codesLoading ? '查询中…' : '查询',
+                              onPressed: _codesLoading
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        _codesSearch =
+                                            _codesSearchCtrl.text.trim();
+                                        _codesPage = 0;
+                                      });
+                                      _loadCodes();
+                                    },
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text('${item.durationDays} 天 · 已兑 $limit'),
-                          if (item.note != null && item.note!.isNotEmpty)
-                            Text(item.note!, style: const TextStyle(fontSize: 12)),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Text(item.enabled ? '启用' : '停用'),
-                              const Spacer(),
-                              CupertinoButton(
-                                padding: EdgeInsets.zero,
-                                onPressed: () => _toggleCode(item),
-                                child: Text(item.enabled ? '停用' : '启用'),
-                              ),
-                            ],
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _AdminRoleActionButton(
+                              color: AppColors.of(context).accent,
+                              icon: CupertinoIcons.add_circled_solid,
+                              label: '生成',
+                              loading: false,
+                              onTap: _openCreateSheet,
+                            ),
                           ),
                         ],
                       ),
-                    );
-                  },
+                    ],
+                  ),
                 ),
+                const SizedBox(height: 12),
+                _AdminStatStrip(
+                  stats: [
+                    ('总计', '$_codesTotal'),
+                    ('启用中', '$_codesEnabledCount'),
+                  ],
+                ),
+                if (_codesNotice != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _codesNotice!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFF1FA97A),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ],
+                if (_codesError != null) ...[
+                  const SizedBox(height: 12),
+                  _AdminGamesErrorText(_codesError!),
+                ],
+                const SizedBox(height: 12),
+                if (_codesLoading && _codes.isEmpty)
+                  const Center(child: CupertinoActivityIndicator(radius: 14))
+                else if (_codes.isEmpty)
+                  Text(
+                    '暂无激活码',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                    ),
+                  )
+                else
+                  for (final item in _codes) ...[
+                    _VipActivationCodeCard(
+                      item: item,
+                      onCopy: () => _copyCode(item.code),
+                      onToggle: () => _toggleCode(item),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+              ],
+            ),
+          ),
         ),
-        _adminWalletBalancePager(
+        _vipSubPager(
           page: _codesPage,
           totalPages: totalPages,
           total: _codesTotal,
-          onPrev: _codesPage > 0
-              ? () {
+          unit: '条',
+          onPrev: (_codesPage == 0 || _codesLoading)
+              ? null
+              : () {
                   setState(() => _codesPage -= 1);
                   _loadCodes();
-                }
-              : null,
-          onNext: _codesPage + 1 < totalPages
-              ? () {
+                },
+          onNext: (_codesPage + 1 >= totalPages || _codesLoading)
+              ? null
+              : () {
                   setState(() => _codesPage += 1);
                   _loadCodes();
-                }
-              : null,
+                },
         ),
       ],
     );
@@ -543,125 +598,335 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
   Widget _buildRedemptionsPanel() {
     final totalPages =
         (_redemptionsTotal / _vipActivationPageSize).ceil().clamp(1, 9999);
+    final grantedCount =
+        _redemptions.where((r) => r.status == 'granted').length;
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
-          child: Row(
-            children: [
-              Expanded(
-                child: CupertinoTextField(
-                  controller: _userIdCtrl,
-                  placeholder: '用户 ID',
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: CupertinoTextField(
-                  controller: _codeQCtrl,
-                  placeholder: '激活码',
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                ),
-              ),
-              CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                onPressed: () {
-                  setState(() => _redemptionsPage = 0);
-                  _loadRedemptions();
-                },
-                child: const Text('查询'),
-              ),
-            ],
-          ),
-        ),
-        if (_redemptionsNotice != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              _redemptionsNotice!,
-              style: const TextStyle(color: CupertinoColors.activeGreen),
-            ),
-          ),
-        if (_redemptionsError != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              _redemptionsError!,
-              style: const TextStyle(color: CupertinoColors.destructiveRed),
-            ),
-          ),
         Expanded(
-          child: _redemptionsLoading
-              ? const Center(child: CupertinoActivityIndicator())
-              : ListView.builder(
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.all(18),
-                  itemCount: _redemptions.length,
-                  itemBuilder: (context, index) {
-                    final item = _redemptions[index];
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: CupertinoColors.secondarySystemGroupedBackground
-                            .resolveFrom(context),
-                        borderRadius: BorderRadius.circular(12),
+          child: RefreshIndicator(
+            onRefresh: _loadRedemptions,
+            child: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+              children: [
+                _AdminCard(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _AdminGamesTextField(
+                        label: '用户 ID（可选）',
+                        controller: _userIdCtrl,
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.userDisplayName ?? item.userId,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          Text(
-                            '${item.codePreview} · ${item.durationDays} 天',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          Text(
-                            _vipFormatDate(item.redeemedAt),
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          if (item.status == 'granted')
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: CupertinoButton(
-                                padding: EdgeInsets.zero,
-                                onPressed: () => _revoke(item),
-                                child: const Text(
-                                  '撤销',
-                                  style: TextStyle(color: CupertinoColors.destructiveRed),
-                                ),
-                              ),
-                            )
-                          else
-                            const Text('已撤销', style: TextStyle(fontSize: 12)),
-                        ],
+                      const SizedBox(height: 10),
+                      _AdminGamesTextField(
+                        label: '激活码 XXXX-XXXX',
+                        controller: _codeQCtrl,
                       ),
-                    );
-                  },
+                      const SizedBox(height: 10),
+                      _AdminGamesSecondaryButton(
+                        label: _redemptionsLoading ? '查询中…' : '查询',
+                        onPressed: _redemptionsLoading
+                            ? null
+                            : () {
+                                setState(() => _redemptionsPage = 0);
+                                _loadRedemptions();
+                              },
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(height: 12),
+                _AdminStatStrip(
+                  stats: [
+                    ('总计', '$_redemptionsTotal'),
+                    ('生效中', '$grantedCount'),
+                  ],
+                ),
+                if (_redemptionsNotice != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _redemptionsNotice!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFF1FA97A),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ],
+                if (_redemptionsError != null) ...[
+                  const SizedBox(height: 12),
+                  _AdminGamesErrorText(_redemptionsError!),
+                ],
+                const SizedBox(height: 12),
+                if (_redemptionsLoading && _redemptions.isEmpty)
+                  const Center(child: CupertinoActivityIndicator(radius: 14))
+                else if (_redemptions.isEmpty)
+                  Text(
+                    '暂无兑换记录',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                    ),
+                  )
+                else
+                  for (final item in _redemptions) ...[
+                    _VipActivationRedemptionCard(
+                      item: item,
+                      onRevoke: item.status == 'granted'
+                          ? () => _revoke(item)
+                          : null,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+              ],
+            ),
+          ),
         ),
-        _adminWalletBalancePager(
+        _vipSubPager(
           page: _redemptionsPage,
           totalPages: totalPages,
           total: _redemptionsTotal,
-          onPrev: _redemptionsPage > 0
-              ? () {
+          unit: '笔',
+          onPrev: (_redemptionsPage == 0 || _redemptionsLoading)
+              ? null
+              : () {
                   setState(() => _redemptionsPage -= 1);
                   _loadRedemptions();
-                }
-              : null,
-          onNext: _redemptionsPage + 1 < totalPages
-              ? () {
+                },
+          onNext: (_redemptionsPage + 1 >= totalPages || _redemptionsLoading)
+              ? null
+              : () {
                   setState(() => _redemptionsPage += 1);
                   _loadRedemptions();
-                }
-              : null,
+                },
         ),
       ],
+    );
+  }
+}
+
+class _VipActivationCodeCard extends StatelessWidget {
+  const _VipActivationCodeCard({
+    required this.item,
+    required this.onCopy,
+    required this.onToggle,
+  });
+
+  final _AdminVipCodeItem item;
+  final VoidCallback onCopy;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final display = _formatVipActivationCodeDisplay(item.code);
+    final redeemed = item.maxRedemptions == null
+        ? '${item.redemptionCount} 次'
+        : '${item.redemptionCount}/${item.maxRedemptions}';
+    return _AdminCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: onCopy,
+                  behavior: HitTestBehavior.opaque,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        display,
+                        style: TextStyle(
+                          color: AppColors.text,
+                          fontFamily: 'Menlo',
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                          decoration: TextDecoration.none,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '点击复制',
+                        style: TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              _StatusPill(
+                text: item.enabled ? '启用' : '停用',
+                positive: item.enabled,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _VipActivationMetaChip(
+                icon: CupertinoIcons.calendar,
+                label: '${item.durationDays} 天',
+              ),
+              const SizedBox(width: 8),
+              _VipActivationMetaChip(
+                icon: CupertinoIcons.ticket,
+                label: _vipActivationRedemptionLimitLabel(item),
+              ),
+              const SizedBox(width: 8),
+              _VipActivationMetaChip(
+                icon: CupertinoIcons.person_2,
+                label: '已兑 $redeemed',
+              ),
+            ],
+          ),
+          if (item.note != null && item.note!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              item.note!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: AppColors.muted,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: _AdminGamesSecondaryButton(
+              label: item.enabled ? '停用' : '启用',
+              onPressed: onToggle,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VipActivationMetaChip extends StatelessWidget {
+  const _VipActivationMetaChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.muted.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: AppColors.muted),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: AppColors.muted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VipActivationRedemptionCard extends StatelessWidget {
+  const _VipActivationRedemptionCard({
+    required this.item,
+    required this.onRevoke,
+  });
+
+  final _AdminVipRedemptionItem item;
+  final VoidCallback? onRevoke;
+
+  @override
+  Widget build(BuildContext context) {
+    final granted = item.status == 'granted';
+    return _AdminCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  item.userDisplayName ?? item.userId,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ),
+              _StatusPill(
+                text: granted ? '生效中' : '已撤销',
+                positive: granted,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${_formatVipActivationCodeDisplay(item.codePreview)} · ${item.durationDays} 天',
+            style: TextStyle(
+              color: AppColors.muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'Menlo',
+              decoration: TextDecoration.none,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _vipFormatDate(item.redeemedAt),
+            style: TextStyle(
+              color: AppColors.muted,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w500,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          if (onRevoke != null) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: _AdminGamesSecondaryButton(
+                label: '撤销兑换',
+                onPressed: onRevoke,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -774,7 +1039,7 @@ class _VipActivationCreateSheetState extends State<_VipActivationCreateSheet> {
               children: [
                 Expanded(
                   child: Text(
-                    '生成 VIP 激活码',
+                    '生成 VIP 激活码（XXXX-XXXX）',
                     style: TextStyle(
                       color: textColor,
                       fontSize: 16,
