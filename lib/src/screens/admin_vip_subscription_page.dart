@@ -499,7 +499,7 @@ class _VipSubscribersTabState extends State<_VipSubscribersTab> {
   int get _totalPages => math.max(1, (_total / _vipSubPageSize).ceil());
 
   Future<void> _openDetail(_AdminVipMemberItem item) async {
-    await showDialog<void>(
+    await showAdminDialog<void>(
       context: context,
       builder: (_) => _VipMemberDetailDialog(item: item),
     );
@@ -871,7 +871,7 @@ class _RechargeRecordsTabState extends State<_RechargeRecordsTab> {
   int get _totalPages => math.max(1, (_total / _vipSubPageSize).ceil());
 
   Future<void> _openDetail(_AdminRechargeItem item) async {
-    await showDialog<void>(
+    await showAdminDialog<void>(
       context: context,
       builder: (_) => _RechargeDetailDialog(item: item),
     );
@@ -1395,21 +1395,8 @@ class _AdminDetailDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final media = MediaQuery.of(context);
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 36),
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: 460,
-          maxHeight: media.size.height * 0.82,
-        ),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1B2024) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-        ),
+    return _AdminDialogHost(
+      child: _AdminFormDialogFrame(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,

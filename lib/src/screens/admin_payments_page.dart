@@ -951,7 +951,7 @@ class _WalletBalancesTabState extends State<_WalletBalancesTab> {
   int get _totalPages => math.max(1, (_total / _walletPageSize).ceil());
 
   Future<void> _openGrant({_AdminWalletBalanceItem? item}) async {
-    final message = await showDialog<String>(
+    final message = await showAdminDialog<String>(
       context: context,
       builder: (_) => _GrantTicketsDialog(
         api: widget.api,
@@ -1479,7 +1479,7 @@ class _PointBalancesTabState extends State<_PointBalancesTab> {
   int get _totalPages => math.max(1, (_total / _walletPageSize).ceil());
 
   Future<void> _openGrant({_AdminWalletBalanceItem? item}) async {
-    final message = await showDialog<String>(
+    final message = await showAdminDialog<String>(
       context: context,
       builder: (_) => _GrantShopPointsDialog(
         api: widget.api,
@@ -2142,7 +2142,7 @@ class _VipBalancesTabState extends State<_VipBalancesTab> {
   int get _totalPages => math.max(1, (_total / _walletPageSize).ceil());
 
   Future<void> _openSetVip({_AdminWalletBalanceItem? item}) async {
-    final message = await showDialog<String>(
+    final message = await showAdminDialog<String>(
       context: context,
       builder: (_) => _SetVipDialog(
         api: widget.api,
@@ -2722,22 +2722,8 @@ class _GrantTicketsDialogState extends State<_GrantTicketsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 36),
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: 460,
-          maxHeight: media.size.height * 0.82,
-        ),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xFF1B2024)
-              : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-        ),
+    return _AdminDialogHost(
+      child: _AdminFormDialogFrame(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2967,22 +2953,8 @@ class _GrantShopPointsDialogState extends State<_GrantShopPointsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 36),
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: 460,
-          maxHeight: media.size.height * 0.82,
-        ),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xFF1B2024)
-              : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-        ),
+    return _AdminDialogHost(
+      child: _AdminFormDialogFrame(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3260,23 +3232,9 @@ class _SetVipDialogState extends State<_SetVipDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
     final danger = AppColors.of(context).danger;
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 36),
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: 460,
-          maxHeight: media.size.height * 0.82,
-        ),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xFF1B2024)
-              : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-        ),
+    return _AdminDialogHost(
+      child: _AdminFormDialogFrame(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,

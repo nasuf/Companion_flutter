@@ -102,9 +102,8 @@ class _AdminUserFeedbackPageState extends State<AdminUserFeedbackPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return CupertinoPageScaffold(
-      backgroundColor: isDark ? AppColors.page : const Color(0xFFF0F4F8),
-      child: SafeArea(
+    return _adminPageHost(
+      body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

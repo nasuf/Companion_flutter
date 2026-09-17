@@ -1169,11 +1169,15 @@ class _MealMerchantsPanelState extends State<_MealMerchantsPanel> {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      enableDrag: true,
+      useSafeArea: false,
       backgroundColor: Colors.transparent,
-      builder: (_) => _MealMerchantEditorSheet(
-        api: widget.api,
-        session: widget.session,
-        merchant: merchant,
+      builder: (_) => _adminSheetHost(
+        child: _MealMerchantEditorSheet(
+          api: widget.api,
+          session: widget.session,
+          merchant: merchant,
+        ),
       ),
     );
     if (saved == true && mounted) {
@@ -1597,120 +1601,99 @@ class _MealMerchantEditorSheetState extends State<_MealMerchantEditorSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: Container(
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF141C26) : const Color(0xFFF7FAFC),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
-        child: SafeArea(
-          top: false,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.18)
-                          : const Color(0x22181F2A),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  _isNew ? '新增商家' : '编辑商家',
-                  style: TextStyle(
-                    color: isDark ? AppColors.text : const Color(0xFF12171B),
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _MealField(
-                  label: '商家名称 *',
-                  controller: _name,
-                  placeholder: '如：张记食堂',
-                ),
-                const SizedBox(height: 12),
-                _MealField(
-                  label: '联系人姓名（与手机号二选一，可留空）',
-                  controller: _contactName,
-                  placeholder: '如：王老板',
-                ),
-                const SizedBox(height: 12),
-                _MealField(
-                  label: '联系人手机号（与姓名二选一，可留空）',
-                  controller: _contactPhone,
-                  placeholder: '如：13812345678',
-                  keyboardType: TextInputType.phone,
-                  digitsPhoneOnly: true,
-                ),
-                const SizedBox(height: 16),
-                _MealSwitchRow(
-                  title: '属于「千味央厨」商家',
-                  subtitle: '勾选后计入千味央厨汇总的成员门店',
-                  value: _qwycMember,
-                  onChanged: (v) => setState(() => _qwycMember = v),
-                ),
-                const SizedBox(height: 8),
-                _MealSwitchRow(
-                  title: '这是「千味央厨」总账号',
-                  subtitle: '该账号登录 H5 后查看各成员门店核销汇总，不扫码核销',
-                  value: _qwycGroup,
-                  onChanged: (v) => setState(() => _qwycGroup = v),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: CupertinoButton(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.08)
-                            : const Color(0x0F181F2A),
-                        borderRadius: BorderRadius.circular(14),
-                        onPressed: _saving
-                            ? null
-                            : () => Navigator.of(context).pop(false),
-                        child: Text(
-                          '取消',
-                          style: TextStyle(
-                            color: isDark
-                                ? AppColors.text
-                                : const Color(0xFF12171B),
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _AdminRoleActionButton(
-                        color: AppColors.of(context).accent,
-                        icon: CupertinoIcons.checkmark_alt,
-                        label: '保存',
-                        loading: _saving,
-                        onTap: _save,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+    final textColor = isDark ? AppColors.text : const Color(0xFF12171B);
+    final sheetBg = isDark ? const Color(0xFF141C26) : const Color(0xFFF7FAFC);
+    final accent = AppColors.of(context).accent;
+
+    return _AdminSheetLayout(
+      backgroundColor: sheetBg,
+      heightFraction: 0.72,
+      borderRadius: 24,
+      horizontalPadding: 20,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _AdminSheetGrabber(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(0, 10, 0, 16),
+            child: Text(
+              _isNew ? '新增商家' : '编辑商家',
+              style: TextStyle(
+                color: textColor,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+                decoration: TextDecoration.none,
+              ),
             ),
           ),
-        ),
+          Expanded(
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _MealField(
+                    label: '商家名称 *',
+                    controller: _name,
+                    placeholder: '如：张记食堂',
+                  ),
+                  const SizedBox(height: 12),
+                  _MealField(
+                    label: '联系人姓名（与手机号二选一，可留空）',
+                    controller: _contactName,
+                    placeholder: '如：王老板',
+                  ),
+                  const SizedBox(height: 12),
+                  _MealField(
+                    label: '联系人手机号（与姓名二选一，可留空）',
+                    controller: _contactPhone,
+                    placeholder: '如：13812345678',
+                    keyboardType: TextInputType.phone,
+                    digitsPhoneOnly: true,
+                  ),
+                  const SizedBox(height: 16),
+                  _MealSwitchRow(
+                    title: '属于「千味央厨」商家',
+                    subtitle: '勾选后计入千味央厨汇总的成员门店',
+                    value: _qwycMember,
+                    onChanged: (v) => setState(() => _qwycMember = v),
+                  ),
+                  const SizedBox(height: 8),
+                  _MealSwitchRow(
+                    title: '这是「千味央厨」总账号',
+                    subtitle: '该账号登录 H5 后查看各成员门店核销汇总，不扫码核销',
+                    value: _qwycGroup,
+                    onChanged: (v) => setState(() => _qwycGroup = v),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _AdminGamesSecondaryButton(
+                  label: '取消',
+                  onPressed: _saving
+                      ? null
+                      : () => Navigator.of(context).pop(false),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _AdminRoleActionButton(
+                  color: accent,
+                  icon: CupertinoIcons.checkmark_alt,
+                  label: '保存',
+                  loading: _saving,
+                  onTap: _save,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

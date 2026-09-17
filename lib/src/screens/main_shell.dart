@@ -974,7 +974,7 @@ class _ProfilePageState extends State<ProfilePage>
     }
   }
 
-  Future<void> _confirmDeleteAgent() async {
+  Future<void> _confirmDeleteAgent({bool popOverlayRoute = false}) async {
     final agentId = widget.session.agentId;
     if (_deleting || agentId == null || agentId.isEmpty) return;
     final agentName = widget.session.agentName ?? '当前 Agent';
@@ -998,9 +998,36 @@ class _ProfilePageState extends State<ProfilePage>
         );
       },
     );
-    if (confirmed == true) {
-      await _deleteAgent(agentId);
+    if (confirmed != true || !mounted) return;
+
+    final confirmedAgain = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) {
+        return CupertinoAlertDialog(
+          title: const Text('再次确认删除'),
+          content: Text(
+            '删除「$agentName」后，所有聊天记录、关系数据和记忆将被永久清除，且无法恢复。\n\n请再次确认是否继续。',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('确认删除'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmedAgain != true || !mounted) return;
+
+    if (popOverlayRoute && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
     }
+    await _deleteAgent(agentId);
   }
 
   Future<void> _confirmLogout() async {
@@ -1122,39 +1149,6 @@ class _ProfilePageState extends State<ProfilePage>
             CupertinoDialogAction(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('知道了'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _showDeleteAccountDialog() async {
-    await _showPlainDialog(
-      title: '注销账号',
-      message: '账号注销会永久删除账号、AI伙伴及关系记录。该能力暂未开放，请先通过意见反馈联系我们处理。',
-      confirmText: '知道了',
-      destructive: true,
-    );
-  }
-
-  Future<void> _showPlainDialog({
-    required String title,
-    required String message,
-    required String confirmText,
-    bool destructive = false,
-  }) async {
-    await showCupertinoDialog<void>(
-      context: context,
-      builder: (context) {
-        return CupertinoAlertDialog(
-          title: Text(title),
-          content: Text(message),
-          actions: [
-            CupertinoDialogAction(
-              isDestructiveAction: destructive,
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(confirmText),
             ),
           ],
         );
@@ -1302,6 +1296,9 @@ class _ProfilePageState extends State<ProfilePage>
                                       api: widget.api,
                                       session: widget.session,
                                       initialStats: _profileStats,
+                                      onDeleteFriend: () => _confirmDeleteAgent(
+                                        popOverlayRoute: true,
+                                      ),
                                     ),
                                     refreshStatsOnReturn: true,
                                   ),
@@ -1345,11 +1342,7 @@ class _ProfilePageState extends State<ProfilePage>
                               ],
                             ),
                             const SizedBox(height: 18),
-                            _SettingsAccountActions(
-                              onLogout: _confirmLogout,
-                              onDeleteFriend: _confirmDeleteAgent,
-                              onDeleteAccount: _showDeleteAccountDialog,
-                            ),
+                            _SettingsAccountActions(onLogout: _confirmLogout),
                             if (_deleting) ...[
                               const SizedBox(height: 16),
                               _DeleteProgressPanel(
@@ -2361,36 +2354,13 @@ class _SettingsRow extends StatelessWidget {
 }
 
 class _SettingsAccountActions extends StatelessWidget {
-  const _SettingsAccountActions({
-    required this.onLogout,
-    required this.onDeleteFriend,
-    required this.onDeleteAccount,
-  });
+  const _SettingsAccountActions({required this.onLogout});
 
   final VoidCallback onLogout;
-  final VoidCallback onDeleteFriend;
-  final VoidCallback onDeleteAccount;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _SettingsActionButton(label: '退出登录', onTap: onLogout),
-        const SizedBox(height: 10),
-        _SettingsActionButton(
-          label: '删除好友',
-          destructive: true,
-          onTap: onDeleteFriend,
-        ),
-        const SizedBox(height: 10),
-        _SettingsActionButton(
-          label: '注销账号',
-          destructive: true,
-          enabled: false,
-          onTap: onDeleteAccount,
-        ),
-      ],
-    );
+    return _SettingsActionButton(label: '退出登录', onTap: onLogout);
   }
 }
 
@@ -3471,11 +3441,13 @@ class _PrivacySecurityPage extends StatefulWidget {
     required this.api,
     required this.session,
     this.initialStats,
+    required this.onDeleteFriend,
   });
 
   final CompanionApi api;
   final AuthSession session;
   final ProfileStats? initialStats;
+  final VoidCallback onDeleteFriend;
 
   @override
   State<_PrivacySecurityPage> createState() => _PrivacySecurityPageState();
@@ -3581,6 +3553,22 @@ class _PrivacySecurityPageState extends State<_PrivacySecurityPage> {
               style: TextStyle(color: _SettingsColors.red, fontSize: 12),
             ),
           ],
+          const SizedBox(height: 24),
+          _SettingsActionButton(
+            label: '删除好友',
+            destructive: true,
+            enabled:
+                widget.session.agentId != null &&
+                widget.session.agentId!.isNotEmpty,
+            onTap: widget.onDeleteFriend,
+          ),
+          const SizedBox(height: 10),
+          _SettingsActionButton(
+            label: '注销账号',
+            destructive: true,
+            enabled: false,
+            onTap: () {},
+          ),
         ],
       ),
     );

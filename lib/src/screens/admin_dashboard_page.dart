@@ -963,6 +963,173 @@ const List<Color> _chartColors = [
 
 /// Full-screen scaffold shared by every admin dashboard sub-page: animated
 /// backdrop + centered title + optional trailing action.
+/// Drag-to-dismiss keyboard for all admin scroll views.
+class _AdminScrollBehavior extends ScrollBehavior {
+  const _AdminScrollBehavior();
+
+  @override
+  ScrollViewKeyboardDismissBehavior getKeyboardDismissBehavior(
+    BuildContext context,
+  ) {
+    return ScrollViewKeyboardDismissBehavior.onDrag;
+  }
+}
+
+/// Bottom color of [_ProfileBackgroundPainter] — fills IME corner gaps if any
+/// pixel misses the custom paint layer.
+Color _adminPageBaseColor(BuildContext context) {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  return isDark ? const Color(0xFF0D1211) : const Color(0xFFEEF9F8);
+}
+
+/// Cupertino admin pages must opt out of viewport shrink so the gradient
+/// background paints through the iOS keyboard corner radii (not black gaps).
+/// Both [CupertinoPageScaffold] and [Scaffold] need resizeToAvoidBottomInset:
+/// false — the Cupertino wrapper defaults to true and would shrink the route
+/// even when the inner Material scaffold opts out.
+Widget _adminPageHost({required Widget body}) {
+  return Builder(
+    builder: (context) {
+      final baseColor = _adminPageBaseColor(context);
+      return CupertinoPageScaffold(
+        backgroundColor: baseColor,
+        resizeToAvoidBottomInset: false,
+        child: Scaffold(
+          resizeToAvoidBottomInset: false,
+          backgroundColor: baseColor,
+          body: body,
+        ),
+      );
+    },
+  );
+}
+
+/// Animated admin background stays full-screen; foreground lifts above keyboard.
+Widget _buildAdminKeyboardAwareStack({
+  required BuildContext context,
+  required double motionProgress,
+  required Widget child,
+}) {
+  final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  return Stack(
+    fit: StackFit.expand,
+    children: [
+      Positioned.fill(
+        child: CustomPaint(
+          painter: _ProfileBackgroundPainter(
+            progress: motionProgress,
+            isDark: isDark,
+          ),
+        ),
+      ),
+      Padding(
+        padding: EdgeInsets.only(bottom: keyboard),
+        child: ScrollConfiguration(
+          behavior: const _AdminScrollBehavior(),
+          child: child,
+        ),
+      ),
+    ],
+  );
+}
+
+/// Full-screen modal host for admin form dialogs (search / grant / VIP).
+class _AdminDialogHost extends StatelessWidget {
+  const _AdminDialogHost({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final keyboard = media.viewInsets.bottom;
+    final fullHeight = media.size.height + keyboard;
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      backgroundColor: Colors.transparent,
+      body: SizedBox(
+        height: fullHeight,
+        width: double.infinity,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            GestureDetector(
+              onTap: () => Navigator.of(context).pop(),
+              behavior: HitTestBehavior.opaque,
+              child: Container(color: Colors.black.withValues(alpha: 0.42)),
+            ),
+            Align(
+              alignment: Alignment.center,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(20, 36, 20, 36 + keyboard),
+                child: child,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// White dialog panel for admin forms with text fields.
+class _AdminFormDialogFrame extends StatelessWidget {
+  const _AdminFormDialogFrame({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      constraints: BoxConstraints(
+        maxWidth: 460,
+        maxHeight: math.min(
+          MediaQuery.sizeOf(context).height * 0.82,
+          MediaQuery.sizeOf(context).height - 72,
+        ),
+      ),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1B2024) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: ScrollConfiguration(
+        behavior: const _AdminScrollBehavior(),
+        child: child,
+      ),
+    );
+  }
+}
+
+/// Transparent scaffold root for admin bottom sheets with text fields.
+Widget _adminSheetHost({required Widget child}) {
+  return Scaffold(
+    resizeToAvoidBottomInset: false,
+    backgroundColor: Colors.transparent,
+    // Modal sheet children declare their own height; pin them to the bottom
+    // edge — a bare Scaffold body top-aligns and pushes the panel upward.
+    body: Align(
+      alignment: Alignment.bottomCenter,
+      child: child,
+    ),
+  );
+}
+
+/// Admin dialogs draw their own scrim via [_AdminDialogHost].
+Future<T?> showAdminDialog<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+}) {
+  return showDialog<T>(
+    context: context,
+    barrierColor: Colors.transparent,
+    builder: builder,
+  );
+}
+
 class _AdminScaffold extends StatefulWidget {
   const _AdminScaffold({
     required this.title,
@@ -1003,89 +1170,87 @@ class _AdminScaffoldState extends State<_AdminScaffold>
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return CupertinoPageScaffold(
-      backgroundColor: Colors.transparent,
-      child: Material(
+    return _adminPageHost(
+      body: Material(
         type: MaterialType.transparency,
         child: AnimatedBuilder(
           animation: _motionController,
           builder: (context, _) {
-            return Stack(
-              fit: StackFit.expand,
-              children: [
-                CustomPaint(
-                  painter: _ProfileBackgroundPainter(
-                    progress: _motionController.value,
-                    isDark: isDark,
-                  ),
-                ),
-                Column(
-                  children: [
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        18,
-                        media.padding.top + 12,
-                        18,
-                        4,
-                      ),
-                      child: SizedBox(
-                        height: 48,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: _AppNavCircleButton(
-                                icon: CupertinoIcons.chevron_left,
-                                onPressed: () => Navigator.of(context).pop(),
-                              ),
+            return _buildAdminKeyboardAwareStack(
+              context: context,
+              motionProgress: _motionController.value,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      18,
+                      media.padding.top + 12,
+                      18,
+                      4,
+                    ),
+                    child: SizedBox(
+                      height: 48,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: _AppNavCircleButton(
+                              icon: CupertinoIcons.chevron_left,
+                              onPressed: () => Navigator.of(context).pop(),
                             ),
-                            Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  widget.title,
-                                  style: TextStyle(
-                                    color: isDark
-                                        ? AppColors.text
-                                        : const Color(0xFF12171B),
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 0,
-                                    decoration: TextDecoration.none,
-                                  ),
+                          ),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                widget.title,
+                                style: TextStyle(
+                                  color: isDark
+                                      ? AppColors.text
+                                      : const Color(0xFF12171B),
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0,
+                                  decoration: TextDecoration.none,
                                 ),
-                                if (widget.subtitle != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2),
-                                    child: Text(
-                                      widget.subtitle!,
-                                      style: TextStyle(
-                                        color: isDark
-                                            ? const Color(0x9EEBF2EE)
-                                            : AppColors.muted,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        letterSpacing: 0,
-                                        decoration: TextDecoration.none,
-                                      ),
+                              ),
+                              if (widget.subtitle != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    widget.subtitle!,
+                                    style: TextStyle(
+                                      color: isDark
+                                          ? const Color(0x9EEBF2EE)
+                                          : AppColors.muted,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0,
+                                      decoration: TextDecoration.none,
                                     ),
                                   ),
-                              ],
+                                ),
+                            ],
+                          ),
+                          if (widget.trailing != null)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: widget.trailing,
                             ),
-                            if (widget.trailing != null)
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: widget.trailing,
-                              ),
-                          ],
-                        ),
+                        ],
                       ),
                     ),
-                    Expanded(child: widget.child),
-                  ],
-                ),
-              ],
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                      child: widget.child,
+                    ),
+                  ),
+                ],
+              ),
             );
           },
         ),
@@ -1128,6 +1293,98 @@ class _AdminCard extends StatelessWidget {
         ],
       ),
       child: child,
+    );
+  }
+}
+
+/// Admin form bottom sheet shell — background extends behind the keyboard
+/// (RedPacketSendSheet geometry). [child] is padded above the IME.
+class _AdminSheetLayout extends StatelessWidget {
+  const _AdminSheetLayout({
+    required this.backgroundColor,
+    required this.child,
+    this.heightFraction = 0.58,
+    this.borderRadius = 22,
+    this.horizontalPadding = 18,
+  });
+
+  final Color backgroundColor;
+  final Widget child;
+  final double heightFraction;
+  final double borderRadius;
+  final double horizontalPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final keyboard = media.viewInsets.bottom;
+    final baseHeight = media.size.height * heightFraction;
+    // Grow through the IME slot so iOS keyboard corner radii show sheet color
+    // (same geometry as RedPacketSendSheet).
+    final sheetHeight = math.min(baseHeight + keyboard, media.size.height);
+    final contentBottom =
+        keyboard > 0 ? keyboard + 12 : 12 + media.padding.bottom;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return SizedBox(
+      height: sheetHeight,
+      width: double.infinity,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(borderRadius),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
+              blurRadius: 24,
+              offset: const Offset(0, -6),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(borderRadius),
+          ),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              0,
+              horizontalPadding,
+              contentBottom,
+            ),
+            child: ScrollConfiguration(
+              behavior: const _AdminScrollBehavior(),
+              child: child,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminSheetGrabber extends StatelessWidget {
+  const _AdminSheetGrabber();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 6),
+      child: Center(
+        child: Container(
+          width: 36,
+          height: 4,
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.22)
+                : Colors.black.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(99),
+          ),
+        ),
+      ),
     );
   }
 }

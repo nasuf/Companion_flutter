@@ -2360,7 +2360,7 @@ class _GamePointsLedgerTabState extends State<_GamePointsLedgerTab> {
   }
 
   Future<void> _openGrant() async {
-    final message = await showDialog<String>(
+    final message = await showAdminDialog<String>(
       context: context,
       builder: (_) =>
           _GrantPointsDialog(api: widget.api, session: widget.session),
@@ -2730,21 +2730,8 @@ class _GrantPointsDialogState extends State<_GrantPointsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final media = MediaQuery.of(context);
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 36),
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: 460,
-          maxHeight: media.size.height * 0.82,
-        ),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1B2024) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-        ),
+    return _AdminDialogHost(
+      child: _AdminFormDialogFrame(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,

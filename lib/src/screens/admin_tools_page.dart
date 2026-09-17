@@ -1151,47 +1151,42 @@ class _AdminToolsPageState extends State<AdminToolsPage>
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return CupertinoPageScaffold(
-      backgroundColor: Colors.transparent,
-      child: Material(
+    return _adminPageHost(
+      body: Material(
         type: MaterialType.transparency,
         child: AnimatedBuilder(
           animation: _motionController,
           builder: (context, _) {
-            return Stack(
-              fit: StackFit.expand,
-              children: [
-                CustomPaint(
-                  painter: _ProfileBackgroundPainter(
-                    progress: _motionController.value,
-                    isDark: isDark,
-                  ),
+            return _buildAdminKeyboardAwareStack(
+              context: context,
+              motionProgress: _motionController.value,
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: EdgeInsets.fromLTRB(
+                  18,
+                  media.padding.top + 12,
+                  18,
+                  126,
                 ),
-                SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: EdgeInsets.fromLTRB(
-                    18,
-                    media.padding.top + 12,
-                    18,
-                    126,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(
-                        height: 48,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: _AppNavCircleButton(
-                                icon: CupertinoIcons.chevron_left,
-                                onPressed: () => Navigator.of(context).pop(),
-                              ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      height: 48,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: _AppNavCircleButton(
+                              icon: CupertinoIcons.chevron_left,
+                              onPressed: () => Navigator.of(context).pop(),
                             ),
-                            Text(
-                              'Admin',
+                          ),
+                          Text(
+                            'Admin',
                               style: TextStyle(
                                 color: isDark
                                     ? AppColors.text
@@ -1426,7 +1421,6 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                     ],
                   ),
                 ),
-              ],
             );
           },
         ),
@@ -1583,47 +1577,42 @@ class _AdminUsersPageState extends State<_AdminUsersPage>
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return CupertinoPageScaffold(
-      backgroundColor: Colors.transparent,
-      child: Material(
+    return _adminPageHost(
+      body: Material(
         type: MaterialType.transparency,
         child: AnimatedBuilder(
           animation: _motionController,
           builder: (context, _) {
-            return Stack(
-              fit: StackFit.expand,
-              children: [
-                CustomPaint(
-                  painter: _ProfileBackgroundPainter(
-                    progress: _motionController.value,
-                    isDark: isDark,
-                  ),
+            return _buildAdminKeyboardAwareStack(
+              context: context,
+              motionProgress: _motionController.value,
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: EdgeInsets.fromLTRB(
+                  18,
+                  media.padding.top + 12,
+                  18,
+                  42,
                 ),
-                SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: EdgeInsets.fromLTRB(
-                    18,
-                    media.padding.top + 12,
-                    18,
-                    42,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(
-                        height: 48,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: _AppNavCircleButton(
-                                icon: CupertinoIcons.chevron_left,
-                                onPressed: () => Navigator.of(context).pop(),
-                              ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      height: 48,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: _AppNavCircleButton(
+                              icon: CupertinoIcons.chevron_left,
+                              onPressed: () => Navigator.of(context).pop(),
                             ),
-                            Text(
-                              '用户管理',
+                          ),
+                          Text(
+                            '用户管理',
                               style: TextStyle(
                                 color: isDark
                                     ? AppColors.text
@@ -1731,7 +1720,6 @@ class _AdminUsersPageState extends State<_AdminUsersPage>
                     ],
                   ),
                 ),
-              ],
             );
           },
         ),

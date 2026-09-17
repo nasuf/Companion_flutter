@@ -314,116 +314,11 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
   }
 
   Future<void> _openCreateSheet() async {
-    final durationCtrl = TextEditingController(text: '30');
-    final countCtrl = TextEditingController(text: '1');
-    final maxCtrl = TextEditingController(text: '1');
-    final noteCtrl = TextEditingController();
-    var unlimited = false;
-
-    final created = await showCupertinoModalPopup<List<_AdminVipCodeItem>>(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.72,
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
-              decoration: BoxDecoration(
-                color: CupertinoColors.systemBackground.resolveFrom(context),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    '生成 VIP 激活码',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: _W2b.resolve(context).ink,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text('VIP 时长（天）', style: TextStyle(fontSize: 12)),
-                  CupertinoTextField(
-                    controller: durationCtrl,
-                    keyboardType: TextInputType.number,
-                  ),
-                  const SizedBox(height: 10),
-                  const Text('生成数量', style: TextStyle(fontSize: 12)),
-                  CupertinoTextField(
-                    controller: countCtrl,
-                    keyboardType: TextInputType.number,
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      CupertinoSwitch(
-                        value: unlimited,
-                        onChanged: (v) => setSheetState(() => unlimited = v),
-                      ),
-                      const SizedBox(width: 8),
-                      const Expanded(child: Text('无限次兑换（多人可用同一码）')),
-                    ],
-                  ),
-                  if (!unlimited) ...[
-                    const SizedBox(height: 10),
-                    const Text('最大兑换次数（1=一次性）', style: TextStyle(fontSize: 12)),
-                    CupertinoTextField(
-                      controller: maxCtrl,
-                      keyboardType: TextInputType.number,
-                    ),
-                  ],
-                  const SizedBox(height: 10),
-                  const Text('备注（可选）', style: TextStyle(fontSize: 12)),
-                  CupertinoTextField(controller: noteCtrl),
-                  const Spacer(),
-                  CupertinoButton.filled(
-                    onPressed: () async {
-                      widget.api.authToken = widget.session.token;
-                      final durationDays = int.tryParse(durationCtrl.text.trim()) ?? 30;
-                      final count = int.tryParse(countCtrl.text.trim()) ?? 1;
-                      final maxRedemptions = int.tryParse(maxCtrl.text.trim()) ?? 1;
-                      try {
-                        final codes = await widget.api.createVipActivationCodes(
-                          durationDays: durationDays,
-                          count: count,
-                          unlimitedRedemptions: unlimited,
-                          maxRedemptions: unlimited ? null : maxRedemptions,
-                          note: noteCtrl.text,
-                        );
-                        if (ctx.mounted) Navigator.of(ctx).pop(codes);
-                      } catch (error) {
-                        if (!ctx.mounted) return;
-                        await showCupertinoDialog<void>(
-                          context: ctx,
-                          builder: (dCtx) => CupertinoAlertDialog(
-                            title: const Text('生成失败'),
-                            content: Text(_vipActivationErrorText(error)),
-                            actions: [
-                              CupertinoDialogAction(
-                                onPressed: () => Navigator.of(dCtx).pop(),
-                                child: const Text('确定'),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-                    },
-                    child: const Text('生成'),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+    final created = await _VipActivationCreateSheet.show(
+      context,
+      api: widget.api,
+      session: widget.session,
     );
-    durationCtrl.dispose();
-    countCtrl.dispose();
-    maxCtrl.dispose();
-    noteCtrl.dispose();
 
     if (created != null && created.isNotEmpty && mounted) {
       setState(() {
@@ -575,6 +470,8 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
           child: _codesLoading
               ? const Center(child: CupertinoActivityIndicator())
               : ListView.builder(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: const EdgeInsets.all(18),
                   itemCount: _codes.length,
                   itemBuilder: (context, index) {
@@ -698,6 +595,8 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
           child: _redemptionsLoading
               ? const Center(child: CupertinoActivityIndicator())
               : ListView.builder(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: const EdgeInsets.all(18),
                   itemCount: _redemptions.length,
                   itemBuilder: (context, index) {
@@ -763,6 +662,261 @@ class _VipActivationCodesTabState extends State<_VipActivationCodesTab> {
               : null,
         ),
       ],
+    );
+  }
+}
+
+// ===========================================================================
+// Create sheet: generate VIP activation codes
+// ===========================================================================
+
+class _VipActivationCreateSheet extends StatefulWidget {
+  const _VipActivationCreateSheet({
+    required this.api,
+    required this.session,
+  });
+
+  final CompanionApi api;
+  final AuthSession session;
+
+  static Future<List<_AdminVipCodeItem>?> show(
+    BuildContext context, {
+    required CompanionApi api,
+    required AuthSession session,
+  }) {
+    return showModalBottomSheet<List<_AdminVipCodeItem>>(
+      context: context,
+      isScrollControlled: true,
+      enableDrag: true,
+      useSafeArea: false,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.42),
+      builder: (_) => _adminSheetHost(
+        child: _VipActivationCreateSheet(api: api, session: session),
+      ),
+    );
+  }
+
+  @override
+  State<_VipActivationCreateSheet> createState() =>
+      _VipActivationCreateSheetState();
+}
+
+class _VipActivationCreateSheetState extends State<_VipActivationCreateSheet> {
+  final _durationCtrl = TextEditingController(text: '30');
+  final _countCtrl = TextEditingController(text: '1');
+  final _maxCtrl = TextEditingController(text: '1');
+  final _noteCtrl = TextEditingController();
+  var _unlimited = false;
+  var _submitting = false;
+
+  @override
+  void dispose() {
+    _durationCtrl.dispose();
+    _countCtrl.dispose();
+    _maxCtrl.dispose();
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    widget.api.authToken = widget.session.token;
+    final durationDays = int.tryParse(_durationCtrl.text.trim()) ?? 30;
+    final count = int.tryParse(_countCtrl.text.trim()) ?? 1;
+    final maxRedemptions = int.tryParse(_maxCtrl.text.trim()) ?? 1;
+    try {
+      final codes = await widget.api.createVipActivationCodes(
+        durationDays: durationDays,
+        count: count,
+        unlimitedRedemptions: _unlimited,
+        maxRedemptions: _unlimited ? null : maxRedemptions,
+        note: _noteCtrl.text,
+      );
+      if (mounted) Navigator.of(context).pop(codes);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      await showCupertinoDialog<void>(
+        context: context,
+        builder: (dCtx) => CupertinoAlertDialog(
+          title: const Text('生成失败'),
+          content: Text(_vipActivationErrorText(error)),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(dCtx).pop(),
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? AppColors.text : const Color(0xFF12171B);
+    final accent = AppColors.of(context).accent;
+    final sheetBg = isDark ? const Color(0xFF141820) : const Color(0xFFF4F6FA);
+
+    return _AdminSheetLayout(
+      backgroundColor: sheetBg,
+      heightFraction: 0.58,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _AdminSheetGrabber(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '生成 VIP 激活码',
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  minimumSize: Size.zero,
+                  onPressed: _submitting
+                      ? null
+                      : () => Navigator.of(context).pop(),
+                  child: Text(
+                    '取消',
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.only(top: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _AdminCard(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _AdminGamesNumberField(
+                            label: 'VIP 时长（天）',
+                            controller: _durationCtrl,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _AdminGamesNumberField(
+                            label: '生成数量',
+                            controller: _countCtrl,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _AdminCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '无限次兑换',
+                                style: TextStyle(
+                                  color: textColor,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  decoration: TextDecoration.none,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '开启后多人可使用同一激活码',
+                                style: TextStyle(
+                                  color: AppColors.muted,
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w500,
+                                  decoration: TextDecoration.none,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        CupertinoSwitch(
+                          value: _unlimited,
+                          onChanged: _submitting
+                              ? null
+                              : (v) => setState(() => _unlimited = v),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!_unlimited) ...[
+                    const SizedBox(height: 12),
+                    _AdminCard(
+                      padding: const EdgeInsets.all(14),
+                      child: _AdminGamesNumberField(
+                        label: '最大兑换次数',
+                        controller: _maxCtrl,
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6, left: 4),
+                      child: Text(
+                        '填 1 表示一次性码，仅可被兑换一次',
+                        style: TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  _AdminCard(
+                    padding: const EdgeInsets.all(14),
+                    child: _AdminGamesTextField(
+                      label: '备注（可选）',
+                      controller: _noteCtrl,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _AdminRoleActionButton(
+            color: accent,
+            icon: CupertinoIcons.tickets_fill,
+            label: '生成激活码',
+            loading: _submitting,
+            onTap: _submit,
+          ),
+        ],
+      ),
     );
   }
 }
