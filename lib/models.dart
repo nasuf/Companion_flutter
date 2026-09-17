@@ -1880,6 +1880,58 @@ class StoreCatalogStatus {
   }
 }
 
+/// `POST /me/vip/redeem-code` — activation code redemption result.
+class VipCodeRedeemResult {
+  const VipCodeRedeemResult({required this.vip, required this.redemption});
+
+  final VipStatus vip;
+  final VipCodeRedemptionInfo redemption;
+
+  factory VipCodeRedeemResult.fromJson(Map<String, dynamic> json) {
+    return VipCodeRedeemResult(
+      vip: VipStatus.fromJson(json['vip'] as Map<String, dynamic>),
+      redemption: VipCodeRedemptionInfo.fromJson(
+        json['redemption'] as Map<String, dynamic>,
+      ),
+    );
+  }
+}
+
+class VipCodeRedemptionInfo {
+  const VipCodeRedemptionInfo({
+    required this.id,
+    required this.durationDays,
+    this.codeId,
+    this.redeemedAt,
+    this.effectiveStart,
+    this.effectiveEnd,
+  });
+
+  final String id;
+  final String? codeId;
+  final int durationDays;
+  final DateTime? redeemedAt;
+  final DateTime? effectiveStart;
+  final DateTime? effectiveEnd;
+
+  factory VipCodeRedemptionInfo.fromJson(Map<String, dynamic> json) {
+    DateTime? parse(String? key) {
+      final raw = json[key]?.toString();
+      if (raw == null || raw.isEmpty) return null;
+      return DateTime.tryParse(raw);
+    }
+
+    return VipCodeRedemptionInfo(
+      id: json['id']?.toString() ?? '',
+      codeId: json['code_id']?.toString(),
+      durationDays: (json['duration_days'] as num?)?.round() ?? 0,
+      redeemedAt: parse('redeemed_at'),
+      effectiveStart: parse('effective_start'),
+      effectiveEnd: parse('effective_end'),
+    );
+  }
+}
+
 /// 统一 VIP 状态：`GET /me/vip`，供 Store/Profile/Chat/Music 共用一个来源，
 /// 避免各屏各自查一遍 (见后端 CLAUDE.md 权益项总览)。
 class VipStatus {

@@ -1725,6 +1725,19 @@ class CompanionApi {
     return VipStatus.fromJson(json);
   }
 
+  /// Redeem a VIP activation code; duration stacks after paid subscription.
+  Future<VipCodeRedeemResult> redeemVipCode(String code) async {
+    final json =
+        await _request(
+              'POST',
+              '/me/vip/redeem-code',
+              body: {'code': code.trim()},
+              debugLabel: 'vip.redeem_code',
+            )
+            as Map<String, dynamic>;
+    return VipCodeRedeemResult.fromJson(json);
+  }
+
   /// 会员中心：`GET /me/iap/membership`（VIP + 连续包月 + 购买历史）。
   Future<IapMembership> getIapMembership({int historyLimit = 50}) async {
     final json =

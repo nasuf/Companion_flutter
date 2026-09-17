@@ -750,6 +750,7 @@ enum _PaymentResource {
   ticket('钞票'),
   point('积分'),
   vip('会员'),
+  activationCode('激活码'),
   quota('额度');
 
   const _PaymentResource(this.label);
@@ -782,21 +783,25 @@ class _AdminPaymentsPageState extends State<_AdminPaymentsPage> {
     _PaymentResource.ticket: '钞票余额 · 手动发放 · 流水审计',
     _PaymentResource.point: '商城积分余额 · 手动发放 · 流水审计',
     _PaymentResource.vip: 'VIP 状态 · 设置/延长/结束 · 限时钞票流水',
+    _PaymentResource.activationCode: 'VIP 激活码 · 生成/启停 · 兑换记录与撤销',
     _PaymentResource.quota: '对话额度 · 查看用量 · 重置当前周期',
   };
 
-  // quota 没有"管理/流水"两种视图，只有一个统一页面 —— 与其为它硬凑一对
-  // 空的流水 tab，不如让视图选择器本身在这个资源下不出现。
-  bool get _resourceHasViews => _resource != _PaymentResource.quota;
+  // quota / activationCode 没有"管理/流水"两种视图。
+  bool get _resourceHasViews =>
+      _resource != _PaymentResource.quota &&
+      _resource != _PaymentResource.activationCode;
 
-  // 沿用现有 IndexedStack 让已切换过的 tab 保留状态 (搜索词/翻页/已加载数据)
-  // 不因为切资源而重置; quota 没有 view 维度, 单独占最后一个位置, 不参与
-  // resource*2+view 的既有算式 (避免打乱 ticket/point/vip 现成的 0-5 下标)。
+  // ticket/point/vip 仍占 0-5；activationCode=6、quota=7（固定下标，避免 enum 扩容时算错）。
+  static const _activationCodeStackIndex = 6;
+  static const _quotaStackIndex = 7;
+
   int get _stackIndex {
     if (_resource == _PaymentResource.quota) {
-      // quota 是唯一没有 view 维度的资源，追加在既有 6 个 (3 资源 × 2 视图)
-      // 之后成为第 7 个 child，下标固定为 6。
-      return (_PaymentResource.values.length - 1) * _PaymentView.values.length;
+      return _quotaStackIndex;
+    }
+    if (_resource == _PaymentResource.activationCode) {
+      return _activationCodeStackIndex;
     }
     return _resource.index * _PaymentView.values.length + _view.index;
   }
@@ -863,6 +868,7 @@ class _AdminPaymentsPageState extends State<_AdminPaymentsPage> {
                 _PointLedgerTab(api: widget.api, session: widget.session),
                 _VipBalancesTab(api: widget.api, session: widget.session),
                 _VipLedgerTab(api: widget.api, session: widget.session),
+                _VipActivationCodesTab(api: widget.api, session: widget.session),
                 _ChatQuotaTab(api: widget.api, session: widget.session),
               ],
             ),

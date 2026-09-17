@@ -6,6 +6,7 @@ class _SubscriptionStoreView extends StatefulWidget {
     required this.onSelectPlan,
     required this.onSubscribe,
     required this.onRestore,
+    required this.onRedeemCode,
     required this.bottomSpace,
     required this.subscribeUi,
     this.activeProductId,
@@ -22,6 +23,7 @@ class _SubscriptionStoreView extends StatefulWidget {
   final ValueChanged<int> onSelectPlan;
   final VoidCallback onSubscribe;
   final VoidCallback onRestore;
+  final VoidCallback onRedeemCode;
   final double bottomSpace;
   final StoreSubscribeUiState subscribeUi;
   final String? activeProductId;
@@ -238,6 +240,23 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
             onPressed: widget.subscribing ? null : widget.onRestore,
             child: Text(
               '恢复购买',
+              style: TextStyle(
+                color: _W2b.resolve(context).inkSoft,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ),
+        ),
+        Center(
+          child: CupertinoButton(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+            minimumSize: Size.zero,
+            onPressed: widget.subscribing ? null : widget.onRedeemCode,
+            child: Text(
+              '我有激活码',
               style: TextStyle(
                 color: _W2b.resolve(context).inkSoft,
                 fontSize: 12,

@@ -414,6 +414,75 @@ class _StorePageState extends State<StorePage> {
     _showToast('正在恢复购买…');
   }
 
+  Future<void> _handleRedeemCode() async {
+    final codeCtrl = TextEditingController();
+    final submitted = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('兑换 VIP 激活码'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            CupertinoTextField(
+              controller: codeCtrl,
+              placeholder: '请输入激活码',
+              autocorrect: false,
+              textCapitalization: TextCapitalization.characters,
+            ),
+          ],
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('兑换'),
+          ),
+        ],
+      ),
+    );
+    final code = codeCtrl.text.trim();
+    codeCtrl.dispose();
+    if (submitted != true || code.isEmpty || !mounted) return;
+
+    try {
+      final result = await widget.api.redeemVipCode(code);
+      if (!mounted) return;
+      setState(() {
+        _isVip = result.vip.isVip;
+        _vipUntil = result.vip.vipUntil;
+        _walletFuture = _loadWallet();
+      });
+      final untilText = result.vip.vipUntil == null
+          ? ''
+          : '，有效期至 ${_formatVipUntil(result.vip.vipUntil!)}';
+      _showToast('兑换成功${untilText.isEmpty ? '' : untilText}');
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      const labels = {
+        'invalid_code': '激活码无效',
+        'code_disabled': '激活码已停用',
+        'code_expired': '激活码已过期',
+        'code_exhausted': '激活码已被兑完',
+        'already_redeemed': '你已兑换过此激活码',
+      };
+      _showToast(labels[e.message] ?? e.message);
+    } catch (e) {
+      if (!mounted) return;
+      _showToast('兑换失败：$e');
+    }
+  }
+
+  String _formatVipUntil(DateTime until) {
+    final local = until.toLocal();
+    return '${local.year}-${local.month.toString().padLeft(2, '0')}-'
+        '${local.day.toString().padLeft(2, '0')}';
+  }
+
   void _openRechargeTickets() {
     setState(() {
       _rechargeCurrency = _StoreCurrency.ticket;
@@ -829,6 +898,7 @@ class _StorePageState extends State<StorePage> {
         onSelectPlan: (value) => setState(() => _selectedPlan = value),
         onSubscribe: _handleSubscribe,
         onRestore: _handleRestore,
+        onRedeemCode: _handleRedeemCode,
         subscribing: _subscribing,
         isVip: _isVip,
         vipUntil: _vipUntil,
