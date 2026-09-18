@@ -1284,6 +1284,21 @@ class CompanionApi {
     return NativePlayStats.fromJson(json);
   }
 
+  /// Lifetime record for one game's home screen (总对局 / 胜利局 / 胜率 / 时长).
+  Future<NativeGameRecordStats> getNativeGameRecordStats(String gameKey) async {
+    final suffix = Uri(
+      queryParameters: {'game_key': gameKey},
+    ).query;
+    final json =
+        await _request(
+              'GET',
+              '/games/native/record-stats?$suffix',
+              debugLabel: 'game.recordStats',
+            )
+            as Map<String, dynamic>;
+    return NativeGameRecordStats.fromJson(json);
+  }
+
   Future<GameSession> createNativeGameSession({
     required String agentId,
     required String gameKey,

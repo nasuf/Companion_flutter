@@ -668,8 +668,7 @@ class _GameRoundSummary {
           _intValue(ai['score']) ??
           _intValue(gameSummary['agent_score']) ??
           _intValue(score['agent']),
-      durationSeconds:
-          session.durationSeconds ?? _intValue(result['duration_seconds']),
+      durationSeconds: session.playSeconds,
       playedAt: session.endedAt ?? session.startedAt ?? session.createdAt,
       userExtras: _asMap(result['user_extras']),
       gomoku: gomoku,
@@ -685,6 +684,27 @@ class _GameRoundSummary {
   bool get isWin => outcome == 'win';
   bool get isLose => outcome == 'lose';
   bool get isAborted => outcome == 'aborted' || session.status == 'aborted';
+}
+
+List<String> _nativeHomeStatValues(NativeGameRecordStats stats) {
+  return [
+    '${stats.totalRounds}',
+    '${stats.wins}',
+    stats.homeWinRateLabel,
+    _formatNativePlayDuration(stats.totalSeconds),
+  ];
+}
+
+String _formatNativePlayDuration(int seconds) {
+  if (seconds <= 0) return '0m';
+  if (seconds >= 3600) {
+    final hours = seconds / 3600;
+    final text = hours == hours.truncateToDouble()
+        ? hours.round().toString()
+        : hours.toStringAsFixed(1);
+    return '${text}H';
+  }
+  return '${(seconds / 60).ceil()}m';
 }
 
 bool _isMissingNativeGameSession(ApiException error) =>
@@ -783,41 +803,31 @@ class _SoftCountPill extends StatelessWidget {
 }
 
 /// Aggregate win/loss statistics for a game, replacing the per-round history
-/// list. 逃跑局（中途退出）不计入胜率分母：胜率 = 胜 ÷ (总对局 - 逃跑局) × 100%。
+/// list. 中途退出计入胜率分母：胜率 = 胜 ÷ 总对局 × 100%。
 class _GameRoundStats extends StatelessWidget {
   const _GameRoundStats({
     required this.rounds,
     required this.roundsLoading,
+    this.recordStats,
     this.emptyState,
     this.gamePoints,
   });
 
   final List<GameSession> rounds;
   final bool roundsLoading;
+  final NativeGameRecordStats? recordStats;
   final Widget? emptyState;
   final int? gamePoints;
 
   @override
   Widget build(BuildContext context) {
-    final total = rounds.length;
-    var wins = 0;
-    var losses = 0;
-    var draws = 0;
-    var escapes = 0;
-    for (final round in rounds) {
-      final summary = _GameRoundSummary.fromSession(round);
-      if (summary.isAborted) {
-        escapes += 1;
-      } else if (summary.isWin) {
-        wins += 1;
-      } else if (summary.isLose) {
-        losses += 1;
-      } else if (summary.outcome == 'draw') {
-        draws += 1;
-      }
-    }
-    final decided = total - escapes;
-    final winRate = decided > 0 ? wins / decided * 100 : 0.0;
+    final stats = recordStats ?? NativeGameRecordStats.fromSessions(rounds);
+    final total = stats.totalRounds;
+    final wins = stats.wins;
+    final losses = stats.losses;
+    final draws = stats.draws;
+    final escapes = stats.aborted;
+    final winRate = stats.winRate;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),

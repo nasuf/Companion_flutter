@@ -251,7 +251,7 @@ class _GoGamePageState extends State<_GoGamePage> {
     if (engine == null) {
       child = _GoHome(
         key: const ValueKey('go-home'),
-        rounds: _runtime.rounds,
+        stats: _runtime.recordStats,
         starting: _runtime.starting,
         error: _runtime.error,
         onStart: _start,

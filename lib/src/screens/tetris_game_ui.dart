@@ -10,14 +10,14 @@ const double _tetrisButtonFaceLift = 0.066;
 
 class _TetrisHome extends StatelessWidget {
   const _TetrisHome({
-    required this.rounds,
+    required this.stats,
     required this.starting,
     required this.error,
     required this.onStart,
     required this.onExit,
   });
 
-  final List<GameSession> rounds;
+  final NativeGameRecordStats stats;
   final bool starting;
   final String? error;
   final Future<void> Function() onStart;
@@ -25,15 +25,7 @@ class _TetrisHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final summaries = rounds.map(_GameRoundSummary.fromSession).toList();
-    final total = summaries.length;
-    final wins = summaries.where((round) => round.isWin).length;
-    final rate = total == 0 ? 0 : (wins / total * 100).round();
-    final seconds = summaries.fold<int>(
-      0,
-      (sum, round) => sum + (round.durationSeconds ?? 0),
-    );
-    final values = ['$total', '$wins', '$rate%', _mineFormatDuration(seconds)];
+    final values = _nativeHomeStatValues(stats);
     return Scaffold(
       backgroundColor: const Color(0xFF1B0B33),
       body: LayoutBuilder(

@@ -546,7 +546,7 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
       child = KeyedSubtree(
         key: const ValueKey('tetris-home'),
         child: _TetrisHome(
-          rounds: _runtime.rounds,
+          stats: _runtime.recordStats,
           starting: _runtime.starting,
           error: _runtime.error,
           onStart: _start,

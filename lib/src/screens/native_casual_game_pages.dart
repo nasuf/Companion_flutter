@@ -275,7 +275,7 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
       child = KeyedSubtree(
         key: const ValueKey('checkers-home'),
         child: _CheckersHome(
-          rounds: _runtime.rounds,
+          stats: _runtime.recordStats,
           starting: _runtime.starting,
           error: _runtime.error,
           onStart: _start,
@@ -847,6 +847,7 @@ class _NativeGameExperienceScaffoldState
               SliverToBoxAdapter(
                 child: _GameRoundStats(
                   rounds: widget.runtime.rounds,
+                  recordStats: widget.runtime.recordStats,
                   roundsLoading: widget.runtime.roundsLoading,
                   gamePoints: widget.runtime.gamePoints,
                 ),

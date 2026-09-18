@@ -5,14 +5,14 @@ const String _goAsset = 'assets/prototype/games/go/';
 class _GoHome extends StatelessWidget {
   const _GoHome({
     super.key,
-    required this.rounds,
+    required this.stats,
     required this.starting,
     required this.error,
     required this.onStart,
     required this.onExit,
   });
 
-  final List<GameSession> rounds;
+  final NativeGameRecordStats stats;
   final bool starting;
   final String? error;
   final Future<void> Function() onStart;
@@ -20,16 +20,8 @@ class _GoHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final summaries = rounds.map(_GameRoundSummary.fromSession).toList();
-    final total = summaries.length;
-    final wins = summaries.where((round) => round.isWin).length;
-    final rate = total == 0 ? 0 : (wins / total * 100).round();
-    final seconds = summaries.fold<int>(
-      0,
-      (sum, round) => sum + (round.durationSeconds ?? 0),
-    );
     final labels = ['总对局', '胜利局', '胜率', '时长'];
-    final values = ['$total', '$wins', '$rate%', _formatDuration(seconds)];
+    final values = _nativeHomeStatValues(stats);
 
     return Scaffold(
       backgroundColor: const Color(0xFF191717),
@@ -136,18 +128,6 @@ class _GoHome extends StatelessWidget {
         },
       ),
     );
-  }
-
-  String _formatDuration(int seconds) {
-    if (seconds <= 0) return '0m';
-    if (seconds >= 3600) {
-      final hours = seconds / 3600;
-      final value = hours == hours.truncateToDouble()
-          ? hours.round().toString()
-          : hours.toStringAsFixed(1);
-      return '${value}H';
-    }
-    return '${(seconds / 60).ceil()}m';
   }
 }
 

@@ -1612,6 +1612,96 @@ class NativePlayStats {
   }
 }
 
+/// Lifetime record for one native game's home screen
+/// (总对局 / 胜利局 / 胜率 / 时长).
+class NativeGameRecordStats {
+  const NativeGameRecordStats({
+    required this.totalRounds,
+    required this.wins,
+    required this.losses,
+    required this.draws,
+    required this.aborted,
+    required this.totalSeconds,
+    this.winRate = 0,
+  });
+
+  static const empty = NativeGameRecordStats(
+    totalRounds: 0,
+    wins: 0,
+    losses: 0,
+    draws: 0,
+    aborted: 0,
+    totalSeconds: 0,
+  );
+
+  final int totalRounds;
+  final int wins;
+  final int losses;
+  final int draws;
+  final int aborted;
+  final int totalSeconds;
+
+  /// 胜率 = 胜 ÷ 总对局 × 100。中途退出算进分母（退出会扣分）。
+  final double winRate;
+
+  /// Integer percent used on illustrated home screens.
+  String get homeWinRateLabel => '${winRate.round()}%';
+
+  factory NativeGameRecordStats.fromJson(Map<String, dynamic> json) {
+    final wins = (json['wins'] as num?)?.round() ?? 0;
+    final total = (json['total_rounds'] as num?)?.round() ?? 0;
+    final parsedRate = (json['win_rate'] as num?)?.toDouble();
+    return NativeGameRecordStats(
+      totalRounds: total,
+      wins: wins,
+      losses: (json['losses'] as num?)?.round() ?? 0,
+      draws: (json['draws'] as num?)?.round() ?? 0,
+      aborted: (json['aborted'] as num?)?.round() ?? 0,
+      totalSeconds: (json['total_seconds'] as num?)?.round() ?? 0,
+      winRate: parsedRate ?? (total > 0 ? wins / total * 100 : 0),
+    );
+  }
+
+  /// Client fallback when the record-stats endpoint is unavailable: same
+  /// win-rate rule, but only over the sessions the caller already loaded.
+  factory NativeGameRecordStats.fromSessions(Iterable<GameSession> sessions) {
+    var total = 0;
+    var wins = 0;
+    var losses = 0;
+    var draws = 0;
+    var aborted = 0;
+    var seconds = 0;
+    for (final session in sessions) {
+      final result = session.result;
+      if (result == null ||
+          !const {'settled', 'aborted'}.contains(session.status)) {
+        continue;
+      }
+      total += 1;
+      seconds += session.playSeconds;
+      final outcome = (result['user_outcome'] ?? session.status).toString();
+      if (outcome == 'aborted' || session.status == 'aborted') {
+        aborted += 1;
+      } else if (outcome == 'win') {
+        wins += 1;
+      } else if (outcome == 'lose') {
+        losses += 1;
+      } else if (outcome == 'draw') {
+        draws += 1;
+      }
+    }
+    return NativeGameRecordStats(
+      totalRounds: total,
+      wins: wins,
+      losses: losses,
+      draws: draws,
+      aborted: aborted,
+      totalSeconds: seconds,
+      winRate: total > 0 ? wins / total * 100 : 0,
+    );
+  }
+}
+
 /// One rung of the admin-editable level ladder (`game_level_tiers`).
 class GameLevelTier {
   const GameLevelTier({
@@ -2433,6 +2523,26 @@ class GameSession {
       endedAt: DateTime.tryParse(json['ended_at'] as String? ?? ''),
       createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
     );
+  }
+
+  /// Seconds this round actually lasted. Prefer the stored client duration,
+  /// then fall back to the started/ended span so older rows without
+  /// ``duration_seconds`` still contribute to 时长.
+  int get playSeconds {
+    final stored = durationSeconds;
+    if (stored != null) return stored < 0 ? 0 : stored;
+    final fromResult = result?['duration_seconds'];
+    if (fromResult is num) {
+      final value = fromResult.round();
+      return value < 0 ? 0 : value;
+    }
+    final start = startedAt;
+    final end = endedAt;
+    if (start != null && end != null) {
+      final span = end.difference(start).inSeconds;
+      return span < 0 ? 0 : span;
+    }
+    return 0;
   }
 }
 

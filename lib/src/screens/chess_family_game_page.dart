@@ -361,7 +361,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
         chessChild = KeyedSubtree(
           key: const ValueKey('chess-home'),
           child: _ChessHome(
-            rounds: _runtime.rounds,
+            stats: _runtime.recordStats,
             starting: _runtime.starting,
             error: _runtime.error,
             onStart: _startGame,
@@ -455,7 +455,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
         xiangqiChild = KeyedSubtree(
           key: const ValueKey('xiangqi-home'),
           child: _XiangqiHome(
-            rounds: _runtime.rounds,
+            stats: _runtime.recordStats,
             starting: _runtime.starting,
             error: _runtime.error,
             onStart: _startGame,
@@ -727,6 +727,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
 
   Widget _history() => _GameRoundStats(
     rounds: _runtime.rounds,
+    recordStats: _runtime.recordStats,
     roundsLoading: _runtime.roundsLoading,
     gamePoints: _runtime.gamePoints,
     emptyState: const _GameRoundEmptyState(

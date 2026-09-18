@@ -345,7 +345,7 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
       child = KeyedSubtree(
         key: const ValueKey('mine-home'),
         child: _MinesweeperHome(
-          rounds: _runtime.rounds,
+          stats: _runtime.recordStats,
           starting: _runtime.starting,
           error: _runtime.error,
           onStart: _start,

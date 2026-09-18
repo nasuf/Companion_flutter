@@ -24,6 +24,7 @@ class _NativeGameRuntime {
 
   GameSession? session;
   List<GameSession> rounds = const [];
+  NativeGameRecordStats recordStats = NativeGameRecordStats.empty;
   DateTime? startedAt;
   bool starting = false;
   bool aiThinking = false;
@@ -122,11 +123,15 @@ class _NativeGameRuntime {
     _queueNetworkTask(_replayPendingEventsAtLaunch);
     _queueNetworkTask(loadGamePoints);
     try {
-      final sessions = await api.listNativeGameSessions(
+      final sessionsFuture = api.listNativeGameSessions(
         gameKey: gameKey,
         limit: _roundHistoryLimit,
       );
+      final statsFuture = _loadRecordStats();
+      final sessions = await sessionsFuture;
       rounds = sessions.where(_GameRoundSummary.canShow).toList();
+      recordStats =
+          await statsFuture ?? NativeGameRecordStats.fromSessions(rounds);
       roundsLoading = false;
       _notify();
 
@@ -214,11 +219,15 @@ class _NativeGameRuntime {
 
   Future<void> loadRounds() async {
     try {
-      final sessions = await api.listNativeGameSessions(
+      final sessionsFuture = api.listNativeGameSessions(
         gameKey: gameKey,
         limit: _roundHistoryLimit,
       );
+      final statsFuture = _loadRecordStats();
+      final sessions = await sessionsFuture;
       rounds = sessions.where(_GameRoundSummary.canShow).toList();
+      recordStats =
+          await statsFuture ?? NativeGameRecordStats.fromSessions(rounds);
       roundsLoading = false;
       _notify();
       // A round list reload follows game start / settle, so refresh the
@@ -228,6 +237,15 @@ class _NativeGameRuntime {
       roundsLoading = false;
       syncNotice = _formatError(caught);
       _notify();
+    }
+  }
+
+  Future<NativeGameRecordStats?> _loadRecordStats() async {
+    try {
+      return await api.getNativeGameRecordStats(gameKey);
+    } catch (_) {
+      // Older servers, or a blip: fall back to whatever sessions we have.
+      return null;
     }
   }
 
@@ -258,6 +276,8 @@ class _NativeGameRuntime {
         );
       }
       rounds = rounds.where((round) => round.id != candidate.id).toList();
+      recordStats =
+          await _loadRecordStats() ?? NativeGameRecordStats.fromSessions(rounds);
       if (isActive) {
         clearTurnTimeout();
         session = null;
@@ -384,8 +404,10 @@ class _NativeGameRuntime {
       state: 'settled',
       payload: {
         'schema_version': 1,
-        'duration_seconds': elapsedSeconds,
         ...payload,
+        // Last so an engine summary cannot clobber wall-clock play time with
+        // a match-length config field or a leftover 0.
+        'duration_seconds': elapsedSeconds,
       },
     );
   }
@@ -404,8 +426,8 @@ class _NativeGameRuntime {
       payload: {
         'schema_version': 1,
         'reason': reason,
-        'duration_seconds': elapsedSeconds,
         ...payload,
+        'duration_seconds': elapsedSeconds,
       },
       updateUi: updateUi,
     );

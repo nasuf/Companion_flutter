@@ -291,7 +291,7 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
     if (engine == null) {
       child = _ReversiHome(
         key: const ValueKey('reversi-home'),
-        rounds: _runtime.rounds,
+        stats: _runtime.recordStats,
         starting: _runtime.starting,
         error: _runtime.error,
         onStart: _start,
@@ -363,14 +363,14 @@ const String _reversiAsset = 'assets/prototype/games/reversi/';
 class _ReversiHome extends StatelessWidget {
   const _ReversiHome({
     super.key,
-    required this.rounds,
+    required this.stats,
     required this.starting,
     required this.error,
     required this.onStart,
     required this.onExit,
   });
 
-  final List<GameSession> rounds;
+  final NativeGameRecordStats stats;
   final bool starting;
   final String? error;
   final Future<void> Function() onStart;
@@ -378,15 +378,7 @@ class _ReversiHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final summaries = rounds.map(_GameRoundSummary.fromSession).toList();
-    final total = summaries.length;
-    final wins = summaries.where((round) => round.isWin).length;
-    final rate = total == 0 ? 0 : (wins / total * 100).round();
-    final seconds = summaries.fold<int>(
-      0,
-      (sum, round) => sum + (round.durationSeconds ?? 0),
-    );
-    final values = ['$total', '$wins', '$rate%', _formatDuration(seconds)];
+    final values = _nativeHomeStatValues(stats);
     final labels = [
       '${_reversiAsset}stat_label_total.png',
       '${_reversiAsset}stat_label_wins.png',
@@ -489,18 +481,6 @@ class _ReversiHome extends StatelessWidget {
         },
       ),
     );
-  }
-
-  String _formatDuration(int seconds) {
-    if (seconds <= 0) return '0m';
-    if (seconds >= 3600) {
-      final hours = seconds / 3600;
-      final text = hours == hours.truncateToDouble()
-          ? hours.round().toString()
-          : hours.toStringAsFixed(1);
-      return '${text}H';
-    }
-    return '${(seconds / 60).ceil()}m';
   }
 }
 

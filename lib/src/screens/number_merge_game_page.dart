@@ -328,7 +328,7 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
     }
     if (engine == null) {
       return _MergeHome(
-        rounds: _runtime.rounds,
+        stats: _runtime.recordStats,
         starting: _runtime.starting,
         error: _runtime.error,
         onStart: _start,

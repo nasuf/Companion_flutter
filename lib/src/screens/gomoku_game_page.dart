@@ -236,7 +236,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
       // game-art design). Starting a game replaces it with the board surface.
       child = _GomokuHome(
         key: const ValueKey('gomoku-home'),
-        rounds: _runtime.rounds,
+        stats: _runtime.recordStats,
         starting: _runtime.starting,
         error: _runtime.error,
         onStart: _startGame,
@@ -699,14 +699,14 @@ class _GomokuBreathingMotionState extends State<_GomokuBreathingMotion>
 class _GomokuHome extends StatelessWidget {
   const _GomokuHome({
     super.key,
-    required this.rounds,
+    required this.stats,
     required this.starting,
     required this.error,
     required this.onStart,
     required this.onExit,
   });
 
-  final List<GameSession> rounds;
+  final NativeGameRecordStats stats;
   final bool starting;
   final String? error;
   final Future<void> Function() onStart;
@@ -714,14 +714,7 @@ class _GomokuHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final summaries = rounds.map(_GameRoundSummary.fromSession).toList();
-    final total = summaries.length;
-    final wins = summaries.where((s) => s.isWin).length;
-    final rate = total == 0 ? 0 : (wins / total * 100).round();
-    final totalSeconds = summaries.fold<int>(
-      0,
-      (sum, s) => sum + (s.durationSeconds ?? 0),
-    );
+    final values = _nativeHomeStatValues(stats);
 
     return Scaffold(
       // Sky-toned fallback so the frame never flashes black before the bg
@@ -794,10 +787,10 @@ class _GomokuHome extends StatelessWidget {
                 top: h * 0.831,
                 width: w * 0.938,
                 child: _GomokuHomeStats(
-                  total: '$total',
-                  wins: '$wins',
-                  rate: '$rate%',
-                  duration: _formatDuration(totalSeconds),
+                  total: values[0],
+                  wins: values[1],
+                  rate: values[2],
+                  duration: values[3],
                 ),
               ),
             ],
@@ -805,19 +798,6 @@ class _GomokuHome extends StatelessWidget {
         },
       ),
     );
-  }
-
-  String _formatDuration(int seconds) {
-    if (seconds <= 0) return '0m';
-    if (seconds >= 3600) {
-      final hours = seconds / 3600;
-      final text = hours == hours.truncateToDouble()
-          ? hours.round().toString()
-          : hours.toStringAsFixed(1);
-      return '${text}H';
-    }
-    final minutes = (seconds / 60).ceil();
-    return '${minutes}m';
   }
 }
 
