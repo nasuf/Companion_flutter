@@ -290,23 +290,44 @@ Future<void> _openOfflineMapQuery(BuildContext context, String query) async {
   final q = Uri.encodeComponent(query);
   final src = Uri.encodeComponent('伴生');
   final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
-  // 1) 优先唤起高德 App，按地址关键字搜索（无需坐标、无需 Key）。
-  //    iOS 需在 Info.plist 的 LSApplicationQueriesSchemes 声明 iosamap；
-  //    Android 11+ 需在 manifest 声明 <queries> androidamap，否则 canLaunchUrl 返回 false。
-  final amap = Uri.parse(
-    isIOS
-        ? 'iosamap://search?sourceApplication=$src&keywords=$q&dev=0'
-        : 'androidamap://search?sourceApplication=$src&keywords=$q&dev=0',
-  );
+
+  // 高德 URI 的导航 action 需要目的地坐标（没有坐标时 iosamap://search 之类会被高德判
+  // 「版本不支持该功能」）。用系统地理编码把地址解析成坐标——免费、无需高德 key。国内
+  // Apple CLGeocoder 返回 GCJ-02，与高德同坐标系，故 dev=0 不再二次偏移。
+  double? lat;
+  double? lon;
   try {
-    if (await canLaunchUrl(amap)) {
-      await launchUrl(amap, mode: LaunchMode.externalApplication);
-      return;
+    final results = await geocoding
+        .locationFromAddress(query)
+        .timeout(const Duration(seconds: 4));
+    if (results.isNotEmpty) {
+      lat = results.first.latitude;
+      lon = results.first.longitude;
     }
   } catch (_) {
-    // 未安装高德或未声明 scheme → 落系统地图。
+    // 解析失败（如安卓无 Google 后端）→ 走下面的关键字兜底。
   }
-  // 2) 兜底：系统地图按地址搜索（iOS Apple 地图 / Android 唤起默认地图选择器）。
+
+  // 1) 有坐标 → 唤起高德 App 导航（iOS 需 Info.plist 声明 iosamap；
+  //    Android 11+ 需 manifest <queries> androidamap，否则 canLaunchUrl 返回 false）。
+  if (lat != null && lon != null) {
+    final amap = Uri.parse(
+      isIOS
+          ? 'iosamap://navi?sourceApplication=$src&poiname=$q&lat=$lat&lon=$lon&dev=0&style=2'
+          : 'androidamap://navi?sourceApplication=$src&poiname=$q&lat=$lat&lon=$lon&dev=0&style=2',
+    );
+    try {
+      if (await canLaunchUrl(amap)) {
+        await launchUrl(amap, mode: LaunchMode.externalApplication);
+        return;
+      }
+    } catch (_) {
+      // 未装高德/无法唤起 → 落系统地图。
+    }
+  }
+
+  // 2) 兜底：系统地图按地址搜索。Android 的 geo: 常直接进高德/唤起地图选择器（高德自己
+  //    做地址搜索，无需坐标）；iOS 进 Apple 地图。
   final system = isIOS
       ? Uri.parse('http://maps.apple.com/?q=$q')
       : Uri.parse('geo:0,0?q=$q');
