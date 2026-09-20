@@ -375,6 +375,10 @@ class _MessageRow extends StatelessWidget {
     if (message.isOfferingReceived) {
       return _OfferingReceivedTimelineRow(message: message);
     }
+    final thoughtFragment = message.offlineThoughtFragment;
+    if (thoughtFragment != null) {
+      return _ThoughtFragmentRow(message: message, fragment: thoughtFragment);
+    }
 
     if (_splitTextAndCard) {
       return Column(
@@ -401,6 +405,128 @@ class _MessageRow extends StatelessWidget {
       context,
       segment: _BubbleSegment.all,
       showTimestamp: true,
+    );
+  }
+}
+
+/// 思绪碎片气泡（spec §5.2）：识图命中后入场的特殊 AI 气泡。磨砂玻璃 + 等级色描边
+/// + 淡入上移，区别于普通聊天气泡，呼应「偶遇一缕思绪」的仪式感。
+class _ThoughtFragmentRow extends StatelessWidget {
+  const _ThoughtFragmentRow({required this.message, required this.fragment});
+
+  final ChatMessage message;
+  final Map<String, dynamic> fragment;
+
+  // tier -> (emoji, 标签, 主调色)
+  static const Map<String, (String, String, Color)> _tierMeta = {
+    'rare': ('💭', '片刻感想', Color(0xFF5FB6AE)),
+    'epic': ('📜', '心底独白', Color(0xFFB07FD0)),
+    'legendary': ('🔮', '秘密念想', Color(0xFFD79A2E)),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final tier = fragment['tier']?.toString() ?? 'rare';
+    final (icon, label, accent) = _tierMeta[tier] ?? _tierMeta['rare']!;
+    final lead = fragment['lead_in']?.toString() ?? '';
+    final w = _W2b.resolve(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 6, 40, 6),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0, end: 1),
+        duration: const Duration(milliseconds: 520),
+        curve: Curves.easeOutCubic,
+        builder: (context, t, child) => Opacity(
+          opacity: t.clamp(0, 1),
+          child: Transform.translate(offset: Offset(0, (1 - t) * 10), child: child),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              decoration: BoxDecoration(
+                color: w.glass,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: accent.withValues(alpha: 0.55)),
+                boxShadow: [
+                  BoxShadow(
+                    color: accent.withValues(alpha: 0.16),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text('✨', style: TextStyle(fontSize: 12, color: accent)),
+                      const SizedBox(width: 4),
+                      Text(
+                        '偶遇一缕思绪',
+                        style: TextStyle(
+                          color: accent,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (lead.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      lead,
+                      style: TextStyle(
+                        color: w.inkSoft,
+                        fontSize: 13,
+                        height: 1.5,
+                        fontStyle: FontStyle.italic,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 6),
+                  Text(
+                    message.content,
+                    style: TextStyle(
+                      color: w.ink,
+                      fontSize: 15,
+                      height: 1.6,
+                      fontWeight: FontWeight.w600,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '$icon $label',
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -651,6 +777,7 @@ class _Bubble extends StatelessWidget {
             isMine: message.isMine,
             authToken: authToken,
             onTap: onAttachmentTap,
+            recognized: message.offlineRecognized,
           ),
           if (showTextWithAttachments) ...[
             const SizedBox(height: 8),
@@ -1379,6 +1506,7 @@ class _ImageAttachmentBubble extends StatelessWidget {
     required this.isMine,
     required this.onTap,
     this.authToken,
+    this.recognized = false,
   });
 
   final List<ChatAttachment> attachments;
@@ -1386,12 +1514,17 @@ class _ImageAttachmentBubble extends StatelessWidget {
   final ValueChanged<ChatAttachment> onTap;
   final String? authToken;
 
+  /// 该图片已被识图命中：叠一层暖金描边微光 + 「偶遇一缕思绪」小字，呼应识别仪式。
+  final bool recognized;
+
+  static const Color _recognizedAccent = Color(0xFFE7B24D);
+
   @override
   Widget build(BuildContext context) {
     final headers = authToken?.isNotEmpty == true
         ? {'Authorization': 'Bearer $authToken'}
         : null;
-    return ConstrainedBox(
+    final grid = ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 270),
       child: Wrap(
         alignment: isMine ? WrapAlignment.end : WrapAlignment.start,
@@ -1411,7 +1544,21 @@ class _ImageAttachmentBubble extends StatelessWidget {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: AppColors.surfaceMuted,
-                    border: Border.all(color: AppColors.hairline),
+                    border: Border.all(
+                      color: recognized
+                          ? _recognizedAccent.withValues(alpha: 0.85)
+                          : AppColors.hairline,
+                      width: recognized ? 2 : 1,
+                    ),
+                    boxShadow: recognized
+                        ? [
+                            BoxShadow(
+                              color: _recognizedAccent.withValues(alpha: 0.34),
+                              blurRadius: 16,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : null,
                   ),
                   // Bubble loads the server-side thumbnail (~10x smaller than
                   // the original) from the persistent disk cache; the original
@@ -1441,6 +1588,32 @@ class _ImageAttachmentBubble extends StatelessWidget {
             ),
         ],
       ),
+    );
+    if (!recognized) return grid;
+    return Column(
+      crossAxisAlignment:
+          isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        grid,
+        const SizedBox(height: 5),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('✨', style: TextStyle(fontSize: 10)),
+            const SizedBox(width: 3),
+            Text(
+              '偶遇一缕思绪',
+              style: TextStyle(
+                color: _recognizedAccent,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 

@@ -2171,6 +2171,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         final componentCard = rawComponentCard is Map
             ? ChatComponentCard.fromJson(rawComponentCard)
             : null;
+        final rawOfflineFragment = payload['offline_fragment'];
+        final offlineFragment = rawOfflineFragment is Map
+            ? Map<String, dynamic>.from(rawOfflineFragment)
+            : null;
         final metadata = <String, dynamic>{
           if (componentCard != null) 'component_card': componentCard.toJson(),
           if (attachments.isNotEmpty)
@@ -2181,6 +2185,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             'ai_emotion': payload['ai_emotion'],
           if (payload['emotion_intensity'] != null)
             'emotion_intensity': payload['emotion_intensity'],
+          // 思绪碎片气泡：携带 tier/lead_in/source_message_id，_MessageRow 据此渲染。
+          if (offlineFragment != null) 'offline_fragment': offlineFragment,
         };
         final stableId = assistantMessageId?.isNotEmpty == true
             ? assistantMessageId
@@ -2202,6 +2208,22 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             }
           },
           transcript: () {
+            // 识图命中：给触发那张用户图片打上「已识图」标记，图片气泡叠现「偶遇一缕思绪」提示。
+            if (offlineFragment != null) {
+              final srcId = offlineFragment['source_message_id']?.toString();
+              if (srcId != null && srcId.isNotEmpty) {
+                final i = _messages.indexWhere((m) => m.id == srcId);
+                if (i >= 0) {
+                  _messages[i] = _messages[i].copyWith(
+                    metadata: {
+                      ...?_messages[i].metadata,
+                      'offline_recognized': true,
+                      'offline_fragment_tier': offlineFragment['tier'],
+                    },
+                  );
+                }
+              }
+            }
             _messages.add(draft);
             _agentTyping = false;
             if (!shouldAutoScroll) {

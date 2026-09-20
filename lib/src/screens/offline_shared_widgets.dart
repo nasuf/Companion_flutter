@@ -356,3 +356,19 @@ String _shortTimeRange(String? start, String? end) {
   if (a == null || b == null) return '';
   return '${a.hour.toString().padLeft(2, '0')}:${a.minute.toString().padLeft(2, '0')}-${b.hour.toString().padLeft(2, '0')}:${b.minute.toString().padLeft(2, '0')}';
 }
+
+/// 线下活动模块内的轻确认提示（原属完成 composer，composer 移除后归入共享工具）。
+void _showActivityToast(BuildContext context, String message) {
+  showCupertinoDialog<void>(
+    context: context,
+    builder: (context) => CupertinoAlertDialog(
+      content: Text(message),
+      actions: [
+        CupertinoDialogAction(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('知道了'),
+        ),
+      ],
+    ),
+  );
+}

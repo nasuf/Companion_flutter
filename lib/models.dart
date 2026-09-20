@@ -672,6 +672,16 @@ class ChatMessage {
     ];
   }
 
+  /// 思绪碎片气泡（识图命中后后端推送）：
+  /// metadata.offline_fragment = {fragment_id, tier, lead_in, source_message_id}
+  Map<String, dynamic>? get offlineThoughtFragment {
+    final raw = metadata?['offline_fragment'];
+    return raw is Map ? Map<String, dynamic>.from(raw) : null;
+  }
+
+  /// 该用户图片消息是否已被识图命中（用于在图片气泡上叠「偶遇一缕思绪」提示）。
+  bool get offlineRecognized => metadata?['offline_recognized'] == true;
+
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     return ChatMessage(
       id: json['id'] as String? ?? '',

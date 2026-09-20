@@ -1,29 +1,7 @@
 part of 'package:companion_flutter/main.dart';
 
-class _CollapsedSheetGrabber extends StatelessWidget {
-  const _CollapsedSheetGrabber({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 36,
-      child: Center(
-        child: Container(
-          width: 48,
-          height: 5,
-          decoration: BoxDecoration(
-            color: AppColors.of(context).hairline,
-            borderRadius: BorderRadius.circular(999),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _ExpandedSheetTopBar extends StatelessWidget {
   const _ExpandedSheetTopBar({
-    super.key,
     required this.title,
     required this.onClose,
   });

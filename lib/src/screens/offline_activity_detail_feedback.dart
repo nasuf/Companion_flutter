@@ -191,3 +191,96 @@ Future<void> _showOfflineActivityImagePreview(
     },
   );
 }
+
+String _formatActivityDuration(int? seconds) {
+  final value = math.max(1, seconds ?? 1);
+  final minutes = value ~/ 60;
+  final rest = value % 60;
+  if (minutes <= 0) return '$rest 秒';
+  return '$minutes:${rest.toString().padLeft(2, '0')}';
+}
+
+/// 已完成回顾里的语音播放条（原属完成 composer，随 composer 移除后归入回顾反馈）。
+class _ActivityVoiceChip extends StatelessWidget {
+  const _ActivityVoiceChip({
+    required this.label,
+    required this.playing,
+    required this.busy,
+    required this.recording,
+    required this.onPlay,
+    required this.onRemove,
+  });
+
+  final String label;
+  final bool playing;
+  final bool busy;
+  final bool recording;
+  final VoidCallback? onPlay;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final w = _W2b.resolve(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: w.glass,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: w.glassBorder),
+        boxShadow: w.panelShadow,
+      ),
+      child: Row(
+        children: [
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            minimumSize: Size.zero,
+            onPressed: busy || recording ? null : onPlay,
+            child: Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: recording
+                    ? const Color(0xFFFFE9E2)
+                    : colors.accent.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: busy
+                  ? const CupertinoActivityIndicator()
+                  : Icon(
+                      recording
+                          ? CupertinoIcons.waveform
+                          : playing
+                          ? CupertinoIcons.pause_fill
+                          : CupertinoIcons.play_fill,
+                      size: 17,
+                      color: recording
+                          ? const Color(0xFFFF6E4A)
+                          : colors.accent,
+                    ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: w.ink,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ),
+          if (onRemove != null)
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              minimumSize: Size.zero,
+              onPressed: onRemove,
+              child: Icon(CupertinoIcons.xmark, size: 18, color: colors.muted),
+            ),
+        ],
+      ),
+    );
+  }
+}

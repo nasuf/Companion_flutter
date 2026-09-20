@@ -1,5 +1,126 @@
 import 'models.dart';
 
+class OfflineActivityFragment {
+  const OfflineActivityFragment({
+    required this.id,
+    required this.tier,
+    required this.text,
+    this.leadIn,
+  });
+
+  final String id;
+  final String tier;
+  final String text;
+  final String? leadIn;
+
+  factory OfflineActivityFragment.fromJson(Map<String, dynamic> json) =>
+      OfflineActivityFragment(
+        id: json['id']?.toString() ?? '',
+        tier: json['tier']?.toString() ?? 'rare',
+        text: json['text']?.toString() ?? '',
+        leadIn: _asString(json['lead_in']),
+      );
+}
+
+class OfflineActivityReview {
+  const OfflineActivityReview({
+    required this.id,
+    required this.title,
+    this.address,
+    this.coverUrl,
+    this.startedAt,
+    this.endedAt,
+    required this.story,
+    required this.gallery,
+    required this.fragments,
+    required this.eventTags,
+    required this.hasMemoryNote,
+    this.travelNote,
+  });
+
+  final String id;
+  final String title;
+  final String? address;
+  final String? coverUrl;
+  final String? startedAt;
+  final String? endedAt;
+  final String story;
+  final List<String> gallery;
+  final List<OfflineActivityFragment> fragments;
+  final List<String> eventTags;
+  final bool hasMemoryNote;
+  final String? travelNote;
+
+  factory OfflineActivityReview.fromJson(Map<String, dynamic> json) =>
+      OfflineActivityReview(
+        id: json['id']?.toString() ?? '',
+        title: json['title']?.toString() ?? '',
+        address: _asString(json['address']),
+        coverUrl: _asString(json['cover_url']),
+        startedAt: _asString(json['started_at']),
+        endedAt: _asString(json['ended_at']),
+        story: json['story']?.toString() ?? '',
+        gallery: _stringList(json['gallery']),
+        fragments: [
+          for (final item in (json['fragments'] as List? ?? const []))
+            if (item is Map)
+              OfflineActivityFragment.fromJson(Map<String, dynamic>.from(item)),
+        ],
+        eventTags: _stringList(json['event_tags']),
+        hasMemoryNote: json['has_memory_note'] == true,
+        travelNote: _asString(json['travel_note']),
+      );
+
+  OfflineActivityReview copyWith({String? coverUrl, List<String>? gallery}) =>
+      OfflineActivityReview(
+        id: id,
+        title: title,
+        address: address,
+        coverUrl: coverUrl ?? this.coverUrl,
+        startedAt: startedAt,
+        endedAt: endedAt,
+        story: story,
+        gallery: gallery ?? this.gallery,
+        fragments: fragments,
+        eventTags: eventTags,
+        hasMemoryNote: hasMemoryNote,
+        travelNote: travelNote,
+      );
+}
+
+class OfflineMemoryNote {
+  const OfflineMemoryNote({
+    required this.title,
+    required this.dateText,
+    this.coverUrl,
+    required this.travelNote,
+    required this.fragmentTags,
+  });
+
+  final String title;
+  final String dateText;
+  final String? coverUrl;
+  final String travelNote;
+  final List<String> fragmentTags;
+
+  factory OfflineMemoryNote.fromJson(Map<String, dynamic> json) =>
+      OfflineMemoryNote(
+        title: json['title']?.toString() ?? '',
+        dateText: json['date_text']?.toString() ?? '',
+        coverUrl: _asString(json['cover_url']),
+        travelNote: json['travel_note']?.toString() ?? '',
+        fragmentTags: _stringList(json['fragment_tags']),
+      );
+
+  OfflineMemoryNote copyWith({String? coverUrl}) => OfflineMemoryNote(
+        title: title,
+        dateText: dateText,
+        coverUrl: coverUrl ?? this.coverUrl,
+        travelNote: travelNote,
+        fragmentTags: fragmentTags,
+      );
+}
+
 class OfflineHome {
   const OfflineHome({
     required this.pendingActivityCount,
@@ -104,6 +225,11 @@ class OfflineActivity {
     this.ignoredAt,
     this.completedAt,
     this.expiresAt,
+    this.reached = false,
+    this.arrivalConfirmedAt,
+    this.prophecyText,
+    this.autoArchiveAt,
+    this.fragmentCount = 0,
     this.completionFeedback,
     required this.createdAt,
     required this.updatedAt,
@@ -129,6 +255,11 @@ class OfflineActivity {
   final String? ignoredAt;
   final String? completedAt;
   final String? expiresAt;
+  final bool reached;
+  final String? arrivalConfirmedAt;
+  final String? prophecyText;
+  final String? autoArchiveAt;
+  final int fragmentCount;
   final OfflineActivityCompletionFeedback? completionFeedback;
   final String createdAt;
   final String updatedAt;
@@ -157,6 +288,11 @@ class OfflineActivity {
         ignoredAt: _asString(json['ignored_at']),
         completedAt: _asString(json['completed_at']),
         expiresAt: _asString(json['expires_at']),
+        reached: json['reached'] == true,
+        arrivalConfirmedAt: _asString(json['arrival_confirmed_at']),
+        prophecyText: _asString(json['prophecy_text']),
+        autoArchiveAt: _asString(json['auto_archive_at']),
+        fragmentCount: _asInt(json['fragment_count']),
         completionFeedback: json['completion_feedback'] is Map
             ? OfflineActivityCompletionFeedback.fromJson(
                 Map<String, dynamic>.from(json['completion_feedback'] as Map),
@@ -191,6 +327,11 @@ class OfflineActivity {
       ignoredAt: ignoredAt,
       completedAt: completedAt,
       expiresAt: expiresAt,
+      reached: reached,
+      arrivalConfirmedAt: arrivalConfirmedAt,
+      prophecyText: prophecyText,
+      autoArchiveAt: autoArchiveAt,
+      fragmentCount: fragmentCount,
       completionFeedback: completionFeedback ?? this.completionFeedback,
       createdAt: createdAt,
       updatedAt: updatedAt,

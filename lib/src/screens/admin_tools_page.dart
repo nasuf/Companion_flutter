@@ -954,8 +954,9 @@ class _AdminToolsPageState extends State<AdminToolsPage>
       }
       await _showActivityResult(
         title: '活动已生成',
-        message: '已主动生成「${activity.title}」，可以去活动页查看卡片效果。',
+        message: '已主动生成「${activity.title}」，推荐卡已发到聊天里；点「查看详情」可直接决定想去看看 / 先放一放。',
         activityCreated: true,
+        activityId: activity.id,
       );
     } catch (error) {
       if (!mounted) return;
@@ -1102,6 +1103,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     required String title,
     required String message,
     bool activityCreated = false,
+    String? activityId,
   }) async {
     if (!mounted) return;
     final action = await showCupertinoDialog<String>(
@@ -1119,19 +1121,23 @@ class _AdminToolsPageState extends State<AdminToolsPage>
               CupertinoDialogAction(
                 isDefaultAction: true,
                 onPressed: () => Navigator.of(context).pop('open'),
-                child: const Text('去活动页'),
+                child: const Text('查看详情'),
               ),
           ],
         );
       },
     );
     if (!mounted || action != 'open') return;
+    // 重构后：新生成的推荐是 pending 态，只作为聊天推荐卡存在、不在活动列表里。
+    // 用 initialActivityId 深链进入 → 直接弹出地点详情（想去看看 / 先放一放），
+    // 让测试者立即能三选一，而不是打开空的活动列表。
     await Navigator.of(context).push(
       CompanionPageRoute<void>(
         builder: (_) => OfflineActivityPage(
           api: widget.api,
           session: widget.session,
           hasLocation: true,
+          initialActivityId: activityId,
         ),
       ),
     );

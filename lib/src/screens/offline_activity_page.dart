@@ -23,7 +23,6 @@ class OfflineActivityPage extends StatefulWidget {
 class _OfflineActivityPageState extends State<OfflineActivityPage> {
   OfflineActivities? _data;
   bool _loading = true;
-  bool _working = false;
   bool _hasLocation = false;
   bool _requestingLocation = false;
   bool _initialActivityOpened = false;
@@ -90,7 +89,47 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
       return;
     }
     if (!mounted) return;
-    _showActivityDetail(activity);
+    _openActivityByStatus(activity);
+  }
+
+  /// 深链/点击按状态分流：进行中→打卡页；已完成→回顾页；其余→详情 sheet。
+  void _openActivityByStatus(OfflineActivity activity) {
+    if (activity.status == 'accepted') {
+      _openCheckin(activity);
+    } else if (activity.status == 'completed') {
+      _openReview(activity);
+    } else {
+      _showActivityDetail(activity);
+    }
+  }
+
+  void _openReview(OfflineActivity activity) {
+    Navigator.of(context).push(
+      CompanionPageRoute<void>(
+        builder: (_) => OfflineReviewPage(
+          api: widget.api,
+          session: widget.session,
+          activityId: activity.id,
+        ),
+      ),
+    );
+  }
+
+  void _openCheckin(OfflineActivity activity) {
+    Navigator.of(context).push(
+      CompanionPageRoute<void>(
+        builder: (_) => OfflineCheckinPage(
+          api: widget.api,
+          session: widget.session,
+          activityId: activity.id,
+          initialActivity: activity,
+          onChanged: () {
+            _load();
+            widget.onChanged?.call();
+          },
+        ),
+      ),
+    );
   }
 
   OfflineActivity? _findLoadedActivity(String activityId) {
@@ -108,27 +147,19 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
     return null;
   }
 
-  Future<OfflineActivity?> _accept(
-    OfflineActivity activity, {
-    bool openDetail = true,
-  }) async {
-    setState(() => _working = true);
+  Future<OfflineActivity?> _accept(OfflineActivity activity) async {
     try {
       final updated = await widget.api.acceptOfflineActivity(activity.id);
       await _load();
       widget.onChanged?.call();
-      if (mounted && openDetail) _showActivityDetail(updated);
       return updated;
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
       return null;
-    } finally {
-      if (mounted) setState(() => _working = false);
     }
   }
 
   Future<bool> _ignore(OfflineActivity activity) async {
-    setState(() => _working = true);
     try {
       await widget.api.ignoreOfflineActivity(activity.id);
       await _load();
@@ -137,8 +168,6 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
       return false;
-    } finally {
-      if (mounted) setState(() => _working = false);
     }
   }
 
@@ -161,13 +190,9 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
             api: widget.api,
             activity: activity,
             scrollController: scrollController,
-            fullscreen: true,
-            onAccept: () => _accept(activity, openDetail: false),
+            onAccept: () => _accept(activity),
             onIgnore: () => _ignore(activity),
-            onCompleted: () {
-              _load();
-              widget.onChanged?.call();
-            },
+            onAccepted: _openCheckin,
           ),
         );
       },
@@ -192,23 +217,16 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
   @override
   Widget build(BuildContext context) {
     final data = _data;
-    final latest = data?.latest;
-    final activeActivities = _dedupeActivities([
-      if (latest != null) latest,
-      ...(data?.pending ?? const <OfflineActivity>[]),
-    ]);
-    final pendingDeck = activeActivities
-        .where((activity) => activity.status == 'pending')
-        .toList();
-    final accepted = activeActivities
+    // spec：推荐(pending)只作为聊天推荐卡存在，不在活动列表出现；列表只展示
+    // 待出行(accepted) / 暂不考虑(ignored) / 已完成(completed)。后端把 pending+
+    // accepted 都放在 pending 字段返回，这里只取 accepted 作「待出行」。
+    final accepted = _dedupeActivities(data?.pending ?? const <OfflineActivity>[])
         .where((activity) => activity.status == 'accepted')
         .toList();
     final ignored = data?.ignored ?? const <OfflineActivity>[];
     final completed = data?.completed ?? const <OfflineActivity>[];
     final hasAnyActivity =
-        activeActivities.isNotEmpty ||
-        ignored.isNotEmpty ||
-        completed.isNotEmpty;
+        accepted.isNotEmpty || ignored.isNotEmpty || completed.isNotEmpty;
     final colors = AppColors.of(context);
     return CupertinoPageScaffold(
       backgroundColor: colors.page,
@@ -255,19 +273,7 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                                     hasLocation: _hasLocation,
                                     onRequestLocation:
                                         _requestLocationFromEmptyCard,
-                                  )
-                                else ...[
-                                  if (pendingDeck.isNotEmpty)
-                                    _ActivitySwipeDeck(
-                                      activities: pendingDeck,
-                                      authToken: widget.api.authToken,
-                                      working: _working,
-                                      onAccept: (activity) =>
-                                          _accept(activity, openDetail: false),
-                                      onIgnore: _ignore,
-                                      onOpen: _showActivityDetail,
-                                    ),
-                                ],
+                                  ),
                               ],
                             ),
                           ),
@@ -275,12 +281,7 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                         if (hasAnyActivity) ...[
                           SliverToBoxAdapter(
                             child: Padding(
-                              padding: EdgeInsets.fromLTRB(
-                                20,
-                                pendingDeck.isEmpty ? 20 : 26,
-                                20,
-                                0,
-                              ),
+                              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
                               child: _SectionTitle(
                                 title: '待出行',
                                 trailing: '${accepted.length}个',
@@ -315,8 +316,7 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                                   child: _ActivityMiniCard(
                                     activity: accepted[index],
                                     authToken: widget.api.authToken,
-                                    onTap: () =>
-                                        _showActivityDetail(accepted[index]),
+                                    onTap: () => _openCheckin(accepted[index]),
                                   ),
                                 ),
                               ),
@@ -397,8 +397,7 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                                   child: _ActivityMiniCard(
                                     activity: completed[index],
                                     authToken: widget.api.authToken,
-                                    onTap: () =>
-                                        _showActivityDetail(completed[index]),
+                                    onTap: () => _openReview(completed[index]),
                                   ),
                                 ),
                               ),
@@ -715,149 +714,6 @@ class _ActivityInfoTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(22),
       onPressed: onTap,
       child: child,
-    );
-  }
-}
-
-class _ActivityHeroCard extends StatelessWidget {
-  const _ActivityHeroCard({
-    required this.activity,
-    required this.authToken,
-    required this.working,
-    required this.onAccept,
-    required this.onIgnore,
-    required this.onOpen,
-  });
-
-  final OfflineActivity activity;
-  final String? authToken;
-  final bool working;
-  final VoidCallback onAccept;
-  final VoidCallback onIgnore;
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final canRespond = activity.status == 'pending';
-    return Container(
-      decoration: _softCardDecoration(context),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _ActivityImage(
-            activity: activity,
-            height: 176,
-            authToken: authToken,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onOpen,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              activity.title,
-                              style: _titleStyle(context, 22),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          const _ActivityDetailCue(),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        activity.summary.isEmpty
-                            ? activity.description
-                            : activity.summary,
-                        style: _mutedStyle(context, 14),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 14),
-                      _MetaLine(activity: activity),
-                      if ((activity.taskHint ?? '').isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEAF3FF),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Text(
-                            '🎁 ${activity.taskHint}',
-                            style: const TextStyle(
-                              color: Color(0xFF3A6FC7),
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (canRespond) ...[
-                  const SizedBox(height: 16),
-                  _ActivityResponseButtons(
-                    working: working,
-                    onAccept: onAccept,
-                    onIgnore: onIgnore,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ActivityStateBadge extends StatelessWidget {
-  const _ActivityStateBadge({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.90),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.48)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.16),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.96),
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
-          decoration: TextDecoration.none,
-        ),
-      ),
     );
   }
 }

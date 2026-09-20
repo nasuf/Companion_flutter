@@ -16,63 +16,22 @@ class _ActivityResponseButtons extends StatelessWidget {
     return Row(
       children: [
         Expanded(
+          child: _SecondaryActivityPillButton(
+            label: '先放一放',
+            enabled: !working,
+            onPressed: onIgnore,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
           child: _PrimaryActivityPillButton(
-            label: working ? '处理中...' : '接受邀请',
+            label: working ? '处理中...' : '想去看看',
             icon: '✨',
             enabled: !working,
             onPressed: onAccept,
           ),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _SecondaryActivityPillButton(
-            label: '暂不考虑',
-            enabled: !working,
-            onPressed: onIgnore,
-          ),
-        ),
       ],
-    );
-  }
-}
-
-class _ActivityDetailCue extends StatelessWidget {
-  const _ActivityDetailCue();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
-    return Container(
-      height: 32,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-        color: colors.accent.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: colors.accent.withValues(alpha: 0.18)),
-        boxShadow: [
-          BoxShadow(
-            color: colors.accent.withValues(alpha: 0.08),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(CupertinoIcons.doc_text_search, size: 14, color: colors.accent),
-          const SizedBox(width: 4),
-          Text(
-            '详情',
-            style: TextStyle(
-              color: colors.accent,
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-              decoration: TextDecoration.none,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

@@ -299,6 +299,12 @@ class CompanionApi {
       final json = jsonDecode(text);
       final detail = json is Map ? json['detail'] : null;
       if (detail is String && detail.isNotEmpty) return detail;
+      // 结构化 detail（如到达校验的 {reason, distance_m, message}）取其 message 展示。
+      if (detail is Map &&
+          detail['message'] is String &&
+          (detail['message'] as String).isNotEmpty) {
+        return detail['message'] as String;
+      }
       return text;
     } catch (_) {
       return text;
@@ -702,6 +708,72 @@ class CompanionApi {
         await _request('POST', '/offline/activities/$activityId/ignore')
             as Map<String, dynamic>;
     return _normalizeOfflineActivity(OfflineActivity.fromJson(json));
+  }
+
+  /// 确认到达：上报当前 GPS，服务端做 ≤200m 直线校验。距离不够 / 无坐标（且强制）
+  /// 时抛 [ApiException]，message 已是可直接展示的提示文案。
+  Future<OfflineActivity> arriveOfflineActivity(
+    String activityId, {
+    required double lat,
+    required double lng,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/offline/activities/$activityId/arrive',
+              body: {'lat': lat, 'lng': lng},
+            )
+            as Map<String, dynamic>;
+    return _normalizeOfflineActivity(OfflineActivity.fromJson(json));
+  }
+
+  /// 抽此行小预言（未到达前每活动一次）。返回带 prophecyText 的活动。
+  Future<OfflineActivity> drawOfflineActivityProphecy(String activityId) async {
+    final json =
+        await _request('POST', '/offline/activities/$activityId/prophecy')
+            as Map<String, dynamic>;
+    return _normalizeOfflineActivity(OfflineActivity.fromJson(json));
+  }
+
+  /// 收好这次旅途回忆（手动归档）：accepted -> completed。
+  Future<OfflineActivity> archiveOfflineActivity(String activityId) async {
+    final json =
+        await _request('POST', '/offline/activities/$activityId/archive')
+            as Map<String, dynamic>;
+    return _normalizeOfflineActivity(OfflineActivity.fromJson(json));
+  }
+
+  /// 取消进行中活动（spec §4.2）：accepted -> cancelled，之后不再出现在待出行。
+  Future<OfflineActivity> cancelOfflineActivity(String activityId) async {
+    final json =
+        await _request('POST', '/offline/activities/$activityId/cancel')
+            as Map<String, dynamic>;
+    return _normalizeOfflineActivity(OfflineActivity.fromJson(json));
+  }
+
+  /// 活动回顾聚合（英雄区/故事/画廊/碎片/事件）。图片 URL 已绝对化。
+  Future<OfflineActivityReview> fetchOfflineActivityReview(
+    String activityId,
+  ) async {
+    final json =
+        await _request('GET', '/offline/activities/$activityId/review')
+            as Map<String, dynamic>;
+    final review = OfflineActivityReview.fromJson(json);
+    return review.copyWith(
+      coverUrl: review.coverUrl == null ? null : _absoluteUrl(review.coverUrl!),
+      gallery: review.gallery.map(_absoluteUrl).toList(),
+    );
+  }
+
+  /// 生成/获取记忆手札旅途小记（幂等，后端缓存 travel_note）。
+  Future<OfflineMemoryNote> generateOfflineMemoryNote(String activityId) async {
+    final json =
+        await _request('POST', '/offline/activities/$activityId/memory-note')
+            as Map<String, dynamic>;
+    final note = OfflineMemoryNote.fromJson(json);
+    return note.coverUrl == null
+        ? note
+        : note.copyWith(coverUrl: _absoluteUrl(note.coverUrl!));
   }
 
   Future<OfflineActivity> completeOfflineActivity(
