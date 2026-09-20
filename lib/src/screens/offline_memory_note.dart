@@ -47,12 +47,20 @@ class _MemoryNoteOverlayState extends State<_MemoryNoteOverlay> {
       final image = await boundary.toImage(pixelRatio: 3);
       final byteData = await image.toByteData(format: ImageByteFormat.png);
       if (byteData == null) return;
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File(
-        '${dir.path}/memory_note_${DateTime.now().millisecondsSinceEpoch}.png',
+      final bytes = byteData.buffer.asUint8List();
+      // 存入系统相册（gal：iOS 走 add-only 权限，Android 走 MediaStore）。
+      await Gal.putImageBytes(
+        bytes,
+        name: 'memory_note_${DateTime.now().millisecondsSinceEpoch}',
       );
-      await file.writeAsBytes(byteData.buffer.asUint8List());
-      if (mounted) _showActivityToast(context, '手札图片已保存到应用目录');
+      if (mounted) _showActivityToast(context, '已保存到相册');
+    } on GalException catch (e) {
+      if (mounted) {
+        _showActivityToast(
+          context,
+          e.type == GalExceptionType.accessDenied ? '需要相册权限才能保存' : '保存失败，请稍后再试',
+        );
+      }
     } catch (_) {
       if (mounted) _showActivityToast(context, '保存失败，请稍后再试');
     } finally {

@@ -78,6 +78,8 @@
 	<string>用于拍摄并发送聊天图片。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>用于选择图片放入时间胶囊或发送到聊天。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>用于把生成的记忆手札保存到你的相册。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
