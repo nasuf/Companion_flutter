@@ -288,19 +288,30 @@ Future<void> showOfflineLocationSheet(
 
 Future<void> _openOfflineMapQuery(BuildContext context, String query) async {
   final q = Uri.encodeComponent(query);
+  final src = Uri.encodeComponent('伴生');
   final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
-  final primary = isIOS
+  // 1) 优先唤起高德 App，按地址关键字搜索（无需坐标、无需 Key）。
+  //    iOS 需在 Info.plist 的 LSApplicationQueriesSchemes 声明 iosamap；
+  //    Android 11+ 需在 manifest 声明 <queries> androidamap，否则 canLaunchUrl 返回 false。
+  final amap = Uri.parse(
+    isIOS
+        ? 'iosamap://search?sourceApplication=$src&keywords=$q&dev=0'
+        : 'androidamap://search?sourceApplication=$src&keywords=$q&dev=0',
+  );
+  try {
+    if (await canLaunchUrl(amap)) {
+      await launchUrl(amap, mode: LaunchMode.externalApplication);
+      return;
+    }
+  } catch (_) {
+    // 未安装高德或未声明 scheme → 落系统地图。
+  }
+  // 2) 兜底：系统地图按地址搜索（iOS Apple 地图 / Android 唤起默认地图选择器）。
+  final system = isIOS
       ? Uri.parse('http://maps.apple.com/?q=$q')
       : Uri.parse('geo:0,0?q=$q');
   try {
-    if (await canLaunchUrl(primary)) {
-      await launchUrl(primary, mode: LaunchMode.externalApplication);
-      return;
-    }
-    await launchUrl(
-      Uri.parse('https://maps.google.com/?q=$q'),
-      mode: LaunchMode.externalApplication,
-    );
+    await launchUrl(system, mode: LaunchMode.externalApplication);
   } catch (_) {
     if (context.mounted) _showActivityToast(context, '没有可用的地图应用');
   }

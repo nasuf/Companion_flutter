@@ -62,19 +62,20 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
     if (_arriving) return;
     setState(() => _arriving = true);
     try {
-      final snapshot = await requestCurrentDeviceLocation(
-        api: widget.api,
-        openSettingsWhenBlocked: true,
-      );
-      if (!mounted) return;
-      if (snapshot == null) {
-        _showActivityToast(context, '需要定位才能确认到达，开启定位后再试一次');
-        return;
+      // 尽力取一次定位（用于服务端可选的 ≤200m 校验）；取不到也不拦，允许直接到达。
+      DeviceLocationSnapshot? snapshot;
+      try {
+        snapshot = await requestCurrentDeviceLocation(
+          api: widget.api,
+          openSettingsWhenBlocked: false,
+        );
+      } catch (_) {
+        snapshot = null;
       }
       final updated = await widget.api.arriveOfflineActivity(
         widget.activityId,
-        lat: snapshot.latitude,
-        lng: snapshot.longitude,
+        lat: snapshot?.latitude,
+        lng: snapshot?.longitude,
       );
       if (!mounted) return;
       setState(() => _activity = updated);

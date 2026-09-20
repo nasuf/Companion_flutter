@@ -714,14 +714,19 @@ class CompanionApi {
   /// 时抛 [ApiException]，message 已是可直接展示的提示文案。
   Future<OfflineActivity> arriveOfflineActivity(
     String activityId, {
-    required double lat,
-    required double lng,
+    double? lat,
+    double? lng,
   }) async {
+    // 坐标可选：拿到就带上（地点已地理编码时服务端做 ≤200m 校验），拿不到也放行。
+    final body = <String, dynamic>{
+      if (lat != null) 'lat': lat,
+      if (lng != null) 'lng': lng,
+    };
     final json =
         await _request(
               'POST',
               '/offline/activities/$activityId/arrive',
-              body: {'lat': lat, 'lng': lng},
+              body: body,
             )
             as Map<String, dynamic>;
     return _normalizeOfflineActivity(OfflineActivity.fromJson(json));

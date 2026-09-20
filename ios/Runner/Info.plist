@@ -58,6 +58,7 @@
 		<string>snssdk141</string>
 		<string>snssdk1128</string>
 		<string>zhihu</string>
+		<string>iosamap</string>
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>

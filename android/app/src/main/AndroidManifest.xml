@@ -56,6 +56,7 @@
         <package android:name="com.ss.android.article.news" />
         <package android:name="com.ss.android.ugc.aweme" />
         <package android:name="com.zhihu.android" />
+        <package android:name="com.autonavi.minimap" />
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
@@ -63,6 +64,15 @@
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
+        </intent>
+        <!-- 唤起高德地图 App（androidamap://）+ 系统地图兜底（geo:）-->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="androidamap" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
         </intent>
     </queries>
 </manifest>
