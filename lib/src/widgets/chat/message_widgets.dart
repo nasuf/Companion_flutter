@@ -1500,7 +1500,7 @@ class _AudioAttachmentBubbleState extends State<_AudioAttachmentBubble> {
   }
 }
 
-class _ImageAttachmentBubble extends StatelessWidget {
+class _ImageAttachmentBubble extends StatefulWidget {
   const _ImageAttachmentBubble({
     required this.attachments,
     required this.isMine,
@@ -1514,15 +1514,51 @@ class _ImageAttachmentBubble extends StatelessWidget {
   final ValueChanged<ChatAttachment> onTap;
   final String? authToken;
 
-  /// 该图片已被识图命中：叠一层暖金描边微光 + 「偶遇一缕思绪」小字，呼应识别仪式。
+  /// 该图片已被识图命中：叠一层暖金描边微光 + 「偶遇一缕思绪」小字。从"未识别→已识别"
+  /// 实时翻转时，先播 ~1.3s 识别仪式（暗角/扫光/星点/轻抬落幅）再落定态（spec §5.2/§5.3）。
   final bool recognized;
 
+  @override
+  State<_ImageAttachmentBubble> createState() => _ImageAttachmentBubbleState();
+}
+
+class _ImageAttachmentBubbleState extends State<_ImageAttachmentBubble>
+    with SingleTickerProviderStateMixin {
   static const Color _recognizedAccent = Color(0xFFE7B24D);
+
+  AnimationController? _ceremony;
+  bool _playing = false;
+
+  @override
+  void didUpdateWidget(covariant _ImageAttachmentBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 仅在"发图后识图命中"的实时翻转时播仪式；历史消息(建来即已识别)直接落定态。
+    if (!oldWidget.recognized && widget.recognized) {
+      _ceremony ??= AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 1300),
+      )..addStatusListener((status) {
+          if (status == AnimationStatus.completed && mounted) {
+            setState(() => _playing = false);
+          }
+        });
+      setState(() => _playing = true);
+      _ceremony!.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ceremony?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final headers = authToken?.isNotEmpty == true
-        ? {'Authorization': 'Bearer $authToken'}
+    final isMine = widget.isMine;
+    final recognized = widget.recognized;
+    final headers = widget.authToken?.isNotEmpty == true
+        ? {'Authorization': 'Bearer ${widget.authToken}'}
         : null;
     final grid = ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 270),
@@ -1531,9 +1567,9 @@ class _ImageAttachmentBubble extends StatelessWidget {
         spacing: 6,
         runSpacing: 6,
         children: [
-          for (final attachment in attachments)
+          for (final attachment in widget.attachments)
             GestureDetector(
-              onTap: () => onTap(attachment),
+              onTap: () => widget.onTap(attachment),
               child: ClipRRect(
                 borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(isMine ? 17 : 3),
@@ -1590,28 +1626,40 @@ class _ImageAttachmentBubble extends StatelessWidget {
       ),
     );
     if (!recognized) return grid;
+    final visual = (_playing && _ceremony != null)
+        ? _RecognitionRitual(
+            progress: _ceremony!,
+            accent: _recognizedAccent,
+            child: grid,
+          )
+        : grid;
     return Column(
       crossAxisAlignment:
           isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
-        grid,
+        visual,
         const SizedBox(height: 5),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('✨', style: TextStyle(fontSize: 10)),
-            const SizedBox(width: 3),
-            Text(
-              '偶遇一缕思绪',
-              style: TextStyle(
-                color: _recognizedAccent,
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.5,
-                decoration: TextDecoration.none,
+        // 定格「偶遇一缕思绪」：仪式播放期间先不出，落定后淡入。
+        AnimatedOpacity(
+          duration: const Duration(milliseconds: 260),
+          opacity: _playing ? 0 : 1,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('✨', style: TextStyle(fontSize: 10)),
+              const SizedBox(width: 3),
+              Text(
+                '偶遇一缕思绪',
+                style: TextStyle(
+                  color: _recognizedAccent,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                  decoration: TextDecoration.none,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
@@ -1638,6 +1686,135 @@ class _ImageAttachmentBubble extends StatelessWidget {
       width: 180,
       height: 150,
       child: Center(child: Icon(CupertinoIcons.photo, color: AppColors.muted)),
+    );
+  }
+}
+
+/// 识图命中仪式（spec §5.2/§5.3 + demo）：~1.3s 内在照片上叠 暗角 / 扫光带 / 星点 /
+/// 中心标记，并轻抬落幅，随后由调用方落定为暖金描边 +「偶遇一缕思绪」。纯隐式动画，
+/// 全部标准 widget（无 CustomPainter），仅在该图实时被识图命中时播放一次。
+class _RecognitionRitual extends StatelessWidget {
+  const _RecognitionRitual({
+    required this.progress,
+    required this.accent,
+    required this.child,
+  });
+
+  final Animation<double> progress;
+  final Color accent;
+  final Widget child;
+
+  // 星点：(对齐位置, 起始时刻 0-1)。错峰迸发。
+  static const List<(Alignment, double)> _sparks = [
+    (Alignment(-0.62, -0.5), 0.20),
+    (Alignment(0.55, -0.32), 0.30),
+    (Alignment(0.10, -0.66), 0.34),
+    (Alignment(-0.35, 0.45), 0.40),
+    (Alignment(0.66, 0.5), 0.48),
+    (Alignment(-0.7, 0.1), 0.52),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: progress,
+      builder: (context, _) {
+        final t = progress.value;
+        final wave = math.sin(math.pi * t); // 0→1→0
+        return Transform.translate(
+          offset: Offset(0, -6 * wave), // 轻抬落幅
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(17),
+            child: Stack(
+              children: [
+                child,
+                // 暗角
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          radius: 0.95,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.42 * wave),
+                          ],
+                          stops: const [0.5, 1.0],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // 扫光带（自上而下扫过）
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: Align(
+                      alignment: Alignment(0, -1 + 2 * t),
+                      child: FractionallySizedBox(
+                        widthFactor: 1,
+                        heightFactor: 0.16,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                accent.withValues(alpha: 0.55 * wave),
+                                Colors.transparent,
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // 星点
+                for (final (align, start) in _sparks)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Align(alignment: align, child: _spark(t, start)),
+                    ),
+                  ),
+                // 中心标记 ✦
+                Positioned.fill(
+                  child: IgnorePointer(child: Center(child: _mark(t))),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _spark(double t, double start) {
+    final local = ((t - start) / 0.32).clamp(0.0, 1.0);
+    final op = math.sin(math.pi * local);
+    if (op <= 0.01) return const SizedBox.shrink();
+    return Opacity(
+      opacity: op,
+      child: Transform.scale(
+        scale: 0.5 + 0.7 * local,
+        child: Text('✦', style: TextStyle(fontSize: 13, color: accent)),
+      ),
+    );
+  }
+
+  Widget _mark(double t) {
+    final local = ((t - 0.18) / 0.5).clamp(0.0, 1.0);
+    final op = math.sin(math.pi * local);
+    if (op <= 0.01) return const SizedBox.shrink();
+    return Opacity(
+      opacity: op,
+      child: Transform.scale(
+        scale: 0.6 + 0.8 * local,
+        child: Text(
+          '✦',
+          style: TextStyle(fontSize: 26, color: accent.withValues(alpha: 0.95)),
+        ),
+      ),
     );
   }
 }

@@ -95,6 +95,7 @@ class OfflineMemoryNote {
     this.coverUrl,
     required this.travelNote,
     required this.fragmentTags,
+    this.moodTags = const [],
   });
 
   final String title;
@@ -102,6 +103,7 @@ class OfflineMemoryNote {
   final String? coverUrl;
   final String travelNote;
   final List<String> fragmentTags;
+  final List<String> moodTags;
 
   factory OfflineMemoryNote.fromJson(Map<String, dynamic> json) =>
       OfflineMemoryNote(
@@ -110,6 +112,7 @@ class OfflineMemoryNote {
         coverUrl: _asString(json['cover_url']),
         travelNote: json['travel_note']?.toString() ?? '',
         fragmentTags: _stringList(json['fragment_tags']),
+        moodTags: _stringList(json['mood_tags']),
       );
 
   OfflineMemoryNote copyWith({String? coverUrl}) => OfflineMemoryNote(
@@ -118,6 +121,7 @@ class OfflineMemoryNote {
         coverUrl: coverUrl ?? this.coverUrl,
         travelNote: travelNote,
         fragmentTags: fragmentTags,
+        moodTags: moodTags,
       );
 }
 

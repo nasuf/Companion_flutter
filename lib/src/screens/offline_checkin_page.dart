@@ -242,11 +242,11 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
           if (reached) ...[
             _ArrivedStatusRow(color: w.ink),
             const SizedBox(height: 10),
+            // spec §5.4-(6) 已到达坞：「收好这次旅途回忆」为描边按钮（区别于未到达的实心主按钮）。
             SizedBox(
               width: double.infinity,
-              child: _PrimaryActivityPillButton(
+              child: _SecondaryActivityPillButton(
                 label: _archiving ? '收好中...' : '收好这次旅途回忆',
-                icon: '🎞️',
                 enabled: !_archiving,
                 onPressed: _onArchive,
               ),

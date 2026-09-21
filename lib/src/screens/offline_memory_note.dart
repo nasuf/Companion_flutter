@@ -244,6 +244,37 @@ class _MemoryNoteCard extends StatelessWidget {
                       ],
                     ),
                   ],
+                  if (note.moodTags.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text('这一趟的心情', style: _titleStyle(context, 15)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final tag in note.moodTags)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _kGiftAccent.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              tag,
+                              style: TextStyle(
+                                color: w.inkSoft,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   Divider(color: w.glassBorder, height: 1),
                   const SizedBox(height: 10),
@@ -320,6 +351,14 @@ class _MemoryNoteShareSheet extends StatelessWidget {
                   ),
                 ),
             ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: _SecondaryActivityPillButton(
+              label: '取消',
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
           ),
           const SizedBox(height: 8),
         ],

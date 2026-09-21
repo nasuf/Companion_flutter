@@ -256,6 +256,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   String? _autoShownReadyCapsuleId;
   bool _readyCapsuleNoticeShowing = false;
   Conversation? _conversationMeta;
+
+  // 线下活动任务条（交互手册「聊天页：顶栏 →（可选）进行中任务条 → 消息流」）：
+  // 仅当存在「进行中(accepted) 且已到达(reached)」的活动时展示；点击进打卡页，
+  // 左滑露出「取消」。数据惰性拉取（bootstrap + 切回聊天 + offline WS 事件刷新），
+  // 拉取失败/模块未启用时静默保持隐藏，绝不打断聊天主流程。
+  OfflineActivity? _taskBarActivity;
+  bool _taskBarCancelling = false;
+
   bool get _loadingInitial => _transcript.loadingInitial;
   set _loadingInitial(bool value) => _transcript.loadingInitial = value;
 
@@ -415,6 +423,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _bumpViewportShell();
       _scheduleStationDockCheck();
       unawaited(_scanReadyCapsules());
+      unawaited(_refreshTaskBar());
       return;
     }
 
@@ -526,6 +535,76 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     } catch (_) {
       // 网络抖动: 保持旧值/null, 发送前判断按"未知则放行"处理, 服务端仍会
       // 通过 quota_blocked 兜底拦截真正超额的消息。
+    }
+  }
+
+  /// 拉取当前「进行中且已到达」的活动，驱动顶部任务条显隐。
+  /// 全程 best-effort：模块未启用/无活动/网络抖动都只是保持任务条隐藏，
+  /// 不弹错、不打断聊天主流程。
+  Future<void> _refreshTaskBar() async {
+    OfflineActivity? active;
+    try {
+      final data = await widget.api.fetchOfflineActivities(
+        workspaceId: widget.session.workspaceId,
+      );
+      // 已到达的进行中活动落在 pending 桶（server: status in {pending,accepted}）。
+      for (final activity in data.pending) {
+        if (activity.status == 'accepted' && activity.reached) {
+          active = activity;
+          break;
+        }
+      }
+    } catch (_) {
+      return; // 保持现状（多为模块未启用或离线），不改任务条。
+    }
+    if (!mounted) return;
+    if (active?.id == _taskBarActivity?.id &&
+        active?.reached == _taskBarActivity?.reached) {
+      return; // 无变化，避免无谓 rebuild。
+    }
+    setState(() => _taskBarActivity = active);
+  }
+
+  /// offline 活动类 WS 消息（到达卡/拍照引导/思绪碎片/未命中暗示）到达时，
+  /// 说明活动状态可能刚变化（尤其"确认到达"会翻转 reached），据此刷新任务条。
+  void _maybeRefreshTaskBarFromEvent(Map<String, dynamic> payload) {
+    final trigger = payload['trigger_type']?.toString() ?? '';
+    if (trigger.startsWith('offline_activity') ||
+        trigger.startsWith('offline_thought')) {
+      unawaited(_refreshTaskBar());
+    }
+  }
+
+  /// 任务条点击：进入打卡页（spec 交互手册「点击进入打卡页」）。返回后刷新任务条。
+  void _openTaskBarCheckin(OfflineActivity activity) {
+    _dismissInputSurfaces();
+    Navigator.of(context).push<void>(
+      CompanionPageRoute<void>(
+        builder: (_) => OfflineCheckinPage(
+          api: widget.api,
+          session: widget.session,
+          activityId: activity.id,
+          initialActivity: activity,
+          onChanged: _refreshTaskBar,
+        ),
+      ),
+    );
+  }
+
+  /// 任务条左滑「取消」：确认后取消进行中活动（spec §4.2），成功即收起任务条。
+  Future<void> _cancelTaskBarActivity(OfflineActivity activity) async {
+    if (_taskBarCancelling) return;
+    final confirmed = await showOfflineCancelConfirm(context);
+    if (!confirmed || !mounted) return;
+    setState(() => _taskBarCancelling = true);
+    try {
+      await widget.api.cancelOfflineActivity(activity.id);
+      if (!mounted) return;
+      setState(() => _taskBarActivity = null);
+    } on ApiException catch (error) {
+      if (mounted) _showActivityToast(context, error.message);
+    } finally {
+      if (mounted) setState(() => _taskBarCancelling = false);
     }
   }
 
@@ -698,6 +777,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     unawaited(_scanReadyCapsules());
     _scheduleNextCapsuleScan();
     _scheduleConversationMetaRefresh();
+    unawaited(_refreshTaskBar());
     _connectSocket();
     unawaited(_listenForSharedLinks());
   }
@@ -2159,6 +2239,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               ]
             : const <ChatAttachment>[];
         if (text.isEmpty && attachments.isEmpty) return;
+        // offline 活动类消息（到达卡/拍照引导/思绪碎片/未命中暗示）可能刚翻转
+        // 活动状态，据此刷新顶部任务条（尤其"确认到达"→ reached=true）。
+        _maybeRefreshTaskBarFromEvent(payload);
         final wasNearBottom = _isNearBottomNow();
         final shouldAutoScroll = widget.isActive && wasNearBottom;
         final messageId = payload['message_id']?.toString();
@@ -4130,6 +4213,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   onOpenSidebar: widget.onOpenSidebar,
                 ),
               ),
+              if (_taskBarActivity != null)
+                RepaintBoundary(
+                  child: _ChatActivityTaskBar(
+                    key: ValueKey('offline-taskbar-${_taskBarActivity!.id}'),
+                    activity: _taskBarActivity!,
+                    cancelling: _taskBarCancelling,
+                    onTap: () => _openTaskBarCheckin(_taskBarActivity!),
+                    onCancel: () =>
+                        _cancelTaskBarActivity(_taskBarActivity!),
+                  ),
+                ),
               Expanded(
                 child: RepaintBoundary(
                   child: _buildTranscriptColumn(listTopPadding: 10),
@@ -4181,6 +4275,200 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 聊天页顶部「进行中活动」任务条（交互手册：顶栏 →（可选）任务条 → 消息流）。
+/// 玻璃风格对齐天气/胶囊（_W2b 令牌 + _softCardDecoration）。点击进打卡页；
+/// 左滑露出「取消」（spec §4.2），点击「取消」走确认后收起。仅在已到达时挂载。
+class _ChatActivityTaskBar extends StatefulWidget {
+  const _ChatActivityTaskBar({
+    super.key,
+    required this.activity,
+    required this.cancelling,
+    required this.onTap,
+    required this.onCancel,
+  });
+
+  final OfflineActivity activity;
+  final bool cancelling;
+  final VoidCallback onTap;
+  final VoidCallback onCancel;
+
+  @override
+  State<_ChatActivityTaskBar> createState() => _ChatActivityTaskBarState();
+}
+
+class _ChatActivityTaskBarState extends State<_ChatActivityTaskBar> {
+  static const double _revealWidth = 76;
+  double _offset = 0;
+  bool _dragging = false;
+
+  bool get _revealed => _offset <= -_revealWidth / 2;
+
+  void _snapBack() {
+    if (_offset == 0) return;
+    setState(() {
+      _dragging = false;
+      _offset = 0;
+    });
+  }
+
+  void _handleTap() {
+    if (_offset != 0) {
+      _snapBack();
+      return;
+    }
+    widget.onTap();
+  }
+
+  void _handleCancelTap() {
+    // 确认弹窗会盖住整屏，先收回滑动位移，避免返回后停在半展开态。
+    _snapBack();
+    widget.onCancel();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
+    final activity = widget.activity;
+    final place = (activity.locationName?.trim().isNotEmpty ?? false)
+        ? activity.locationName!.trim()
+        : activity.title;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Stack(
+          children: [
+            // 背后的「取消」动作区（左滑露出）。
+            Positioned.fill(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: GestureDetector(
+                  onTap: widget.cancelling ? null : _handleCancelTap,
+                  child: Container(
+                    width: _revealWidth,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF4757),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: widget.cancelling
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation(Colors.white),
+                            ),
+                          )
+                        : const Text(
+                            '取消',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+            ),
+            // 前景玻璃卡片（跟随手指平移）。
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _handleTap,
+              onHorizontalDragStart: (_) => setState(() => _dragging = true),
+              onHorizontalDragUpdate: (details) {
+                setState(() {
+                  _offset = (_offset + details.delta.dx)
+                      .clamp(-_revealWidth, 0.0);
+                });
+              },
+              onHorizontalDragEnd: (_) {
+                setState(() {
+                  _dragging = false;
+                  _offset = _revealed ? -_revealWidth : 0;
+                });
+              },
+              child: AnimatedContainer(
+                duration: _dragging
+                    ? Duration.zero
+                    : const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                transform: Matrix4.translationValues(_offset, 0, 0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: _softCardDecoration(context, radius: 14).copyWith(
+                  // 活动主调轻染，跟礼物/普通卡片区分开。
+                  color: Color.alphaBlend(
+                    _kActivityAccent.withValues(alpha: w.isDark ? 0.18 : 0.08),
+                    w.glass,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _kActivityAccent.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        '进行中',
+                        style: TextStyle(
+                          color: _kActivityAccent,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        place,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: w.ink,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '查看进度',
+                      style: TextStyle(
+                        color: w.inkSoft,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: w.inkSoft,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
