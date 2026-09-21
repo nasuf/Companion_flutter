@@ -748,14 +748,6 @@ class CompanionApi {
     return _normalizeOfflineActivity(OfflineActivity.fromJson(json));
   }
 
-  /// 取消进行中活动（spec §4.2）：accepted -> cancelled，之后不再出现在待出行。
-  Future<OfflineActivity> cancelOfflineActivity(String activityId) async {
-    final json =
-        await _request('POST', '/offline/activities/$activityId/cancel')
-            as Map<String, dynamic>;
-    return _normalizeOfflineActivity(OfflineActivity.fromJson(json));
-  }
-
   /// 管理员测试页：检视活动详情 + 拍摄物品(任务) + 已产出碎片。
   Future<OfflineActivityInspect> adminInspectOfflineActivity(
     String activityId,

@@ -108,18 +108,6 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
     }
   }
 
-  Future<void> _onCancel() async {
-    final confirmed = await showOfflineCancelConfirm(context);
-    if (!confirmed || !mounted) return;
-    try {
-      await widget.api.cancelOfflineActivity(widget.activityId);
-      widget.onChanged?.call();
-      if (mounted) Navigator.of(context).pop();
-    } on ApiException catch (error) {
-      if (mounted) _showActivityToast(context, error.message);
-    }
-  }
-
   Future<void> _onArchive() async {
     if (_archiving) return;
     final confirmed = await showOfflineArchiveConfirm(context);
@@ -272,36 +260,19 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
             ),
           ],
           const SizedBox(height: 6),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CupertinoButton(
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-                minimumSize: Size.zero,
-                onPressed: () => showOfflinePlayGuideDialog(context),
-                child: Text(
-                  '出门小说明',
-                  style: _mutedStyle(context, 13).copyWith(
-                    decoration: TextDecoration.underline,
-                    decorationColor: w.inkSoft,
-                  ),
+          Center(
+            child: CupertinoButton(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+              minimumSize: Size.zero,
+              onPressed: () => showOfflinePlayGuideDialog(context),
+              child: Text(
+                '出门小说明',
+                style: _mutedStyle(context, 13).copyWith(
+                  decoration: TextDecoration.underline,
+                  decorationColor: w.inkSoft,
                 ),
               ),
-              Text('·', style: _mutedStyle(context, 13)),
-              // spec §4.2 取消进行中活动（打卡页常驻入口，等同任务条的取消能力）。
-              CupertinoButton(
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-                minimumSize: Size.zero,
-                onPressed: _onCancel,
-                child: Text(
-                  '取消这次行程',
-                  style: _mutedStyle(context, 13).copyWith(
-                    decoration: TextDecoration.underline,
-                    decorationColor: w.inkSoft,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ),

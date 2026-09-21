@@ -102,7 +102,7 @@ Future<bool> showOfflineArchiveConfirm(BuildContext context) async {
     context: context,
     barrierDismissible: true,
     barrierLabel: 'offline-archive-confirm',
-    barrierColor: Colors.black.withValues(alpha: 0.48),
+    barrierColor: Colors.transparent, // 背景改用高斯模糊（见 transitionBuilder）
     transitionDuration: const Duration(milliseconds: 200),
     pageBuilder: (dialogContext, _, __) {
       return Center(
@@ -144,60 +144,8 @@ Future<bool> showOfflineArchiveConfirm(BuildContext context) async {
         ),
       );
     },
-    transitionBuilder: (_, anim, __, child) => _dialogScaleFade(anim, child),
-  );
-  return result ?? false;
-}
-
-/// 取消进行中活动确认（spec §4.2）。返回 true 表示确认取消。
-Future<bool> showOfflineCancelConfirm(BuildContext context) async {
-  final result = await showGeneralDialog<bool>(
-    context: context,
-    barrierDismissible: true,
-    barrierLabel: 'offline-cancel-confirm',
-    barrierColor: Colors.black.withValues(alpha: 0.48),
-    transitionDuration: const Duration(milliseconds: 200),
-    pageBuilder: (dialogContext, _, __) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: _GlassDialogCard(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('取消这次行程', style: _titleStyle(dialogContext, 18)),
-                const SizedBox(height: 10),
-                Text(
-                  '取消后它不会再出现在待出行里，确定吗？',
-                  textAlign: TextAlign.center,
-                  style: _mutedStyle(dialogContext, 14).copyWith(height: 1.6),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _SecondaryActivityPillButton(
-                        label: '再想想',
-                        onPressed: () =>
-                            Navigator.of(dialogContext).pop(false),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _PrimaryActivityPillButton(
-                        label: '取消行程',
-                        onPressed: () => Navigator.of(dialogContext).pop(true),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    },
-    transitionBuilder: (_, anim, __, child) => _dialogScaleFade(anim, child),
+    transitionBuilder: (ctx, anim, __, child) =>
+        _blurGlassBarrier(ctx, anim, child),
   );
   return result ?? false;
 }
