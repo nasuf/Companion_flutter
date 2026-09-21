@@ -3476,9 +3476,65 @@ class _OfflineActivityTestPageState extends State<_OfflineActivityTestPage> {
   bool _generating = false;
   bool _generatingItems = false;
   bool _clearing = false;
+  bool _accepting = false;
+  bool _loadingExisting = false;
   String? _error;
   OfflineActivity? _activity;
   OfflineActivityInspect? _inspect;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExisting();
+  }
+
+  /// 打开测试页时载入最近一个活动（pending 推荐卡或已接受的），并拉一次任务检视。
+  /// 这样离开后重开仍能看到刚生成的活动，而不是空白页。
+  Future<void> _loadExisting() async {
+    setState(() => _loadingExisting = true);
+    try {
+      widget.api.authToken = widget.session.token;
+      final data = await widget.api.fetchOfflineActivities(
+        workspaceId: widget.session.workspaceId,
+      );
+      final existing = data.latest ??
+          (data.pending.isNotEmpty ? data.pending.first : null);
+      if (!mounted) return;
+      setState(() {
+        _loadingExisting = false;
+        _activity = existing;
+      });
+      if (existing != null) await _inspectOnly(existing.id);
+    } catch (_) {
+      if (mounted) setState(() => _loadingExisting = false);
+    }
+  }
+
+  /// 接受活动（想去看看）：pending → accepted，进「待出行」，可继续到达/打卡流程。
+  Future<void> _accept() async {
+    final activity = _activity;
+    if (activity == null || _accepting) return;
+    setState(() {
+      _accepting = true;
+      _error = null;
+    });
+    try {
+      widget.api.authToken = widget.session.token;
+      final updated = await widget.api.acceptOfflineActivity(activity.id);
+      if (!mounted) return;
+      setState(() {
+        _accepting = false;
+        _activity = updated;
+      });
+      await _inspectOnly(updated.id);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _accepting = false;
+        _error = _asMessage(error);
+      });
+    }
+  }
 
   Future<void> _clearAll() async {
     if (_clearing) return;
@@ -3612,12 +3668,17 @@ class _OfflineActivityTestPageState extends State<_OfflineActivityTestPage> {
     return _AdminScaffold(
       title: '测试生成活动',
       subtitle: '生成活动 → 查看任务细节',
-      trailing: _activity == null
-          ? null
-          : _AppNavCircleButton(
-              icon: CupertinoIcons.refresh,
-              onPressed: () => _inspectOnly(_activity!.id),
-            ),
+      trailing: _loadingExisting
+          ? const Padding(
+              padding: EdgeInsets.only(right: 4),
+              child: CupertinoActivityIndicator(radius: 10),
+            )
+          : (_activity == null
+              ? null
+              : _AppNavCircleButton(
+                  icon: CupertinoIcons.refresh,
+                  onPressed: () => _loadExisting(),
+                )),
       child: ListView(
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 40),
@@ -3718,14 +3779,40 @@ class _OfflineActivityTestPageState extends State<_OfflineActivityTestPage> {
           const SizedBox(height: 6),
           _kv(context, '地点', a.locationName ?? a.address ?? '—'),
           _kv(context, '类型', a.category ?? '—'),
-          _kv(context, '状态', '${a.status}${a.reached ? ' · 已到达' : ''}'),
+          _kv(context, '状态', '${_statusLabel(a.status)}${a.reached ? ' · 已到达' : ''}'),
           if (a.summary.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(a.summary, style: TextStyle(fontSize: 13, color: muted)),
           ],
+          if (a.status == 'pending') ...[
+            const SizedBox(height: 6),
+            Text('提示：pending 推荐只在聊天里以推荐卡出现，不进活动列表；「想去看看」后进「待出行」。',
+                style: TextStyle(fontSize: 12, color: muted)),
+            const SizedBox(height: 10),
+            _TestActionButton(
+              label: _accepting ? '正在接受...' : '想去看看（接受 → 待出行）',
+              busy: _accepting,
+              onPressed: _accepting ? null : _accept,
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'pending':
+        return 'pending（推荐未决定）';
+      case 'accepted':
+        return 'accepted（待出行/进行中）';
+      case 'ignored':
+        return 'ignored（暂不考虑）';
+      case 'completed':
+        return 'completed（已完成）';
+      default:
+        return status;
+    }
   }
 
   Widget _buildTaskCard(BuildContext context, OfflineActivityInspect ins) {
