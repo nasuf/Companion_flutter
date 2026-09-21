@@ -217,16 +217,20 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
   @override
   Widget build(BuildContext context) {
     final data = _data;
-    // spec：推荐(pending)只作为聊天推荐卡存在，不在活动列表出现；列表只展示
-    // 待出行(accepted) / 暂不考虑(ignored) / 已完成(completed)。后端把 pending+
-    // accepted 都放在 pending 字段返回，这里只取 accepted 作「待出行」。
+    // spec：推荐(pending)只作为聊天推荐卡存在，不在活动列表出现。accepted 再按是否
+    // 已到达细分：进行中(reached) / 待出行(未到达)。后端把 pending+accepted 都放在
+    // pending 字段返回，这里只取 accepted。
     final accepted = _dedupeActivities(data?.pending ?? const <OfflineActivity>[])
         .where((activity) => activity.status == 'accepted')
         .toList();
+    final ongoing = accepted.where((a) => a.reached).toList(); // 进行中(已到达)
+    final toGo = accepted.where((a) => !a.reached).toList(); // 待出行(未到达)
     final ignored = data?.ignored ?? const <OfflineActivity>[];
     final completed = data?.completed ?? const <OfflineActivity>[];
-    final hasAnyActivity =
-        accepted.isNotEmpty || ignored.isNotEmpty || completed.isNotEmpty;
+    final hasAnyActivity = ongoing.isNotEmpty ||
+        toGo.isNotEmpty ||
+        ignored.isNotEmpty ||
+        completed.isNotEmpty;
     final colors = AppColors.of(context);
     return CupertinoPageScaffold(
       backgroundColor: colors.page,
@@ -279,16 +283,46 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                           ),
                         ),
                         if (hasAnyActivity) ...[
+                          // 进行中(已到达)：从「待出行」独立出来，置顶展示。仅在有时出现。
+                          if (ongoing.isNotEmpty) ...[
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                                child: _SectionTitle(
+                                  title: '进行中',
+                                  trailing: '${ongoing.length}个',
+                                ),
+                              ),
+                            ),
+                            SliverPadding(
+                              padding: const EdgeInsets.only(top: 14),
+                              sliver: SliverList.separated(
+                                itemCount: ongoing.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 10),
+                                itemBuilder: (context, index) => Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                  ),
+                                  child: _ActivityMiniCard(
+                                    activity: ongoing[index],
+                                    authToken: widget.api.authToken,
+                                    onTap: () => _openCheckin(ongoing[index]),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                           SliverToBoxAdapter(
                             child: Padding(
                               padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
                               child: _SectionTitle(
                                 title: '待出行',
-                                trailing: '${accepted.length}个',
+                                trailing: '${toGo.length}个',
                               ),
                             ),
                           ),
-                          if (accepted.isEmpty)
+                          if (toGo.isEmpty)
                             const SliverToBoxAdapter(
                               child: Padding(
                                 padding: EdgeInsets.fromLTRB(20, 14, 20, 0),
@@ -306,7 +340,7 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                             SliverPadding(
                               padding: const EdgeInsets.only(top: 14),
                               sliver: SliverList.separated(
-                                itemCount: accepted.length,
+                                itemCount: toGo.length,
                                 separatorBuilder: (_, __) =>
                                     const SizedBox(height: 10),
                                 itemBuilder: (context, index) => Padding(
@@ -314,9 +348,9 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                                     horizontal: 20,
                                   ),
                                   child: _ActivityMiniCard(
-                                    activity: accepted[index],
+                                    activity: toGo[index],
                                     authToken: widget.api.authToken,
-                                    onTap: () => _openCheckin(accepted[index]),
+                                    onTap: () => _openCheckin(toGo[index]),
                                   ),
                                 ),
                               ),
