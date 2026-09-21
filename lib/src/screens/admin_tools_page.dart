@@ -526,7 +526,6 @@ class AdminToolsPage extends StatefulWidget {
 class _AdminToolsPageState extends State<AdminToolsPage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _motionController;
-  bool _clearingActivities = false;
   bool _injectingGift = false;
   bool _triggeringProactive = false;
 
@@ -928,64 +927,6 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     }
   }
 
-  Future<void> _clearActivities() async {
-    if (_clearingActivities) return;
-    final confirmed = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (context) {
-        return CupertinoAlertDialog(
-          title: const Text('清理所有活动？'),
-          content: const Text('这会删除当前登录用户下的全部线下活动推荐记录和完成反馈，无法撤销。'),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
-            ),
-            CupertinoDialogAction(
-              isDestructiveAction: true,
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('确认清理'),
-            ),
-          ],
-        );
-      },
-    );
-    if (confirmed != true || !mounted) return;
-
-    setState(() => _clearingActivities = true);
-    var progressOpen = true;
-    unawaited(
-      showCupertinoDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const _AdminProgressDialog(
-          title: '正在清理活动',
-          message: '正在删除当前用户的活动推荐记录...',
-        ),
-      ).whenComplete(() {
-        progressOpen = false;
-      }),
-    );
-
-    try {
-      widget.api.authToken = widget.session.token;
-      final result = await widget.api.clearOfflineActivitiesForCurrentUser();
-      if (!mounted) return;
-      if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
-      setState(() => _clearingActivities = false);
-      await _showActivityResult(
-        title: '活动已清理',
-        message:
-            '已删除 ${result.deletedActivities} 条活动记录和 ${result.deletedFeedback} 条反馈记录。',
-      );
-    } catch (error) {
-      if (!mounted) return;
-      if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
-      setState(() => _clearingActivities = false);
-      await _showActivityResult(title: '清理失败', message: _asMessage(error));
-    }
-  }
-
   Future<void> _injectMockGift({required bool delivered}) async {
     if (_injectingGift) return;
     setState(() => _injectingGift = true);
@@ -1305,9 +1246,8 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                             _ProfileSettingRowV6(
                               icon: CupertinoIcons.bolt_fill,
                               title: '测试生成活动',
-                              subtitle: '进入测试页：生成活动 + 查看任务(拍摄物品)细节',
+                              subtitle: '进入测试页：生成活动 / 查看任务 / 清理活动',
                               accent: const Color(0xFF2D73FF),
-                              enabled: !_clearingActivities,
                               onTap: _openActivityTestPage,
                             ),
                             _ProfileSettingRowV6(
@@ -1319,16 +1259,6 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                               accent: const Color(0xFF7A5BE3),
                               enabled: !_triggeringProactive,
                               onTap: _pickProactiveTriggerType,
-                            ),
-                            _ProfileSettingRowV6(
-                              icon: CupertinoIcons.trash_fill,
-                              title: _clearingActivities
-                                  ? '正在清理活动'
-                                  : '清理所有推荐活动',
-                              subtitle: '删除当前登录用户下的全部线下活动推荐记录',
-                              accent: const Color(0xFFE35B6F),
-                              enabled: !_clearingActivities,
-                              onTap: _clearActivities,
                             ),
                             _ProfileSettingRowV6(
                               icon: CupertinoIcons.gift_fill,
@@ -3545,9 +3475,68 @@ class _OfflineActivityTestPage extends StatefulWidget {
 class _OfflineActivityTestPageState extends State<_OfflineActivityTestPage> {
   bool _generating = false;
   bool _generatingItems = false;
+  bool _clearing = false;
   String? _error;
   OfflineActivity? _activity;
   OfflineActivityInspect? _inspect;
+
+  Future<void> _clearAll() async {
+    if (_clearing) return;
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (dialogContext) => CupertinoAlertDialog(
+        title: const Text('清理所有活动？'),
+        content: const Text('这会删除当前登录用户下的全部线下活动推荐记录和完成反馈，无法撤销。'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('确认清理'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _clearing = true;
+      _error = null;
+    });
+    try {
+      widget.api.authToken = widget.session.token;
+      final result = await widget.api.clearOfflineActivitiesForCurrentUser();
+      if (!mounted) return;
+      setState(() {
+        _clearing = false;
+        _activity = null;
+        _inspect = null;
+      });
+      await showCupertinoDialog<void>(
+        context: context,
+        builder: (dialogContext) => CupertinoAlertDialog(
+          title: const Text('活动已清理'),
+          content: Text(
+            '已删除 ${result.deletedActivities} 条活动记录和 ${result.deletedFeedback} 条反馈记录。',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('好'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _clearing = false;
+        _error = _asMessage(error);
+      });
+    }
+  }
 
   Future<void> _generate() async {
     if (_generating) return;
@@ -3691,6 +3680,27 @@ class _OfflineActivityTestPageState extends State<_OfflineActivityTestPage> {
             const SizedBox(height: 14),
             _buildTaskCard(context, _inspect!),
           ],
+          const SizedBox(height: 14),
+          _AdminCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('清理所有推荐活动',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                Text('删除当前登录用户下的全部线下活动推荐记录和完成反馈，无法撤销。',
+                    style: TextStyle(
+                        fontSize: 13, color: AppColors.of(context).muted)),
+                const SizedBox(height: 12),
+                _TestActionButton(
+                  label: _clearing ? '正在清理...' : '清理所有推荐活动',
+                  busy: _clearing,
+                  color: const Color(0xFFE35B6F),
+                  onPressed: _clearing ? null : _clearAll,
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -3819,15 +3829,17 @@ class _TestActionButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.busy = false,
+    this.color,
   });
 
   final String label;
   final VoidCallback? onPressed;
   final bool busy;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
-    final accent = AppColors.of(context).accent;
+    final accent = color ?? AppColors.of(context).accent;
     return SizedBox(
       width: double.infinity,
       child: CupertinoButton(
