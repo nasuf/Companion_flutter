@@ -439,9 +439,10 @@ class _ThoughtFragmentRow extends StatelessWidget {
     final (icon, label, accent) = _tierMeta[tier] ?? _tierMeta['rare']!;
     final lead = fragment['lead_in']?.toString() ?? '';
     final w = _W2b.resolve(context);
-    // 跟普通 AI 气泡一样：左侧 agent 头像 + 缩进的卡片（只是内容是特殊文字卡）。
+    // 跟普通 AI 气泡完全同位：外层 SliverList 已给左右各 12 的水平内边距，这里只补
+    // 与普通气泡一致的垂直间距，不再额外加水平内边距（否则会比普通消息多缩进一截）。
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -453,7 +454,10 @@ class _ThoughtFragmentRow extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Flexible(
-            child: TweenAnimationBuilder<double>(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TweenAnimationBuilder<double>(
         tween: Tween<double>(begin: 0, end: 1),
         duration: const Duration(milliseconds: 520),
         curve: Curves.easeOutCubic,
@@ -548,6 +552,14 @@ class _ThoughtFragmentRow extends StatelessWidget {
           ),
         ),
       ),
+                // 时间戳：与普通 AI 气泡一致（卡片下方、左对齐、10px muted）。
+                const SizedBox(height: 3),
+                Text(
+                  _formatTime(message.createdAt),
+                  style: TextStyle(color: AppColors.muted, fontSize: 10),
+                ),
+              ],
+            ),
             ),
           ],
         ),
