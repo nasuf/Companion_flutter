@@ -15,11 +15,12 @@ Future<void> showOfflineMemoryNote(
     context: context,
     barrierDismissible: true,
     barrierLabel: 'memory-note',
-    barrierColor: Colors.black.withValues(alpha: 0.6),
+    barrierColor: Colors.transparent, // 背景改用高斯模糊（见 transitionBuilder）
     transitionDuration: const Duration(milliseconds: 260),
     pageBuilder: (_, __, ___) =>
         _MemoryNoteOverlay(note: note, authToken: authToken),
-    transitionBuilder: (_, anim, __, child) => _dialogScaleFade(anim, child),
+    transitionBuilder: (ctx, anim, __, child) =>
+        _blurGlassBarrier(ctx, anim, child),
   );
 }
 
@@ -80,7 +81,6 @@ class _MemoryNoteOverlayState extends State<_MemoryNoteOverlay> {
   @override
   Widget build(BuildContext context) {
     final note = widget.note;
-    final w = _W2b.resolve(context);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
@@ -88,9 +88,37 @@ class _MemoryNoteOverlayState extends State<_MemoryNoteOverlay> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Flexible(
-              child: RepaintBoundary(
-                key: _cardKey,
-                child: _MemoryNoteCard(note: note, authToken: widget.authToken),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // 只有 RepaintBoundary 内的卡片会被「保存图片」截图；关闭按钮在其外。
+                  RepaintBoundary(
+                    key: _cardKey,
+                    child:
+                        _MemoryNoteCard(note: note, authToken: widget.authToken),
+                  ),
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: GestureDetector(
+                      onTap: () => Navigator.of(context).maybePop(),
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.32),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 16),
@@ -112,11 +140,6 @@ class _MemoryNoteOverlayState extends State<_MemoryNoteOverlay> {
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 6),
-            CupertinoButton(
-              onPressed: () => Navigator.of(context).maybePop(),
-              child: Text('关闭', style: TextStyle(color: w.inkSoft)),
             ),
           ],
         ),

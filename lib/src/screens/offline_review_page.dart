@@ -453,7 +453,10 @@ void _showFragmentLightbox(BuildContext context, OfflineActivityFragment f) {
     context: context,
     barrierDismissible: true,
     barrierLabel: 'fragment',
-    barrierColor: Colors.black.withValues(alpha: 0.5),
+    barrierColor: Colors.transparent, // 背景改用高斯模糊（见 transitionBuilder）
+    transitionDuration: const Duration(milliseconds: 200),
+    transitionBuilder: (ctx, anim, __, child) =>
+        _blurGlassBarrier(ctx, anim, child),
     pageBuilder: (dialogContext, _, __) => Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 34),
