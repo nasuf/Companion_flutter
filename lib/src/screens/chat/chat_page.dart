@@ -2861,6 +2861,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     });
   }
 
+  /// 外部（main_shell 跨 Tab）请求定位到某条消息：如从「陪伴→活动回顾→查看原始聊天」
+  /// 跳到该活动「我到了」到达卡。
+  void jumpToActivityMessage(String messageId) {
+    if (!mounted || messageId.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_jumpToActivityMessage(messageId));
+    });
+  }
+
   void sendComponentMessage(String text, ChatComponentCard componentCard) {
     final offeringId = componentCard.payload['offering_id']?.toString() ?? '';
     if (offeringId.isNotEmpty) {

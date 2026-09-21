@@ -7,12 +7,16 @@ class OfflineInteractionPage extends StatefulWidget {
     required this.session,
     required this.agentName,
     required this.active,
+    this.onOpenChatAtMessage,
   });
 
   final CompanionApi api;
   final AuthSession session;
   final String agentName;
   final bool active;
+
+  /// 跨 Tab 回聊天并定位到某条消息（活动回顾「查看原始聊天」用）。
+  final void Function(String messageId)? onOpenChatAtMessage;
 
   @override
   State<OfflineInteractionPage> createState() => _OfflineInteractionPageState();
@@ -105,6 +109,7 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
           session: widget.session,
           hasLocation: _home?.hasLocation == true,
           onChanged: _load,
+          onOpenChatAtMessage: widget.onOpenChatAtMessage,
         ),
       ),
     );

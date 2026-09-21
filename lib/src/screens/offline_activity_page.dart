@@ -8,6 +8,7 @@ class OfflineActivityPage extends StatefulWidget {
     required this.hasLocation,
     this.initialActivityId,
     this.onChanged,
+    this.onOpenChatAtMessage,
   });
 
   final CompanionApi api;
@@ -15,6 +16,9 @@ class OfflineActivityPage extends StatefulWidget {
   final bool hasLocation;
   final String? initialActivityId;
   final VoidCallback? onChanged;
+
+  /// 回顾「查看原始聊天」→ 跨 Tab 回聊天并定位到到达卡（由外层 main_shell 提供）。
+  final void Function(String messageId)? onOpenChatAtMessage;
 
   @override
   State<OfflineActivityPage> createState() => _OfflineActivityPageState();
@@ -103,9 +107,9 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
     }
   }
 
-  void _openReview(OfflineActivity activity) {
-    // 用 <String> 路由与「查看原始聊天」pop(arrivalMessageId) 类型一致（列表侧忽略结果）。
-    Navigator.of(context).push(
+  Future<void> _openReview(OfflineActivity activity) async {
+    // 回顾「查看原始聊天」pop 回到达卡消息 id → 关掉本列表页、切到聊天并滚动定位。
+    final jumpId = await Navigator.of(context).push<String>(
       CompanionPageRoute<String>(
         builder: (_) => OfflineReviewPage(
           api: widget.api,
@@ -114,6 +118,11 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
         ),
       ),
     );
+    if (!mounted) return;
+    if (jumpId != null && jumpId.isNotEmpty && widget.onOpenChatAtMessage != null) {
+      Navigator.of(context).pop(); // 关掉活动列表页，露出 Tab 骨架
+      widget.onOpenChatAtMessage!(jumpId);
+    }
   }
 
   void _openCheckin(OfflineActivity activity) {

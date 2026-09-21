@@ -332,6 +332,16 @@ class _MainShellState extends State<MainShell> with RouteAware {
     _chatPageKey.currentState?.scrollToLatest();
   }
 
+  /// 跨 Tab：从「陪伴→活动回顾→查看原始聊天」切到聊天 Tab 并滚动到到达卡。
+  /// 调用前，上层活动列表页已自行 pop（露出 Tab 骨架）。
+  void _openChatAtMessage(String messageId) {
+    if (messageId.isEmpty) return;
+    _goToChatTab();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chatPageKey.currentState?.jumpToActivityMessage(messageId);
+    });
+  }
+
   void _sendDraftToChat(CapsuleChatDraft draft) {
     _goToChatTab();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -417,6 +427,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
               selected: _index == 2,
               routeCovered: _routeCovered,
             ),
+            onOpenChatAtMessage: _openChatAtMessage,
           );
         case 3:
           child = ProfilePage(
