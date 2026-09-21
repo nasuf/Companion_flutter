@@ -125,6 +125,89 @@ class OfflineMemoryNote {
       );
 }
 
+/// 管理员测试页检视：活动详情 + 拍摄物品(任务) + 已产出碎片。
+class OfflineActivityInspect {
+  const OfflineActivityInspect({
+    required this.id,
+    required this.title,
+    required this.locationName,
+    required this.category,
+    required this.summary,
+    required this.status,
+    required this.reached,
+    required this.items,
+    required this.fragments,
+  });
+
+  final String id;
+  final String title;
+  final String locationName;
+  final String category;
+  final String summary;
+  final String status;
+  final bool reached;
+  final List<OfflineActivityInspectItem> items;
+  final List<OfflineActivityInspectFragment> fragments;
+
+  factory OfflineActivityInspect.fromJson(Map<String, dynamic> json) =>
+      OfflineActivityInspect(
+        id: json['id']?.toString() ?? '',
+        title: json['title']?.toString() ?? '',
+        locationName: json['location_name']?.toString() ?? '',
+        category: json['category']?.toString() ?? '',
+        summary: json['summary']?.toString() ?? '',
+        status: json['status']?.toString() ?? '',
+        reached: json['reached'] == true,
+        items: (json['items'] as List?)
+                ?.whereType<Map>()
+                .map((e) =>
+                    OfflineActivityInspectItem.fromJson(Map<String, dynamic>.from(e)))
+                .toList() ??
+            const [],
+        fragments: (json['fragments'] as List?)
+                ?.whereType<Map>()
+                .map((e) => OfflineActivityInspectFragment.fromJson(
+                    Map<String, dynamic>.from(e)))
+                .toList() ??
+            const [],
+      );
+}
+
+class OfflineActivityInspectItem {
+  const OfflineActivityInspectItem({
+    required this.shortName,
+    required this.category,
+    required this.criteria,
+    required this.triggered,
+  });
+
+  final String shortName;
+  final String category;
+  final String criteria;
+  final bool triggered;
+
+  factory OfflineActivityInspectItem.fromJson(Map<String, dynamic> json) =>
+      OfflineActivityInspectItem(
+        shortName: json['short_name']?.toString() ?? '',
+        category: json['category']?.toString() ?? '',
+        criteria: json['criteria']?.toString() ?? '',
+        triggered: json['triggered'] == true,
+      );
+}
+
+class OfflineActivityInspectFragment {
+  const OfflineActivityInspectFragment({required this.tier, required this.text});
+
+  final String tier;
+  final String text;
+
+  factory OfflineActivityInspectFragment.fromJson(Map<String, dynamic> json) =>
+      OfflineActivityInspectFragment(
+        tier: json['tier']?.toString() ?? '',
+        text: json['text']?.toString() ?? '',
+      );
+}
+
 class OfflineHome {
   const OfflineHome({
     required this.pendingActivityCount,

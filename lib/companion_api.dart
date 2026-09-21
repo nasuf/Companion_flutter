@@ -756,6 +756,27 @@ class CompanionApi {
     return _normalizeOfflineActivity(OfflineActivity.fromJson(json));
   }
 
+  /// 管理员测试页：检视活动详情 + 拍摄物品(任务) + 已产出碎片。
+  Future<OfflineActivityInspect> adminInspectOfflineActivity(
+    String activityId,
+  ) async {
+    final json =
+        await _request('GET', '/offline/admin/activities/$activityId/inspect')
+            as Map<String, dynamic>;
+    return OfflineActivityInspect.fromJson(json);
+  }
+
+  /// 管理员测试专用：绕过到达校验直接生成拍摄物品(任务)，返回检视结果。
+  Future<OfflineActivityInspect> adminGenerateOfflineActivityItems(
+    String activityId,
+  ) async {
+    final json = await _request(
+      'POST',
+      '/offline/admin/activities/$activityId/generate-items',
+    ) as Map<String, dynamic>;
+    return OfflineActivityInspect.fromJson(json);
+  }
+
   /// 活动回顾聚合（英雄区/故事/画廊/碎片/事件）。图片 URL 已绝对化。
   Future<OfflineActivityReview> fetchOfflineActivityReview(
     String activityId,
