@@ -377,7 +377,11 @@ class _MessageRow extends StatelessWidget {
     }
     final thoughtFragment = message.offlineThoughtFragment;
     if (thoughtFragment != null) {
-      return _ThoughtFragmentRow(message: message, fragment: thoughtFragment);
+      return _ThoughtFragmentRow(
+        message: message,
+        fragment: thoughtFragment,
+        agentAvatarUrl: agentAvatarUrl,
+      );
     }
 
     if (_splitTextAndCard) {
@@ -412,10 +416,15 @@ class _MessageRow extends StatelessWidget {
 /// 思绪碎片气泡（spec §5.2）：识图命中后入场的特殊 AI 气泡。磨砂玻璃 + 等级色描边
 /// + 淡入上移，区别于普通聊天气泡，呼应「偶遇一缕思绪」的仪式感。
 class _ThoughtFragmentRow extends StatelessWidget {
-  const _ThoughtFragmentRow({required this.message, required this.fragment});
+  const _ThoughtFragmentRow({
+    required this.message,
+    required this.fragment,
+    this.agentAvatarUrl,
+  });
 
   final ChatMessage message;
   final Map<String, dynamic> fragment;
+  final String? agentAvatarUrl;
 
   // tier -> (emoji, 标签, 主调色)
   static const Map<String, (String, String, Color)> _tierMeta = {
@@ -430,9 +439,21 @@ class _ThoughtFragmentRow extends StatelessWidget {
     final (icon, label, accent) = _tierMeta[tier] ?? _tierMeta['rare']!;
     final lead = fragment['lead_in']?.toString() ?? '';
     final w = _W2b.resolve(context);
+    // 跟普通 AI 气泡一样：左侧 agent 头像 + 缩进的卡片（只是内容是特殊文字卡）。
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 6, 40, 6),
-      child: TweenAnimationBuilder<double>(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Avatar(
+            size: 40,
+            label: '伴',
+            imageUrl: agentAvatarUrl,
+            gradient: const [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: TweenAnimationBuilder<double>(
         tween: Tween<double>(begin: 0, end: 1),
         duration: const Duration(milliseconds: 520),
         curve: Curves.easeOutCubic,
@@ -527,6 +548,9 @@ class _ThoughtFragmentRow extends StatelessWidget {
           ),
         ),
       ),
+            ),
+          ],
+        ),
     );
   }
 }
@@ -1524,8 +1548,6 @@ class _ImageAttachmentBubble extends StatefulWidget {
 
 class _ImageAttachmentBubbleState extends State<_ImageAttachmentBubble>
     with SingleTickerProviderStateMixin {
-  static const Color _recognizedAccent = Color(0xFFE7B24D);
-
   AnimationController? _ceremony;
   bool _playing = false;
 
@@ -1536,7 +1558,7 @@ class _ImageAttachmentBubbleState extends State<_ImageAttachmentBubble>
     if (!oldWidget.recognized && widget.recognized) {
       _ceremony ??= AnimationController(
         vsync: this,
-        duration: const Duration(milliseconds: 1300),
+        duration: const Duration(milliseconds: 1350),
       )..addStatusListener((status) {
           if (status == AnimationStatus.completed && mounted) {
             setState(() => _playing = false);
@@ -1580,21 +1602,9 @@ class _ImageAttachmentBubbleState extends State<_ImageAttachmentBubble>
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: AppColors.surfaceMuted,
-                    border: Border.all(
-                      color: recognized
-                          ? _recognizedAccent.withValues(alpha: 0.85)
-                          : AppColors.hairline,
-                      width: recognized ? 2 : 1,
-                    ),
-                    boxShadow: recognized
-                        ? [
-                            BoxShadow(
-                              color: _recognizedAccent.withValues(alpha: 0.34),
-                              blurRadius: 16,
-                              offset: const Offset(0, 4),
-                            ),
-                          ]
-                        : null,
+                    // 识别命中的金框由外层 _recognizedColumn 统一施加（含定格 + 仪式），
+                    // 这里始终画普通描边即可。
+                    border: Border.all(color: AppColors.hairline, width: 1),
                   ),
                   // Bubble loads the server-side thumbnail (~10x smaller than
                   // the original) from the persistent disk cache; the original
@@ -1626,35 +1636,84 @@ class _ImageAttachmentBubbleState extends State<_ImageAttachmentBubble>
       ),
     );
     if (!recognized) return grid;
-    final visual = (_playing && _ceremony != null)
-        ? _RecognitionRitual(
-            progress: _ceremony!,
-            accent: _recognizedAccent,
-            child: grid,
-          )
-        : grid;
+    if (_playing && _ceremony != null) {
+      return AnimatedBuilder(
+        animation: _ceremony!,
+        builder: (_, __) => _recognizedColumn(grid, _ceremony!.value, isMine),
+      );
+    }
+    return _recognizedColumn(grid, 1.0, isMine); // 定格态（持久）
+  }
+
+  // ── 识别命中：定格态(t=1) + 仪式动画(0<t<1)，复刻 demo bubble-img ──
+  static const Color _goldBorder = Color(0xB8CD9B69); // rgba(205,155,105,.72)
+  static const Color _goldCaption = Color(0xFFB88955);
+
+  Widget _recognizedColumn(Widget grid, double t, bool isMine) {
+    final settled = t >= 1.0;
+    final lift = -3.0 * math.sin(math.pi * t.clamp(0.0, 1.0));
+    final markLocal = ((t - 0.68) / 0.32).clamp(0.0, 1.0);
+    final markOp = settled ? 1.0 : markLocal;
+    final markScale =
+        settled ? 1.0 : (0.55 + 0.55 * Curves.easeOutBack.transform(markLocal));
+    final capLocal = ((t - 0.78) / 0.22).clamp(0.0, 1.0);
+    final capOp = settled ? 1.0 : capLocal;
+
     return Column(
       crossAxisAlignment:
           isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
-        visual,
-        const SizedBox(height: 5),
-        // 定格「偶遇一缕思绪」：仪式播放期间先不出，落定后淡入。
-        AnimatedOpacity(
-          duration: const Duration(milliseconds: 260),
-          opacity: _playing ? 0 : 1,
+        Transform.translate(
+          offset: Offset(0, lift),
+          child: DecoratedBox(
+            // 定格金框 + 柔和金晕（持久保留在聊天记录中）。
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: _goldBorder, width: 1.5),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x1A6E4623),
+                  blurRadius: 18,
+                  offset: Offset(0, 6),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Stack(
+                children: [
+                  grid,
+                  if (!settled) ..._ritualOverlays(t),
+                  // 左上角标记（定格持久；仪式期临近结束弹入）。
+                  Positioned(
+                    top: 9,
+                    left: 9,
+                    child: Opacity(
+                      opacity: markOp,
+                      child: Transform.scale(scale: markScale, child: _markBadge()),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        // 「偶遇一缕思绪」说明（定格持久；仪式期淡入）。
+        Opacity(
+          opacity: capOp,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text('✨', style: TextStyle(fontSize: 10)),
               const SizedBox(width: 3),
-              Text(
+              const Text(
                 '偶遇一缕思绪',
                 style: TextStyle(
-                  color: _recognizedAccent,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
+                  color: _goldCaption,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.6,
                   decoration: TextDecoration.none,
                 ),
               ),
@@ -1663,6 +1722,159 @@ class _ImageAttachmentBubbleState extends State<_ImageAttachmentBubble>
         ),
       ],
     );
+  }
+
+  Widget _markBadge() {
+    return Container(
+      width: 24,
+      height: 24,
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        color: Color(0xF0FFFCF8),
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(color: Color(0x24785028), blurRadius: 10, offset: Offset(0, 2)),
+        ],
+      ),
+      child: const Text(
+        '✦',
+        style: TextStyle(
+          color: Color(0xFFC0874E),
+          fontSize: 13,
+          height: 1,
+          decoration: TextDecoration.none,
+        ),
+      ),
+    );
+  }
+
+  // 仪式叠层：暗角 + 自下而上金色扫光带/扫光线 + 星点（复刻 demo recog-*）。
+  List<Widget> _ritualOverlays(double t) {
+    final vignette = (0.85 * (1 - t)).clamp(0.0, 0.85);
+    final scanY = 1.35 - 2.7 * t; // 从下(+)扫到上(-)
+    final scanOp = _bump(t, 0.12, 0.78);
+    return [
+      if (vignette > 0.01)
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: const Alignment(0, -0.1),
+                  radius: 0.95,
+                  colors: [
+                    Colors.transparent,
+                    const Color(0xFF1C120A).withValues(alpha: 0.42 * (vignette / 0.85)),
+                  ],
+                  stops: const [0.4, 1.0],
+                ),
+              ),
+            ),
+          ),
+        ),
+      // 宽扫光带
+      Positioned.fill(
+        child: IgnorePointer(
+          child: Align(
+            alignment: Alignment(0, scanY),
+            child: FractionallySizedBox(
+              widthFactor: 1.16,
+              heightFactor: 0.36,
+              child: Opacity(
+                opacity: scanOp * 0.9,
+                child: const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Color(0x00FFF5DC),
+                        Color(0x38FFECC8),
+                        Color(0xB8FFFFFF),
+                        Color(0x33FFE6BE),
+                        Color(0x00FFF5DC),
+                      ],
+                      stops: [0.0, 0.35, 0.52, 0.68, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+      // 细扫光线
+      Positioned.fill(
+        child: IgnorePointer(
+          child: Align(
+            alignment: Alignment(0, scanY - 0.18),
+            child: FractionallySizedBox(
+              widthFactor: 0.88,
+              heightFactor: 0.012,
+              child: Opacity(
+                opacity: scanOp,
+                child: const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0x00FFF8E6), Color(0xF2FFF8E6), Color(0x00FFF8E6)],
+                    ),
+                    boxShadow: [
+                      BoxShadow(color: Color(0x8CFFDCAA), blurRadius: 10, spreadRadius: 2),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+      for (final s in _sparkSpecs)
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Align(alignment: s.$1, child: _spark(t, s.$2)),
+          ),
+        ),
+    ];
+  }
+
+  // (对齐位置, 起始时刻) —— 复刻 demo recog-spark s1..s6 的错峰迸发。
+  static const List<(Alignment, double)> _sparkSpecs = [
+    (Alignment(-0.72, -0.68), 0.36),
+    (Alignment(0.70, -0.52), 0.43),
+    (Alignment(-0.64, 0.56), 0.49),
+    (Alignment(0.60, 0.40), 0.55),
+    (Alignment(-0.80, -0.16), 0.61),
+    (Alignment(0.76, 0.16), 0.67),
+  ];
+
+  Widget _spark(double t, double start) {
+    final local = ((t - start) / 0.30).clamp(0.0, 1.0);
+    if (local <= 0.0 || local >= 1.0) return const SizedBox.shrink();
+    final op = math.sin(math.pi * local);
+    return Opacity(
+      opacity: op,
+      child: Transform.scale(
+        scale: 0.4 + 1.0 * local,
+        child: Container(
+          width: 6,
+          height: 6,
+          decoration: const BoxDecoration(
+            color: Color(0xFFFFF8E8),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(color: Color(0xF0FFDC8C), blurRadius: 10, spreadRadius: 3),
+              BoxShadow(color: Color(0x8CFFBE64), blurRadius: 18, spreadRadius: 6),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  double _bump(double t, double inEnd, double outStart) {
+    if (t < inEnd) return (t / inEnd).clamp(0.0, 1.0);
+    if (t > outStart) return (1 - (t - outStart) / (1 - outStart)).clamp(0.0, 1.0);
+    return 1.0;
   }
 
   double _imageWidthFor(ChatAttachment attachment) {
@@ -1690,134 +1902,6 @@ class _ImageAttachmentBubbleState extends State<_ImageAttachmentBubble>
   }
 }
 
-/// 识图命中仪式（spec §5.2/§5.3 + demo）：~1.3s 内在照片上叠 暗角 / 扫光带 / 星点 /
-/// 中心标记，并轻抬落幅，随后由调用方落定为暖金描边 +「偶遇一缕思绪」。纯隐式动画，
-/// 全部标准 widget（无 CustomPainter），仅在该图实时被识图命中时播放一次。
-class _RecognitionRitual extends StatelessWidget {
-  const _RecognitionRitual({
-    required this.progress,
-    required this.accent,
-    required this.child,
-  });
-
-  final Animation<double> progress;
-  final Color accent;
-  final Widget child;
-
-  // 星点：(对齐位置, 起始时刻 0-1)。错峰迸发。
-  static const List<(Alignment, double)> _sparks = [
-    (Alignment(-0.62, -0.5), 0.20),
-    (Alignment(0.55, -0.32), 0.30),
-    (Alignment(0.10, -0.66), 0.34),
-    (Alignment(-0.35, 0.45), 0.40),
-    (Alignment(0.66, 0.5), 0.48),
-    (Alignment(-0.7, 0.1), 0.52),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: progress,
-      builder: (context, _) {
-        final t = progress.value;
-        final wave = math.sin(math.pi * t); // 0→1→0
-        return Transform.translate(
-          offset: Offset(0, -6 * wave), // 轻抬落幅
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(17),
-            child: Stack(
-              children: [
-                child,
-                // 暗角
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: RadialGradient(
-                          radius: 0.95,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withValues(alpha: 0.42 * wave),
-                          ],
-                          stops: const [0.5, 1.0],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // 扫光带（自上而下扫过）
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: Align(
-                      alignment: Alignment(0, -1 + 2 * t),
-                      child: FractionallySizedBox(
-                        widthFactor: 1,
-                        heightFactor: 0.16,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.transparent,
-                                accent.withValues(alpha: 0.55 * wave),
-                                Colors.transparent,
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // 星点
-                for (final (align, start) in _sparks)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: Align(alignment: align, child: _spark(t, start)),
-                    ),
-                  ),
-                // 中心标记 ✦
-                Positioned.fill(
-                  child: IgnorePointer(child: Center(child: _mark(t))),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _spark(double t, double start) {
-    final local = ((t - start) / 0.32).clamp(0.0, 1.0);
-    final op = math.sin(math.pi * local);
-    if (op <= 0.01) return const SizedBox.shrink();
-    return Opacity(
-      opacity: op,
-      child: Transform.scale(
-        scale: 0.5 + 0.7 * local,
-        child: Text('✦', style: TextStyle(fontSize: 13, color: accent)),
-      ),
-    );
-  }
-
-  Widget _mark(double t) {
-    final local = ((t - 0.18) / 0.5).clamp(0.0, 1.0);
-    final op = math.sin(math.pi * local);
-    if (op <= 0.01) return const SizedBox.shrink();
-    return Opacity(
-      opacity: op,
-      child: Transform.scale(
-        scale: 0.6 + 0.8 * local,
-        child: Text(
-          '✦',
-          style: TextStyle(fontSize: 26, color: accent.withValues(alpha: 0.95)),
-        ),
-      ),
-    );
-  }
-}
 
 /// 聊天图片加载骨架屏 (与 H5 一致): 不透明灰底 + 一条从左到右滑过的亮带,
 /// 循环 ~1.25s。加载完成后由 Image.network 替换。
