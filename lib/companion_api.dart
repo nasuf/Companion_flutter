@@ -769,6 +769,17 @@ class CompanionApi {
     return OfflineActivityInspect.fromJson(json);
   }
 
+  /// 某条消息在会话中的实时 rank（= loadMessages 的 offset），用于跳转定位。
+  /// 找不到返回 null。
+  Future<int?> fetchMessageRank(String conversationId, String messageId) async {
+    final json = await _request(
+      'GET',
+      '/conversations/$conversationId/messages/$messageId/rank',
+    ) as Map<String, dynamic>;
+    final rank = json['rank'];
+    return rank is int ? rank : (rank is num ? rank.toInt() : null);
+  }
+
   /// 活动回顾聚合（英雄区/故事/画廊/碎片/事件）。图片 URL 已绝对化。
   Future<OfflineActivityReview> fetchOfflineActivityReview(
     String activityId,

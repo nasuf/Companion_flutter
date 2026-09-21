@@ -1,5 +1,96 @@
 part of 'package:companion_flutter/main.dart';
 
+/// 从任意页面（聊天卡片 / 深链）**直达**该活动对应详情，不经活动列表主页：
+/// accepted→打卡页, completed→回顾页, 其余(pending/ignored)→地点详情 sheet。
+/// 返回即回到调用页（如聊天）。
+/// 返回值：仅当从回顾页点「查看原始聊天」时，返回其「我到了」到达卡消息 id（供调用方
+/// ——聊天页——回跳并滚动定位）；其余情况返回 null。
+Future<String?> openOfflineActivityDetail(
+  BuildContext context, {
+  required CompanionApi api,
+  required AuthSession session,
+  required OfflineActivity activity,
+  VoidCallback? onChanged,
+}) async {
+  if (activity.status == 'accepted') {
+    await Navigator.of(context).push(
+      CompanionPageRoute<void>(
+        builder: (_) => OfflineCheckinPage(
+          api: api,
+          session: session,
+          activityId: activity.id,
+          initialActivity: activity,
+          onChanged: onChanged,
+        ),
+      ),
+    );
+    return null;
+  }
+  if (activity.status == 'completed') {
+    return await Navigator.of(context).push<String>(
+      CompanionPageRoute<String>(
+        builder: (_) => OfflineReviewPage(
+          api: api,
+          session: session,
+          activityId: activity.id,
+        ),
+      ),
+    );
+  }
+  // pending / ignored → 地点详情 sheet（想去看看 / 先放一放）。
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    enableDrag: false,
+    useSafeArea: false,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.34),
+    builder: (sheetContext) => DraggableScrollableSheet(
+      initialChildSize: 1.0,
+      minChildSize: 1.0,
+      maxChildSize: 1.0,
+      snap: false,
+      expand: false,
+      builder: (_, scrollController) => _ActivityDetailSheetShell(
+        api: api,
+        activity: activity,
+        scrollController: scrollController,
+        onAccept: () async {
+          try {
+            return await api.acceptOfflineActivity(activity.id);
+          } catch (_) {
+            return null;
+          }
+        },
+        onIgnore: () async {
+          try {
+            await api.ignoreOfflineActivity(activity.id);
+            return true;
+          } catch (_) {
+            return false;
+          }
+        },
+        // 接受后 sheet 已自行关闭；用外层 context 打开打卡页（sheet context 已失效）。
+        onAccepted: (updated) {
+          onChanged?.call();
+          Navigator.of(context).push(
+            CompanionPageRoute<void>(
+              builder: (_) => OfflineCheckinPage(
+                api: api,
+                session: session,
+                activityId: updated.id,
+                initialActivity: updated,
+                onChanged: onChanged,
+              ),
+            ),
+          );
+        },
+      ),
+    ),
+  );
+  return null; // pending/ignored 详情 sheet 无跳转结果
+}
+
 /// 地点详情：spec §5.4-5「相册 → 名称+推荐理由 → 地址 → 双操作(想去看看/先放一放)」。
 ///
 /// 重构（P1）：移除完成 composer（媒体改由聊天路径在到达后进入活动，见 P3）；

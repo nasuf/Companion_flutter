@@ -1234,16 +1234,24 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       final activityId = card.payload['activity_id']?.toString();
       if (activityId == null || activityId.isEmpty) return;
       _dismissInputSurfaces();
-      await Navigator.of(context).push<void>(
-        CompanionPageRoute<void>(
-          builder: (_) => OfflineActivityPage(
-            api: widget.api,
-            session: widget.session,
-            hasLocation: true,
-            initialActivityId: activityId,
-          ),
-        ),
-      );
+      // 直达该活动对应详情（打卡页/回顾页/详情 sheet），不再先跳活动列表主页。
+      try {
+        final activity = await widget.api.fetchOfflineActivity(activityId);
+        if (!mounted) return;
+        // 回顾页点「查看原始聊天」时返回到达卡消息 id → 回跳并滚动定位到「我到了」。
+        final jumpMessageId = await openOfflineActivityDetail(
+          context,
+          api: widget.api,
+          session: widget.session,
+          activity: activity,
+          onChanged: _refreshTaskBar,
+        );
+        if (mounted && jumpMessageId != null && jumpMessageId.isNotEmpty) {
+          await _jumpToActivityMessage(jumpMessageId);
+        }
+      } catch (_) {
+        // 拉取失败（已删除/网络）：静默，不打断聊天。
+      }
       return;
     }
     if (card.type == 'offline_gift') {
@@ -1537,6 +1545,23 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       return;
     }
     await _jumpToRank(hit.rank, hit.message.id, query);
+  }
+
+  /// 定位并滚动到某条消息（如回顾页「查看原始聊天」→ 活动「我到了」到达卡）。
+  /// 已加载则直接高亮滚动；否则按实时 rank 加载其所在窗口再定位。
+  Future<void> _jumpToActivityMessage(String messageId) async {
+    if (messageId.isEmpty) return;
+    if (_messages.any((m) => m.id == messageId)) {
+      unawaited(_highlightAndScrollTo(messageId, ''));
+      return;
+    }
+    try {
+      final rank = await widget.api.fetchMessageRank(_conversationId, messageId);
+      if (!mounted || rank == null) return;
+      await _jumpToRank(rank, messageId, '');
+    } catch (_) {
+      // 定位失败：静默（消息可能已被清理）。
+    }
   }
 
   Future<void> _jumpToRank(

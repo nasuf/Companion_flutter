@@ -210,7 +210,9 @@ class _OfflineReviewPageState extends State<OfflineReviewPage> {
         SliverToBoxAdapter(
           child: Center(
             child: CupertinoButton(
-              onPressed: () => Navigator.of(context).maybePop(),
+              // 返回聊天并把到达卡消息 id 作为结果回传，聊天页据此滚动到「我到了」。
+              onPressed: () =>
+                  Navigator.of(context).pop(_review?.arrivalMessageId),
               child: Text('查看原始聊天', style: _mutedStyle(context, 13)),
             ),
           ),

@@ -104,8 +104,9 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
   }
 
   void _openReview(OfflineActivity activity) {
+    // 用 <String> 路由与「查看原始聊天」pop(arrivalMessageId) 类型一致（列表侧忽略结果）。
     Navigator.of(context).push(
-      CompanionPageRoute<void>(
+      CompanionPageRoute<String>(
         builder: (_) => OfflineReviewPage(
           api: widget.api,
           session: widget.session,

@@ -36,6 +36,7 @@ class OfflineActivityReview {
     required this.eventTags,
     required this.hasMemoryNote,
     this.travelNote,
+    this.arrivalMessageId,
   });
 
   final String id;
@@ -50,6 +51,7 @@ class OfflineActivityReview {
   final List<String> eventTags;
   final bool hasMemoryNote;
   final String? travelNote;
+  final String? arrivalMessageId;
 
   factory OfflineActivityReview.fromJson(Map<String, dynamic> json) =>
       OfflineActivityReview(
@@ -69,6 +71,7 @@ class OfflineActivityReview {
         eventTags: _stringList(json['event_tags']),
         hasMemoryNote: json['has_memory_note'] == true,
         travelNote: _asString(json['travel_note']),
+        arrivalMessageId: _asString(json['arrival_message_id']),
       );
 
   OfflineActivityReview copyWith({String? coverUrl, List<String>? gallery}) =>
@@ -85,6 +88,7 @@ class OfflineActivityReview {
         eventTags: eventTags,
         hasMemoryNote: hasMemoryNote,
         travelNote: travelNote,
+        arrivalMessageId: arrivalMessageId,
       );
 }
 
