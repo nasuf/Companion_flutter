@@ -55,7 +55,7 @@ Future<void> showOfflinePlayGuideDialog(BuildContext context) {
     context: context,
     barrierDismissible: true,
     barrierLabel: 'offline-playguide',
-    barrierColor: Colors.black.withValues(alpha: 0.48),
+    barrierColor: Colors.transparent, // 背景改用高斯模糊（见 transitionBuilder）
     transitionDuration: const Duration(milliseconds: 220),
     pageBuilder: (dialogContext, _, __) {
       return Center(
@@ -91,7 +91,8 @@ Future<void> showOfflinePlayGuideDialog(BuildContext context) {
         ),
       );
     },
-    transitionBuilder: (_, anim, __, child) => _dialogScaleFade(anim, child),
+    transitionBuilder: (ctx, anim, __, child) =>
+        _blurGlassBarrier(ctx, anim, child),
   );
 }
 
@@ -417,5 +418,36 @@ Widget _dialogScaleFade(Animation<double> anim, Widget child) {
       scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
       child: child,
     ),
+  );
+}
+
+/// 玻璃弹窗背景：**高斯模糊**而非压暗（barrierColor 设 transparent，改用这个）。
+/// 背景随弹窗淡入模糊；点背景可关闭（dismissible 时），弹窗卡片仍走缩放淡入。
+Widget _blurGlassBarrier(
+  BuildContext dialogContext,
+  Animation<double> anim,
+  Widget child, {
+  bool dismissible = true,
+}) {
+  return Stack(
+    children: [
+      Positioned.fill(
+        child: FadeTransition(
+          opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: dismissible
+                ? () => Navigator.of(dialogContext).maybePop()
+                : null,
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              // 极淡冷调，只为把卡片从背景里托出来，不压暗画面。
+              child: const ColoredBox(color: Color(0x141B2430)),
+            ),
+          ),
+        ),
+      ),
+      _dialogScaleFade(anim, child),
+    ],
   );
 }

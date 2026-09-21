@@ -360,6 +360,8 @@ class _CheckinPlaceCard extends StatelessWidget {
     final theme = activity.summary.isNotEmpty
         ? activity.summary
         : activity.description;
+    final vibe = (activity.vibe ?? '').trim();
+    final suitable = (activity.suitable ?? '').trim();
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
@@ -430,8 +432,42 @@ class _CheckinPlaceCard extends StatelessWidget {
             const SizedBox(height: 14),
             Text(theme, style: _mutedStyle(context, 14).copyWith(height: 1.65)),
           ],
+          // 氛围 / 适合（活动推荐大模型生成的短标签，图标对齐 demo）。
+          if (vibe.isNotEmpty || suitable.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Divider(height: 1, color: w.glassBorder),
+            const SizedBox(height: 12),
+            if (vibe.isNotEmpty) _metaRow(context, '🎭', '氛围', vibe, w),
+            if (vibe.isNotEmpty && suitable.isNotEmpty)
+              const SizedBox(height: 8),
+            if (suitable.isNotEmpty) _metaRow(context, '📷', '适合', suitable, w),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _metaRow(
+    BuildContext context,
+    String icon,
+    String label,
+    String value,
+    _W2b w,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(icon, style: const TextStyle(fontSize: 14, height: 1.4)),
+        const SizedBox(width: 6),
+        Text(
+          '$label：',
+          style: _mutedStyle(context, 13).copyWith(
+            fontWeight: FontWeight.w600,
+            color: w.ink,
+          ),
+        ),
+        Expanded(child: Text(value, style: _mutedStyle(context, 13))),
+      ],
     );
   }
 }

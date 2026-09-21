@@ -299,6 +299,8 @@ class OfflineActivity {
     required this.description,
     this.category,
     this.city,
+    this.vibe,
+    this.suitable,
     this.locationName,
     this.address,
     this.startsAt,
@@ -329,6 +331,8 @@ class OfflineActivity {
   final String description;
   final String? category;
   final String? city;
+  final String? vibe;
+  final String? suitable;
   final String? locationName;
   final String? address;
   final String? startsAt;
@@ -360,6 +364,8 @@ class OfflineActivity {
         description: json['description']?.toString() ?? '',
         category: _asString(json['category']),
         city: _asString(json['city']),
+        vibe: _asString(json['vibe']),
+        suitable: _asString(json['suitable']),
         locationName: _asString(json['location_name']),
         address: _asString(json['address']),
         startsAt: _asString(json['starts_at']),
@@ -401,6 +407,8 @@ class OfflineActivity {
       description: description,
       category: category,
       city: city,
+      vibe: vibe,
+      suitable: suitable,
       locationName: locationName,
       address: address,
       startsAt: startsAt,
