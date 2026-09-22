@@ -161,14 +161,16 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
                   Expanded(
                     child: _OfflineFeatureCard(
                       icon: CupertinoIcons.scope,
-                      iconColor: const Color(0xFF2D73FF),
+                      // 活动主调改青绿(_kActivityAccent)后，入口卡片同步换青绿，
+                      // 避免「蓝卡片 → 青绿子页」的割裂。渐变走薄荷→水青→淡薄荷。
+                      iconColor: const Color(0xFF159E8A),
                       title: '看看活动',
                       subtitle: _activitySubtitle,
                       status: '推荐',
                       gradient: const [
-                        Color(0xFF88B7FF),
-                        Color(0xFF63CEEA),
-                        Color(0xFFBDF7E3),
+                        Color(0xFF6FD3BE),
+                        Color(0xFF7BDBD6),
+                        Color(0xFFC6F6E6),
                       ],
                       onTap: _openActivities,
                     ),

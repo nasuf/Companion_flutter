@@ -1,9 +1,10 @@
 part of 'package:companion_flutter/main.dart';
 
-// 两个二级页各自的主调，跟陪伴主页的入口卡片一致：活动入口是蓝色卡片、礼物入口
+// 两个二级页各自的主调，跟陪伴主页的入口卡片一致：活动入口是青绿色卡片、礼物入口
 // 是橙色卡片。二级页/bottom sheet 里的图标、按钮、描边、聚焦态等强调元素都用各自
-// 这颗主调，避免活动页混橙、礼物页混蓝。
-const Color _kActivityAccent = Color(0xFF2D73FF);
+// 这颗主调，避免活动页混橙、礼物页混蓝。活动主调走青绿——呼应线下「走进自然」的
+// 主题、也和冷调日光玻璃底的薄荷相衬，与商城/线上的蓝拉开身份。
+const Color _kActivityAccent = Color(0xFF159E8A);
 const Color _kGiftAccent = Color(0xFFFF8C4B);
 
 class _ActivityPageBackdrop extends StatelessWidget {

@@ -61,15 +61,15 @@ class _PrimaryActivityPillButton extends StatelessWidget {
         opacity: enabled ? 1 : 0.56,
         child: Container(
           height: 58,
-          // 参考商城主按钮(_storeAccentButtonDecoration)：亮青 → 活动主蓝的渐变 +
-          // 同色系柔光投影，去掉糖果感的白描边 / 文字阴影 / 圆形 emoji 底，读成
-          // 干净、有分量的高级 CTA。深端锚定活动模块主调 _kActivityAccent。
+          // 参考商城主按钮(_storeAccentButtonDecoration)：亮薄荷 → 活动主青绿的
+          // 渐变 + 同色系柔光投影，去掉糖果感的白描边 / 文字阴影 / 圆形 emoji 底，
+          // 读成干净、有分量的高级 CTA。深端锚定活动模块主调 _kActivityAccent(青绿)。
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             gradient: const LinearGradient(
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
-              colors: [Color(0xFF5AC8FA), _kActivityAccent],
+              colors: [Color(0xFF63D2BC), _kActivityAccent],
             ),
             boxShadow: [
               BoxShadow(
