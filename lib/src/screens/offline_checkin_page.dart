@@ -12,6 +12,7 @@ class OfflineCheckinPage extends StatefulWidget {
     required this.activityId,
     this.initialActivity,
     this.onChanged,
+    this.onNavigateToChat,
   });
 
   final CompanionApi api;
@@ -19,6 +20,9 @@ class OfflineCheckinPage extends StatefulWidget {
   final String activityId;
   final OfflineActivity? initialActivity;
   final VoidCallback? onChanged;
+
+  /// Shell navigation after a successful arrive (pop routes + chat tab).
+  final VoidCallback? onNavigateToChat;
 
   @override
   State<OfflineCheckinPage> createState() => _OfflineCheckinPageState();
@@ -80,7 +84,12 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
       if (!mounted) return;
       setState(() => _activity = updated);
       widget.onChanged?.call();
-      _showActivityToast(context, '到啦～我在聊天里等你，随手拍点有意思的发我');
+      if (!mounted) return;
+      if (widget.onNavigateToChat != null) {
+        widget.onNavigateToChat!();
+      } else {
+        Navigator.of(context).pop();
+      }
     } on ApiException catch (error) {
       if (mounted) _showActivityToast(context, error.message);
     } finally {
@@ -88,8 +97,13 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
     }
   }
 
-  Future<void> _onDrawProphecy() async {
+  Future<void> _onProphecyAction() async {
     if (_drawing) return;
+    final existing = (_activity?.prophecyText ?? '').trim();
+    if (existing.isNotEmpty) {
+      await showOfflineProphecyDialog(context, existing);
+      return;
+    }
     setState(() => _drawing = true);
     try {
       final updated = await widget.api.drawOfflineActivityProphecy(
@@ -253,9 +267,9 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
             SizedBox(
               width: double.infinity,
               child: _SecondaryActivityPillButton(
-                label: hasProphecy ? '已抽过此行小预言' : '抽一句此行小预言',
-                enabled: !hasProphecy && !_drawing,
-                onPressed: _onDrawProphecy,
+                label: hasProphecy ? '查看此行小预言' : '抽一句此行小预言',
+                enabled: !_drawing,
+                onPressed: _onProphecyAction,
               ),
             ),
           ],

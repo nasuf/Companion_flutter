@@ -283,6 +283,19 @@ Widget _sheetGrabber(BuildContext context) {
   );
 }
 
+// 高斯模糊弹层上的卡片/次按钮用实底：背景继续 blur，内容区不透底。
+Color _opaqueActivitySurface(BuildContext context) {
+  return _W2b.resolve(context).isDark
+      ? const Color(0xFF141A24)
+      : Colors.white;
+}
+
+Color _opaqueActivityBorder(BuildContext context) {
+  return _W2b.resolve(context).isDark
+      ? const Color(0xFF2A3444)
+      : const Color(0xFFE8EDF3);
+}
+
 // 活动/礼物两个二级页的卡片主体都走这个共享装饰——直接换成 _W2b 玻璃令牌，
 // 一处改动即让两页大部分卡片变成和天气/胶囊/日常分享页一致的半透明玻璃。
 BoxDecoration _softCardDecoration(BuildContext context, {double radius = 26}) {

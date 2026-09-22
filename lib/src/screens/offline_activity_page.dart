@@ -9,6 +9,7 @@ class OfflineActivityPage extends StatefulWidget {
     this.initialActivityId,
     this.onChanged,
     this.onOpenChatAtMessage,
+    this.onGoToChat,
   });
 
   final CompanionApi api;
@@ -19,6 +20,9 @@ class OfflineActivityPage extends StatefulWidget {
 
   /// 回顾「查看原始聊天」→ 跨 Tab 回聊天并定位到到达卡（由外层 main_shell 提供）。
   final void Function(String messageId)? onOpenChatAtMessage;
+
+  /// 打卡确认到达后切到聊天 Tab。
+  final VoidCallback? onGoToChat;
 
   @override
   State<OfflineActivityPage> createState() => _OfflineActivityPageState();
@@ -137,6 +141,7 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
             _load();
             widget.onChanged?.call();
           },
+          onNavigateToChat: widget.onGoToChat,
         ),
       ),
     );

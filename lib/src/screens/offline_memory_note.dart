@@ -128,6 +128,7 @@ class _MemoryNoteOverlayState extends State<_MemoryNoteOverlay> {
                   child: _SecondaryActivityPillButton(
                     label: _saving ? '保存中…' : '保存图片',
                     enabled: !_saving,
+                    overlayGlass: true,
                     onPressed: _saveImage,
                   ),
                 ),
@@ -228,81 +229,58 @@ class _MemoryNoteCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('旅途小记', style: _titleStyle(context, 15)),
-                  const SizedBox(height: 8),
+                  const _MemoryNoteSectionTitle(label: '旅途小记'),
+                  const SizedBox(height: 10),
                   Text(
                     note.travelNote,
-                    style: _mutedStyle(context, 14).copyWith(height: 1.8),
+                    textAlign: TextAlign.justify,
+                    style: TextStyle(
+                      color: w.isDark ? w.ink : Colors.black,
+                      fontSize: 13,
+                      height: 1.9,
+                      letterSpacing: 0.4,
+                      fontStyle: FontStyle.italic,
+                      fontWeight: FontWeight.w500,
+                      decoration: TextDecoration.none,
+                    ),
                   ),
                   if (note.fragmentTags.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text('唤醒的思绪', style: _titleStyle(context, 15)),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 18),
+                    const _MemoryNoteSectionTitle(label: '唤醒的思绪'),
+                    const SizedBox(height: 10),
                     Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                      alignment: WrapAlignment.center,
+                      spacing: 6,
+                      runSpacing: 6,
                       children: [
-                        for (final tag in note.fragmentTags)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _kActivityAccent.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              tag,
-                              style: TextStyle(
-                                color: w.inkSoft,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                decoration: TextDecoration.none,
-                              ),
-                            ),
-                          ),
+                        for (final tag
+                            in _consolidateFragmentTags(note.fragmentTags))
+                          _MemoryNoteFragmentTag(label: tag),
                       ],
                     ),
                   ],
                   if (note.moodTags.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text('这一趟的心情', style: _titleStyle(context, 15)),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 18),
+                    const _MemoryNoteSectionTitle(label: '这一趟的心情'),
+                    const SizedBox(height: 10),
                     Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                      alignment: WrapAlignment.center,
+                      spacing: 6,
+                      runSpacing: 6,
                       children: [
                         for (final tag in note.moodTags)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _kGiftAccent.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              tag,
-                              style: TextStyle(
-                                color: w.inkSoft,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                decoration: TextDecoration.none,
-                              ),
-                            ),
-                          ),
+                          _MemoryNoteFragmentTag(label: tag),
                       ],
                     ),
                   ],
                   const SizedBox(height: 16),
-                  Divider(color: w.glassBorder, height: 1),
+                  const _MemoryNoteTaperedDivider(),
                   const SizedBox(height: 10),
                   Text(
                     '伴生 · 陪你走过的一段路',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: w.inkFaint,
                       fontSize: 11,
@@ -318,6 +296,121 @@ class _MemoryNoteCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Full-width rule that fades out toward both ends (screenshot hand-note footer).
+class _MemoryNoteTaperedDivider extends StatelessWidget {
+  const _MemoryNoteTaperedDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
+    final lineColor = w.isDark
+        ? w.inkFaint.withValues(alpha: 0.35)
+        : const Color(0xFFE5E2D8);
+    return SizedBox(
+      height: 1,
+      width: double.infinity,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              lineColor.withValues(alpha: 0),
+              lineColor,
+              lineColor.withValues(alpha: 0),
+            ],
+            stops: const [0, 0.5, 1],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Section heading: centered label with short light rules on both sides.
+class _MemoryNoteSectionTitle extends StatelessWidget {
+  const _MemoryNoteSectionTitle({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
+    final lineColor = w.isDark
+        ? w.inkFaint.withValues(alpha: 0.35)
+        : const Color(0xFFE5E2D8);
+    final textColor =
+        w.isDark ? w.inkFaint : const Color(0xFFB5B5B5);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(width: 18, height: 1, color: lineColor),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: textColor,
+              letterSpacing: 2,
+              fontWeight: FontWeight.w500,
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ),
+        Container(width: 18, height: 1, color: lineColor),
+      ],
+    );
+  }
+}
+
+class _MemoryNoteFragmentTag extends StatelessWidget {
+  const _MemoryNoteFragmentTag({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+      decoration: BoxDecoration(
+        color: w.isDark ? const Color(0xFF1E2632) : Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: w.isDark
+              ? w.inkFaint.withValues(alpha: 0.25)
+              : const Color(0xFFF0ECE0),
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: w.isDark ? w.inkSoft : const Color(0xFF7A6A5A),
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.2,
+          decoration: TextDecoration.none,
+        ),
+      ),
+    );
+  }
+}
+
+/// Merge duplicate fragment tier labels, e.g. two "💭 片刻感想" → "💭 片刻感想✖️2".
+List<String> _consolidateFragmentTags(List<String> tags) {
+  final counts = <String, int>{};
+  final order = <String>[];
+  for (final raw in tags) {
+    final tag = raw.trim();
+    if (tag.isEmpty) continue;
+    counts[tag] = (counts[tag] ?? 0) + 1;
+    if (counts[tag] == 1) order.add(tag);
+  }
+  return [
+    for (final tag in order)
+      if ((counts[tag] ?? 0) > 1) '$tag✖️${counts[tag]}' else tag,
+  ];
 }
 
 class _MemoryNoteShareSheet extends StatelessWidget {

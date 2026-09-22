@@ -1,7 +1,7 @@
 part of 'package:companion_flutter/main.dart';
 
 // 打卡页相关弹窗/浮层：预言、出门小说明、归档确认、查看位置。
-// 全部走 _W2b 玻璃令牌（与天气/胶囊一致）：半透明玻璃面 + 亮白描边 + 柔投影。
+// 背景走高斯模糊；弹框卡片本身用实底（不透底），与记忆手札浮层一致。
 
 /// 此行小预言（spec §5.4-10）：居中玻璃卡，点卡片/遮罩关闭。
 Future<void> showOfflineProphecyDialog(BuildContext context, String text) {
@@ -9,7 +9,7 @@ Future<void> showOfflineProphecyDialog(BuildContext context, String text) {
     context: context,
     barrierDismissible: true,
     barrierLabel: 'offline-prophecy',
-    barrierColor: Colors.black.withValues(alpha: 0.48),
+    barrierColor: Colors.transparent, // 背景改用高斯模糊（见 transitionBuilder）
     transitionDuration: const Duration(milliseconds: 220),
     pageBuilder: (dialogContext, _, __) {
       final w = _W2b.resolve(dialogContext);
@@ -38,12 +38,12 @@ Future<void> showOfflineProphecyDialog(BuildContext context, String text) {
         ),
       );
     },
-    transitionBuilder: (_, anim, __, child) =>
-        _dialogScaleFade(anim, child),
+    transitionBuilder: (ctx, anim, __, child) =>
+        _blurGlassBarrier(ctx, anim, child),
   );
 }
 
-/// 出门小说明（spec §5.2 完整文案）：居中玻璃说明卡。
+/// 出门小说明（spec §5.2 完整文案）：居中实底说明卡。
 Future<void> showOfflinePlayGuideDialog(BuildContext context) {
   const items = <String>[
     '你拍下的现场照片，有机会唤醒一段旅途思绪。',
@@ -295,21 +295,15 @@ class _GlassDialogCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final w = _W2b.resolve(context);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
-          decoration: BoxDecoration(
-            color: w.glass,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: w.glassBorder),
-            boxShadow: w.panelShadow,
-          ),
-          child: child,
-        ),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+      decoration: BoxDecoration(
+        color: _opaqueActivitySurface(context),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _opaqueActivityBorder(context)),
+        boxShadow: w.panelShadow,
       ),
+      child: child,
     );
   }
 }

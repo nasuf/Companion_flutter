@@ -11,6 +11,7 @@ Future<String?> openOfflineActivityDetail(
   required AuthSession session,
   required OfflineActivity activity,
   VoidCallback? onChanged,
+  VoidCallback? onNavigateToChat,
 }) async {
   if (activity.status == 'accepted') {
     await Navigator.of(context).push(
@@ -21,6 +22,7 @@ Future<String?> openOfflineActivityDetail(
           activityId: activity.id,
           initialActivity: activity,
           onChanged: onChanged,
+          onNavigateToChat: onNavigateToChat,
         ),
       ),
     );
@@ -81,6 +83,7 @@ Future<String?> openOfflineActivityDetail(
                 activityId: updated.id,
                 initialActivity: updated,
                 onChanged: onChanged,
+                onNavigateToChat: onNavigateToChat,
               ),
             ),
           );

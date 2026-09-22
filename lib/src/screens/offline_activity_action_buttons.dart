@@ -109,51 +109,89 @@ class _SecondaryActivityPillButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.enabled = true,
+    this.overlayGlass = false,
   });
 
   final String label;
   final VoidCallback onPressed;
   final bool enabled;
 
+  /// 高斯模糊弹层上的次按钮：独立 frosted glass + 实线描边（如「保存图片」）。
+  final bool overlayGlass;
+
   @override
   Widget build(BuildContext context) {
     final w = _W2b.resolve(context);
+    const radius = 20.0;
+    final borderRadius = BorderRadius.circular(radius);
+    final labelWidget = Text(
+      label,
+      style: TextStyle(
+        color: w.ink,
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+        decoration: TextDecoration.none,
+      ),
+    );
+
+    Widget surface;
+    if (overlayGlass) {
+      // 背景已由 _blurGlassBarrier 模糊；按钮只做局部 frosted tint + 清晰白边。
+      // 不用 boxShadow（大 blur 会把描边晕开），描边用满不透明色。
+      final decoration = BoxDecoration(
+        color: w.isDark
+            ? const Color(0xB3141A24)
+            : const Color(0xD9FFFFFF),
+        borderRadius: borderRadius,
+        border: Border.all(
+          color: w.isDark
+              ? const Color(0x99FFFFFF)
+              : Colors.white,
+          width: 1,
+        ),
+      );
+      final panel = Container(
+        height: 58,
+        decoration: decoration,
+        child: Center(child: labelWidget),
+      );
+      surface = useLightweightGlassEffects
+          ? panel
+          : ClipRRect(
+              borderRadius: borderRadius,
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                child: panel,
+              ),
+            );
+    } else {
+      surface = Container(
+        height: 58,
+        decoration: BoxDecoration(
+          color: w.glass,
+          borderRadius: borderRadius,
+          border: Border.all(color: w.glassBorder),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Center(child: labelWidget),
+      );
+    }
+
     return CupertinoButton(
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: borderRadius,
       onPressed: enabled ? onPressed : null,
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 140),
         opacity: enabled ? 1 : 0.56,
-        child: Container(
-          height: 58,
-          // 次按钮走「白玻璃描边」：跟卡片同一套玻璃令牌，和深色主按钮拉开主/次
-          // 层级，比原来的灰底更干净通透。
-          decoration: BoxDecoration(
-            color: w.glass,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: w.glassBorder),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: w.ink,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ),
-        ),
+        child: surface,
       ),
     );
   }

@@ -27,6 +27,7 @@ class ChatPage extends StatefulWidget {
     this.onAchievementOverlayChanged,
     this.onVoiceRecordingOverlayChanged,
     this.onComposerPanelChanged,
+    this.onReturnToChatAfterOfflineArrive,
   });
 
   final CompanionApi api;
@@ -41,6 +42,9 @@ class ChatPage extends StatefulWidget {
   /// Reports whether the emoji / more panel or the IME is docking the bottom
   /// strip, so the shell can hide the floating tab bar.
   final ValueChanged<bool>? onComposerPanelChanged;
+
+  /// Shell-level navigation after offline check-in arrive (pop routes + chat tab).
+  final VoidCallback? onReturnToChatAfterOfflineArrive;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -585,9 +589,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           activityId: activity.id,
           initialActivity: activity,
           onChanged: _refreshTaskBar,
+          onNavigateToChat: _returnToChatAfterOfflineArrive,
         ),
       ),
     );
+  }
+
+  void _returnToChatAfterOfflineArrive() {
+    widget.onReturnToChatAfterOfflineArrive?.call();
+    unawaited(_refreshTaskBar());
   }
 
   @override
@@ -1245,6 +1255,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           session: widget.session,
           activity: activity,
           onChanged: _refreshTaskBar,
+          onNavigateToChat: _returnToChatAfterOfflineArrive,
         );
         if (mounted && jumpMessageId != null && jumpMessageId.isNotEmpty) {
           await _jumpToActivityMessage(jumpMessageId);

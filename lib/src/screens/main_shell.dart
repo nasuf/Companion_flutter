@@ -169,6 +169,16 @@ class _MainShellState extends State<MainShell> with RouteAware {
     }
   }
 
+  /// Offline check-in "I've arrived": dismiss any pushed routes (activity list,
+  /// check-in page) then land on the chat tab.
+  void _openChatAfterOfflineArrive() {
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    _goToChatTab();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chatPageKey.currentState?.scrollToLatest();
+    });
+  }
+
   void _setChatSidebarOpen(bool value) {
     if (_chatSidebarOpen == value) return;
     if (value) {
@@ -397,6 +407,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
             onAchievementOverlayChanged: _setAchievementOverlayOpen,
             onVoiceRecordingOverlayChanged: _setVoiceRecordingOverlay,
             onComposerPanelChanged: _setComposerPanelOpen,
+            onReturnToChatAfterOfflineArrive: _openChatAfterOfflineArrive,
           );
     Widget tabPlaceholder(int index) {
       if (!_visitedTabs.contains(index)) {
@@ -428,6 +439,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
               routeCovered: _routeCovered,
             ),
             onOpenChatAtMessage: _openChatAtMessage,
+            onGoToChat: _openChatAfterOfflineArrive,
           );
         case 3:
           child = ProfilePage(
