@@ -61,17 +61,19 @@ class _PrimaryActivityPillButton extends StatelessWidget {
         opacity: enabled ? 1 : 0.56,
         child: Container(
           height: 58,
+          // 参考商城主按钮(_storeAccentButtonDecoration)：亮青 → 活动主蓝的渐变 +
+          // 同色系柔光投影，去掉糖果感的白描边 / 文字阴影 / 圆形 emoji 底，读成
+          // 干净、有分量的高级 CTA。深端锚定活动模块主调 _kActivityAccent。
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(20),
             gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF78D7EA), Color(0xFF54C2DE)],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [Color(0xFF5AC8FA), _kActivityAccent],
             ),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.48)),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF48BFD9).withValues(alpha: 0.28),
+                color: _kActivityAccent.withValues(alpha: 0.32),
                 blurRadius: 18,
                 offset: const Offset(0, 10),
               ),
@@ -81,33 +83,17 @@ class _PrimaryActivityPillButton extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (icon != null) ...[
-                Container(
-                  width: 26,
-                  height: 26,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.24),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text(icon!, style: const TextStyle(fontSize: 14)),
-                  ),
-                ),
-                const SizedBox(width: 8),
+                Text(icon!, style: const TextStyle(fontSize: 15)),
+                const SizedBox(width: 7),
               ],
               Text(
                 label,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.2,
                   decoration: TextDecoration.none,
-                  shadows: [
-                    Shadow(
-                      color: Color(0x22000000),
-                      blurRadius: 4,
-                      offset: Offset(0, 1),
-                    ),
-                  ],
                 ),
               ),
             ],
@@ -131,26 +117,28 @@ class _SecondaryActivityPillButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
+    final w = _W2b.resolve(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(20),
       onPressed: enabled ? onPressed : null,
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 140),
         opacity: enabled ? 1 : 0.56,
         child: Container(
           height: 58,
+          // 次按钮走「白玻璃描边」：跟卡片同一套玻璃令牌，和深色主按钮拉开主/次
+          // 层级，比原来的灰底更干净通透。
           decoration: BoxDecoration(
-            color: colors.surfaceMuted.withValues(alpha: 0.88),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: colors.hairline.withValues(alpha: 0.70)),
+            color: w.glass,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: w.glassBorder),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.035),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
@@ -158,9 +146,9 @@ class _SecondaryActivityPillButton extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: colors.text,
+                color: w.ink,
                 fontSize: 16,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w700,
                 decoration: TextDecoration.none,
               ),
             ),

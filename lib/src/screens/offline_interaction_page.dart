@@ -258,8 +258,9 @@ class _OfflineBackground extends StatelessWidget {
           top: 388 + 9 * progress,
           child: _OnlineAura(
             size: const Size(270, 230),
-            color: const Color(0x66FFCF98),
-            blur: 42,
+            // 原暖杏色柔光 → 冷薄荷，去掉暖调、降不透明度，只留清透感。
+            color: const Color(0x4A6FD3C4),
+            blur: 46,
           ),
         ),
         Positioned(
@@ -267,8 +268,9 @@ class _OfflineBackground extends StatelessWidget {
           bottom: 78 - 8 * progress,
           child: _OnlineAura(
             size: const Size(230, 210),
-            color: const Color(0x5ECBD3FF),
-            blur: 38,
+            // 冷蓝柔光，收敛不透明度，跟薄荷块形成清冷的蓝↔青双色。
+            color: const Color(0x4AA9C4FF),
+            blur: 42,
           ),
         ),
       ],
@@ -300,10 +302,13 @@ class _OfflineBackground extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFFFFE7CE), // 左上暖阳杏色，提亮一档，暖调占主导
-              Color(0xFFFFF4E7), // 暖奶油，更亮
-              Color(0xFFEAF2FF), // 天蓝，提亮
-              Color(0xFFE0F5EA), // 右下薄荷，提亮
+              // 彻底改走「冷调日光玻璃」：高亮度、低饱和、冷调为主——这正是商城页
+              // 明亮体感的根本（冷色浅底 + 白玻璃卡片高对比）。线下的性格靠清透的
+              // 天空蓝→薄荷冷绿来立，而不是会显闷的暖杏色。区间收窄、都贴近纯白。
+              Color(0xFFEAF3FE), // 左上 天空蓝白
+              Color(0xFFF5F9FE), // 近白冷调
+              Color(0xFFECF5FB), // 薄青
+              Color(0xFFE9F6F1), // 右下 薄荷冷绿
             ],
             stops: [0, 0.34, 0.68, 1],
           );
@@ -330,7 +335,7 @@ class _OfflineBackground extends StatelessWidget {
                     colors: [
                       isDark
                           ? colors.accentSoft.withValues(alpha: 0.38)
-                          : Colors.white.withValues(alpha: 0.50),
+                          : Colors.white.withValues(alpha: 0.60),
                       Colors.transparent,
                     ],
                   ),
@@ -380,17 +385,18 @@ class _OfflineBreathingPlate extends StatelessWidget {
                       ).withValues(alpha: 0.11 + breath * 0.05),
                     ]
                   : [
-                      // 右上这块大色块是"顶部发灰"的主因——继续提亮提饱和、
-                      // 加大不透明度，让它读成明快的蓝青而不是灰蓝。
+                      // 从「厚色块」改成「柔光」：大幅降不透明度，让它读成玻璃上
+                      // 一缕流动的冷光晕，而不是压在顶部的实心蓝块——那块 60% 不
+                      // 透明的色块才是之前顶部发闷的真正主因。
                       const Color(
-                        0xFF6FB0FF,
-                      ).withValues(alpha: 0.60 + breath * 0.12),
+                        0xFF8FC4FF,
+                      ).withValues(alpha: 0.24 + breath * 0.07),
                       const Color(
-                        0xFF52CCFF,
-                      ).withValues(alpha: 0.46 + breath * 0.10),
+                        0xFF7DD6FF,
+                      ).withValues(alpha: 0.17 + breath * 0.05),
                       const Color(
-                        0xFF2FDCC8,
-                      ).withValues(alpha: 0.36 + breath * 0.08),
+                        0xFF63E0D0,
+                      ).withValues(alpha: 0.12 + breath * 0.04),
                     ],
               stops: const [0, 0.58, 1],
             ),

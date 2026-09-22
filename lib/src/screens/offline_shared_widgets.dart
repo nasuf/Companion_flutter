@@ -11,9 +11,9 @@ class _ActivityPageBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 只压一层很淡的底色雾，让玻璃底的极光透出来(否则 0.70 的厚底把极光糊成
-    // 一片灰、玻璃卡片也没了通透感)；列表在半透明玻璃卡片里，可读性由卡片本身
-    // 保证。
+    // 浅色下改盖一层极淡的「白纱」而不是冷灰雾：白纱只提亮、统一底色，不会像
+    // 冷灰(w.base)那样把日光玻璃底重新拉暗拉灰——这是页面「亮起来」的关键之一。
+    // 深色仍需冷灰雾压住噪点，保持 0.40。
     final w = _W2b.resolve(context);
     return Stack(
       children: [
@@ -21,7 +21,9 @@ class _ActivityPageBackdrop extends StatelessWidget {
         Positioned.fill(
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: w.base.withValues(alpha: w.isDark ? 0.40 : 0.22),
+              color: w.isDark
+                  ? w.base.withValues(alpha: 0.40)
+                  : Colors.white.withValues(alpha: 0.10),
             ),
           ),
         ),

@@ -453,9 +453,13 @@ class _ThoughtFragmentRow extends StatelessWidget {
             gradient: const [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
           ),
           const SizedBox(width: 10),
-          Flexible(
+          // 跟普通文字气泡同宽（maxWidth 270），shrink-wrap 而非用 Flexible 撑满整行，
+          // 否则思绪卡片会比其他聊天卡片明显更宽。
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 270),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 TweenAnimationBuilder<double>(
         tween: Tween<double>(begin: 0, end: 1),
