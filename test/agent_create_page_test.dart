@@ -1,8 +1,31 @@
 import 'dart:ui' as ui;
 
+import 'package:companion_flutter/companion_api.dart';
 import 'package:companion_flutter/main.dart';
+import 'package:companion_flutter/models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+class _RecordingCreateApi extends CompanionApi {
+  _RecordingCreateApi() : super(baseUrl: 'http://localhost:8000');
+
+  String? submittedName;
+  String? submittedGender;
+  var nameWasPassed = false;
+
+  @override
+  Future<AgentProfile> createAgent({
+    required String userId,
+    String? name,
+    required String gender,
+    required Map<String, int> personality,
+  }) async {
+    nameWasPassed = true;
+    submittedName = name;
+    submittedGender = gender;
+    throw const ApiException(500, 'stop-before-provision');
+  }
+}
 
 Future<void> _pumpAgentCreatePage(WidgetTester tester) async {
   tester.view.physicalSize = const Size(390, 844);
@@ -91,5 +114,46 @@ void main() {
     await tester.pump();
 
     expect(find.text('请先完成账号登录，再创建 Agent。'), findsOneWidget);
+  });
+
+  testWidgets('submits the selected gender and lets the server name the agent', (
+    tester,
+  ) async {
+    final api = _RecordingCreateApi();
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: AgentCreatePage(
+          api: api,
+          session: const AuthSession(
+            token: 'token',
+            userId: 'user-1',
+            username: 'anan',
+            role: UserRole.user,
+            hasAgent: false,
+          ),
+          onCreated: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('小芜'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('agent-gender-male')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('agent-create-next')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('agent-create-submit')));
+    await tester.pump();
+
+    expect(api.nameWasPassed, isTrue);
+    expect(api.submittedName, isNull);
+    expect(api.submittedGender, 'male');
+    expect(find.text('stop-before-provision'), findsOneWidget);
   });
 }

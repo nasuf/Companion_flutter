@@ -2375,20 +2375,26 @@ class CompanionApi {
 
   Future<AgentProfile> createAgent({
     required String userId,
-    required String name,
+    String? name,
     required String gender,
     required Map<String, int> personality,
   }) async {
+    final body = <String, dynamic>{
+      'user_id': userId,
+      'gender': gender,
+      'personality': personality,
+    };
+    // Blank means the server samples a gender-matched name from the library
+    // and injects it into persona generation. Do not send a placeholder.
+    final trimmed = name?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) {
+      body['name'] = trimmed;
+    }
     final json =
         await _request(
               'POST',
               '/agents',
-              body: {
-                'user_id': userId,
-                'name': name,
-                'gender': gender,
-                'personality': personality,
-              },
+              body: body,
             )
             as Map<String, dynamic>;
     return _normalizeAgentProfile(AgentProfile.fromJson(json));

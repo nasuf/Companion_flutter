@@ -30,7 +30,6 @@ class _AgentCreatePageState extends State<AgentCreatePage>
     with TickerProviderStateMixin {
   late final AnimationController _traitMoveController;
   late final PageController _pageController;
-  final _nameController = TextEditingController(text: '小芜');
   var _gender = _AgentGender.female;
   var _step = _AgentCreateStep.gender;
   var _pageTransitioning = false;
@@ -75,7 +74,6 @@ class _AgentCreatePageState extends State<AgentCreatePage>
     _llmTickerTimer?.cancel();
     _traitMoveController.dispose();
     _pageController.dispose();
-    _nameController.dispose();
     super.dispose();
   }
 
@@ -158,12 +156,6 @@ class _AgentCreatePageState extends State<AgentCreatePage>
       setState(() => _error = '请先完成账号登录，再创建 Agent。');
       return;
     }
-    final name = _nameController.text.trim();
-    if (name.isEmpty) {
-      setState(() => _error = '先给TA起一个名字吧。');
-      return;
-    }
-
     setState(() {
       _submitting = true;
       _error = null;
@@ -172,7 +164,6 @@ class _AgentCreatePageState extends State<AgentCreatePage>
     try {
       final agent = await api.createAgent(
         userId: session.userId,
-        name: name,
         gender: _gender.apiValue,
         personality: {
           'lively': _traitValue('活泼度'),
