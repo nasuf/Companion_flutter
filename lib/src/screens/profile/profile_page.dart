@@ -244,47 +244,54 @@ class _ProfilePageState extends State<ProfilePage>
       _deleting = true;
       _error = null;
     });
-    final result = await showGeneralDialog<AgentDeleteResult>(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 320),
-      pageBuilder: (context, animation, secondaryAnimation) {
-        return _AgentDeleteGlassOverlay(
-          agentName: agentName,
-          delete: () => widget.api.deleteAgent(agentId),
-        );
-      },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
-    );
-    if (!mounted) return;
-    if (result == null) {
+    try {
+      final result = await showGeneralDialog<AgentDeleteResult>(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.transparent,
+        transitionDuration: const Duration(milliseconds: 320),
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return _AgentDeleteGlassOverlay(
+            agentName: agentName,
+            delete: () => widget.api.deleteAgent(agentId),
+          );
+        },
+        transitionBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      );
+      if (!mounted) return;
+      if (result == null) {
+        setState(() => _deleting = false);
+        return;
+      }
+      if (popOverlayRoute && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      if (!mounted) return;
       setState(() => _deleting = false);
-      return;
+      widget.onAgentDeleted(
+        AuthSession(
+          token: widget.session.token,
+          userId: widget.session.userId,
+          username: widget.session.username,
+          userDisplayName: widget.session.userDisplayName,
+          userAvatarUrl: widget.session.userAvatarUrl,
+          role: widget.session.role,
+          hasAgent: false,
+          // 删的是 agent，不是账号 —— 绑定状态照旧带上，否则删完 agent 个人资料页
+          // 的「登录方式」会变成「账号密码」。（这里刻意逐字段构造而不用 copyWith:
+          // 需要把 agent 相关字段清空，而 copyWith 的 null 表示"保持原值"。）
+          phone: widget.session.phone,
+          wechatBound: widget.session.wechatBound,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = _asMessage(error));
+    } finally {
+      if (mounted) setState(() => _deleting = false);
     }
-    if (popOverlayRoute && Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
-    if (!mounted) return;
-    setState(() => _deleting = false);
-    widget.onAgentDeleted(
-      AuthSession(
-        token: widget.session.token,
-        userId: widget.session.userId,
-        username: widget.session.username,
-        userDisplayName: widget.session.userDisplayName,
-        userAvatarUrl: widget.session.userAvatarUrl,
-        role: widget.session.role,
-        hasAgent: false,
-        // 删的是 agent，不是账号 —— 绑定状态照旧带上，否则删完 agent 个人资料页
-        // 的「登录方式」会变成「账号密码」。（这里刻意逐字段构造而不用 copyWith:
-        // 需要把 agent 相关字段清空，而 copyWith 的 null 表示"保持原值"。）
-        phone: widget.session.phone,
-        wechatBound: widget.session.wechatBound,
-      ),
-    );
   }
 
   Future<void> _openAdminPanel() async {
