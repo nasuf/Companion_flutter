@@ -820,6 +820,7 @@ class _GenderCard extends StatelessWidget {
                       ? 'assets/prototype/agent-creation-female.png'
                       : 'assets/prototype/agent-creation-male.png',
                   fit: BoxFit.fill,
+                  filterQuality: FilterQuality.medium,
                 ),
               ),
               Positioned(
