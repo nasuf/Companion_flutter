@@ -1455,7 +1455,7 @@ class _ProvisionProgressOverlay extends StatelessWidget {
             _ProvisionBreathingIcon(failed: failed, color: color),
             const SizedBox(height: 22),
             Text(
-              failed ? '创建遇到问题' : '正在创建你的 AI 伙伴',
+              failed ? '创建遇到问题' : '正在寻找你的 AI 伙伴',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Color(0xFF111111),
