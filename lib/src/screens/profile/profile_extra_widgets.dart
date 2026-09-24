@@ -413,19 +413,13 @@ class _AgentDeleteGlassOverlayState extends State<_AgentDeleteGlassOverlay>
     }
   }
 
-  bool _rowFinished(int index) {
-    if (_phase == _DeleteGlassPhase.success) return true;
-    return _phase == _DeleteGlassPhase.running && index < _index;
-  }
-
   Future<void> _complete() async {
     if (_finishing || !mounted || _result == null) return;
     _finishing = true;
     _walk?.cancel();
     _motion.stop();
     setState(() => _phase = _DeleteGlassPhase.success);
-    // Keep the finished list on screen, then the shell opens agent create.
-    await Future<void>.delayed(const Duration(seconds: 5));
+    await Future<void>.delayed(const Duration(milliseconds: 880));
     if (!mounted) return;
     Navigator.of(context).pop(_result);
   }
@@ -540,10 +534,10 @@ class _AgentDeleteGlassOverlayState extends State<_AgentDeleteGlassOverlay>
                                                 _phase ==
                                                     _DeleteGlassPhase.running &&
                                                 i == _index,
-                                            finished: _rowFinished(i),
-                                            showCount:
+                                            done:
                                                 _phase ==
                                                 _DeleteGlassPhase.success,
+                                            motion: _motion,
                                             count: _countFor(
                                               _kDeleteGlassSteps[i].statKeys,
                                               _result?.stats,
@@ -642,65 +636,7 @@ class _DeleteGlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final lineAlpha = isDark ? 0.38 : 0.95;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
-            blurRadius: 36,
-            offset: const Offset(0, 18),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: isDark
-                  ? const _DeleteGlassSurface.dark()
-                  : const _DeleteGlassSurface.light(),
-            ),
-            child,
-            Positioned(
-              top: 0,
-              left: 22,
-              right: 22,
-              child: IgnorePointer(
-                child: Container(
-                  height: 1,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.white.withValues(alpha: 0),
-                        Colors.white.withValues(alpha: lineAlpha),
-                        Colors.white.withValues(alpha: 0),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Static glass fill. Const so a step change does not rebuild the blur layer.
-class _DeleteGlassSurface extends StatelessWidget {
-  const _DeleteGlassSurface.dark() : isDark = true;
-
-  const _DeleteGlassSurface.light() : isDark = false;
-
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context) {
-    final fill = DecoratedBox(
+    final panel = DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -713,12 +649,47 @@ class _DeleteGlassSurface extends StatelessWidget {
         border: Border.all(
           color: Colors.white.withValues(alpha: isDark ? 0.16 : 0.86),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
+            blurRadius: 36,
+            offset: const Offset(0, 18),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          child,
+          Positioned(
+            top: 0,
+            left: 22,
+            right: 22,
+            child: IgnorePointer(
+              child: Container(
+                height: 1,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.white.withValues(alpha: 0),
+                      Colors.white.withValues(alpha: isDark ? 0.38 : 0.95),
+                      Colors.white.withValues(alpha: 0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
-    if (useLightweightGlassEffects) return fill;
-    return BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-      child: fill,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(28),
+      child: useLightweightGlassEffects
+          ? panel
+          : BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+              child: panel,
+            ),
     );
   }
 }
@@ -874,8 +845,8 @@ class _DeleteGlassRow extends StatelessWidget {
     required this.index,
     required this.enter,
     required this.active,
-    required this.finished,
-    required this.showCount,
+    required this.done,
+    required this.motion,
     required this.count,
   });
 
@@ -883,19 +854,20 @@ class _DeleteGlassRow extends StatelessWidget {
   final int index;
   final double enter;
   final bool active;
-  final bool finished;
-  final bool showCount;
+  final bool done;
+  final Animation<double> motion;
   final int count;
 
   @override
   Widget build(BuildContext context) {
+    final isDark = _SettingsColors.isDark;
     final start = (index * 0.07).clamp(0.0, 0.6);
     final t = Interval(
       start,
       (start + 0.4).clamp(0.0, 1.0),
       curve: Curves.easeOutCubic,
     ).transform(enter.clamp(0, 1));
-    final titleColor = active || finished
+    final titleColor = active || done
         ? _SettingsColors.text
         : _SettingsColors.text.withValues(alpha: 0.72);
     return Opacity(
@@ -903,52 +875,116 @@ class _DeleteGlassRow extends StatelessWidget {
       child: Transform.translate(
         offset: Offset(0, (1 - t) * 10),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
-          child: Row(
-            children: [
-              _DeleteGlassMark(
-                icon: step.icon,
-                active: active,
-                finished: finished,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      step.label,
-                      style: TextStyle(
-                        color: titleColor,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0,
-                      ),
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Stack(
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeOutCubic,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 9,
+                  ),
+                  decoration: BoxDecoration(
+                    color: active
+                        ? Colors.white.withValues(alpha: isDark ? 0.08 : 0.55)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: active
+                          ? Colors.white.withValues(alpha: isDark ? 0.16 : 0.8)
+                          : Colors.transparent,
                     ),
-                    const SizedBox(height: 1),
-                    Text(
-                      active ? '正在清除' : step.detail,
-                      style: TextStyle(
-                        color: _SettingsColors.tertiary,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0,
+                  ),
+                  child: Row(
+                    children: [
+                      _DeleteGlassMark(
+                        icon: step.icon,
+                        active: active,
+                        done: done,
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              if (showCount && count > 0)
-                Text(
-                  '$count',
-                  style: TextStyle(
-                    color: _SettingsColors.tertiary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              step.label,
+                              style: TextStyle(
+                                color: titleColor,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0,
+                              ),
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              active ? '正在清除' : step.detail,
+                              style: TextStyle(
+                                color: _SettingsColors.tertiary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: 0,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (done && count > 0)
+                        Text(
+                          '$count',
+                          style: TextStyle(
+                            color: _SettingsColors.tertiary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-            ],
+                if (active)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: AnimatedBuilder(
+                        animation: motion,
+                        builder: (context, _) {
+                          return ClipRect(
+                            child: FractionalTranslation(
+                              translation: Offset(
+                                -0.65 + motion.value * 1.7,
+                                0,
+                              ),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: FractionallySizedBox(
+                                  heightFactor: 1,
+                                  widthFactor: 0.34,
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Colors.white.withValues(alpha: 0),
+                                          Colors.white.withValues(
+                                            alpha: isDark ? 0.12 : 0.46,
+                                          ),
+                                          Colors.white.withValues(alpha: 0),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -960,49 +996,43 @@ class _DeleteGlassMark extends StatelessWidget {
   const _DeleteGlassMark({
     required this.icon,
     required this.active,
-    required this.finished,
+    required this.done,
   });
 
   final IconData icon;
   final bool active;
-  final bool finished;
+  final bool done;
 
   @override
   Widget build(BuildContext context) {
     final isDark = _SettingsColors.isDark;
-    final color = finished
+    final color = done
         ? const Color(0xFF2F9E6B)
         : active
         ? _SettingsColors.blueDark
         : _SettingsColors.tertiary;
-    // Circle chrome stays constant. Only the glyph crossfades, so finishing
-    // a row does not flash a highlight on and off.
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
       width: 28,
       height: 28,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Colors.white.withValues(alpha: isDark ? 0.08 : 0.62),
+        color: done
+            ? const Color(0xFF2F9E6B).withValues(alpha: 0.16)
+            : Colors.white.withValues(alpha: isDark ? 0.08 : 0.62),
         border: Border.all(
           color: Colors.white.withValues(alpha: isDark ? 0.14 : 0.85),
         ),
       ),
       child: Center(
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 180),
-          child: active
-              ? CupertinoActivityIndicator(
-                  key: const ValueKey('spin'),
-                  radius: 7,
-                  color: color,
-                )
-              : Icon(
-                  key: ValueKey(finished ? 'check' : 'icon'),
-                  finished ? CupertinoIcons.check_mark : icon,
-                  size: 13,
-                  color: color,
-                ),
-        ),
+        child: active
+            ? CupertinoActivityIndicator(radius: 7, color: color)
+            : Icon(
+                done ? CupertinoIcons.check_mark : icon,
+                size: 13,
+                color: color,
+              ),
       ),
     );
   }
