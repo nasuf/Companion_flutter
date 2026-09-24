@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class _FakeProfileApi extends CompanionApi {
   _FakeProfileApi() : super(baseUrl: 'http://localhost:8000');
@@ -55,6 +56,14 @@ class _FakeProfileApi extends CompanionApi {
       memberExpiresOn: null,
     );
   }
+}
+
+void _usePhoneCanvas(WidgetTester tester) {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = const Size(390, 844);
+  tester.view.padding = const FakeViewPadding(top: 47, bottom: 34);
+  tester.view.viewPadding = const FakeViewPadding(top: 47, bottom: 34);
+  addTearDown(tester.view.reset);
 }
 
 Future<void> pumpLoginPage(WidgetTester tester) async {
@@ -203,10 +212,72 @@ void main() {
     expect(find.text('密码'), findsOneWidget);
     expect(find.text('登录'), findsOneWidget);
     expect(find.text('暂未开放'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is FaIcon && widget.icon == FontAwesomeIcons.userLock.data,
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is FaIcon && widget.icon == FontAwesomeIcons.qq.data,
+      ),
+      findsNothing,
+    );
 
     await tester.tap(find.widgetWithText(FilledButton, '登录'));
     await tester.pump();
     expect(find.text('请输入用户名和密码'), findsOneWidget);
+  });
+
+  testWidgets('password sheet keeps the login hero above a tall keyboard', (
+    tester,
+  ) async {
+    _usePhoneCanvas(tester);
+    await pumpLoginPage(tester);
+
+    await tester.tap(find.bySemanticsLabel('QQ登录'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('同意并继续'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    const keyboard = 360.0;
+    tester.view.viewInsets = const FakeViewPadding(bottom: keyboard);
+    await tester.pump();
+
+    final title = tester.getRect(find.text('用户名密码登录'));
+    // Backdrop floor is 14% of 844, plus the grabber above the title.
+    expect(title.top, greaterThan(140));
+
+    final button = tester.getRect(find.widgetWithText(FilledButton, '登录'));
+    expect(button.bottom, lessThanOrEqualTo(844 - keyboard));
+  });
+
+  testWidgets('phone sheet stays below the hero with a numeric keypad', (
+    tester,
+  ) async {
+    _usePhoneCanvas(tester);
+    await pumpLoginPage(tester);
+
+    await tester.tap(find.bySemanticsLabel('手机号登录'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('同意并继续'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    const keyboard = 230.0;
+    tester.view.viewInsets = const FakeViewPadding(bottom: keyboard);
+    await tester.pump();
+
+    final title = tester.getRect(find.text('手机号登录'));
+    expect(title.top, greaterThan(180));
+
+    final button = tester.getRect(find.widgetWithText(FilledButton, '登录 / 注册'));
+    expect(button.bottom, lessThanOrEqualTo(844 - keyboard));
   });
 
   testWidgets('renders wechat login button', (tester) async {

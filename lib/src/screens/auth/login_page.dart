@@ -719,10 +719,12 @@ class _SecondaryLoginRow extends StatelessWidget {
         _SecondaryLoginButton(
           label: 'QQ登录',
           onTap: onQqTap,
+          // Temporary stand-in until QQ login ships. This entry opens
+          // username/password login, so the glyph matches that action.
           icon: const FaIcon(
-            FontAwesomeIcons.qq,
+            FontAwesomeIcons.userLock,
             color: Colors.white,
-            size: 23,
+            size: 20,
           ),
         ),
         _SecondaryLoginButton(
@@ -799,15 +801,40 @@ class _LoginSheetLayout extends StatelessWidget {
   final Widget child;
   final double heightFraction;
 
+  /// Backdrop kept above the sheet while the IME is open. Phone login's
+  /// numeric keypad stays under this on its own; a full keyboard (password
+  /// login) is taller and would otherwise pin the sheet to the status bar.
+  static const _openBackdropFraction = 0.14;
+
+  /// Form column we try to keep when backing off the backdrop floor.
+  static const _minFormHeight = 240.0;
+
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final keyboard = media.viewInsets.bottom;
-    final baseHeight = media.size.height * heightFraction;
-    // Grow through the IME slot so iOS keyboard corner radii show sheet color.
-    final sheetHeight = math.min(baseHeight + keyboard, media.size.height);
-    final contentBottom =
-        keyboard > 0 ? keyboard + 12 : 12 + media.padding.bottom;
+    final screenHeight = media.size.height;
+    final baseHeight = screenHeight * heightFraction;
+    // The modal route strips padding.top; viewPadding still has the status bar.
+    final statusTop = media.viewPadding.top;
+    final backdropFloor = math.max(
+      statusTop + 12,
+      screenHeight * _openBackdropFraction,
+    );
+    final naturalTop = screenHeight - baseHeight - keyboard;
+    final topGap = naturalTop >= backdropFloor
+        ? naturalTop
+        : math.max(
+            statusTop,
+            math.min(backdropFloor, screenHeight - keyboard - _minFormHeight),
+          );
+    // Grow through the IME slot so iOS keyboard corner radii show sheet color,
+    // but never cover the login hero the way the phone sheet leaves it.
+    final sheetHeight = math.min(baseHeight + keyboard, screenHeight - topGap);
+    // If the IME is taller than the sheet, keep the form column non-negative.
+    final contentBottom = keyboard > 0
+        ? math.min(keyboard + 12, math.max(0.0, sheetHeight - 12 - 48))
+        : 12 + media.padding.bottom;
 
     return SizedBox(
       height: sheetHeight,
