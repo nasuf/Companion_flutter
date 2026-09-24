@@ -67,7 +67,7 @@ class _NoAgentPageState extends State<NoAgentPage> {
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    widget.session.hasAgent ? '还没有可用会话' : '创建你的 AI 伙伴',
+                    widget.session.hasAgent ? '还没有可用会话' : '寻找你的AI伙伴',
                     style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
@@ -75,14 +75,14 @@ class _NoAgentPageState extends State<NoAgentPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '先设定TA的名字、性别和灵魂倾向，头像会在后端自动生成。',
+                    '根据TA的性别和灵魂倾向，我们会为你匹配最合适的伴生AI伙伴',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: AppColors.muted, height: 1.45),
                   ),
                   const SizedBox(height: 22),
                   FilledButton(
                     onPressed: () => _openCreatePage(context),
-                    child: const Text('进入 Agent 创建页'),
+                    child: const Text('点击匹配寻找'),
                   ),
                 ],
               ),
