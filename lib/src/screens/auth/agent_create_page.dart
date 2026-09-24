@@ -834,12 +834,10 @@ class _GenderCard extends StatelessWidget {
         key: ValueKey(female ? 'agent-gender-female' : 'agent-gender-male'),
         padding: EdgeInsets.zero,
         minimumSize: Size.zero,
-        pressedOpacity: 0.82,
+        pressedOpacity: 1,
         borderRadius: BorderRadius.circular(16),
         onPressed: onPressed,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
+        child: Container(
           width: 148,
           height: 212,
           decoration: BoxDecoration(
