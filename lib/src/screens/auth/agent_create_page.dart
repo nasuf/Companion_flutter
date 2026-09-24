@@ -654,9 +654,11 @@ class _AgentCreatePlanetPainter extends CustomPainter {
     );
     canvas.restore();
 
+    // The design ring crosses the disc's midline. The layer boxes sit about
+    // 19px higher, which drew the halo across the upper half of the planet.
     final ring = Path()..fillType = PathFillType.evenOdd;
-    ring.addPath(_tiltedOval(const Offset(98.86, 41.115), 208.78, 44.01), Offset.zero);
-    ring.addPath(_tiltedOval(const Offset(98.86, 44.88), 180.78, 33.54), Offset.zero);
+    ring.addPath(_tiltedOval(const Offset(98.86, 60.115), 208.78, 44.01), Offset.zero);
+    ring.addPath(_tiltedOval(const Offset(98.86, 63.88), 180.78, 33.54), Offset.zero);
     canvas.drawPath(ring, Paint()..color = _ring);
   }
 
@@ -837,67 +839,80 @@ class _GenderCard extends StatelessWidget {
         pressedOpacity: 1,
         borderRadius: BorderRadius.circular(16),
         onPressed: onPressed,
-        child: Container(
-          width: 148,
-          height: 212,
-          decoration: BoxDecoration(
-            color: selected
-                ? const Color(0xFFD0FFF2)
-                : Colors.white.withValues(alpha: 0.40),
-            borderRadius: BorderRadius.circular(16),
-            border: selected
-                ? Border.all(color: _agentCreateAccent, width: 2)
-                : null,
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x2606C893),
-                blurRadius: 16,
-                offset: Offset(0, 8),
+        child: AnimatedScale(
+          scale: selected ? 1.03 : 0.97,
+          duration: const Duration(milliseconds: 560),
+          curve: Curves.easeInOut,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 560),
+            curve: Curves.easeInOut,
+            width: 148,
+            height: 212,
+            decoration: BoxDecoration(
+              color: selected
+                  ? const Color(0xFFD0FFF2)
+                  : Colors.white.withValues(alpha: 0.40),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: _agentCreateAccent.withValues(alpha: selected ? 1 : 0),
+                width: selected ? 2 : 0,
               ),
-            ],
-          ),
-          child: Stack(
-            alignment: Alignment.topCenter,
-            children: [
-              Positioned(
-                top: 16,
-                width: 100,
-                height: 130,
-                child: Image.asset(
-                  female
-                      ? 'assets/prototype/agent-creation-female.png'
-                      : 'assets/prototype/agent-creation-male.png',
-                  fit: BoxFit.fill,
-                  filterQuality: FilterQuality.medium,
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x2606C893),
+                  blurRadius: 16,
+                  offset: Offset(0, 8),
                 ),
-              ),
-              Positioned(
-                top: 155,
-                child: Text(
-                  female ? '女生' : '男生',
-                  style: TextStyle(
-                    color: selected
-                        ? _agentCreateAccent
-                        : _agentCreateAccent.withValues(alpha: 0.40),
-                    fontSize: 20,
-                    height: 28 / 20,
-                    fontWeight: FontWeight.w600,
+              ],
+            ),
+            child: Stack(
+              alignment: Alignment.topCenter,
+              children: [
+                Positioned(
+                  top: 16,
+                  width: 100,
+                  height: 130,
+                  child: Image.asset(
+                    female
+                        ? 'assets/prototype/agent-creation-female.png'
+                        : 'assets/prototype/agent-creation-male.png',
+                    fit: BoxFit.fill,
+                    filterQuality: FilterQuality.medium,
                   ),
                 ),
-              ),
-              if (selected)
-                const Positioned(
+                Positioned(
+                  top: 155,
+                  child: AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 560),
+                    curve: Curves.easeInOut,
+                    style: TextStyle(
+                      color: selected
+                          ? _agentCreateAccent
+                          : _agentCreateAccent.withValues(alpha: 0.40),
+                      fontSize: 20,
+                      height: 28 / 20,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    child: Text(female ? '女生' : '男生'),
+                  ),
+                ),
+                Positioned(
                   bottom: 6,
-                  width: 60,
-                  height: 4,
-                  child: DecoratedBox(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 560),
+                    curve: Curves.easeInOut,
+                    width: selected ? 60 : 0,
+                    height: 4,
                     decoration: BoxDecoration(
-                      color: _agentCreateAccent,
-                      borderRadius: BorderRadius.all(Radius.circular(4)),
+                      color: _agentCreateAccent.withValues(
+                        alpha: selected ? 1 : 0,
+                      ),
+                      borderRadius: const BorderRadius.all(Radius.circular(4)),
                     ),
                   ),
                 ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
