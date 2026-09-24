@@ -578,11 +578,12 @@ class _AgentCreateBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        // CSS linear-gradient(169.47deg, #E8FEFB, #D1FFF4).
         gradient: LinearGradient(
-          begin: Alignment(-0.66, -1),
-          end: Alignment(0.54, 1),
+          begin: Alignment(-0.183, -0.983),
+          end: Alignment(0.183, 0.983),
           colors: [Color(0xFFE8FEFB), Color(0xFFD1FFF4)],
         ),
       ),
@@ -593,35 +594,83 @@ class _AgentCreateBackground extends StatelessWidget {
             top: -26,
             width: 138,
             height: 138,
-            child: Image.asset(
-              'assets/prototype/agent-creation-top-orb.png',
-              fit: BoxFit.fill,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color(0x3306C893),
+              ),
             ),
           ),
           Positioned(
-            right: -64,
-            bottom: -40,
+            left: 284,
+            top: 714,
             width: 170,
             height: 170,
-            child: Image.asset(
-              'assets/prototype/agent-creation-bottom-orb.png',
-              fit: BoxFit.fill,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color(0x3306C893),
+              ),
             ),
           ),
           Positioned(
-            right: -51,
+            left: 239,
             top: 90,
             width: 202,
             height: 124,
-            child: Image.asset(
-              'assets/prototype/agent-creation-planet.png',
-              fit: BoxFit.fill,
-            ),
+            child: CustomPaint(painter: _AgentCreatePlanetPainter()),
           ),
         ],
       ),
     );
   }
+}
+
+/// Faint ringed circle at the top right of the create screen.
+///
+/// Drawn from the design layers instead of a 1x bitmap: a 124px disc, a
+/// second disc clipped to it (the lighter crescent), and the tilted ring.
+class _AgentCreatePlanetPainter extends CustomPainter {
+  const _AgentCreatePlanetPainter();
+
+  static const _disc = Color.fromRGBO(7, 193, 146, 0.1);
+  static const _crescent = Color.fromRGBO(20, 203, 149, 0.1);
+  static const _ring = Color.fromRGBO(97, 224, 179, 0.1);
+  static const _tilt = -15 * math.pi / 180;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final disc = Rect.fromLTWH(39, 0, 124, 124);
+    canvas.drawOval(disc, Paint()..color = _disc);
+
+    canvas.save();
+    canvas.clipPath(Path()..addOval(disc));
+    // Screen-space circle (201.59, 111.06, r=147.75), shifted into this
+    // layer whose origin is the design group at (239, 90).
+    canvas.drawCircle(
+      const Offset(201.59 - 239, 111.06 - 90),
+      147.75,
+      Paint()..color = _crescent,
+    );
+    canvas.restore();
+
+    final ring = Path()..fillType = PathFillType.evenOdd;
+    ring.addPath(_tiltedOval(const Offset(98.86, 41.115), 208.78, 44.01), Offset.zero);
+    ring.addPath(_tiltedOval(const Offset(98.86, 44.88), 180.78, 33.54), Offset.zero);
+    canvas.drawPath(ring, Paint()..color = _ring);
+  }
+
+  Path _tiltedOval(Offset center, double width, double height) {
+    final oval = Path()
+      ..addOval(Rect.fromCenter(center: Offset.zero, width: width, height: height));
+    final matrix = Matrix4.identity()
+      ..translate(center.dx, center.dy)
+      ..rotateZ(_tilt);
+    return oval.transform(matrix.storage);
+  }
+
+  @override
+  bool shouldRepaint(covariant _AgentCreatePlanetPainter oldDelegate) => false;
 }
 
 class _AgentCreateHeader extends StatelessWidget {
@@ -691,11 +740,12 @@ class _GenderStep extends StatelessWidget {
         Positioned(
           left: 36,
           top: 122,
-          width: 133,
-          height: 71,
+          width: 132,
+          height: 70,
           child: Image.asset(
             'assets/prototype/agent-creation-hi.png',
             fit: BoxFit.fill,
+            filterQuality: FilterQuality.medium,
           ),
         ),
         const Positioned(
