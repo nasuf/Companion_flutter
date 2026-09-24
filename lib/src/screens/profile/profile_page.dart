@@ -27,48 +27,8 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage>
     with SingleTickerProviderStateMixin {
-  static const _deleteStages = [
-    '正在删除对话记录...',
-    '正在删除聊天消息...',
-    '正在删除记忆库...',
-    '正在删除记忆向量索引...',
-    '正在删除用户画像...',
-    '正在删除作息表与情绪状态...',
-    '正在删除主动消息日志与触发器...',
-    '正在清理缓存与会话状态...',
-    '正在删除 Agent 主记录...',
-  ];
-
-  static const _statLabels = {
-    'messages': '聊天消息',
-    'conversations': '对话',
-    'embeddings': '记忆向量',
-    'user_memories': '用户记忆',
-    'ai_memories': 'AI 记忆',
-    'profiles': '用户档案',
-    'changelogs': '记忆变更日志',
-    'workspaces': '工作区',
-    'intimacy': '亲密度',
-    'emotion_states': '情绪状态',
-    'schedules': '作息表',
-    'trait_logs': '性格反馈日志',
-    'proactive_logs': '主动消息日志',
-    'proactive_counters': '主动消息计数器',
-    'proactive_event_logs': '主动事件日志',
-    'proactive_states': '主动状态',
-    'triggers': '时间触发器',
-    'portraits': '用户画像',
-    'schedule_logs': '作息调整日志',
-    'orphan_user_memories': '孤立用户记忆',
-    'redis': 'Redis 缓存',
-    'postgres': '运行时状态',
-  };
-
-  Timer? _deleteStageTimer;
   late final AnimationController _motionController;
   bool _deleting = false;
-  int _deleteStage = 0;
-  Map<String, int>? _deleteStats;
   ProfileStats? _profileStats;
   bool _profileStatsLoading = false;
   String? _profileStatsError;
@@ -130,7 +90,6 @@ class _ProfilePageState extends State<ProfilePage>
 
   @override
   void dispose() {
-    _deleteStageTimer?.cancel();
     _profileStatsRequestId += 1;
     _motionController.dispose();
     super.dispose();
@@ -199,7 +158,9 @@ class _ProfilePageState extends State<ProfilePage>
       builder: (context) {
         return CupertinoAlertDialog(
           title: const Text('删除好友'),
-          content: Text('确定要删除「$agentName」吗？\n\n该操作将永久删除所有聊天记录、关系数据和记忆，且无法恢复。'),
+          content: Text(
+            '确定要删除「$agentName」吗？\n\n该操作将永久删除聊天记录、关系数据、记忆，以及和这位好友一起玩过的游戏对局，且无法恢复。',
+          ),
           actions: [
             CupertinoDialogAction(
               onPressed: () => Navigator.of(context).pop(false),
@@ -222,7 +183,7 @@ class _ProfilePageState extends State<ProfilePage>
         return CupertinoAlertDialog(
           title: const Text('再次确认删除'),
           content: Text(
-            '删除「$agentName」后，所有聊天记录、关系数据和记忆将被永久清除，且无法恢复。\n\n请再次确认是否继续。',
+            '删除「$agentName」后，聊天记录、关系数据、记忆和游戏对局会被永久清除，且无法恢复。\n\n请再次确认是否继续。',
           ),
           actions: [
             CupertinoDialogAction(
@@ -240,10 +201,11 @@ class _ProfilePageState extends State<ProfilePage>
     );
     if (confirmedAgain != true || !mounted) return;
 
-    if (popOverlayRoute && Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
-    await _deleteAgent(agentId);
+    await _deleteAgent(
+      agentId,
+      agentName: agentName,
+      popOverlayRoute: popOverlayRoute,
+    );
   }
 
   Future<void> _confirmLogout() async {
@@ -273,55 +235,56 @@ class _ProfilePageState extends State<ProfilePage>
     }
   }
 
-  Future<void> _deleteAgent(String agentId) async {
+  Future<void> _deleteAgent(
+    String agentId, {
+    required String agentName,
+    required bool popOverlayRoute,
+  }) async {
     setState(() {
       _deleting = true;
-      _deleteStage = 0;
-      _deleteStats = null;
       _error = null;
     });
-    _deleteStageTimer?.cancel();
-    _deleteStageTimer = Timer.periodic(const Duration(milliseconds: 600), (_) {
-      if (!mounted) return;
-      setState(() {
-        _deleteStage = math.min(_deleteStage + 1, _deleteStages.length - 2);
-      });
-    });
-
-    try {
-      final result = await widget.api.deleteAgent(agentId);
-      _deleteStageTimer?.cancel();
-      if (!mounted) return;
-      setState(() {
-        _deleteStage = _deleteStages.length - 1;
-        _deleteStats = result.stats;
-      });
-      await Future<void>.delayed(const Duration(milliseconds: 900));
-      if (!mounted) return;
-      widget.onAgentDeleted(
-        AuthSession(
-          token: widget.session.token,
-          userId: widget.session.userId,
-          username: widget.session.username,
-          userDisplayName: widget.session.userDisplayName,
-          userAvatarUrl: widget.session.userAvatarUrl,
-          role: widget.session.role,
-          hasAgent: false,
-          // 删的是 agent，不是账号 —— 绑定状态照旧带上，否则删完 agent 个人资料页
-          // 的「登录方式」会变成「账号密码」。（这里刻意逐字段构造而不用 copyWith:
-          // 需要把 agent 相关字段清空，而 copyWith 的 null 表示"保持原值"。）
-          phone: widget.session.phone,
-          wechatBound: widget.session.wechatBound,
-        ),
-      );
-    } catch (error) {
-      _deleteStageTimer?.cancel();
-      if (!mounted) return;
-      setState(() {
-        _error = _asMessage(error);
-        _deleting = false;
-      });
+    final result = await showGeneralDialog<AgentDeleteResult>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 320),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return _AgentDeleteGlassOverlay(
+          agentName: agentName,
+          delete: () => widget.api.deleteAgent(agentId),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return FadeTransition(opacity: animation, child: child);
+      },
+    );
+    if (!mounted) return;
+    if (result == null) {
+      setState(() => _deleting = false);
+      return;
     }
+    if (popOverlayRoute && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+    if (!mounted) return;
+    setState(() => _deleting = false);
+    widget.onAgentDeleted(
+      AuthSession(
+        token: widget.session.token,
+        userId: widget.session.userId,
+        username: widget.session.username,
+        userDisplayName: widget.session.userDisplayName,
+        userAvatarUrl: widget.session.userAvatarUrl,
+        role: widget.session.role,
+        hasAgent: false,
+        // 删的是 agent，不是账号 —— 绑定状态照旧带上，否则删完 agent 个人资料页
+        // 的「登录方式」会变成「账号密码」。（这里刻意逐字段构造而不用 copyWith:
+        // 需要把 agent 相关字段清空，而 copyWith 的 null 表示"保持原值"。）
+        phone: widget.session.phone,
+        wechatBound: widget.session.wechatBound,
+      ),
+    );
   }
 
   Future<void> _openAdminPanel() async {
@@ -559,13 +522,6 @@ class _ProfilePageState extends State<ProfilePage>
                             ),
                             const SizedBox(height: 18),
                             _SettingsAccountActions(onLogout: _confirmLogout),
-                            if (_deleting) ...[
-                              const SizedBox(height: 16),
-                              _DeleteProgressPanel(
-                                stage: _deleteStages[_deleteStage],
-                                stats: _deleteStats,
-                              ),
-                            ],
                             if (_error != null) ...[
                               const SizedBox(height: 14),
                               Text(
