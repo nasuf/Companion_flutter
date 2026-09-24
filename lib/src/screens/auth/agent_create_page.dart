@@ -1553,17 +1553,6 @@ class _ProvisionProgressOverlay extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            Text(
-              status.message.isEmpty ? '正在初始化...' : status.message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0x99111111),
-                fontSize: 14,
-                height: 1.4,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
           ],
         );
       },
