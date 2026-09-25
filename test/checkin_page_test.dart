@@ -464,6 +464,12 @@ void main() {
       // asserted against its own top edge rather than the 390x844 frame.
       final sheet = tester.getRect(find.byKey(const Key('checkin-sheet')));
       expect(sheet.bottom, _canvasHeight);
+      final grabber = tester.getRect(
+        find.byKey(const Key('checkin-sheet-grabber')),
+      );
+      expect(grabber.top, sheet.top);
+      expect(grabber.height, 36);
+      expect(sheet.height, closeTo(486, 0.5));
       expect(_offsetIn(tester, sheet, 'checkin-name'), 36);
       expect(_offsetIn(tester, sheet, 'checkin-mode'), 104);
       expect(_offsetIn(tester, sheet, 'checkin-reminder'), 172);
@@ -492,6 +498,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final sheet = tester.getRect(find.byKey(const Key('checkin-sheet')));
+      expect(sheet.height, closeTo(626, 0.5));
       expect(_offsetIn(tester, sheet, 'checkin-weekdays'), 172);
       expect(_offsetIn(tester, sheet, 'checkin-reminder'), 312);
       expect(_offsetIn(tester, sheet, 'checkin-note'), 400);
@@ -703,11 +710,13 @@ void main() {
       final sheet = tester.getRect(find.byKey(const Key('checkin-sheet')));
       final save = tester.getRect(find.byKey(const Key('checkin-save')));
       final note = tester.getRect(find.byKey(const Key('checkin-note')));
-      // The panel grows upwards while still reaching the screen edge, so its
-      // background carries on behind the keyboard: no scrim above it, no seam
-      // under it, and the form stays in the part that is not covered.
+      // Same cap as the red-packet sheet: the part above the keyboard stays
+      // half the screen, so the form does not climb to the status bar. The
+      // paint still reaches the screen edge and continues behind the keyboard.
+      final cappedTop = _canvasHeight - (_canvasHeight * 0.5 + keyboard);
+      expect(sheet.top, closeTo(cappedTop, 0.5));
       expect(sheet.top, lessThan(closed.top));
-      expect(sheet.top, greaterThanOrEqualTo(_safeTop));
+      expect(sheet.top, greaterThan(_safeTop + 24));
       expect(sheet.bottom, _canvasHeight);
       expect(save.bottom, lessThanOrEqualTo(_canvasHeight - keyboard));
       expect(note.bottom, lessThanOrEqualTo(_canvasHeight - keyboard));
@@ -771,6 +780,25 @@ void main() {
         gap ??= toKeyboard;
         expect(toKeyboard, closeTo(gap, 0.5));
       }
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('dragging the grabber down closes the sheet', (tester) async {
+      _useDesignCanvas(tester);
+
+      await tester.pumpWidget(_app(_FakeReminderApi(const [])));
+      await tester.pumpAndSettle();
+      await _openEditor(tester);
+
+      // More than half the sheet's height, which is the route's close
+      // threshold when the drag is not a fling.
+      await tester.drag(
+        find.byKey(const Key('checkin-sheet-grabber')),
+        const Offset(0, 400),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('checkin-sheet')), findsNothing);
       expect(tester.takeException(), isNull);
     });
 

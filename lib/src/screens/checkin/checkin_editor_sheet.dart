@@ -6,6 +6,59 @@ class _CheckinDeletedResult {
   final ReminderItem item;
 }
 
+/// Weekday card (116) plus the gap the editor inserts around it.
+const double _kCheckinHabitExtra = 116 + _kCheckinSheetFieldGap;
+
+/// Closed height of the editor: grabber, the form, the save button, and the
+/// home-indicator gap. Keyboard inset is not part of this — see
+/// [_checkinEditorSheetHeight].
+double _checkinEditorRestingHeight({
+  required bool habit,
+  required bool editing,
+  required double safeBottom,
+}) {
+  const form =
+      _kCheckinFieldHeight +
+      _kCheckinSheetFieldGap +
+      _kCheckinFieldHeight +
+      _kCheckinSheetFieldGap +
+      64 +
+      _kCheckinSheetFieldGap +
+      84;
+  // The edit sheet adds a 32px action row and a 12px gap above the name.
+  return _kCheckinSheetPadTop +
+      8 +
+      12 +
+      _kCheckinSaveHeight +
+      _kCheckinSheetSaveGap +
+      form +
+      (habit ? _kCheckinHabitExtra : 0) +
+      (editing ? 44 : 0) +
+      safeBottom;
+}
+
+/// Red-packet rule. Closed, the sheet is its content. As the keyboard rises
+/// the sheet grows only until the part above the keyboard is half the screen;
+/// past that the keyboard lengthens the paint behind it and the form scrolls
+/// instead of climbing to the status bar.
+double _checkinEditorSheetHeight({
+  required double screenHeight,
+  required double topInset,
+  required double safeBottom,
+  required double keyboard,
+  required bool habit,
+  required bool editing,
+}) {
+  final resting = _checkinEditorRestingHeight(
+    habit: habit,
+    editing: editing,
+    safeBottom: safeBottom,
+  );
+  final grown = math.max(resting, screenHeight * 0.5 + keyboard);
+  final cap = math.max(screenHeight - topInset, 0.0);
+  return math.min(grown, cap);
+}
+
 /// `2026年7月23日 09:00` — the reminder value as the design writes it.
 String _checkinDateTimeLabel(DateTime value) {
   final local = value.toLocal();
@@ -26,6 +79,10 @@ Future<Object?> _showCheckinEditor({
   return showModalBottomSheet<Object?>(
     context: context,
     isScrollControlled: true,
+    // Dragging the grabber down dismisses. The route's own detector handles
+    // it; the form scroller does not, so a drag that starts on a field still
+    // scrolls instead of closing.
+    enableDrag: true,
     backgroundColor: Colors.transparent,
     barrierColor: _CheckinTokens.of(context).scrim,
     builder: (_) => _CheckinEditorSheet(
@@ -106,85 +163,85 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
     final media = MediaQuery.of(context);
     final keyboard = media.viewInsets.bottom;
     final safeBottom = media.padding.bottom;
-    // The panel is its content plus however much keyboard there is, so its
-    // height is a continuous function of the inset: at every frame of the
-    // keyboard animation the button's bottom edge lands exactly on the
-    // keyboard line, and the panel keeps reaching the screen edge underneath.
+    final habit = _mode == _CheckinEntryMode.habit;
+    // Same height rule as the red-packet sheet: the visible window never
+    // grows past half the screen, and the keyboard only lengthens the paint
+    // that sits behind it. Adding the inset to the content height instead
+    // walks the form up to the status bar, which is the "pushed too high"
+    // the half-screen sheet avoids. Closed, the panel stays its content
+    // height — half a screen is shorter than the form.
     //
-    // Anything branching on "is the keyboard up" steps instead of tracks — the
-    // panel would jump to full height on the first frame and only fall back
-    // once the inset finished animating away, which is the lag you feel.
-    //
-    // Growing on keyboard is what UIKit's own sheets do (WWDC21 "Customize and
-    // resize sheets in UIKit": the sheet goes to the large detent when the
-    // keyboard appears and collapses back after); growing downwards rather
-    // than upwards is what keeps its background behind the keyboard so the two
-    // do not read as separate slabs.
-    final maxPanel = math.max(media.size.height - widget.topInset, 0.0);
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: maxPanel),
-      child: Container(
-        key: const Key('checkin-sheet'),
+    // Height is a plain function of the inset, not an animation of its own,
+    // so it tracks the keyboard frame by frame.
+    final sheetHeight = _checkinEditorSheetHeight(
+      screenHeight: media.size.height,
+      topInset: widget.topInset,
+      safeBottom: safeBottom,
+      keyboard: keyboard,
+      habit: habit,
+      editing: widget.item != null,
+    );
+    final bottomPad = math.min(
+      keyboard > 0
+          ? keyboard + _kCheckinSheetSaveGap
+          : _kCheckinSheetSaveGap + safeBottom,
+      math.max(
+        0.0,
+        sheetHeight - _kCheckinSheetPadTop - 12 - _kCheckinSaveHeight,
+      ),
+    );
+    return SizedBox(
+      key: const Key('checkin-sheet'),
+      height: sheetHeight,
+      width: double.infinity,
+      child: DecoratedBox(
         decoration: BoxDecoration(
           color: tokens.page,
           borderRadius: const BorderRadius.vertical(
             top: Radius.circular(_kCheckinCardRadius),
           ),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Flexible, not Expanded: the form takes only the room it needs
-            // until the panel hits the cap, and scrolls after that.
-            Flexible(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => FocusScope.of(context).unfocus(),
-                child: SingleChildScrollView(
-                  // Scrolling must not kill the keyboard: iOS's polished
-                  // equivalent is keyboardDismissMode .interactive (the
-                  // keyboard follows the finger and can be pulled back), which
-                  // Flutter has no mode for — of the two it does have, manual
-                  // is the one that does not yank the keyboard away mid-scroll.
-                  // Tapping outside a field still dismisses it.
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.manual,
-                  padding: const EdgeInsets.fromLTRB(
-                    _kCheckinMargin,
-                    _kCheckinSheetPadTop,
-                    _kCheckinMargin,
-                    8,
-                  ),
-                  // Switching to 周期习惯 adds a 140px card; animating the
-                  // content rather than the panel keeps the keyboard-driven
-                  // resize instant while the mode change still eases.
-                  child: AnimatedSize(
-                    duration: const Duration(milliseconds: 220),
-                    curve: Curves.easeOutCubic,
-                    alignment: Alignment.topCenter,
+        child: Padding(
+          padding: EdgeInsets.only(bottom: bottomPad),
+          child: Column(
+            children: [
+              const _CheckinSheetGrabber(),
+              Flexible(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => FocusScope.of(context).unfocus(),
+                  child: SingleChildScrollView(
+                    // Scrolling must not kill the keyboard: iOS's polished
+                    // equivalent is keyboardDismissMode .interactive, which
+                    // Flutter has no mode for. Tapping outside a field still
+                    // dismisses it.
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.manual,
+                    padding: const EdgeInsets.fromLTRB(
+                      _kCheckinMargin,
+                      0,
+                      _kCheckinMargin,
+                      8,
+                    ),
                     child: _form(tokens),
                   ),
                 ),
               ),
-            ),
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                _kCheckinMargin,
-                12,
-                _kCheckinMargin,
-                // The home indicator inset is only worth clearing while it is
-                // actually showing; the keyboard eats it as it rises.
-                _kCheckinSheetSaveGap + math.max(safeBottom - keyboard, 0),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  _kCheckinMargin,
+                  12,
+                  _kCheckinMargin,
+                  0,
+                ),
+                child: _CheckinPrimaryButton(
+                  label: '保存计划',
+                  busy: _saving,
+                  onPressed: _busy || !_canSave ? null : _save,
+                ),
               ),
-              child: _CheckinPrimaryButton(
-                label: '保存计划',
-                busy: _saving,
-                onPressed: _busy || !_canSave ? null : _save,
-              ),
-            ),
-            // The stretch that lives behind the keyboard.
-            SizedBox(height: keyboard),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -430,5 +487,34 @@ class _CheckinEditorSheetState extends State<_CheckinEditorSheet> {
     } finally {
       if (mounted) setState(() => _deleting = false);
     }
+  }
+}
+
+/// Short bar at the top of the editor. It sits outside the scroller, so a
+/// downward drag here is the sheet's dismiss gesture rather than a scroll.
+class _CheckinSheetGrabber extends StatelessWidget {
+  const _CheckinSheetGrabber();
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = _CheckinTokens.of(context);
+    // The whole 36px the design leaves above the name is the drag target.
+    // The bar itself sits 10px down, the same place as the red-packet grabber.
+    return SizedBox(
+      key: const Key('checkin-sheet-grabber'),
+      height: _kCheckinSheetPadTop,
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Container(
+          margin: const EdgeInsets.only(top: 10),
+          width: 42,
+          height: 5,
+          decoration: BoxDecoration(
+            color: tokens.placeholder.withValues(alpha: 0.45),
+            borderRadius: BorderRadius.circular(999),
+          ),
+        ),
+      ),
+    );
   }
 }
