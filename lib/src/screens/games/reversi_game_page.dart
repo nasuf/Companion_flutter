@@ -295,7 +295,7 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
         starting: _runtime.starting,
         error: _runtime.error,
         onStart: _start,
-        onExit: () => Navigator.of(context).maybePop(),
+        onExit: () => leaveNativeGame(context),
       );
     } else if (_result != null) {
       child = _ReversiResultScreen(
@@ -349,11 +349,14 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
         ),
       );
     }
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 320),
-      switchInCurve: Curves.easeOut,
-      switchOutCurve: Curves.easeIn,
-      child: child,
+    return GameSuspendForfeitBinding(
+      onForfeit: _forfeit,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 320),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: child,
+      ),
     );
   }
 }

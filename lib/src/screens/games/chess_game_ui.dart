@@ -343,6 +343,7 @@ class _ChessGameScreenState extends State<_ChessGameScreen> {
         !engine.isFinished && (engine.isAgentTurn || widget.aiThinking);
     final token =
         '${engine.moveCount}:${engine.isAgentTurn ? 'agent' : 'user'}';
+    final clockPaused = gameClockPaused(context, manualPaused: _paused);
     return Scaffold(
       backgroundColor: const Color(0xFF7D4B2C),
       body: LayoutBuilder(
@@ -376,7 +377,7 @@ class _ChessGameScreenState extends State<_ChessGameScreen> {
                   name: widget.userName,
                   imageUrl: widget.userAvatarUrl,
                   active: userTurn,
-                  paused: _paused,
+                  paused: clockPaused,
                   clockToken: token,
                   onTimeout: _handleUserIdleTimeout,
                 ),
@@ -389,7 +390,7 @@ class _ChessGameScreenState extends State<_ChessGameScreen> {
                   name: widget.agentName,
                   imageUrl: widget.agentAvatarUrl,
                   active: agentTurn,
-                  paused: _paused || widget.aiThinking,
+                  paused: clockPaused || widget.aiThinking,
                   clockToken: token,
                   mirrored: true,
                 ),
@@ -948,7 +949,10 @@ class _ChessArtworkBoardState extends State<_ChessArtworkBoard>
                       if (mover != null)
                         Positioned.fromRect(
                           rect: Rect.lerp(
-                            geometry.pieceRectAt(_slideFromFile, _slideFromRank),
+                            geometry.pieceRectAt(
+                              _slideFromFile,
+                              _slideFromRank,
+                            ),
                             geometry.pieceRect(mover),
                             t,
                           )!,
@@ -1333,7 +1337,10 @@ class _ChessResultScreenState extends State<_ChessResultScreen>
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Image.asset('${_chessFigmaAsset}result_score_label.png', height: 26),
+                Image.asset(
+                  '${_chessFigmaAsset}result_score_label.png',
+                  height: 26,
+                ),
                 const SizedBox(width: 6),
                 if (widget.pointsDelta != null)
                   _NativeGameScoreDelta(
@@ -1409,52 +1416,89 @@ class _ChessResultScreenState extends State<_ChessResultScreen>
   // 积分 → buttons. The glow layers behind the sun and banner are the 光晕.
   List<Widget> _winPieces() => [
     _piece(
-      cx: 0.5, cy: 0.359, wFrac: 0.695,
-      aspect: 837 / 819, begin: 0.1, end: 0.44, drop: true,
+      cx: 0.5,
+      cy: 0.359,
+      wFrac: 0.695,
+      aspect: 837 / 819,
+      begin: 0.1,
+      end: 0.44,
+      drop: true,
       child: _img('result_shield.png'),
     ),
     // Soft halo behind the sun (pre-blurred).
     _piece(
-      cx: 0.5, cy: 0.229, wFrac: 0.90,
-      aspect: 1062 / 1065, begin: 0.06, end: 0.42,
+      cx: 0.5,
+      cy: 0.229,
+      wFrac: 0.90,
+      aspect: 1062 / 1065,
+      begin: 0.06,
+      end: 0.42,
       child: _img('result_sun_glow.png'),
     ),
     // Compass rose emblem (win-specific, distinct from the lose golden sun).
     _piece(
-      cx: 0.5, cy: 0.229, wFrac: 0.496,
-      aspect: 582 / 585, begin: 0.16, end: 0.5,
+      cx: 0.5,
+      cy: 0.229,
+      wFrac: 0.496,
+      aspect: 582 / 585,
+      begin: 0.16,
+      end: 0.5,
       child: _img('result_win_sun.png'),
     ),
     // Soft halo behind the banner (pre-blurred).
     _piece(
-      cx: 0.5, cy: 0.3975, wFrac: 1.0,
-      aspect: 729 / 1179, begin: 0.28, end: 0.56,
+      cx: 0.5,
+      cy: 0.3975,
+      wFrac: 1.0,
+      aspect: 729 / 1179,
+      begin: 0.28,
+      end: 0.56,
       child: _img('result_win_banner_glow.png'),
     ),
     _piece(
-      cx: 0.5, cy: 0.3975, wFrac: 0.812,
-      aspect: 369 / 957, begin: 0.32, end: 0.58,
+      cx: 0.5,
+      cy: 0.3975,
+      wFrac: 0.812,
+      aspect: 369 / 957,
+      begin: 0.32,
+      end: 0.58,
       child: _img('result_win_banner.png'),
     ),
     // 胜利 title centred on the ribbon band, sized to sit within its edges.
     _piece(
-      cx: 0.5, cy: 0.3678, wFrac: 0.24,
-      aspect: 161 / 291, begin: 0.44, end: 0.68,
+      cx: 0.5,
+      cy: 0.3678,
+      wFrac: 0.24,
+      aspect: 161 / 291,
+      begin: 0.44,
+      end: 0.68,
       child: _img('result_win_title.png'),
     ),
     _piece(
-      cx: 0.5, cy: 0.641, wFrac: 0.361,
-      aspect: 153 / 426, begin: 0.56, end: 0.76,
+      cx: 0.5,
+      cy: 0.641,
+      wFrac: 0.361,
+      aspect: 153 / 426,
+      begin: 0.56,
+      end: 0.76,
       child: _scorePlate(),
     ),
     _piece(
-      cx: 0.277, cy: 0.796, wFrac: 0.412,
-      aspect: 177 / 486, begin: 0.66, end: 0.88,
+      cx: 0.277,
+      cy: 0.796,
+      wFrac: 0.412,
+      aspect: 177 / 486,
+      begin: 0.66,
+      end: 0.88,
       child: _exitButton(),
     ),
     _piece(
-      cx: 0.725, cy: 0.796, wFrac: 0.412,
-      aspect: 180 / 486, begin: 0.72, end: 0.94,
+      cx: 0.725,
+      cy: 0.796,
+      wFrac: 0.412,
+      aspect: 180 / 486,
+      begin: 0.72,
+      end: 0.94,
       child: _againButton(),
     ),
   ];
@@ -1463,39 +1507,68 @@ class _ChessResultScreenState extends State<_ChessResultScreen>
   // (centred on the ribbon band) → 积分 → buttons. No glow on the lose screen.
   List<Widget> _losePieces() => [
     _piece(
-      cx: 0.5, cy: 0.361, wFrac: 0.695,
-      aspect: 837 / 819, begin: 0.1, end: 0.44, drop: true,
+      cx: 0.5,
+      cy: 0.361,
+      wFrac: 0.695,
+      aspect: 837 / 819,
+      begin: 0.1,
+      end: 0.44,
+      drop: true,
       child: _img('result_shield.png'),
     ),
     _piece(
-      cx: 0.5, cy: 0.208, wFrac: 0.57,
-      aspect: 669 / 672, begin: 0.16, end: 0.5,
+      cx: 0.5,
+      cy: 0.208,
+      wFrac: 0.57,
+      aspect: 669 / 672,
+      begin: 0.16,
+      end: 0.5,
       child: _img('result_sun.png'),
     ),
     _piece(
-      cx: 0.5, cy: 0.37, wFrac: 0.84,
-      aspect: 240 / 990, begin: 0.32, end: 0.58,
+      cx: 0.5,
+      cy: 0.37,
+      wFrac: 0.84,
+      aspect: 240 / 990,
+      begin: 0.32,
+      end: 0.58,
       child: _img('result_banner.png'),
     ),
     // 失败 title centred on the ribbon band, sized to sit within its edges.
     _piece(
-      cx: 0.5, cy: 0.3575, wFrac: 0.21,
-      aspect: 160 / 300, begin: 0.44, end: 0.68,
+      cx: 0.5,
+      cy: 0.3575,
+      wFrac: 0.21,
+      aspect: 160 / 300,
+      begin: 0.44,
+      end: 0.68,
       child: _img('result_lose_title.png'),
     ),
     _piece(
-      cx: 0.5, cy: 0.641, wFrac: 0.361,
-      aspect: 153 / 426, begin: 0.56, end: 0.76,
+      cx: 0.5,
+      cy: 0.641,
+      wFrac: 0.361,
+      aspect: 153 / 426,
+      begin: 0.56,
+      end: 0.76,
       child: _scorePlate(),
     ),
     _piece(
-      cx: 0.277, cy: 0.796, wFrac: 0.412,
-      aspect: 177 / 486, begin: 0.66, end: 0.88,
+      cx: 0.277,
+      cy: 0.796,
+      wFrac: 0.412,
+      aspect: 177 / 486,
+      begin: 0.66,
+      end: 0.88,
       child: _exitButton(),
     ),
     _piece(
-      cx: 0.725, cy: 0.796, wFrac: 0.412,
-      aspect: 180 / 486, begin: 0.72, end: 0.94,
+      cx: 0.725,
+      cy: 0.796,
+      wFrac: 0.412,
+      aspect: 180 / 486,
+      begin: 0.72,
+      end: 0.94,
       child: _againButton(),
     ),
   ];

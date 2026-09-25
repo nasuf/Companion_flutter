@@ -117,8 +117,11 @@ class _NativeGameRuntime {
   /// Pads the AI's turn so it takes a random wall-clock time in
   /// [aiMinResponseMs, aiMaxResponseMs] since [since] started, making an
   /// instant engine reply feel human. No-op when the engine already thought
-  /// for longer than the drawn target.
+  /// for longer than the drawn target. While the round is suspended the wait
+  /// holds, so the piece is not placed under the floating screenshot.
   Future<void> paceAiMove(Stopwatch since) async {
+    await _waitUntilRoundPresented();
+    if (_disposed) return;
     final lo = aiMinResponseMs;
     final hi = math.max(lo, aiMaxResponseMs);
     final target = hi > lo ? lo + _pacingRng.nextInt(hi - lo + 1) : lo;
@@ -126,6 +129,37 @@ class _NativeGameRuntime {
     if (remaining > 0) {
       await Future<void>.delayed(Duration(milliseconds: remaining));
     }
+    await _waitUntilRoundPresented();
+  }
+
+  Completer<void>? _presentWait;
+  VoidCallback? _presentListener;
+
+  Future<void> _waitUntilRoundPresented() {
+    if (_disposed || gameSuspendController.isPresented(gameKey)) {
+      return Future<void>.value();
+    }
+    final pending = _presentWait;
+    if (pending != null) return pending.future;
+    final done = Completer<void>();
+    _presentWait = done;
+    void listener() {
+      if (!_disposed && !gameSuspendController.isPresented(gameKey)) return;
+      _finishPresentWait();
+    }
+
+    _presentListener = listener;
+    gameSuspendController.addListener(listener);
+    return done.future;
+  }
+
+  void _finishPresentWait() {
+    final listener = _presentListener;
+    _presentListener = null;
+    if (listener != null) gameSuspendController.removeListener(listener);
+    final done = _presentWait;
+    _presentWait = null;
+    if (done != null && !done.isCompleted) done.complete();
   }
 
   Future<void> initialize() async {
@@ -709,6 +743,7 @@ class _NativeGameRuntime {
 
   void dispose() {
     _disposed = true;
+    _finishPresentWait();
     _turnTimer?.cancel();
     _turnTimer = null;
   }

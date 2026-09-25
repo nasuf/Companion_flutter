@@ -255,7 +255,7 @@ class _GoGamePageState extends State<_GoGamePage> {
         starting: _runtime.starting,
         error: _runtime.error,
         onStart: _start,
-        onExit: () => Navigator.of(context).maybePop(),
+        onExit: () => leaveNativeGame(context),
       );
     } else if (_result != null) {
       // Full-screen result replaces the game (board / avatars / dial are torn
@@ -314,11 +314,14 @@ class _GoGamePageState extends State<_GoGamePage> {
         ),
       );
     }
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 320),
-      switchInCurve: Curves.easeOut,
-      switchOutCurve: Curves.easeIn,
-      child: child,
+    return GameSuspendForfeitBinding(
+      onForfeit: _forfeit,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 320),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: child,
+      ),
     );
   }
 }

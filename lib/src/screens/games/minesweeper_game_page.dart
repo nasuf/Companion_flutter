@@ -349,7 +349,7 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
           starting: _runtime.starting,
           error: _runtime.error,
           onStart: _start,
-          onExit: () => Navigator.of(context).maybePop(),
+          onExit: () => leaveNativeGame(context),
         ),
       );
     } else if (_result != null) {
@@ -372,7 +372,8 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
           !_runtime.aiThinking &&
           !_resolving &&
           // The pause / exit sheet or rules popup is up: hold the idle nudge.
-          !_paused;
+          !_paused &&
+          GameLiveScope.isLive(context);
       child = PopScope(
         key: const ValueKey('mine-game'),
         canPop: false,
@@ -415,11 +416,14 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
         ),
       );
     }
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 320),
-      switchInCurve: Curves.easeOut,
-      switchOutCurve: Curves.easeIn,
-      child: child,
+    return GameSuspendForfeitBinding(
+      onForfeit: _forfeit,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 320),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: child,
+      ),
     );
   }
 

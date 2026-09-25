@@ -279,7 +279,7 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
           starting: _runtime.starting,
           error: _runtime.error,
           onStart: _start,
-          onExit: () => Navigator.of(context).maybePop(),
+          onExit: () => leaveNativeGame(context),
         ),
       );
     } else if (_checkersResult != null) {
@@ -337,11 +337,14 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
         ),
       );
     }
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 320),
-      switchInCurve: Curves.easeOut,
-      switchOutCurve: Curves.easeIn,
-      child: child,
+    return GameSuspendForfeitBinding(
+      onForfeit: _forfeit,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 320),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: child,
+      ),
     );
   }
 }
@@ -555,10 +558,22 @@ class _Match3GamePageState extends State<_Match3GamePage> {
     });
   }
 
+  Future<void> _forfeitFromFloat() async {
+    if (_runtime.session != null && !_runtime.completed) {
+      await _runtime.abort(
+        'closed',
+        _engine?.summaryJson() ?? const {},
+        updateUi: false,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final engine = _engine;
-    return _NativeGameExperienceScaffold(
+    return GameSuspendForfeitBinding(
+      onForfeit: _forfeitFromFloat,
+      child: _NativeGameExperienceScaffold(
       runtime: _runtime,
       game: widget.game,
       subtitle: engine == null
@@ -627,6 +642,7 @@ class _Match3GamePageState extends State<_Match3GamePage> {
                 ),
               ],
             ),
+      ),
     );
   }
 }

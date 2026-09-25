@@ -205,6 +205,12 @@ class _NativeFullscreenGameSurfaceState
                               foregroundColor: visual.chromeForeground,
                               borderColor: visual.chromeBorder,
                             ),
+                            const SizedBox(width: 8),
+                            _FullscreenSuspendButton(
+                              backgroundColor: visual.chromeBackground,
+                              foregroundColor: visual.chromeForeground,
+                              borderColor: visual.chromeBorder,
+                            ),
                           ],
                         ),
                       ),
@@ -409,6 +415,49 @@ class _NativeFullscreenToggleButton extends StatelessWidget {
                 size: 22,
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FullscreenSuspendButton extends StatelessWidget {
+  const _FullscreenSuspendButton({
+    required this.backgroundColor,
+    required this.foregroundColor,
+    required this.borderColor,
+  });
+
+  final Color backgroundColor;
+  final Color foregroundColor;
+  final Color borderColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = GameSuspendScope.of(context);
+    if (scope == null) return const SizedBox.shrink();
+    return Semantics(
+      button: true,
+      label: '挂起',
+      child: CupertinoButton(
+        key: ValueKey('game-suspend-button-${scope.entryId}'),
+        padding: EdgeInsets.zero,
+        minimumSize: const Size(38, 38),
+        onPressed: () => scope.controller.requestMinimize(scope.entryId),
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderColor),
+          ),
+          alignment: Alignment.center,
+          child: GameSuspendGlyph(
+            color: foregroundColor,
+            outline: foregroundColor,
+            size: 18,
           ),
         ),
       ),

@@ -336,6 +336,7 @@ class _XiangqiGameScreen extends StatelessWidget {
     final agentTurn = !engine.isFinished && (engine.isAgentTurn || aiThinking);
     final turnToken =
         '${engine.moveCount}:${engine.isAgentTurn ? 'agent' : 'user'}';
+    final clockPaused = gameClockPaused(context, manualPaused: timerPaused);
     return Scaffold(
       backgroundColor: const Color(0xFFDCE7F5),
       body: LayoutBuilder(
@@ -405,7 +406,7 @@ class _XiangqiGameScreen extends StatelessWidget {
                 child: _XiangqiTurnTimer(
                   token: turnToken,
                   paused:
-                      timerPaused ||
+                      clockPaused ||
                       aiThinking ||
                       engine.isAgentTurn ||
                       engine.isFinished,
@@ -755,6 +756,7 @@ class _XiangqiTurnTimerState extends State<_XiangqiTurnTimer> {
     _remaining = widget.timeout.inSeconds;
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || widget.paused || _remaining <= 0) return;
+      if (!GameLiveScope.peek(context)) return;
       setState(() => _remaining -= 1);
       if (_remaining == 0 && !_timedOut) {
         _timedOut = true;
@@ -1161,33 +1163,64 @@ class _XiangqiResultScreenState extends State<_XiangqiResultScreen>
   List<Widget> _winPieces(double w, double h) => [
     // Blurred confetti/light burst behind the sun.
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.30, wFrac: 0.9,
-      aspect: 1590 / 1179, begin: 0.06, end: 0.42,
+      screenW: w,
+      screenH: h,
+      cx: 0.5,
+      cy: 0.30,
+      wFrac: 0.9,
+      aspect: 1590 / 1179,
+      begin: 0.06,
+      end: 0.42,
       child: _img('result_win_glow.png'),
     ),
     // Sun + red ribbon emblem, at (near) its CSS size, centred (the +15px
     // right offset was what clipped the right tassel; size was fine).
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.333, wFrac: 1.0,
-      aspect: 930 / 1179, begin: 0.12, end: 0.46, drop: true,
+      screenW: w,
+      screenH: h,
+      cx: 0.5,
+      cy: 0.333,
+      wFrac: 1.0,
+      aspect: 930 / 1179,
+      begin: 0.12,
+      end: 0.46,
+      drop: true,
       child: _img('result_win_emblem.png'),
     ),
     // "胜利" centred on the ribbon.
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.365, wFrac: 0.34,
-      aspect: 234 / 408, begin: 0.34, end: 0.6,
+      screenW: w,
+      screenH: h,
+      cx: 0.5,
+      cy: 0.365,
+      wFrac: 0.34,
+      aspect: 234 / 408,
+      begin: 0.34,
+      end: 0.6,
       child: _img('result_win_title.png'),
     ),
     // 积分 plate (155x51 @ 119,523).
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.644, wFrac: 0.394,
-      aspect: 153 / 465, begin: 0.5, end: 0.72,
+      screenW: w,
+      screenH: h,
+      cx: 0.5,
+      cy: 0.644,
+      wFrac: 0.394,
+      aspect: 153 / 465,
+      begin: 0.5,
+      end: 0.72,
       child: _scorePlate('result_score_plate_win.png'),
     ),
     // 退出 (151x49 @ 28,659) / 重开一局 (153x49 @ 212,658).
     _piece(
-      screenW: w, screenH: h, cx: 0.263, cy: 0.803, wFrac: 0.384,
-      aspect: 147 / 453, begin: 0.62, end: 0.86,
+      screenW: w,
+      screenH: h,
+      cx: 0.263,
+      cy: 0.803,
+      wFrac: 0.384,
+      aspect: 147 / 453,
+      begin: 0.62,
+      end: 0.86,
       child: _button(
         base: 'result_btn_exit_win.png',
         text: 'result_txt_exit.png',
@@ -1195,8 +1228,14 @@ class _XiangqiResultScreenState extends State<_XiangqiResultScreen>
       ),
     ),
     _piece(
-      screenW: w, screenH: h, cx: 0.734, cy: 0.801, wFrac: 0.389,
-      aspect: 147 / 459, begin: 0.68, end: 0.92,
+      screenW: w,
+      screenH: h,
+      cx: 0.734,
+      cy: 0.801,
+      wFrac: 0.389,
+      aspect: 147 / 459,
+      begin: 0.68,
+      end: 0.92,
       child: _button(
         base: 'result_btn_again_win.png',
         text: 'result_txt_again.png',
@@ -1209,33 +1248,64 @@ class _XiangqiResultScreenState extends State<_XiangqiResultScreen>
   List<Widget> _losePieces(double w, double h) => [
     // Lotus mandala emblem (213x181 @ 100,155).
     _piece(
-      screenW: w, screenH: h, cx: 0.525, cy: 0.288, wFrac: 0.542,
-      aspect: 543 / 639, begin: 0.12, end: 0.46, drop: true,
+      screenW: w,
+      screenH: h,
+      cx: 0.525,
+      cy: 0.288,
+      wFrac: 0.542,
+      aspect: 543 / 639,
+      begin: 0.12,
+      end: 0.46,
+      drop: true,
       child: _img('result_lose_emblem.png'),
     ),
     // Red ribbon (382x122 @ 6,265), over the emblem's lower half.
     _piece(
-      screenW: w, screenH: h, cx: 0.501, cy: 0.383, wFrac: 0.972,
-      aspect: 366 / 1146, begin: 0.3, end: 0.56,
+      screenW: w,
+      screenH: h,
+      cx: 0.501,
+      cy: 0.383,
+      wFrac: 0.972,
+      aspect: 366 / 1146,
+      begin: 0.3,
+      end: 0.56,
       child: _img('result_lose_ribbon.png'),
     ),
     // "失败" centred on the red band. The glyph fill sits at 0.433 of the PNG
     // (shadow pads the bottom), so cy 0.363 lands it on the band centre (~0.357).
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.363, wFrac: 0.34,
-      aspect: 233 / 418, begin: 0.44, end: 0.66,
+      screenW: w,
+      screenH: h,
+      cx: 0.5,
+      cy: 0.363,
+      wFrac: 0.34,
+      aspect: 233 / 418,
+      begin: 0.44,
+      end: 0.66,
       child: _img('result_lose_title.png'),
     ),
     // 积分 plate (155x51 @ 119,516).
     _piece(
-      screenW: w, screenH: h, cx: 0.5, cy: 0.636, wFrac: 0.394,
-      aspect: 153 / 465, begin: 0.56, end: 0.76,
+      screenW: w,
+      screenH: h,
+      cx: 0.5,
+      cy: 0.636,
+      wFrac: 0.394,
+      aspect: 153 / 465,
+      begin: 0.56,
+      end: 0.76,
       child: _scorePlate('result_score_plate_lose.png'),
     ),
     // 退出 (151x49 @ 28,652) / 重开一局 (153x49 @ 212,651).
     _piece(
-      screenW: w, screenH: h, cx: 0.263, cy: 0.794, wFrac: 0.384,
-      aspect: 147 / 453, begin: 0.66, end: 0.88,
+      screenW: w,
+      screenH: h,
+      cx: 0.263,
+      cy: 0.794,
+      wFrac: 0.384,
+      aspect: 147 / 453,
+      begin: 0.66,
+      end: 0.88,
       child: _button(
         base: 'result_btn_exit_lose.png',
         text: 'result_txt_exit.png',
@@ -1243,8 +1313,14 @@ class _XiangqiResultScreenState extends State<_XiangqiResultScreen>
       ),
     ),
     _piece(
-      screenW: w, screenH: h, cx: 0.734, cy: 0.793, wFrac: 0.389,
-      aspect: 147 / 459, begin: 0.72, end: 0.94,
+      screenW: w,
+      screenH: h,
+      cx: 0.734,
+      cy: 0.793,
+      wFrac: 0.389,
+      aspect: 147 / 459,
+      begin: 0.72,
+      end: 0.94,
       child: _button(
         base: 'result_btn_again_lose.png',
         text: 'result_txt_again.png',

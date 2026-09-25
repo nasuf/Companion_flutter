@@ -73,6 +73,7 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
         !starting &&
         engine.status == GomokuGameStatus.playing;
     final boardEnabled = userTurn;
+    final clockPaused = gameClockPaused(context, manualPaused: _paused);
 
     return Scaffold(
       backgroundColor: const Color(0xFFE7C9A6),
@@ -108,7 +109,7 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
                   fallback: agentName,
                   diameter: avatarD,
                   active: aiThinking,
-                  paused: _paused,
+                  paused: clockPaused,
                 ),
               ),
               _centered(
@@ -122,7 +123,7 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
                   fallback: '你',
                   diameter: avatarD,
                   active: userTurn,
-                  paused: _paused,
+                  paused: clockPaused,
                   onTimeout: _handleUserIdleTimeout,
                 ),
               ),
@@ -326,11 +327,7 @@ class _GomokuGameScreenState extends State<_GomokuGameScreen> {
     await _showGameRulesDialog(
       context,
       gameName: '五子棋',
-      rules: const [
-        '1、黑白双方交替落子',
-        '2、率先横向 / 竖向 / 斜向连成五子直接获胜',
-        '3、棋盘布满无五子则平局',
-      ],
+      rules: const ['1、黑白双方交替落子', '2、率先横向 / 竖向 / 斜向连成五子直接获胜', '3、棋盘布满无五子则平局'],
     );
     if (mounted) setState(() => _paused = false);
   }
@@ -453,7 +450,6 @@ class _GomokuModalCard extends StatelessWidget {
     );
   }
 }
-
 
 /// Circular avatar framed by a coin-ring asset — golden normally, swapped to
 /// the silver-white ring while it is this player's turn. Shows a 30s countdown

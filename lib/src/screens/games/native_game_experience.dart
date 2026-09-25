@@ -111,7 +111,7 @@ class _NativeGameExperienceScaffoldState
                       CupertinoButton(
                         padding: EdgeInsets.zero,
                         minimumSize: const Size(38, 38),
-                        onPressed: () => Navigator.maybePop(context),
+                        onPressed: () => leaveNativeGame(context),
                         child: _GlassButton(
                           size: 38,
                           child: const Icon(

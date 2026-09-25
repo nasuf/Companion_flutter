@@ -377,6 +377,8 @@ class _NativeGameOverlayState extends State<_NativeGameOverlay> {
   Timer? _countdown;
   int _seconds = 10;
   bool _closing = false;
+  DateTime _lastTickAt = DateTime.now();
+  Duration _suspended = Duration.zero;
 
   @override
   void initState() {
@@ -392,8 +394,14 @@ class _NativeGameOverlayState extends State<_NativeGameOverlay> {
   }
 
   void _tick() {
-    final started = widget.presentedAt ?? DateTime.now();
-    final remaining = 10 - DateTime.now().difference(started).inSeconds;
+    final now = DateTime.now();
+    if (!GameLiveScope.peek(context)) {
+      _suspended += now.difference(_lastTickAt);
+    }
+    _lastTickAt = now;
+    final started = widget.presentedAt ?? now;
+    final elapsed = now.difference(started) - _suspended;
+    final remaining = 10 - elapsed.inSeconds;
     if (remaining <= 0) {
       _countdown?.cancel();
       unawaited(_close());
@@ -691,10 +699,18 @@ class _NativeGamePointsBadge extends StatelessWidget {
     return Positioned(
       top: MediaQuery.paddingOf(context).top + 2,
       right: 14,
-      child: _HubCoinBar(
-        scale: 1,
-        balance: points,
-        onPlus: () => _showNativeGamePointsInfo(context),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _HubCoinBar(
+            scale: 1,
+            balance: points,
+            onPlus: () => _showNativeGamePointsInfo(context),
+          ),
+          const SizedBox(width: 6),
+          const GameSuspendButton(),
+        ],
       ),
     );
   }
@@ -705,9 +721,7 @@ void _showNativeGamePointsInfo(BuildContext context) {
     context: context,
     builder: (dialogContext) => CupertinoAlertDialog(
       title: const Text('游戏积分'),
-      content: const Text(
-        '每天会自动赠送一份游戏积分，玩过的对局也会累计成陪玩等级。',
-      ),
+      content: const Text('每天会自动赠送一份游戏积分，玩过的对局也会累计成陪玩等级。'),
       actions: [
         CupertinoDialogAction(
           onPressed: () => Navigator.of(dialogContext).pop(),

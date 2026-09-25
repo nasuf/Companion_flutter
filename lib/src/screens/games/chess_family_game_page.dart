@@ -365,7 +365,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
             starting: _runtime.starting,
             error: _runtime.error,
             onStart: _startGame,
-            onExit: () => Navigator.of(context).maybePop(),
+            onExit: () => leaveNativeGame(context),
           ),
         );
       } else if (_chessResult != null) {
@@ -427,11 +427,14 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
           ),
         );
       }
-      return AnimatedSwitcher(
-        duration: const Duration(milliseconds: 320),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
-        child: chessChild,
+      return GameSuspendForfeitBinding(
+        onForfeit: _forfeitChess,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 320),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          child: chessChild,
+        ),
       );
     }
     if (widget.kind == ChessFamilyKind.xiangqi) {
@@ -459,7 +462,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
             starting: _runtime.starting,
             error: _runtime.error,
             onStart: _startGame,
-            onExit: () => Navigator.of(context).maybePop(),
+            onExit: () => leaveNativeGame(context),
           ),
         );
       } else if (_xiangqiResult != null) {
@@ -525,11 +528,14 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
           ),
         );
       }
-      return AnimatedSwitcher(
-        duration: const Duration(milliseconds: 320),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
-        child: xiangqiChild,
+      return GameSuspendForfeitBinding(
+        onForfeit: _forfeitXiangqi,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 320),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          child: xiangqiChild,
+        ),
       );
     }
     final compact = Scaffold(
@@ -591,7 +597,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
           CupertinoButton(
             padding: EdgeInsets.zero,
             minimumSize: const Size(38, 38),
-            onPressed: () => Navigator.maybePop(context),
+            onPressed: () => leaveNativeGame(context),
             child: _GlassButton(
               size: 38,
               child: const Icon(CupertinoIcons.chevron_left, size: 17),

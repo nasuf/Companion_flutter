@@ -215,12 +215,17 @@ class _GamePageState extends State<GamePage>
   Future<void> _openGame(_GameGroup group, _GameTile game) async {
     setState(() => _activeGroup = group);
     if (!game.isOnline) return;
-    // Play gate: a user with 0 game points cannot start a new game until the
-    // next day's grant. The server enforces this too (403), this is the UX hint.
-    final wallet = _gameWallet;
-    if (wallet != null && !wallet.canPlay) {
-      _showNoPointsDialog();
-      return;
+    // A minimized round is still the same session. Reopening it must not be
+    // blocked by the "no points" gate, which only applies to a new round.
+    final alreadyOpen = gameSuspendController.contains(game.nativeGameKey);
+    if (!alreadyOpen) {
+      // Play gate: a user with 0 game points cannot start a new game until the
+      // next day's grant. The server enforces this too (403), this is the UX hint.
+      final wallet = _gameWallet;
+      if (wallet != null && !wallet.canPlay) {
+        _showNoPointsDialog();
+        return;
+      }
     }
     final page = switch (game.nativeGameKey) {
       _nativeReversiGameKey => _ReversiGamePage(
@@ -278,9 +283,12 @@ class _GamePageState extends State<GamePage>
       _ => null,
     };
     if (page == null) return;
-    await Navigator.of(
-      context,
-    ).push(CompanionPageRoute<void>(builder: (_) => page));
+    await gameSuspendController.open(
+      id: game.nativeGameKey,
+      title: game.title,
+      previewAsset: game.image,
+      pageBuilder: (_) => page,
+    );
     if (!mounted) return;
     // Refresh immediately, then once more shortly after: a mid-game quit settles
     // the point deduction via an async abort event, which can land a moment after

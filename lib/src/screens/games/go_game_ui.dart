@@ -259,6 +259,7 @@ class _GoGameScreenState extends State<_GoGameScreen> {
     final userTurn = widget.enabled && !engine.isFinished;
     final agentTurn = !engine.isFinished && (engine.turn == GoActor.agent);
     final token = '${engine.moveCount}:${engine.turn.name}';
+    final clockPaused = gameClockPaused(context, manualPaused: _paused);
     return Scaffold(
       backgroundColor: const Color(0xFF28150E),
       body: LayoutBuilder(
@@ -304,7 +305,7 @@ class _GoGameScreenState extends State<_GoGameScreen> {
                         colorLabel: '黑棋',
                         imageUrl: widget.userAvatarUrl,
                         active: userTurn,
-                        paused: _paused,
+                        paused: clockPaused,
                         clockToken: token,
                         onTimeout: _handleUserIdleTimeout,
                       ),
@@ -319,7 +320,7 @@ class _GoGameScreenState extends State<_GoGameScreen> {
                         colorLabel: '白棋',
                         imageUrl: widget.agentAvatarUrl,
                         active: agentTurn,
-                        paused: _paused || widget.aiThinking,
+                        paused: clockPaused || widget.aiThinking,
                         clockToken: token,
                       ),
                     ),
@@ -840,10 +841,7 @@ class _GoOutlinedText extends StatelessWidget {
 }
 
 class _GoModalButton extends StatelessWidget {
-  const _GoModalButton({
-    required this.label,
-    required this.onTap,
-  });
+  const _GoModalButton({required this.label, required this.onTap});
 
   final String label;
   final VoidCallback onTap;
@@ -1118,14 +1116,8 @@ class _GoResultScreenState extends State<_GoResultScreen>
     ],
   );
 
-  Widget _button({
-    required String text,
-    required VoidCallback onTap,
-  }) => _GoResultButton(
-    base: 'result_btn_exit.png',
-    text: text,
-    onTap: onTap,
-  );
+  Widget _button({required String text, required VoidCallback onTap}) =>
+      _GoResultButton(base: 'result_btn_exit.png', text: text, onTap: onTap);
 
   @override
   Widget build(BuildContext context) {
@@ -1167,51 +1159,87 @@ class _GoResultScreenState extends State<_GoResultScreen>
   List<Widget> _winPieces() => [
     // Soft light halo behind the scroll (Rectangle 45, 232x334 @ 81,122).
     _piece(
-      cx: 0.501, cy: 0.339, wFrac: 0.52,
-      aspect: 318 / 200, begin: 0.02, end: 0.36,
+      cx: 0.501,
+      cy: 0.339,
+      wFrac: 0.52,
+      aspect: 318 / 200,
+      begin: 0.02,
+      end: 0.36,
       child: _glow(),
     ),
     // Blank parchment scroll (200x318 @ 97,130), drops in — drawn first so the
     // sun emblem sits ON it (the scroll is opaque).
     _piece(
-      cx: 0.501, cy: 0.339, wFrac: 0.509,
-      aspect: 954 / 600, begin: 0.12, end: 0.46, drop: true,
+      cx: 0.501,
+      cy: 0.339,
+      wFrac: 0.509,
+      aspect: 954 / 600,
+      begin: 0.12,
+      end: 0.46,
+      drop: true,
       child: _img('result_win_scroll.png'),
     ),
     // Sun / compass emblem (158x160 @ 118,174), centred in the scroll's upper
     // half.
     _piece(
-      cx: 0.501, cy: 0.298, wFrac: 0.402,
-      aspect: 480 / 474, begin: 0.18, end: 0.5,
+      cx: 0.501,
+      cy: 0.298,
+      wFrac: 0.402,
+      aspect: 480 / 474,
+      begin: 0.18,
+      end: 0.5,
       child: _img('result_win_burst.png'),
     ),
     // Red banner (346x76 @ 24,334), over the scroll's lower half.
     _piece(
-      cx: 0.501, cy: 0.437, wFrac: 0.880,
-      aspect: 228 / 1038, begin: 0.32, end: 0.56,
+      cx: 0.501,
+      cy: 0.437,
+      wFrac: 0.880,
+      aspect: 228 / 1038,
+      begin: 0.32,
+      end: 0.56,
       child: _img('result_win_banner.png'),
     ),
     // "胜利" centred on the banner band.
     _piece(
-      cx: 0.5, cy: 0.434, wFrac: 0.30,
-      aspect: 204 / 378, begin: 0.44, end: 0.66,
+      cx: 0.5,
+      cy: 0.434,
+      wFrac: 0.30,
+      aspect: 204 / 378,
+      begin: 0.44,
+      end: 0.66,
       child: _img('result_win_title.png'),
     ),
     // 积分 plate (144x50 @ 125,560).
     _piece(
-      cx: 0.501, cy: 0.687, wFrac: 0.366,
-      aspect: 150 / 432, begin: 0.56, end: 0.76,
+      cx: 0.501,
+      cy: 0.687,
+      wFrac: 0.366,
+      aspect: 150 / 432,
+      begin: 0.56,
+      end: 0.76,
       child: _scorePlate(),
     ),
     // 退出 (170x51 @ 23,664) / 重来一局 (172x50 @ 198,665).
     _piece(
-      cx: 0.275, cy: 0.809, wFrac: 0.4326,
-      aspect: 153 / 510, begin: 0.66, end: 0.88,
-      child: _button(text: 'result_txt_exit.png', onTap: () => unawaited(widget.onExit())),
+      cx: 0.275,
+      cy: 0.809,
+      wFrac: 0.4326,
+      aspect: 153 / 510,
+      begin: 0.66,
+      end: 0.88,
+      child: _button(
+        text: 'result_txt_exit.png',
+        onTap: () => unawaited(widget.onExit()),
+      ),
     ),
     _piece(
-      cx: 0.7226, cy: 0.810, wFrac: 0.4377,
-      aspect: 150 / 516, begin: 0.72, end: 0.94,
+      cx: 0.7226,
+      cy: 0.810,
+      wFrac: 0.4377,
+      aspect: 150 / 516,
+      begin: 0.72,
+      end: 0.94,
       child: _GoResultButton(
         base: 'result_btn_again.png',
         text: 'result_txt_again.png',
@@ -1226,43 +1254,75 @@ class _GoResultScreenState extends State<_GoResultScreen>
   List<Widget> _losePieces() => [
     // Dark plate (354x109 @ 20,257) — BACK layer.
     _piece(
-      cx: 0.501, cy: 0.3656, wFrac: 0.9008,
-      aspect: 327 / 1062, begin: 0.24, end: 0.5,
+      cx: 0.501,
+      cy: 0.3656,
+      wFrac: 0.9008,
+      aspect: 327 / 1062,
+      begin: 0.24,
+      end: 0.5,
       child: _img('result_lose_banner_back.png'),
     ),
     // Sun ring emblem (213x213 @ 90,130), drops in, covering the plate's top.
     _piece(
-      cx: 0.5, cy: 0.2776, wFrac: 0.542,
-      aspect: 639 / 639, begin: 0.12, end: 0.46, drop: true,
+      cx: 0.5,
+      cy: 0.2776,
+      wFrac: 0.542,
+      aspect: 639 / 639,
+      begin: 0.12,
+      end: 0.46,
+      drop: true,
       child: _img('result_lose_emblem.png'),
     ),
     // Front red ribbon (358x91 @ 18,291), crossing over the sun's lower third.
     _piece(
-      cx: 0.501, cy: 0.395, wFrac: 0.911,
-      aspect: 273 / 1074, begin: 0.34, end: 0.58,
+      cx: 0.501,
+      cy: 0.395,
+      wFrac: 0.911,
+      aspect: 273 / 1074,
+      begin: 0.34,
+      end: 0.58,
       child: _img('result_lose_banner.png'),
     ),
     // "失败" centred on the ribbon band.
     _piece(
-      cx: 0.5, cy: 0.398, wFrac: 0.30,
-      aspect: 203 / 388, begin: 0.46, end: 0.68,
+      cx: 0.5,
+      cy: 0.398,
+      wFrac: 0.30,
+      aspect: 203 / 388,
+      begin: 0.46,
+      end: 0.68,
       child: _img('result_lose_title.png'),
     ),
     // 积分 plate (144x50 @ 125,562).
     _piece(
-      cx: 0.501, cy: 0.689, wFrac: 0.366,
-      aspect: 150 / 432, begin: 0.56, end: 0.76,
+      cx: 0.501,
+      cy: 0.689,
+      wFrac: 0.366,
+      aspect: 150 / 432,
+      begin: 0.56,
+      end: 0.76,
       child: _scorePlate(),
     ),
     // 退出 (170x51 @ 23,666) / 重来一局 (172x50 @ 198,667).
     _piece(
-      cx: 0.275, cy: 0.8117, wFrac: 0.4326,
-      aspect: 153 / 510, begin: 0.66, end: 0.88,
-      child: _button(text: 'result_txt_exit.png', onTap: () => unawaited(widget.onExit())),
+      cx: 0.275,
+      cy: 0.8117,
+      wFrac: 0.4326,
+      aspect: 153 / 510,
+      begin: 0.66,
+      end: 0.88,
+      child: _button(
+        text: 'result_txt_exit.png',
+        onTap: () => unawaited(widget.onExit()),
+      ),
     ),
     _piece(
-      cx: 0.7226, cy: 0.8122, wFrac: 0.4377,
-      aspect: 150 / 516, begin: 0.72, end: 0.94,
+      cx: 0.7226,
+      cy: 0.8122,
+      wFrac: 0.4377,
+      aspect: 150 / 516,
+      begin: 0.72,
+      end: 0.94,
       child: _GoResultButton(
         base: 'result_btn_again.png',
         text: 'result_txt_again.png',

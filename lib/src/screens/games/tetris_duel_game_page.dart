@@ -152,7 +152,9 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
   void _tick() {
     final engine = _engine;
     if (engine == null || engine.isFinished || _finishing) return;
-    if (_paused || _runtime.turnTimeoutVisible) {
+    if (_paused ||
+        _runtime.turnTimeoutVisible ||
+        !GameLiveScope.peek(context)) {
       _lastTickAt = DateTime.now();
       return;
     }
@@ -399,7 +401,8 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
         !engine.isFinished &&
         !_runtime.completed &&
         !_finishing &&
-        !_paused;
+        !_paused &&
+        GameLiveScope.peek(context);
   }
 
   void _setPaused(bool value) {
@@ -541,6 +544,7 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
       });
     }
 
+    final clockLive = GameLiveScope.isLive(context);
     final Widget child;
     if (engine == null) {
       child = KeyedSubtree(
@@ -550,7 +554,7 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
           starting: _runtime.starting,
           error: _runtime.error,
           onStart: _start,
-          onExit: () => Navigator.of(context).maybePop(),
+          onExit: () => leaveNativeGame(context),
         ),
       );
     } else if (_result != null) {
@@ -575,6 +579,7 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
           // `_paused` is set while the pause / exit sheet is up, which also
           // stops the idle-nudge countdown.
           userTurnActive:
+              clockLive &&
               !engine.isFinished &&
               !_runtime.completed &&
               !_finishing &&
@@ -592,7 +597,7 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
             userName: widget.authSession.userFacingName,
             agentAvatarUrl: widget.authSession.agentAvatarUrl,
             userAvatarUrl: widget.authSession.userAvatarUrl,
-            canControl: _canControl,
+            canControl: _canControl && clockLive,
             gamePoints: _runtime.pointsBalance,
             onMove: _move,
             onRotate: _rotate,
@@ -610,11 +615,14 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
         ),
       );
     }
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 320),
-      switchInCurve: Curves.easeOut,
-      switchOutCurve: Curves.easeIn,
-      child: child,
+    return GameSuspendForfeitBinding(
+      onForfeit: _forfeit,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 320),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: child,
+      ),
     );
   }
 }

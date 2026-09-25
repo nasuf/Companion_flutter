@@ -82,6 +82,12 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   void _onSessionChanged(AuthSession session) {
+    final previous = _session;
+    if (previous != null &&
+        (previous.userId != session.userId ||
+            previous.agentId != session.agentId)) {
+      gameSuspendController.closeAll();
+    }
     final api = _api;
     if (api != null) {
       unawaited(_sessionStore.save(baseUrl: api.baseUrl, token: session.token));
@@ -91,6 +97,7 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   void _logout() {
+    gameSuspendController.closeAll();
     final api = _api;
     final session = _session;
     final agentId = session?.agentId;

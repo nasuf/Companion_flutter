@@ -51,6 +51,7 @@ import 'src/games/go_engine.dart';
 import 'src/games/match3_engine.dart';
 import 'src/games/minesweeper_engine.dart';
 import 'src/games/native_game_event_outbox.dart';
+import 'src/games/game_suspend.dart';
 import 'src/games/native_game_record_cache.dart';
 import 'src/games/number_merge_engine.dart';
 import 'src/games/reversi_engine.dart';
@@ -324,7 +325,7 @@ class _CompanionAppState extends State<CompanionApp>
             child: MaterialApp(
               debugShowCheckedModeBanner: false,
               title: '伴生',
-              navigatorObservers: [appRouteObserver],
+              navigatorObservers: [appRouteObserver, gameSuspendBinding],
               localizationsDelegates: const [
                 GlobalMaterialLocalizations.delegate,
                 GlobalCupertinoLocalizations.delegate,
@@ -336,12 +337,15 @@ class _CompanionAppState extends State<CompanionApp>
               themeMode: appThemeController.mode,
               builder: (context, child) {
                 return DisplayRefreshGate(
-                  child: DefaultTextStyle.merge(
-                    style: const TextStyle(
-                      decoration: TextDecoration.none,
-                      decorationColor: Colors.transparent,
+                  child: GameSuspendHost(
+                    controller: gameSuspendController,
+                    child: DefaultTextStyle.merge(
+                      style: const TextStyle(
+                        decoration: TextDecoration.none,
+                        decorationColor: Colors.transparent,
+                      ),
+                      child: child ?? const SizedBox.shrink(),
                     ),
-                    child: child ?? const SizedBox.shrink(),
                   ),
                 );
               },

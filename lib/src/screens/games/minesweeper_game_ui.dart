@@ -623,28 +623,48 @@ class _MineIdleWatcher extends StatefulWidget {
 class _MineIdleWatcherState extends State<_MineIdleWatcher> {
   static const _timeout = Duration(seconds: 45);
   Timer? _timer;
+  DateTime? _deadline;
+  bool _live = true;
 
   @override
-  void initState() {
-    super.initState();
-    _sync();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final live = GameLiveScope.isLive(context);
+    if (live == _live && _timer != null) return;
+    _live = live;
+    _arm();
   }
 
   @override
   void didUpdateWidget(covariant _MineIdleWatcher oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.active != oldWidget.active || widget.token != oldWidget.token) {
-      _sync();
+      _deadline = widget.active ? DateTime.now().add(_timeout) : null;
+      _arm();
     }
   }
 
-  void _sync() {
+  void _arm() {
     _timer?.cancel();
-    if (widget.active) {
-      _timer = Timer(_timeout, () {
-        if (mounted && widget.active) widget.onTimeout();
-      });
+    _timer = null;
+    if (!widget.active) {
+      _deadline = null;
+      return;
     }
+    _deadline ??= DateTime.now().add(_timeout);
+    if (!_live) return;
+    final remaining = _deadline!.difference(DateTime.now());
+    if (remaining <= Duration.zero) {
+      _deadline = null;
+      widget.onTimeout();
+      return;
+    }
+    _timer = Timer(remaining, () {
+      if (!mounted || !widget.active) return;
+      if (!GameLiveScope.peek(context)) return;
+      _deadline = null;
+      widget.onTimeout();
+    });
   }
 
   @override

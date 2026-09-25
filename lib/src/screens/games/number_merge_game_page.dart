@@ -318,67 +318,80 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
         });
       });
     }
+    final Widget body;
     if (engine != null && _result != null) {
-      return _MergeResultScreen(
+      body = _MergeResultScreen(
         kind: _result!,
         pointsDelta: _resultDelta,
         onRestart: _start,
         onExit: _closeGame,
       );
-    }
-    if (engine == null) {
-      return _MergeHome(
+    } else if (engine == null) {
+      body = _MergeHome(
         stats: _runtime.recordStats,
         starting: _runtime.starting,
         error: _runtime.error,
         onStart: _start,
-        onExit: () => Navigator.of(context).maybePop(),
+        onExit: () => leaveNativeGame(context),
+      );
+    } else {
+      final userTurnActive =
+          !engine.isFinished &&
+          engine.turn == NumberMergeActor.user &&
+          !_runtime.aiThinking &&
+          !_resolving &&
+          // The pause / exit sheet is up: the player is right there, so the idle
+          // nudge shouldn't count down behind it.
+          !_paused &&
+          GameLiveScope.isLive(context);
+      body = PopScope(
+        canPop: false,
+        child: _NativeGameInteractionLayer(
+          runtime: _runtime,
+          game: widget.game,
+          onPlayAgain: _start,
+          onCloseGame: _closeGame,
+          userTurnActive: userTurnActive,
+          turnToken:
+              '${_runtime.session?.id}:${engine.moveCount}:${engine.turn.name}',
+          turnTimeout: _nativeGameTurnTimeout(_nativeNumberMergeGameKey),
+          turnLabel: _runtime.aiThinking
+              ? '${_runtime.agentName} 在合并'
+              : _resolving
+              ? '数字移动中'
+              : '轮到你滑动',
+          moveCount: engine.moveCount,
+          showPlayers: false,
+          child: _MergeGameScreen(
+            engine: engine,
+            lastMove: _lastMove,
+            agentName: _runtime.agentName,
+            userName: widget.authSession.userFacingName,
+            agentAvatarUrl: widget.authSession.agentAvatarUrl,
+            userAvatarUrl: widget.authSession.userAvatarUrl,
+            aiThinking: _runtime.aiThinking,
+            starting: _runtime.starting,
+            enabled: userTurnActive,
+            gamePoints: _runtime.pointsBalance,
+            onMove: (direction) => unawaited(_userMove(direction)),
+            onExit: _closeGame,
+            onPauseChanged: _setPaused,
+            onAbandon: _abandonRound,
+          ),
+        ),
       );
     }
-    final userTurnActive =
-        !engine.isFinished &&
-        engine.turn == NumberMergeActor.user &&
-        !_runtime.aiThinking &&
-        !_resolving &&
-        // The pause / exit sheet is up: the player is right there, so the idle
-        // nudge shouldn't count down behind it.
-        !_paused;
-    return PopScope(
-      canPop: false,
-      child: _NativeGameInteractionLayer(
-        runtime: _runtime,
-        game: widget.game,
-        onPlayAgain: _start,
-        onCloseGame: _closeGame,
-        userTurnActive: userTurnActive,
-        turnToken:
-            '${_runtime.session?.id}:${engine.moveCount}:${engine.turn.name}',
-        turnTimeout: _nativeGameTurnTimeout(_nativeNumberMergeGameKey),
-        turnLabel: _runtime.aiThinking
-            ? '${_runtime.agentName} 在合并'
-            : _resolving
-            ? '数字移动中'
-            : '轮到你滑动',
-        moveCount: engine.moveCount,
-        showPlayers: false,
-        child: _MergeGameScreen(
-          engine: engine,
-          lastMove: _lastMove,
-          agentName: _runtime.agentName,
-          userName: widget.authSession.userFacingName,
-          agentAvatarUrl: widget.authSession.agentAvatarUrl,
-          userAvatarUrl: widget.authSession.userAvatarUrl,
-          aiThinking: _runtime.aiThinking,
-          starting: _runtime.starting,
-          enabled: userTurnActive,
-          gamePoints: _runtime.pointsBalance,
-          onMove: (direction) => unawaited(_userMove(direction)),
-          onExit: _closeGame,
-          onPauseChanged: _setPaused,
-          onAbandon: _abandonRound,
-        ),
-      ),
+    return GameSuspendForfeitBinding(
+      onForfeit: _forfeitFromFloat,
+      child: body,
     );
+  }
+
+  Future<void> _forfeitFromFloat() async {
+    if (_engine != null && _result == null && !_runtime.completed) {
+      _abandonRound();
+      await _closeGame();
+    }
   }
 
   /// Quitting or restarting from the pause sheet gives up the board, so the

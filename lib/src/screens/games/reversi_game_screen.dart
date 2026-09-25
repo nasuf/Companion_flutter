@@ -74,6 +74,10 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
         !resolving;
     final agentTurn =
         !engine.isFinished && (engine.turn == ReversiActor.agent || aiThinking);
+    final clockPaused = gameClockPaused(
+      context,
+      manualPaused: widget.timerPaused,
+    );
     return Scaffold(
       backgroundColor: const Color(0xFF85D3EB),
       body: LayoutBuilder(
@@ -106,7 +110,7 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                   fallback: userName,
                   active: userTurn,
                   glowColor: const Color(0xFF49DFFF),
-                  paused: widget.timerPaused,
+                  paused: clockPaused,
                   onTimeout: _handleUserIdleTimeout,
                 ),
               ),
@@ -120,7 +124,7 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
                   fallback: agentName,
                   active: agentTurn,
                   glowColor: const Color(0xFFFFC94D),
-                  paused: widget.timerPaused,
+                  paused: clockPaused,
                 ),
               ),
               // Name plates sit right beside the avatars with a small gap
@@ -304,11 +308,7 @@ class _ReversiGameScreenState extends State<_ReversiGameScreen> {
     await _showGameRulesDialog(
       context,
       gameName: '黑白棋',
-      rules: const [
-        '1、落子需夹住对方棋子，将其翻转为己方颜色',
-        '2、棋盘无子可落则跳过回合',
-        '3、对局结束棋子数量多者获胜',
-      ],
+      rules: const ['1、落子需夹住对方棋子，将其翻转为己方颜色', '2、棋盘无子可落则跳过回合', '3、对局结束棋子数量多者获胜'],
     );
     widget.onTimerPauseChanged(false);
   }
@@ -552,10 +552,7 @@ class _ReversiNamePlate extends StatelessWidget {
 /// Live disc score "user VS agent" on the wooden plate (design 37:200),
 /// replacing the old elapsed-time timer + hourglass.
 class _ReversiScorePlate extends StatelessWidget {
-  const _ReversiScorePlate({
-    required this.userCount,
-    required this.agentCount,
-  });
+  const _ReversiScorePlate({required this.userCount, required this.agentCount});
 
   final int userCount;
   final int agentCount;
