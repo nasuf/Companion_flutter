@@ -3,24 +3,137 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('bar pull progress grows as the float moves away from its edge', () {
-    const width = 400.0;
+  test('bar pull progress grows with horizontal drag away from edge', () {
+    const screen = Size(400, 844);
     expect(
-      barPullProgress(
-        centerX: width - gameFloatBarWidth / 2,
+      barPullProgressFromDrag(
+        pullPx: 0,
+        screen: screen,
         edge: GameFloatEdge.right,
-        screenWidth: width,
       ),
       0,
     );
-    expect(
-      barPullProgress(
-        centerX: width - 62,
-        edge: GameFloatEdge.right,
-        screenWidth: width,
-      ),
-      closeTo(1, 0.05),
+    final thumbWidth = gameFloatThumbSize(screen).width;
+    final maxPull = maxBarPullDistance(
+      screen: screen,
+      edge: GameFloatEdge.right,
+      thumbWidth: thumbWidth,
     );
+    expect(maxPull, greaterThan(0));
+    expect(
+      barPullProgressFromDrag(
+        pullPx: maxPull,
+        screen: screen,
+        edge: GameFloatEdge.right,
+      ),
+      closeTo(1, 0.001),
+    );
+  });
+
+  test('docked bar pull visual stays flush with the screen edge while growing', () {
+    const screen = Size(400, 844);
+    const padding = EdgeInsets.zero;
+    const centerY = 200.0;
+    final docked = computeBarPullVisual(
+      edge: GameFloatEdge.right,
+      centerY: centerY,
+      progress: 0,
+      screen: screen,
+      padding: padding,
+    );
+    expect(docked.rect.right, closeTo(400, 0.001));
+    expect(docked.rect.width, gameFloatBarWidth);
+    expect(docked.flushOuterEdge, isTrue);
+
+    final growing = computeBarPullVisual(
+      edge: GameFloatEdge.right,
+      centerY: centerY,
+      progress: 0.35,
+      screen: screen,
+      padding: padding,
+    );
+    expect(growing.rect.right, closeTo(400, 0.001));
+    expect(growing.rect.width, greaterThan(gameFloatBarWidth));
+
+    final thumbWidth = gameFloatThumbSize(screen).width;
+    final resting = computeBarPullVisual(
+      edge: GameFloatEdge.right,
+      centerY: centerY,
+      progress: 1,
+      screen: screen,
+      padding: padding,
+    );
+    expect(
+      resting.rect.left,
+      thumbLeftForEdge(
+        edge: GameFloatEdge.right,
+        screenWidth: screen.width,
+        thumbWidth: thumbWidth,
+      ),
+    );
+    expect(resting.flushOuterEdge, isFalse);
+  });
+
+  test('dock cluster keeps cards flush with the screen edge while pulling', () {
+    const screen = Size(400, 844);
+    final visual = computeDockClusterVisual(
+      entryIds: ['a', 'b'],
+      edge: GameFloatEdge.right,
+      centerY: 200,
+      progress: 0.45,
+      screen: screen,
+      padding: EdgeInsets.zero,
+    );
+    expect(visual.cards, isNotEmpty);
+    expect(visual.cards.last.rect.right, closeTo(400, 1));
+  });
+
+  test('docked multi-game cluster shows only the thin bar at progress zero', () {
+    const screen = Size(400, 844);
+    final visual = computeDockClusterVisual(
+      entryIds: ['a', 'b'],
+      edge: GameFloatEdge.right,
+      centerY: 200,
+      progress: 0,
+      screen: screen,
+      padding: EdgeInsets.zero,
+    );
+    expect(visual.showBar, isTrue);
+    expect(visual.cards, isEmpty);
+    expect(visual.barRect.width, gameFloatBarWidth);
+  });
+
+  test('early dock pull clips cards to the visible strip width', () {
+    const screen = Size(400, 844);
+    final visual = computeDockClusterVisual(
+      entryIds: ['a', 'b'],
+      edge: GameFloatEdge.right,
+      centerY: 200,
+      progress: 0.08,
+      screen: screen,
+      padding: EdgeInsets.zero,
+    );
+    expect(visual.cards, isNotEmpty);
+    for (final card in visual.cards) {
+      expect(card.rect.width, lessThan(gameFloatThumbWidth));
+    }
+  });
+
+  test('canMinimize stops after three games are already suspended', () {
+    final controller = GameSuspendController();
+    for (final id in ['a', 'b', 'c', 'd']) {
+      controller.open(
+        id: id,
+        title: id,
+        previewAsset: '',
+        pageBuilder: (_) => const SizedBox.shrink(),
+      );
+      controller.setPhase(id, GameFloatPhase.bar);
+    }
+    controller.setPhase('d', GameFloatPhase.expanded);
+    expect(controller.suspendedCount, gameFloatMaxSuspended);
+    expect(controller.canMinimize('d'), isFalse);
+    controller.closeAll();
   });
 
   test('thumbnail snaps to the nearer horizontal edge', () {
@@ -115,13 +228,13 @@ void main() {
       final controller = GameSuspendController();
       await _pumpHost(tester, controller);
 
-      await tester.tap(find.text('open'));
+      await tester.tap(find.text('open-gomoku'));
       await tester.pump();
-      expect(find.text('round-1'), findsOneWidget);
+      expect(find.text('round-1-gomoku'), findsOneWidget);
 
       await tester.tap(find.text('score'));
       await tester.pump();
-      expect(find.text('round-2'), findsOneWidget);
+      expect(find.text('round-2-gomoku'), findsOneWidget);
 
       await tester.tap(
         find.byKey(const ValueKey('game-suspend-button-gomoku')),
@@ -130,7 +243,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 900));
       await tester.pumpAndSettle();
 
-      expect(find.text('round-2'), findsNothing);
+      expect(find.text('round-2-gomoku'), findsNothing);
       final preview = controller.find('gomoku')?.preview;
       expect(preview, isNotNull);
       final shot = preview!;
@@ -153,7 +266,7 @@ void main() {
         }
       }
       expect(foundMarker, isTrue);
-      final bar = find.byKey(const ValueKey('game-float-bar-gomoku'));
+      final bar = find.byKey(const ValueKey('game-float-dock-bar'));
       expect(bar, findsOneWidget);
       final width = tester.getSize(find.byType(GameSuspendHost)).width;
       expect(tester.getTopLeft(bar).dx, width - gameFloatBarWidth);
@@ -161,14 +274,16 @@ void main() {
       await tester.tap(bar);
       await tester.pumpAndSettle();
       expect(
-        find.byKey(const ValueKey('game-float-thumb-gomoku')),
+        find.byKey(const ValueKey('game-float-dock-card-gomoku')),
         findsOneWidget,
       );
 
-      await tester.tap(find.byKey(const ValueKey('game-float-thumb-gomoku')));
+      await tester.tap(
+        find.byKey(const ValueKey('game-float-dock-card-gomoku')),
+      );
       await tester.pump();
       await tester.pumpAndSettle();
-      expect(find.text('round-2'), findsOneWidget);
+      expect(find.text('round-2-gomoku'), findsOneWidget);
       controller.closeAll();
       await tester.pumpAndSettle();
     },
@@ -180,7 +295,7 @@ void main() {
     final controller = GameSuspendController();
     await _pumpHost(tester, controller);
 
-    await tester.tap(find.text('open'));
+    await tester.tap(find.text('open-gomoku'));
     await tester.pump();
     await tester.tap(
       find.byKey(const ValueKey('game-suspend-button-gomoku')),
@@ -189,13 +304,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 900));
     await tester.pumpAndSettle();
 
-    final bar = find.byKey(const ValueKey('game-float-bar-gomoku'));
+    final bar = find.byKey(const ValueKey('game-float-dock-bar'));
     expect(bar, findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('game-float-bar-pull-gomoku')),
-      findsNothing,
-    );
-    final widthBefore = tester.getSize(bar).width;
 
     final topLeft = tester.getTopLeft(bar);
     final gesture = await tester.startGesture(
@@ -205,11 +315,9 @@ void main() {
     await gesture.moveBy(const Offset(-56, 0));
     await tester.pump();
 
-    expect(
-      find.byKey(const ValueKey('game-float-bar-pull-gomoku')),
-      findsNothing,
-    );
-    expect(tester.getSize(bar).width, greaterThan(widthBefore));
+    final card = find.byKey(const ValueKey('game-float-dock-card-gomoku'));
+    expect(card, findsOneWidget);
+    expect(tester.getSize(card).width, greaterThan(gameFloatBarWidth));
 
     await gesture.up();
     await tester.pumpAndSettle();
@@ -223,7 +331,7 @@ void main() {
     final controller = GameSuspendController();
     await _pumpHost(tester, controller);
 
-    await tester.tap(find.text('open'));
+    await tester.tap(find.text('open-gomoku'));
     await tester.pump();
     await tester.tap(
       find.byKey(const ValueKey('game-suspend-button-gomoku')),
@@ -232,14 +340,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 900));
     await tester.pumpAndSettle();
 
-    final bar = find.byKey(const ValueKey('game-float-bar-gomoku'));
+    final bar = find.byKey(const ValueKey('game-float-dock-bar'));
     expect(bar, findsOneWidget);
     await tester.drag(bar, const Offset(-120, 0));
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey('game-float-thumb-gomoku')),
+      find.byKey(const ValueKey('game-float-dock-card-gomoku')),
       findsOneWidget,
     );
+    expect(controller.find('gomoku')!.phase, GameFloatPhase.thumbnail);
 
     controller.closeAll();
     await tester.pumpAndSettle();
@@ -252,7 +361,7 @@ void main() {
     final controller = GameSuspendController();
     await _pumpHost(tester, controller);
 
-    await tester.tap(find.text('open'));
+    await tester.tap(find.text('open-gomoku'));
     await tester.pump();
     await tester.tap(
       find.byKey(const ValueKey('game-suspend-button-gomoku')),
@@ -261,26 +370,162 @@ void main() {
     await tester.pump(const Duration(milliseconds: 900));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('game-float-bar-gomoku')));
+    await tester.tap(find.byKey(const ValueKey('game-float-dock-bar')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('game-float-close')), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('game-float-close')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('game-float-thumb-gomoku')), findsNothing);
-    expect(find.byKey(const ValueKey('game-float-bar-gomoku')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('game-float-dock-card-gomoku')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('game-float-dock-bar')), findsNothing);
     expect(_MarkerState.forfeited, isTrue);
     expect(controller.entries, isEmpty);
   });
 
+  testWidgets('restoring one game collapses other revealed previews', (
+    tester,
+  ) async {
+    final controller = GameSuspendController();
+    await _pumpHost(tester, controller, entryIds: ['gomoku', 'chess']);
+
+    for (final id in ['gomoku', 'chess']) {
+      await tester.tap(find.text('open-$id'));
+      await tester.pump();
+      await tester.tap(find.byKey(ValueKey('game-suspend-button-$id')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 900));
+      await tester.pumpAndSettle();
+    }
+
+    await tester.tap(find.byKey(const ValueKey('game-float-dock-bar')));
+    await tester.pumpAndSettle();
+    expect(controller.find('gomoku')!.phase, GameFloatPhase.thumbnail);
+    expect(controller.find('chess')!.phase, GameFloatPhase.thumbnail);
+
+    await tester.tap(find.byKey(const ValueKey('game-float-dock-card-gomoku')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(controller.find('chess')!.phase, isNot(GameFloatPhase.expanded));
+    expect(
+      controller.find('chess')!.phase == GameFloatPhase.bar ||
+          controller.find('chess')!.phase == GameFloatPhase.thumbnail,
+      isTrue,
+    );
+
+    await tester.pumpAndSettle();
+    expect(find.text('round-1-gomoku'), findsOneWidget);
+    expect(controller.find('chess')!.phase, GameFloatPhase.bar);
+
+    controller.closeAll();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('only one dock bar is shown for multiple suspended games', (
+    tester,
+  ) async {
+    final controller = GameSuspendController();
+    await _pumpHost(tester, controller, entryIds: ['gomoku', 'chess']);
+
+    for (final id in ['gomoku', 'chess']) {
+      await tester.tap(find.text('open-$id'));
+      await tester.pump();
+      await tester.tap(find.byKey(ValueKey('game-suspend-button-$id')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 900));
+      await tester.pumpAndSettle();
+    }
+
+    expect(find.byKey(const ValueKey('game-float-dock-bar')), findsOneWidget);
+    expect(find.byKey(const ValueKey('game-float-dock-bar-gomoku')), findsNothing);
+    expect(find.byKey(const ValueKey('game-float-dock-bar-chess')), findsNothing);
+    expect(controller.suspendedCount, 2);
+
+    final cluster = computeDockClusterVisual(
+      entryIds: ['gomoku', 'chess'],
+      edge: GameFloatEdge.right,
+      centerY: 200,
+      progress: 1,
+      screen: const Size(800, 600),
+      padding: EdgeInsets.zero,
+    );
+    expect(cluster.cards.length, 2);
+
+    controller.closeAll();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the suspend button disables when three games are suspended', (
+    tester,
+  ) async {
+    final controller = GameSuspendController();
+    await _pumpHost(
+      tester,
+      controller,
+      entryIds: ['a', 'b', 'c', 'd'],
+    );
+
+    for (final id in ['a', 'b', 'c']) {
+      await tester.tap(find.text('open-$id'));
+      await tester.pump();
+      await tester.tap(find.byKey(ValueKey('game-suspend-button-$id')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 900));
+      await tester.pumpAndSettle();
+    }
+
+    await tester.tap(find.text('open-d'));
+    await tester.pump();
+    final button = find.byKey(const ValueKey('game-suspend-button-d'));
+    expect(button, findsOneWidget);
+    expect(controller.canMinimize('d'), isFalse);
+    await tester.tap(button);
+    await tester.pump();
+    expect(controller.find('d')!.phase, GameFloatPhase.expanded);
+
+    controller.closeAll();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('swiping a revealed preview collapses back toward the bar', (
+    tester,
+  ) async {
+    final controller = GameSuspendController();
+    await _pumpHost(tester, controller, entryIds: ['gomoku', 'chess']);
+
+    for (final id in ['gomoku', 'chess']) {
+      await tester.tap(find.text('open-$id'));
+      await tester.pump();
+      await tester.tap(find.byKey(ValueKey('game-suspend-button-$id')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 900));
+      await tester.pumpAndSettle();
+    }
+
+    await tester.tap(find.byKey(const ValueKey('game-float-dock-bar')));
+    await tester.pumpAndSettle();
+    expect(controller.find('gomoku')!.phase, GameFloatPhase.thumbnail);
+
+    final card = find.byKey(const ValueKey('game-float-dock-card-gomoku'));
+    await tester.drag(card, const Offset(280, 0));
+    await tester.pumpAndSettle();
+    expect(controller.find('gomoku')!.phase, GameFloatPhase.bar);
+    expect(controller.find('chess')!.phase, GameFloatPhase.bar);
+
+    controller.closeAll();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets(
-    'a dragged thumbnail snaps, then folds back into a bar after 5s',
+    'a revealed dock folds back into a bar after 5s without touch',
     (tester) async {
       final controller = GameSuspendController();
       await _pumpHost(tester, controller);
 
-      await tester.tap(find.text('open'));
+      await tester.tap(find.text('open-gomoku'));
       await tester.pump();
       await tester.tap(
         find.byKey(const ValueKey('game-suspend-button-gomoku')),
@@ -289,37 +534,37 @@ void main() {
       await tester.pump(const Duration(milliseconds: 900));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('game-float-bar-gomoku')));
+      await tester.tap(find.byKey(const ValueKey('game-float-dock-bar')));
       await tester.pumpAndSettle();
-      final thumb = find.byKey(const ValueKey('game-float-thumb-gomoku'));
-      expect(thumb, findsOneWidget);
-
-      await tester.drag(thumb, const Offset(-500, 20));
-      await tester.pumpAndSettle();
-      expect(tester.getTopLeft(thumb).dx, gameFloatThumbGap);
+      expect(
+        find.byKey(const ValueKey('game-float-dock-card-gomoku')),
+        findsOneWidget,
+      );
 
       await tester.pump(const Duration(seconds: 4));
       expect(
-        find.byKey(const ValueKey('game-float-thumb-gomoku')),
+        find.byKey(const ValueKey('game-float-dock-card-gomoku')),
         findsOneWidget,
       );
 
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
-      final bar = find.byKey(const ValueKey('game-float-bar-gomoku'));
-      expect(bar, findsOneWidget);
+      expect(find.byKey(const ValueKey('game-float-dock-bar')), findsOneWidget);
       expect(
-        find.byKey(const ValueKey('game-float-thumb-gomoku')),
+        find.byKey(const ValueKey('game-float-dock-card-gomoku')),
         findsNothing,
       );
-      expect(tester.getTopLeft(bar).dx, 0);
       controller.closeAll();
       await tester.pumpAndSettle();
     },
   );
 }
 
-Future<void> _pumpHost(WidgetTester tester, GameSuspendController controller) {
+Future<void> _pumpHost(
+  WidgetTester tester,
+  GameSuspendController controller, {
+  List<String> entryIds = const ['gomoku'],
+}) {
   return tester.pumpWidget(
     MaterialApp(
       builder: (context, child) {
@@ -329,16 +574,21 @@ Future<void> _pumpHost(WidgetTester tester, GameSuspendController controller) {
         );
       },
       home: Scaffold(
-        body: TextButton(
-          onPressed: () {
-            controller.open(
-              id: 'gomoku',
-              title: '五子棋',
-              previewAsset: '',
-              pageBuilder: (_) => const _Marker(),
-            );
-          },
-          child: const Text('open'),
+        body: Column(
+          children: [
+            for (final id in entryIds)
+              TextButton(
+                onPressed: () {
+                  controller.open(
+                    id: id,
+                    title: id,
+                    previewAsset: '',
+                    pageBuilder: (_) => _Marker(entryId: id),
+                  );
+                },
+                child: Text('open-$id'),
+              ),
+          ],
         ),
       ),
     ),
@@ -346,7 +596,9 @@ Future<void> _pumpHost(WidgetTester tester, GameSuspendController controller) {
 }
 
 class _Marker extends StatefulWidget {
-  const _Marker();
+  const _Marker({required this.entryId});
+
+  final String entryId;
 
   @override
   State<_Marker> createState() => _MarkerState();
@@ -368,7 +620,7 @@ class _MarkerState extends State<_Marker> {
         child: Column(
           children: [
             const GameSuspendButton(),
-            Text('round-$value'),
+            Text('round-$value-${widget.entryId}'),
             TextButton(
               onPressed: () => setState(() => value += 1),
               child: const Text('score'),

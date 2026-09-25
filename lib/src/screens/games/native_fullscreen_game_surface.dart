@@ -437,27 +437,35 @@ class _FullscreenSuspendButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final scope = GameSuspendScope.of(context);
     if (scope == null) return const SizedBox.shrink();
+    final enabled = scope.controller.canMinimize(scope.entryId);
     return Semantics(
       button: true,
       label: '挂起',
-      child: CupertinoButton(
-        key: ValueKey('game-suspend-button-${scope.entryId}'),
-        padding: EdgeInsets.zero,
-        minimumSize: const Size(38, 38),
-        onPressed: () => scope.controller.requestMinimize(scope.entryId),
-        child: Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: backgroundColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: borderColor),
-          ),
-          alignment: Alignment.center,
-          child: GameSuspendGlyph(
-            color: foregroundColor,
-            outline: foregroundColor,
-            size: 18,
+      enabled: enabled,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.35,
+        child: CupertinoButton(
+          key: ValueKey('game-suspend-button-${scope.entryId}'),
+          padding: EdgeInsets.zero,
+          minimumSize: const Size(38, 38),
+          onPressed:
+              enabled
+                  ? () => scope.controller.requestMinimize(scope.entryId)
+                  : null,
+          child: Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: borderColor),
+            ),
+            alignment: Alignment.center,
+            child: GameSuspendGlyph(
+              color: foregroundColor,
+              outline: foregroundColor,
+              size: 18,
+            ),
           ),
         ),
       ),
