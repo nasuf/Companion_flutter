@@ -1,6 +1,7 @@
 import 'package:companion_flutter/companion_api.dart';
 import 'package:companion_flutter/main.dart';
 import 'package:companion_flutter/models.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -58,10 +59,16 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 /// Home card → 管理联系人 → first empty slot → the add sheet.
-Future<void> _openContactSheet(WidgetTester tester) async {
+Future<void> _openContactSheet(
+  WidgetTester tester, {
+  Brightness brightness = Brightness.light,
+}) async {
   await tester.pumpWidget(
     MaterialApp(
       debugShowCheckedModeBanner: false,
+      theme: brightness == Brightness.dark
+          ? ThemeData(brightness: Brightness.dark, useMaterial3: true)
+          : null,
       home: LastWillPage(api: _FakeWillApi(), session: _session),
     ),
   );
@@ -140,6 +147,19 @@ void main() {
       await tester.drag(find.text('紧急联系人'), const Offset(0, -120));
       await tester.pump();
       expect(find.text('电话'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('dark mode field stays darker than its ink', (tester) async {
+      _useDesignCanvas(tester);
+      await _openContactSheet(tester, brightness: Brightness.dark);
+
+      final field = tester.widget<CupertinoTextField>(
+        find.byType(CupertinoTextField).first,
+      );
+      final fill = field.decoration!.color!;
+      expect(fill.computeLuminance(), lessThan(0.15));
+      expect(field.style!.color!.computeLuminance(), greaterThan(0.6));
       expect(tester.takeException(), isNull);
     });
   });

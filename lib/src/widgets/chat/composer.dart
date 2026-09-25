@@ -105,6 +105,7 @@ class _Composer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = AppColors.isDark(context);
     final voiceActive = preparingVoice || recordingVoice || transcribingVoice;
     return AnimatedContainer(
       // Animate the height change so growing 1→2→3 lines glides instead of
@@ -122,7 +123,7 @@ class _Composer extends StatelessWidget {
       // sit at the bottom of the row (not vertically centred) as the field grows.
       alignment: Alignment.bottomCenter,
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-      decoration: const BoxDecoration(color: Color(0xFFF6FDFC)),
+      decoration: BoxDecoration(color: _chatCanvasColor(context)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -174,7 +175,7 @@ class _Composer extends StatelessWidget {
                               maxHeight: resolvingLink ? 36 : 86,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: _chatRaisedColor(context),
                               // 20 reads as a full pill while single-line
                               // (~36 tall), but only a gentle rounded rect
                               // once the field grows to multiple lines —
@@ -183,7 +184,7 @@ class _Composer extends StatelessWidget {
                               border: Border.all(
                                 color: focused
                                     ? chatVoiceAccent
-                                    : AppColors.hairline,
+                                    : _chatHairline(context),
                                 width: focused ? 1.5 : 1,
                               ),
                             ),
@@ -211,8 +212,10 @@ class _Composer extends StatelessWidget {
                           extendedContextMenuBuilder: _buildContextMenu,
                           decoration: InputDecoration(
                             hintText: '发消息...',
-                            hintStyle: const TextStyle(
-                              color: Color(0xFFBFBFBF),
+                            hintStyle: TextStyle(
+                              color: dark
+                                  ? AppColors.muted
+                                  : const Color(0xFFBFBFBF),
                               fontSize: 12,
                             ),
                             // The surrounding AnimatedContainer draws the
@@ -420,8 +423,8 @@ class _VoiceInputToggleButton extends StatelessWidget {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.surface,
-              border: Border.all(color: AppColors.hairline),
+              color: _chatRaisedColor(context),
+              border: Border.all(color: _chatHairline(context)),
             ),
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 160),
@@ -483,12 +486,16 @@ class _VoiceHoldToTalkButton extends StatelessWidget {
           height: 40,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: recording ? chatVoiceAccentSoft : AppColors.surface,
+            color: recording
+                ? (AppColors.isDark(context)
+                      ? AppColors.input
+                      : chatVoiceAccentSoft)
+                : _chatRaisedColor(context),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: recording
                   ? chatVoiceAccent.withValues(alpha: 0.56)
-                  : AppColors.hairline,
+                  : _chatHairline(context),
             ),
           ),
           child: Row(
@@ -677,7 +684,7 @@ class _ComposerLinkTile extends StatelessWidget {
               height: 70,
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: _chatRaisedColor(context),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: accent.withValues(alpha: 0.28)),
               ),
@@ -858,7 +865,7 @@ class _RoundIconButton extends StatelessWidget {
                 ? null
                 : prominent
                 ? (green ? figmaGreen : AppColors.accent)
-                : AppColors.surface,
+                : _chatRaisedColor(context),
             gradient: selected && !prominent
                 ? LinearGradient(
                     begin: Alignment.topLeft,
@@ -873,7 +880,7 @@ class _RoundIconButton extends StatelessWidget {
                   ? Colors.white.withValues(alpha: 0.28)
                   : prominent
                   ? Colors.transparent
-                  : AppColors.hairline,
+                  : _chatHairline(context),
             ),
             boxShadow: selected
                 ? [

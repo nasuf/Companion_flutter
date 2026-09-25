@@ -29,6 +29,7 @@ class _ChatSidebarOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = AppColors.isDark(context);
     final safeTop = MediaQuery.viewPaddingOf(context).top;
     final screenHeight = MediaQuery.sizeOf(context).height;
     final top = math.max(safeTop + 98, screenHeight * 0.16);
@@ -46,7 +47,9 @@ class _ChatSidebarOverlay extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 onTap: onDismiss,
                 child: ColoredBox(
-                  color: Colors.white.withValues(alpha: visible ? 0.22 : 0),
+                  color: (dark ? Colors.black : Colors.white).withValues(
+                    alpha: visible ? (dark ? 0.45 : 0.22) : 0,
+                  ),
                 ),
               ),
             ),
@@ -118,11 +121,26 @@ class _LiquidRailContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = AppColors.isDark(context);
     return Container(
       padding: padding,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.all(Radius.circular(999)),
+      decoration: BoxDecoration(
+        color: dark
+            ? AppColors.surface.withValues(alpha: 0.94)
+            : Colors.white,
+        borderRadius: const BorderRadius.all(Radius.circular(999)),
+        border: dark
+            ? Border.all(color: Colors.white.withValues(alpha: 0.12))
+            : null,
+        boxShadow: dark
+            ? const [
+                BoxShadow(
+                  color: Color(0x59000000),
+                  blurRadius: 18,
+                  offset: Offset(0, 8),
+                ),
+              ]
+            : null,
       ),
       child: child,
     );

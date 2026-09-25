@@ -8,10 +8,11 @@ class _InlineBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = AppColors.isDark(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      color: const Color(0xFFFFF2F0),
+      color: dark ? const Color(0xFF3A1818) : const Color(0xFFFFF2F0),
       child: Row(
         children: [
           Expanded(
@@ -19,7 +20,10 @@ class _InlineBanner extends StatelessWidget {
               text,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Color(0xFFB42318), fontSize: 12),
+              style: TextStyle(
+                color: dark ? const Color(0xFFFFB4AB) : const Color(0xFFB42318),
+                fontSize: 12,
+              ),
             ),
           ),
           TextButton(onPressed: onRetry, child: const Text('重试')),

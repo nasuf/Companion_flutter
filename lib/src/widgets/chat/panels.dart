@@ -50,8 +50,8 @@ class _ChatPanelState extends State<_ChatPanel> {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.hairline)),
+        color: _chatRaisedColor(context),
+        border: Border(top: BorderSide(color: _chatHairline(context))),
       ),
       child: Padding(
         padding: EdgeInsets.only(bottom: widget.bottomInset),
@@ -239,7 +239,7 @@ class _EmojiPanelState extends State<_EmojiPanel> {
                     decoration: BoxDecoration(
                       color: index == _page
                           ? AppColors.accent
-                          : AppColors.hairline,
+                          : _chatHairline(context),
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),

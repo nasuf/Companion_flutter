@@ -148,8 +148,8 @@ class _ChatInputChromeLayerState extends State<_ChatInputChromeLayer> {
           right: 0,
           bottom: 0,
           height: composerHeight + restLift,
-          child: const IgnorePointer(
-            child: ColoredBox(color: Color(0xFFF6FDFC)),
+          child: IgnorePointer(
+            child: ColoredBox(color: _chatCanvasColor(context)),
           ),
         ),
         Positioned.fill(

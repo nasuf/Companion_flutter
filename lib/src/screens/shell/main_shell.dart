@@ -704,6 +704,7 @@ class _FloatingTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = AppColors.isDark(context);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onHorizontalDragEnd: (details) {
@@ -715,8 +716,11 @@ class _FloatingTabBar extends StatelessWidget {
       child: Container(
         height: 64,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: dark ? AppColors.surface : Colors.white,
           borderRadius: BorderRadius.circular(999),
+          border: dark
+              ? Border.all(color: Colors.white.withValues(alpha: 0.10))
+              : null,
         ),
         child: Center(
           child: SizedBox(
@@ -742,6 +746,17 @@ class _FloatingTabBar extends StatelessWidget {
   }
 }
 
+/// Inactive tab art is a #D8D8D8 body with a #F8F8F8 glyph, drawn for a white
+/// pill. On a dark pill those two grays collapse into one pale sticker.
+/// Stretch them apart: body → neutral gray, glyph → the app's light ink.
+/// Translation is in 0–255 space (see ColorFilter.matrix).
+const _darkInactiveTabIcon = ColorFilter.matrix(<double>[
+  3.8125, 0, 0, 0, -703.5,
+  0, 3.71875, 0, 0, -675.25,
+  0, 0, 3.59375, 0, -640.25,
+  0, 0, 0, 1, 0,
+]);
+
 class _TabBarItem extends StatelessWidget {
   const _TabBarItem({
     required this.activeIcon,
@@ -759,6 +774,17 @@ class _TabBarItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = AppColors.isDark(context);
+    Widget icon = Image.asset(
+      selected ? activeIcon : inactiveIcon,
+      width: 24,
+      height: 24,
+      fit: BoxFit.cover,
+      filterQuality: FilterQuality.high,
+    );
+    if (dark && !selected) {
+      icon = ColorFiltered(colorFilter: _darkInactiveTabIcon, child: icon);
+    }
     return Tooltip(
       message: label,
       child: InkResponse(
@@ -770,16 +796,7 @@ class _TabBarItem extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              SizedBox.square(
-                dimension: 24,
-                child: Image.asset(
-                  selected ? activeIcon : inactiveIcon,
-                  width: 24,
-                  height: 24,
-                  fit: BoxFit.cover,
-                  filterQuality: FilterQuality.high,
-                ),
-              ),
+              SizedBox.square(dimension: 24, child: icon),
               const SizedBox(height: 2),
               SizedBox(
                 width: 28,
@@ -793,7 +810,7 @@ class _TabBarItem extends StatelessWidget {
                     fontSize: 10,
                     color: selected
                         ? const Color(0xFF06C893)
-                        : const Color(0xFFC7C7C7),
+                        : (dark ? AppColors.muted : const Color(0xFFC7C7C7)),
                     fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
                     decoration: TextDecoration.none,
                   ),

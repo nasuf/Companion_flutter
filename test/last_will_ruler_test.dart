@@ -120,13 +120,19 @@ Future<void> _settle(WidgetTester tester, {int frames = 10}) async {
   }
 }
 
-Future<void> _pumpPage(WidgetTester tester) async {
+Future<void> _pumpPage(
+  WidgetTester tester, {
+  Brightness brightness = Brightness.light,
+}) async {
   tester.view.devicePixelRatio = 1.0;
   tester.view.physicalSize = const Size(_canvasWidth, _canvasHeight);
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     MaterialApp(
       debugShowCheckedModeBanner: false,
+      theme: brightness == Brightness.dark
+          ? ThemeData(brightness: Brightness.dark, useMaterial3: true)
+          : null,
       home: LastWillPage(api: _FakeWillApi(), session: _session),
     ),
   );
@@ -207,6 +213,35 @@ void main() {
       // The readout follows the ruler, so the card and the ruler cannot disagree.
       expect(find.text('${peak.day}'), findsNWidgets(2));
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('dark mode keeps light ink on the night canvas', (
+      tester,
+    ) async {
+      await _pumpPage(tester, brightness: Brightness.dark);
+
+      final fill = tester.widget<DecoratedBox>(
+        find.byKey(const Key('legacy-page-fill')),
+      );
+      final decoration = fill.decoration as BoxDecoration;
+      expect(decoration.color, const Color(0xFF121416));
+
+      final title = tester.widget<Text>(find.text('Hi，牵挂之人'));
+      expect(title.style!.color!.computeLuminance(), greaterThan(0.6));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('light mode keeps the day graphite canvas', (tester) async {
+      await _pumpPage(tester);
+
+      final fill = tester.widget<DecoratedBox>(
+        find.byKey(const Key('legacy-page-fill')),
+      );
+      final decoration = fill.decoration as BoxDecoration;
+      expect(decoration.color, const Color(0xFFF3F4F6));
+
+      final title = tester.widget<Text>(find.text('Hi，牵挂之人'));
+      expect(title.style!.color!.computeLuminance(), lessThan(0.2));
     });
   });
 }

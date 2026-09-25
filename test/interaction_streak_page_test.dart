@@ -276,4 +276,35 @@ void main() {
     final pageView = tester.widget<PageView>(find.byType(PageView));
     expect(pageView.controller!.initialPage, 1);
   });
+
+  testWidgets('dark mode streak labels stay light', (tester) async {
+    _usePhoneCanvas(tester);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(brightness: Brightness.dark),
+        home: InteractionStreakPage(
+          api: _FakeInteractionApi(_overview(streak: 0)),
+          session: _session,
+          workspaceId: 'ws-1',
+          agentAvatarUrl: null,
+          userAvatarUrl: null,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (final label in ['连续互动', '天', '0-7天', '连续互动标识']) {
+      final texts = tester.widgetList<Text>(find.text(label));
+      expect(texts, isNotEmpty, reason: label);
+      for (final text in texts) {
+        final color = text.style?.color;
+        expect(color, isNotNull, reason: label);
+        expect(color!.computeLuminance(), greaterThan(0.55), reason: label);
+      }
+    }
+    final idle = tester.widget<Text>(find.text('8-15天'));
+    final idleLum = idle.style!.color!.computeLuminance();
+    expect(idleLum, greaterThan(0.2));
+    expect(idleLum, lessThan(0.55));
+  });
 }

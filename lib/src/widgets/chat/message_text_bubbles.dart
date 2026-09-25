@@ -28,7 +28,7 @@ class _MessageTextBubble extends StatelessWidget {
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 270),
       child: DecoratedBox(
-        decoration: _bubbleDecoration(message.isMine),
+        decoration: _bubbleDecoration(context, message.isMine),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           child: TweenAnimationBuilder<double>(
@@ -65,27 +65,8 @@ class _MessageTextBubble extends StatelessWidget {
     );
   }
 
-  BoxDecoration _bubbleDecoration(bool isMine) {
-    const mineColor = Color(0xFF06C893);
-    return BoxDecoration(
-      color: isMine ? mineColor : AppColors.surface,
-      borderRadius: BorderRadius.only(
-        topLeft: Radius.circular(isMine ? 20 : 3),
-        topRight: Radius.circular(isMine ? 3 : 20),
-        bottomLeft: const Radius.circular(20),
-        bottomRight: const Radius.circular(20),
-      ),
-      border: Border.all(color: isMine ? mineColor : Colors.transparent),
-      boxShadow: [
-        BoxShadow(
-          color: isMine
-              ? mineColor.withValues(alpha: 0.25)
-              : Colors.black.withValues(alpha: 0.10),
-          blurRadius: isMine ? 4 : 16,
-          offset: const Offset(0, 4),
-        ),
-      ],
-    );
+  BoxDecoration _bubbleDecoration(BuildContext context, bool isMine) {
+    return _chatBubbleDecoration(context, isMine: isMine);
   }
 }
 
@@ -148,6 +129,39 @@ class _VoiceUploadPendingBubble extends StatelessWidget {
       ),
     );
   }
+}
+
+BoxDecoration _chatBubbleDecoration(
+  BuildContext context, {
+  required bool isMine,
+}) {
+  const mineColor = Color(0xFF06C893);
+  final dark = AppColors.isDark(context);
+  return BoxDecoration(
+    color: isMine ? mineColor : _chatIncomingBubbleColor(context),
+    borderRadius: BorderRadius.only(
+      topLeft: Radius.circular(isMine ? 20 : 3),
+      topRight: Radius.circular(isMine ? 3 : 20),
+      bottomLeft: const Radius.circular(20),
+      bottomRight: const Radius.circular(20),
+    ),
+    // A same-colour border on the green bubble doesn't change the fill, and a
+    // transparent one would inset Container-based bubbles (voice) by 1px.
+    // Only the dark incoming bubble needs a hairline so it separates from
+    // the night canvas.
+    border: !isMine && dark
+        ? Border.all(color: Colors.white.withValues(alpha: 0.08))
+        : null,
+    boxShadow: [
+      BoxShadow(
+        color: isMine
+            ? mineColor.withValues(alpha: 0.25)
+            : Colors.black.withValues(alpha: dark ? 0.28 : 0.10),
+        blurRadius: isMine ? 4 : 16,
+        offset: const Offset(0, 4),
+      ),
+    ],
+  );
 }
 
 BoxDecoration _pendingVoiceBubbleDecoration() {
@@ -233,9 +247,11 @@ class _VoiceMessageBubbleState extends State<_VoiceMessageBubble> {
                       vertical: 9,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.surfaceMuted,
+                      color: AppColors.isDark(context)
+                          ? _chatIncomingBubbleColor(context)
+                          : AppColors.surfaceMuted,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColors.hairline),
+                      border: Border.all(color: _chatHairline(context)),
                     ),
                     child: Text(
                       transcript,
@@ -414,31 +430,13 @@ class _AudioAttachmentBubbleState extends State<_AudioAttachmentBubble> {
     final duration = math.max(1, widget.attachment.durationSeconds ?? 1);
     final width = (108.0 + duration * 2.2).clamp(116.0, 250.0).toDouble();
     final foreground = widget.isMine ? Colors.white : AppColors.text;
-    const mineColor = Color(0xFF06C893);
     return GestureDetector(
       onTap: _togglePlayback,
       child: Container(
         width: width,
         height: 48,
         padding: const EdgeInsets.symmetric(horizontal: 13),
-        decoration: BoxDecoration(
-          color: widget.isMine ? mineColor : AppColors.surface,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(widget.isMine ? 20 : 3),
-            topRight: Radius.circular(widget.isMine ? 3 : 20),
-            bottomLeft: const Radius.circular(20),
-            bottomRight: const Radius.circular(20),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: widget.isMine
-                  ? mineColor.withValues(alpha: 0.25)
-                  : Colors.black.withValues(alpha: 0.10),
-              blurRadius: widget.isMine ? 4 : 16,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
+        decoration: _chatBubbleDecoration(context, isMine: widget.isMine),
         child: Row(
           children: [
             if (_loading)

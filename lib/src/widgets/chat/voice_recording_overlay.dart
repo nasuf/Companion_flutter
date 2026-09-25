@@ -312,6 +312,8 @@ class _RecordingCapsule extends StatelessWidget {
     final minutes = (seconds ~/ 60).toString().padLeft(2, '0');
     final remaining = (seconds % 60).toString().padLeft(2, '0');
     final progress = (seconds / 60).clamp(0.0, 1.0);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final ink = dark ? chatVoiceAccent : chatVoiceAccentDeep;
     return Semantics(
       excludeSemantics: true,
       label: preparing ? '正在准备麦克风' : '正在录音 $minutes:$remaining',
@@ -320,27 +322,31 @@ class _RecordingCapsule extends StatelessWidget {
         height: 58,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FCFA).withValues(alpha: 0.46),
+          color: dark
+              ? const Color(0xE6101820)
+              : const Color(0xFFF8FCFA).withValues(alpha: 0.46),
           borderRadius: BorderRadius.circular(29),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.30)),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: dark ? 0.16 : 0.30),
+          ),
         ),
         child: Stack(
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 3),
               child: preparing
-                  ? const Row(
+                  ? Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         CupertinoActivityIndicator(
                           radius: 8,
-                          color: chatVoiceAccentDeep,
+                          color: ink,
                         ),
                         SizedBox(width: 9),
                         Text(
                           '正在准备麦克风…',
                           style: TextStyle(
-                            color: chatVoiceAccentDeep,
+                            color: ink,
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                           ),
@@ -368,8 +374,8 @@ class _RecordingCapsule extends StatelessWidget {
                         const SizedBox(width: 10),
                         Text(
                           '$minutes:$remaining',
-                          style: const TextStyle(
-                            color: chatVoiceAccentDeep,
+                          style: TextStyle(
+                            color: ink,
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                             fontFeatures: [FontFeature.tabularFigures()],
@@ -676,9 +682,11 @@ class _VoiceActionTarget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
     final selectedAccent = danger ? chatVoiceCancel : chatVoiceAccent;
     final selectedDeep = danger ? chatVoiceCancelDeep : chatVoiceAccentDeep;
     final selectedSoft = danger ? chatVoiceCancelSoft : chatVoiceAccentSoft;
+    final selectedInk = dark ? selectedAccent : selectedDeep;
     return Semantics(
       label: semanticsLabel,
       selected: selected,
@@ -692,13 +700,15 @@ class _VoiceActionTarget extends StatelessWidget {
           height: 62,
           decoration: BoxDecoration(
             color: selected
-                ? selectedSoft.withValues(alpha: 0.34)
-                : const Color(0xFFF7FBF9).withValues(alpha: 0.24),
+                ? selectedSoft.withValues(alpha: dark ? 0.22 : 0.34)
+                : (dark
+                      ? const Color(0x14FFFFFF)
+                      : const Color(0xFFF7FBF9).withValues(alpha: 0.24)),
             borderRadius: BorderRadius.circular(31),
             border: Border.all(
               color: selected
-                  ? selectedAccent.withValues(alpha: 0.40)
-                  : Colors.white.withValues(alpha: 0.24),
+                  ? selectedAccent.withValues(alpha: dark ? 0.55 : 0.40)
+                  : Colors.white.withValues(alpha: dark ? 0.16 : 0.24),
             ),
           ),
           child: Row(
@@ -706,14 +716,22 @@ class _VoiceActionTarget extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                color: selected ? selectedDeep : const Color(0xFF405049),
+                color: selected
+                    ? selectedInk
+                    : (dark
+                          ? const Color(0xFFE7F2EC)
+                          : const Color(0xFF405049)),
                 size: 20,
               ),
               const SizedBox(width: 8),
               Text(
                 label,
                 style: TextStyle(
-                  color: selected ? selectedDeep : const Color(0xFF24302B),
+                  color: selected
+                      ? selectedInk
+                      : (dark
+                            ? const Color(0xFFE7F2EC)
+                            : const Color(0xFF24302B)),
                   fontSize: 16,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                 ),

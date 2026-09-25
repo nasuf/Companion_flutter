@@ -4219,7 +4219,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         stationTrack != null && _stationDockActive && _stationCardDocked;
 
     return DecoratedBox(
-      decoration: const BoxDecoration(color: Color(0xFFF6FDFC)),
+      decoration: BoxDecoration(color: _chatCanvasColor(context)),
       child: Stack(
         children: [
           Column(

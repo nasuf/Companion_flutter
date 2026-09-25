@@ -77,10 +77,12 @@ class _ImageAttachmentBubbleState extends State<_ImageAttachmentBubble>
                 ),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: AppColors.surfaceMuted,
+                    color: AppColors.isDark(context)
+                        ? _chatIncomingBubbleColor(context)
+                        : AppColors.surfaceMuted,
                     // 识别命中的金框由外层 _recognizedColumn 统一施加（含定格 + 仪式），
                     // 这里始终画普通描边即可。
-                    border: Border.all(color: AppColors.hairline, width: 1),
+                    border: Border.all(color: _chatHairline(context), width: 1),
                   ),
                   // Bubble loads the server-side thumbnail (~10x smaller than
                   // the original) from the persistent disk cache; the original
@@ -415,16 +417,23 @@ class _ImageSkeletonState extends State<_ImageSkeleton>
           // pos: -1 (亮带在最左) → 1 (最右)。begin/end 各偏移 1 个盒宽,
           // 使亮带中心 (stop 0.5) 随 pos 从左缘扫到右缘。
           final pos = _controller.value * 2 - 1;
+          final dark = AppColors.isDark(context);
           return DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment(pos - 1, 0),
                 end: Alignment(pos + 1, 0),
-                colors: const [
-                  Color(0xFFE9EDF2),
-                  Color(0xFFF6F8FB),
-                  Color(0xFFE9EDF2),
-                ],
+                colors: dark
+                    ? const [
+                        Color(0xFF182331),
+                        Color(0xFF243044),
+                        Color(0xFF182331),
+                      ]
+                    : const [
+                        Color(0xFFE9EDF2),
+                        Color(0xFFF6F8FB),
+                        Color(0xFFE9EDF2),
+                      ],
                 stops: const [0.2, 0.5, 0.8],
               ),
             ),

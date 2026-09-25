@@ -234,7 +234,7 @@ class _LegacyContactSheetState extends State<_LegacyContactSheet> {
       // is a solid surface, and it's the CONTENT inside (the form's inset
       // panel, the fields) that carries the glass treatment.
       decoration: BoxDecoration(
-        color: _legacyPageBase,
+        color: _legacyPageFill(w.isDark),
         borderRadius: const BorderRadius.vertical(top: _legacyCardRadius),
         border: Border.all(color: w.glassBorder),
         boxShadow: w.panelShadow,
@@ -247,7 +247,11 @@ class _LegacyContactSheetState extends State<_LegacyContactSheet> {
           // every drag that starts inside it (to scroll instead of dismiss),
           // so without a plain, non-scrollable strip up here there is no area
           // left for the sheet's own drag-to-dismiss gesture to grab onto.
-          const _SheetGrabber(),
+          _SheetGrabber(
+            color: w.isDark
+                ? const Color(0xFF4A545C)
+                : const Color(0xFFD8DCE0),
+          ),
           // Flexible, not Expanded: the sheet stays content-height until the
           // keyboard squeezes it, and only then does the form scroll.
           Flexible(
@@ -471,9 +475,11 @@ class _LegacyGlassField extends StatelessWidget {
       // More opaque than the surrounding inset panel (w.heroChipBg) so the
       // field still reads as its own control rather than blending into it.
       decoration: BoxDecoration(
-        color: const Color(0xF2FFFFFF),
+        color: w.isDark ? const Color(0xFF1C2228) : const Color(0xF2FFFFFF),
         borderRadius: _legacyCardBorderRadius,
-        border: Border.all(color: const Color(0xFFD8DCE0)),
+        border: Border.all(
+          color: w.isDark ? const Color(0x28FFFFFF) : const Color(0xFFD8DCE0),
+        ),
       ),
       style: TextStyle(
         color: w.ink,
@@ -482,8 +488,8 @@ class _LegacyGlassField extends StatelessWidget {
         fontWeight: FontWeight.w700,
         decoration: TextDecoration.none,
       ),
-      placeholderStyle: const TextStyle(
-        color: Color(0xFF9AA0A8),
+      placeholderStyle: TextStyle(
+        color: w.isDark ? w.inkFaint : const Color(0xFF9AA0A8),
         fontSize: 16,
         height: 19 / 16,
         fontWeight: FontWeight.w700,

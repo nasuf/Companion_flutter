@@ -146,8 +146,9 @@ class _LastWillPageState extends State<LastWillPage>
                           ],
                           if (loading) ...[
                             const SizedBox(height: 24),
-                            // 直接铺在亮底页面上（不在卡片内），用 w.ink，
-                            // 否则白色指示器在亮底上几乎看不见。
+                            // Sits on the page fill, not inside a card. w.ink tracks
+                            // the theme so the spinner stays visible on both
+                            // the day graphite and the night graphite.
                             Center(
                               child: CupertinoActivityIndicator(color: w.ink),
                             ),

@@ -39,13 +39,17 @@ double _legacyRulerEmphasis(double ticksFromCentre) {
   return math.pow(falloff, 1.7).toDouble();
 }
 
-// 玻璃扁平重构（对齐天气/胶囊/商城/打卡）：不再有任何深色/黑色组件——卡片、
-// bottom sheet、弹框、三级页面全部直接复用 _W2b（天气页定义、同库私有可见）
-// 的中性浅色玻璃 token，跟天气/胶囊/商城像素级一致，而不是自成一套深色系统。
+// 玻璃扁平重构（对齐天气/胶囊/商城/打卡）：卡片、bottom sheet、弹框、三级页面
+// 全部复用 _W2b（天气页定义、同库私有可见）的玻璃 token。浅色是中性浅玻璃；
+// 深色跟胶囊一样换夜间底，文字/描边走 _W2b.dark，不再把浅色字铺在亮灰底上。
 
-/// 明亮的中性页面底——比旧版 #999999 灰底亮得多，但仍是石墨/银灰家族，不落到
-/// 任何其它页面的彩色（天气蓝/胶囊橙/打卡蓝）上，保持遗言页克制、庄重的气质。
+/// 中性页面底。浅色是石墨/银灰，不落到天气蓝/胶囊橙/打卡蓝上；深色是同家族的
+/// 夜石墨，对应胶囊的暖夜底，保持遗言页克制、庄重的气质。
 const _legacyPageBase = Color(0xFFF3F4F6);
+const _legacyPageBaseDark = Color(0xFF121416);
+
+Color _legacyPageFill(bool isDark) =>
+    isDark ? _legacyPageBaseDark : _legacyPageBase;
 
 /// 三团呼吸光斑用的柔灰色（大圆形色块允许保留灰调，与其它页面的「光斑」手法
 /// 一致，只是配色换成银灰而非彩色）。
@@ -113,43 +117,50 @@ class _LegacyBackgroundPaint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = _W2b.of(context).isDark;
     final drift = progress * 8;
     return DecoratedBox(
-      decoration: const BoxDecoration(color: _legacyPageBase),
+      key: const Key('legacy-page-fill'),
+      decoration: BoxDecoration(color: _legacyPageFill(dark)),
       child: Stack(
         children: [
           Positioned(
             left: -90,
             top: -70 + drift,
-            child: const _WeatherGlowBlob(
+            child: _WeatherGlowBlob(
               width: 258,
               height: 228,
               color: _legacyBlobSteel,
-              opacity: 0.85,
+              opacity: dark ? 0.22 : 0.85,
             ),
           ),
           Positioned(
             right: -92,
             top: 88 - drift,
-            child: const _WeatherGlowBlob(
+            child: _WeatherGlowBlob(
               width: 228,
               height: 204,
               color: _legacyBlobDove,
-              opacity: 0.78,
+              opacity: dark ? 0.18 : 0.78,
             ),
           ),
           Positioned(
             left: -72,
             bottom: -82 + drift,
-            child: const _WeatherGlowBlob(
+            child: _WeatherGlowBlob(
               width: 248,
               height: 214,
               color: _legacyBlobSlate,
-              opacity: 0.6,
+              opacity: dark ? 0.16 : 0.6,
             ),
           ),
-          const Positioned.fill(
-            child: _WeatherGrain(dotColor: Color(0x59FFFFFF), opacity: 0.5),
+          Positioned.fill(
+            child: _WeatherGrain(
+              dotColor: dark
+                  ? const Color(0x24FFFFFF)
+                  : const Color(0x59FFFFFF),
+              opacity: dark ? 0.6 : 0.5,
+            ),
           ),
         ],
       ),
@@ -345,10 +356,14 @@ class _LegacyChip extends StatelessWidget {
       onPressed: onTap,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: selected ? w.glass : _legacyChipFillIdle,
+          color: selected
+              ? (w.isDark ? const Color(0x24FFFFFF) : w.glass)
+              : (w.isDark ? const Color(0x14FFFFFF) : _legacyChipFillIdle),
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: selected ? w.ink : _legacyChipBorderIdle,
+            color: selected
+                ? w.ink
+                : (w.isDark ? const Color(0x28FFFFFF) : _legacyChipBorderIdle),
             width: selected ? 1.4 : 1,
           ),
         ),
@@ -405,8 +420,11 @@ class _LegacyContactAvatar extends StatelessWidget {
             Center(
               child: Text(
                 '+',
+                // The slot keeps a light disc in both themes (see _backing).
+                // w.ink flips to near-white in dark mode and would disappear
+                // on that disc, so the plus falls back to the dark glyph.
                 style: TextStyle(
-                  color: w.ink,
+                  color: w.isDark ? _glyph : w.ink,
                   fontSize: 20,
                   height: 24 / 20,
                   fontWeight: FontWeight.w500,

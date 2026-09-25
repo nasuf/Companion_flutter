@@ -1,5 +1,27 @@
 part of 'package:companion_flutter/main.dart';
 
+/// Light chat keeps its mint sheet. Dark uses the same page color as the
+/// rest of the app.
+Color _chatCanvasColor(BuildContext context) {
+  return AppColors.isDark(context)
+      ? AppColors.of(context).page
+      : const Color(0xFFF6FDFC);
+}
+
+/// Incoming bubbles. Light stays white; dark uses the shared surface.
+Color _chatIncomingBubbleColor(BuildContext context) {
+  return AppColors.of(context).surface;
+}
+
+/// Field, mic, and the emoji/more sheet. Same surface as other dark screens.
+Color _chatRaisedColor(BuildContext context) {
+  return AppColors.of(context).surface;
+}
+
+Color _chatHairline(BuildContext context) {
+  return AppColors.of(context).hairline;
+}
+
 class _ChatHeader extends StatelessWidget {
   const _ChatHeader({
     required this.agentName,
@@ -35,7 +57,8 @@ class _ChatHeader extends StatelessWidget {
       status: aiStatus,
       label: aiStatusLabel,
     );
-    final statusColor = _agentStatusColor(aiStatus);
+    final dark = AppColors.isDark(context);
+    final statusColor = _agentStatusColor(aiStatus, dark: dark);
     return Container(
       height: topInset + 76,
       padding: EdgeInsets.fromLTRB(16, topInset + 10, 12, 10),
@@ -43,7 +66,9 @@ class _ChatHeader extends StatelessWidget {
         color: AppColors.surface,
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF06C893).withValues(alpha: 0.15),
+            color: dark
+                ? Colors.black.withValues(alpha: 0.35)
+                : const Color(0xFF06C893).withValues(alpha: 0.15),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -86,11 +111,11 @@ class _ChatHeader extends StatelessWidget {
                     agentName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       height: 1.1,
                       fontWeight: FontWeight.w800,
-                      color: Colors.black,
+                      color: dark ? AppColors.text : Colors.black,
                     ),
                   ),
                 ),
@@ -123,6 +148,7 @@ class _ChatHeader extends StatelessWidget {
           IconButton(
             tooltip: '更多',
             onPressed: onOpenSidebar,
+            color: dark ? AppColors.text : null,
             icon: const Icon(CupertinoIcons.ellipsis, size: 24),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints.tightFor(width: 28, height: 40),
@@ -133,7 +159,30 @@ class _ChatHeader extends StatelessWidget {
   }
 }
 
-({Color foreground, Color background}) _agentStatusColor(String? status) {
+({Color foreground, Color background}) _agentStatusColor(
+  String? status, {
+  required bool dark,
+}) {
+  if (dark) {
+    return switch (status) {
+      'idle' => (
+        foreground: const Color(0xFF3DDC97),
+        background: const Color(0xFF14352C),
+      ),
+      'busy' || 'very_busy' => (
+        foreground: const Color(0xFFFFB15A),
+        background: const Color(0xFF3A2A16),
+      ),
+      'sleep' => (
+        foreground: const Color(0xFF9AA6FF),
+        background: const Color(0xFF1C2140),
+      ),
+      _ => (
+        foreground: const Color(0xFFB7C2CE),
+        background: const Color(0xFF1C2630),
+      ),
+    };
+  }
   return switch (status) {
     'idle' => (
       foreground: const Color(0xFF15A66A),

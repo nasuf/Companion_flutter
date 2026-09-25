@@ -214,9 +214,8 @@ class _LegacyEditorDeleteButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Same 36pt glass circle as the header's back/close button (_W2b is the
-    // weather page's shared token set, visible library-wide) — the header now
-    // sits on the bright page rather than the old dark background, so a bare
-    // white glyph with a drop shadow would no longer read.
+    // weather page's shared token set, visible library-wide). The disc follows
+    // the current brightness; the glyph stays the danger red.
     final w = _W2b.of(context);
     return CupertinoButton(
       padding: EdgeInsets.zero,

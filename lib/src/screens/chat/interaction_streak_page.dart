@@ -655,6 +655,8 @@ class _InteractionSummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = (height / _designHeight).clamp(0.68, 1.0);
     final avatar = 64 * s;
+    final dark = AppColors.isDark(context);
+    final ink = dark ? const Color(0xFFF2F7FB) : Colors.black;
     return Container(
       height: height,
       decoration: BoxDecoration(
@@ -703,7 +705,7 @@ class _InteractionSummaryCard extends StatelessWidget {
                   children: [
                     Text(
                       '连续互动',
-                      style: TextStyle(fontSize: 14 * s, color: Colors.black),
+                      style: TextStyle(fontSize: 14 * s, color: ink),
                     ),
                     SizedBox(width: 5 * s),
                     Text(
@@ -718,7 +720,7 @@ class _InteractionSummaryCard extends StatelessWidget {
                     SizedBox(width: 5 * s),
                     Text(
                       '天',
-                      style: TextStyle(fontSize: 14 * s, color: Colors.black),
+                      style: TextStyle(fontSize: 14 * s, color: ink),
                     ),
                   ],
                 ),
@@ -744,7 +746,7 @@ class _InteractionSummaryCard extends StatelessWidget {
                 Container(
                   height: 20 * s,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: dark ? const Color(0xFF163028) : Colors.white,
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(color: const Color(0xFF51FFD0)),
                     boxShadow: [
@@ -838,13 +840,19 @@ class _InteractionMarksCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
-                  _SectionSparkleIcon(size: 16),
-                  SizedBox(width: 4),
+                  const _SectionSparkleIcon(size: 16),
+                  const SizedBox(width: 4),
                   Text(
                     '连续互动标识',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.isDark(context)
+                          ? const Color(0xFFE4EBF3)
+                          : null,
+                    ),
                   ),
                 ],
               ),
@@ -860,7 +868,11 @@ class _InteractionMarksCard extends StatelessWidget {
                             for (var col = 0; col < 3; col++) ...[
                               if (col > 0) SizedBox(width: spacing),
                               Expanded(
-                                child: _markCell(row * 3 + col, iconSize),
+                                child: _markCell(
+                                  context,
+                                  row * 3 + col,
+                                  iconSize,
+                                ),
                               ),
                             ],
                           ],
@@ -877,7 +889,10 @@ class _InteractionMarksCard extends StatelessWidget {
     );
   }
 
-  Widget _markCell(int index, double iconSize) {
+  Widget _markCell(BuildContext context, int index, double iconSize) {
+    final dark = AppColors.isDark(context);
+    final activeInk = dark ? const Color(0xFFF2F7FB) : Colors.black;
+    final idleInk = dark ? const Color(0xFF8B9AA6) : const Color(0xFF5E5E5E);
     return FittedBox(
       fit: BoxFit.scaleDown,
       child: Column(
@@ -891,9 +906,7 @@ class _InteractionMarksCard extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12,
-              color: index <= currentStage
-                  ? Colors.black
-                  : const Color(0xFF5E5E5E),
+              color: index <= currentStage ? activeInk : idleInk,
             ),
           ),
         ],
