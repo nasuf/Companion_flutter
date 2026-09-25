@@ -3,14 +3,6 @@ part of 'package:companion_flutter/main.dart';
 class _NativeGameRuntime {
   static const int _roundHistoryLimit = 16;
 
-  _NativeGameRuntime({
-    required this.api,
-    required this.authSession,
-    required this.gameKey,
-    required this.onChanged,
-    this.onNeedPoints,
-  });
-
   final CompanionApi api;
   final AuthSession authSession;
   final String gameKey;
@@ -101,6 +93,26 @@ class _NativeGameRuntime {
   int get bannerOutMs => _bannerMs('banner_out_ms', 200);
 
   final math.Random _pacingRng = math.Random();
+  late final NativeGameRecordCache _recordCache = NativeGameRecordCache(
+    apiBaseUrl: api.baseUrl,
+    userId: authSession.userId,
+  );
+
+  _NativeGameRuntime({
+    required this.api,
+    required this.authSession,
+    required this.gameKey,
+    required this.onChanged,
+    this.onNeedPoints,
+  }) {
+    // Same-process revisit can paint before the first frame. Cold start still
+    // reads disk inside initialize, then refreshes from the server.
+    final cached = _recordCache.peek(gameKey);
+    if (cached != null) {
+      recordStats = cached;
+      roundsLoading = false;
+    }
+  }
 
   /// Pads the AI's turn so it takes a random wall-clock time in
   /// [aiMinResponseMs, aiMaxResponseMs] since [since] started, making an
@@ -122,16 +134,37 @@ class _NativeGameRuntime {
     // request and keep every later event on the same ordered network tail.
     _queueNetworkTask(_replayPendingEventsAtLaunch);
     _queueNetworkTask(loadGamePoints);
+    if (_recordCache.peek(gameKey) == null) {
+      final cached = await _recordCache.read(gameKey);
+      if (_disposed) return;
+      if (cached != null) {
+        recordStats = cached;
+        roundsLoading = false;
+        _notify();
+      }
+    }
     try {
       final sessionsFuture = api.listNativeGameSessions(
         gameKey: gameKey,
         limit: _roundHistoryLimit,
       );
       final statsFuture = _loadRecordStats();
+      // Lifetime numbers are a small aggregate. The session page carries full
+      // result JSON, so do not hold the home stats behind that response.
+      final stats = await statsFuture;
+      if (_disposed) return;
+      if (stats != null) await _applyRecordStats(stats);
       final sessions = await sessionsFuture;
+      if (_disposed) return;
       rounds = sessions.where(_GameRoundSummary.canShow).toList();
-      recordStats =
-          await statsFuture ?? NativeGameRecordStats.fromSessions(rounds);
+      if (stats == null) {
+        // Session page is capped, so this sample must not replace a stored
+        // lifetime total.
+        await _applyRecordStats(
+          NativeGameRecordStats.fromSessions(rounds),
+          persist: false,
+        );
+      }
       roundsLoading = false;
       _notify();
 
@@ -224,10 +257,15 @@ class _NativeGameRuntime {
         limit: _roundHistoryLimit,
       );
       final statsFuture = _loadRecordStats();
+      final stats = await statsFuture;
+      if (_disposed) return;
       final sessions = await sessionsFuture;
+      if (_disposed) return;
       rounds = sessions.where(_GameRoundSummary.canShow).toList();
-      recordStats =
-          await statsFuture ?? NativeGameRecordStats.fromSessions(rounds);
+      await _applyRecordStats(
+        stats ?? NativeGameRecordStats.fromSessions(rounds),
+        persist: stats != null,
+      );
       roundsLoading = false;
       _notify();
       // A round list reload follows game start / settle, so refresh the
@@ -246,6 +284,23 @@ class _NativeGameRuntime {
     } catch (_) {
       // Older servers, or a blip: fall back to whatever sessions we have.
       return null;
+    }
+  }
+
+  /// Show [stats] immediately. Persist only a server aggregate; the session
+  /// fallback is a capped sample and must not overwrite the stored total.
+  Future<void> _applyRecordStats(
+    NativeGameRecordStats stats, {
+    bool persist = true,
+  }) async {
+    recordStats = stats;
+    roundsLoading = false;
+    _notify();
+    if (!persist) return;
+    try {
+      await _recordCache.write(gameKey, stats);
+    } catch (caught) {
+      debugPrint('Failed to cache native game record: $caught');
     }
   }
 
@@ -276,8 +331,11 @@ class _NativeGameRuntime {
         );
       }
       rounds = rounds.where((round) => round.id != candidate.id).toList();
-      recordStats =
-          await _loadRecordStats() ?? NativeGameRecordStats.fromSessions(rounds);
+      final stats = await _loadRecordStats();
+      await _applyRecordStats(
+        stats ?? NativeGameRecordStats.fromSessions(rounds),
+        persist: stats != null,
+      );
       if (isActive) {
         clearTurnTimeout();
         session = null;

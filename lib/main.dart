@@ -51,6 +51,7 @@ import 'src/games/go_engine.dart';
 import 'src/games/match3_engine.dart';
 import 'src/games/minesweeper_engine.dart';
 import 'src/games/native_game_event_outbox.dart';
+import 'src/games/native_game_record_cache.dart';
 import 'src/games/number_merge_engine.dart';
 import 'src/games/reversi_engine.dart';
 import 'src/games/tetris_duel_engine.dart';

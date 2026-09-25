@@ -68,6 +68,8 @@ void main() {
     expect(stats.wins, 8);
     expect(stats.winRate, 40);
     expect(stats.homeWinRateLabel, '40%');
+    expect(NativeGameRecordStats.fromJson(stats.toJson()).totalSeconds, 5400);
+    expect(NativeGameRecordStats.fromJson(stats.toJson()).winRate, 40);
   });
 
   test('playSeconds falls back to started/ended span', () {

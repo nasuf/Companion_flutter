@@ -100,6 +100,18 @@ class NativeGameRecordStats {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'total_rounds': totalRounds,
+      'wins': wins,
+      'losses': losses,
+      'draws': draws,
+      'aborted': aborted,
+      'win_rate': winRate,
+      'total_seconds': totalSeconds,
+    };
+  }
+
   /// Client fallback when the record-stats endpoint is unavailable: same
   /// win-rate rule, but only over the sessions the caller already loaded.
   factory NativeGameRecordStats.fromSessions(Iterable<GameSession> sessions) {
@@ -390,7 +402,6 @@ class GameCatalogEntry {
     );
   }
 }
-
 
 class GamePlayerInfo {
   const GamePlayerInfo({
