@@ -351,7 +351,7 @@ class GameDockCardVisual {
     required this.shotOpacity,
     required this.chromeOpacity,
     required this.radius,
-    required this.flushOuterEdge,
+    this.outerCornerSquareFactor = 0,
   });
 
   final String entryId;
@@ -359,7 +359,10 @@ class GameDockCardVisual {
   final double shotOpacity;
   final double chromeOpacity;
   final double radius;
-  final bool flushOuterEdge;
+  /// 0 = fully rounded outer corners, 1 = square outer corners (screen edge).
+  final double outerCornerSquareFactor;
+
+  bool get flushOuterEdge => outerCornerSquareFactor >= 0.999;
 }
 
 class GameDockClusterVisual {
@@ -456,15 +459,20 @@ GameDockClusterVisual computeMultiCardDockClusterVisual({
     count: count,
   );
 
-  if (p <= stackThreshold) {
+  if (p < stackThreshold) {
     final shrinkProgress =
         stackThreshold <= 0 ? 0.0 : (p / stackThreshold).clamp(0.0, 1.0);
-    final stacked = computeBarPullVisual(
+    final restingOuter =
+        edge == GameFloatEdge.right ? anchorLeft + cardW : anchorLeft;
+    final stacked = computeBarShrinkVisual(
       edge: edge,
       centerY: centerY,
       progress: shrinkProgress,
       screen: screen,
       padding: padding,
+      cardWidth: cardW,
+      cardHeight: cardH,
+      restingOuter: restingOuter,
     );
     return GameDockClusterVisual(
       barRect: barRect,
@@ -476,7 +484,7 @@ GameDockClusterVisual computeMultiCardDockClusterVisual({
             shotOpacity: stacked.shotOpacity,
             chromeOpacity: stacked.chromeOpacity,
             radius: stacked.radius,
-            flushOuterEdge: stacked.flushOuterEdge,
+            outerCornerSquareFactor: stacked.outerCornerSquareFactor,
           ),
       ],
       showBar: p <= 0.001,
@@ -508,7 +516,7 @@ GameDockClusterVisual computeMultiCardDockClusterVisual({
             shotOpacity: 1,
             chromeOpacity: 0,
             radius: ui.lerpDouble(12, 16, p)!,
-            flushOuterEdge: false,
+            outerCornerSquareFactor: 0,
           );
         }(),
     ],
@@ -557,7 +565,7 @@ GameDockClusterVisual computeDockClusterVisual({
                   shotOpacity: single.shotOpacity,
                   chromeOpacity: single.chromeOpacity,
                   radius: single.radius,
-                  flushOuterEdge: single.flushOuterEdge,
+                  outerCornerSquareFactor: single.outerCornerSquareFactor,
                 ),
               ],
     );
@@ -607,7 +615,7 @@ GameDockClusterVisual computeDockClusterVisualFree({
         shotOpacity: 1,
         chromeOpacity: 0,
         radius: 16,
-        flushOuterEdge: false,
+        outerCornerSquareFactor: 0,
       ),
     );
   }
@@ -634,14 +642,17 @@ class GameFloatVisual {
     required this.shotOpacity,
     required this.chromeOpacity,
     required this.radius,
-    this.flushOuterEdge = false,
+    this.outerCornerSquareFactor = 0,
   });
 
   final Rect rect;
   final double shotOpacity;
   final double chromeOpacity;
   final double radius;
-  final bool flushOuterEdge;
+  /// 0 = fully rounded outer corners, 1 = square outer corners (screen edge).
+  final double outerCornerSquareFactor;
+
+  bool get flushOuterEdge => outerCornerSquareFactor >= 0.999;
 }
 
 GameFloatVisual sampleFloatEdgeMorph(
@@ -665,8 +676,6 @@ GameFloatVisual sampleFloatEdgeMorph(
   );
 }
 
-const _barPullGrowPhase = 0.72;
-
 double clampFloatTop({
   required double centerY,
   required double height,
@@ -681,44 +690,40 @@ double clampFloatTop({
   return top.clamp(minTop, maxTop).toDouble();
 }
 
-/// WeChat-style peel: outer edge stays on screen while width grows, then slides
-/// inward to the resting thumbnail gap.
-GameFloatVisual computeBarPullVisual({
+const _barPullSlidePhaseStart = 0.72;
+/// Top slice of shrink progress spent gliding the outer edge to the screen
+/// boundary before width/height peel (avoids corner + position jumps).
+const _barShrinkAttachPhaseFraction = 0.15;
+
+bool dockCardShouldShowClose({
+  required double shotOpacity,
+  required double cardWidth,
+}) {
+  return shotOpacity >= 0.08 && cardWidth > gameFloatBarWidth + 2;
+}
+
+double dockCardCloseScale({
+  required double cardWidth,
+  required double referenceWidth,
+}) {
+  if (referenceWidth <= 0) return 1;
+  return (cardWidth / referenceWidth).clamp(0.35, 1.0);
+}
+
+/// Shrink/grow peel with the outer edge pinned to the screen boundary.
+GameFloatVisual computeBarShrinkVisual({
   required GameFloatEdge edge,
   required double centerY,
   required double progress,
   required Size screen,
   required EdgeInsets padding,
+  required double cardWidth,
+  required double cardHeight,
+  double? restingOuter,
 }) {
-  final thumbSize = gameFloatThumbSize(screen);
-  final thumbW = thumbSize.width;
-  final thumbH = thumbSize.height;
-  // Keep geometry linear with finger travel; ease only the preview fade-in.
   final p = progress.clamp(0.0, 1.0);
-  final finalLeft = thumbLeftForEdge(
-    edge: edge,
-    screenWidth: screen.width,
-    thumbWidth: thumbW,
-  );
-
-  late double width;
-  late double height;
-  late double left;
-  if (p <= _barPullGrowPhase) {
-    final t = p / _barPullGrowPhase;
-    width = ui.lerpDouble(gameFloatBarWidth, thumbW, t)!;
-    height = ui.lerpDouble(gameFloatBarHeight, thumbH, t)!;
-    left = edge == GameFloatEdge.right ? screen.width - width : 0.0;
-  } else {
-    final t = (p - _barPullGrowPhase) / (1 - _barPullGrowPhase);
-    width = thumbW;
-    height = thumbH;
-    final flushLeft =
-        edge == GameFloatEdge.right ? screen.width - thumbW : 0.0;
-    left = ui.lerpDouble(flushLeft, finalLeft, t)!;
-  }
-
-  final top = clampFloatTop(
+  final flushOuter = edge == GameFloatEdge.right ? screen.width : 0.0;
+  final topForHeight = (double height) => clampFloatTop(
     centerY: centerY,
     height: height,
     screenHeight: screen.height,
@@ -729,14 +734,107 @@ GameFloatVisual computeBarPullVisual({
   final chrome = 1 - shot;
   final radius = ui.lerpDouble(12, 16, p)!;
 
+  if (restingOuter != null && (restingOuter - flushOuter).abs() > 0.5) {
+    final attachEnd = 1.0 - _barShrinkAttachPhaseFraction;
+    late double outer;
+    late double width;
+    late double height;
+    late double outerCornerSquareFactor;
+
+    if (p > attachEnd) {
+      final u = ((p - attachEnd) / _barShrinkAttachPhaseFraction).clamp(
+        0.0,
+        1.0,
+      );
+      outer = ui.lerpDouble(flushOuter, restingOuter, u)!;
+      width = cardWidth;
+      height = cardHeight;
+      outerCornerSquareFactor = 1.0 - u;
+    } else {
+      outer = flushOuter;
+      final u =
+          attachEnd <= 0 ? 1.0 : (p / attachEnd).clamp(0.0, 1.0);
+      width = ui.lerpDouble(gameFloatBarWidth, cardWidth, u)!;
+      height = ui.lerpDouble(gameFloatBarHeight, cardHeight, u)!;
+      outerCornerSquareFactor = 1.0;
+    }
+
+    final left = edge == GameFloatEdge.right ? outer - width : outer;
+    return GameFloatVisual(
+      rect: Rect.fromLTWH(left, topForHeight(height), width, height),
+      shotOpacity: shot,
+      chromeOpacity: chrome,
+      radius: radius,
+      outerCornerSquareFactor: outerCornerSquareFactor,
+    );
+  }
+
+  final width = ui.lerpDouble(gameFloatBarWidth, cardWidth, p)!;
+  final height = ui.lerpDouble(gameFloatBarHeight, cardHeight, p)!;
+  final left = edge == GameFloatEdge.right ? screen.width - width : 0.0;
+
   return GameFloatVisual(
-    rect: Rect.fromLTWH(left, top, width, height),
+    rect: Rect.fromLTWH(left, topForHeight(height), width, height),
     shotOpacity: shot,
     chromeOpacity: chrome,
     radius: radius,
-    // Keep preview corners rounded while peeling; the docked bar widget
-    // handles its own edge styling once cards are fully collapsed.
-    flushOuterEdge: false,
+    outerCornerSquareFactor: 1.0,
+  );
+}
+
+/// Single-card peel: pinned shrink/grow, then slide inward to the resting gap.
+GameFloatVisual computeBarPullVisual({
+  required GameFloatEdge edge,
+  required double centerY,
+  required double progress,
+  required Size screen,
+  required EdgeInsets padding,
+}) {
+  final thumbSize = gameFloatThumbSize(screen);
+  final thumbW = thumbSize.width;
+  final thumbH = thumbSize.height;
+  final p = progress.clamp(0.0, 1.0);
+
+  if (p <= _barPullSlidePhaseStart) {
+    final shrinkProgress =
+        _barPullSlidePhaseStart <= 0
+            ? 0.0
+            : (p / _barPullSlidePhaseStart).clamp(0.0, 1.0);
+    return computeBarShrinkVisual(
+      edge: edge,
+      centerY: centerY,
+      progress: shrinkProgress,
+      screen: screen,
+      padding: padding,
+      cardWidth: thumbW,
+      cardHeight: thumbH,
+    );
+  }
+
+  final t = ((p - _barPullSlidePhaseStart) /
+          (1 - _barPullSlidePhaseStart))
+      .clamp(0.0, 1.0);
+  final flushLeft = edge == GameFloatEdge.right ? screen.width - thumbW : 0.0;
+  final finalLeft = thumbLeftForEdge(
+    edge: edge,
+    screenWidth: screen.width,
+    thumbWidth: thumbW,
+  );
+  final left = ui.lerpDouble(flushLeft, finalLeft, t)!;
+  final top = clampFloatTop(
+    centerY: centerY,
+    height: thumbH,
+    screenHeight: screen.height,
+    safeTop: padding.top,
+    safeBottom: padding.bottom,
+  );
+
+  return GameFloatVisual(
+    rect: Rect.fromLTWH(left, top, thumbW, thumbH),
+    shotOpacity: 1,
+    chromeOpacity: 0,
+    radius: ui.lerpDouble(12, 16, p)!,
+    outerCornerSquareFactor: 1.0 - t,
   );
 }
 
@@ -2542,6 +2640,10 @@ class _GameSuspendHostState extends State<GameSuspendHost>
                 ) ==
                 GameFloatEdge.right
             : edge == GameFloatEdge.right;
+    final closeReferenceWidth =
+        entryIds.length <= 1
+            ? gameFloatThumbSize(metrics.size).width
+            : gameFloatDockCardSize(metrics.size, entryIds.length).width;
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerMove: (event) {
@@ -2568,7 +2670,7 @@ class _GameSuspendHostState extends State<GameSuspendHost>
         _cancelPreviewDrag(dragEntry);
       },
       child: Stack(
-        clipBehavior: Clip.none,
+        clipBehavior: Clip.hardEdge,
         children: [
           if (visual.showBar)
             Positioned(
@@ -2587,7 +2689,14 @@ class _GameSuspendHostState extends State<GameSuspendHost>
             () {
               final entry = widget.controller.find(card.entryId);
               if (entry == null) return const SizedBox.shrink();
-              final revealed = entry.phase == GameFloatPhase.thumbnail;
+              final showClose = dockCardShouldShowClose(
+                shotOpacity: card.shotOpacity,
+                cardWidth: card.rect.width,
+              );
+              final closeScale = dockCardCloseScale(
+                cardWidth: card.rect.width,
+                referenceWidth: closeReferenceWidth,
+              );
               return Positioned(
                 key: ValueKey('game-float-dock-card-${card.entryId}'),
                 left: card.rect.left,
@@ -2618,8 +2727,9 @@ class _GameSuspendHostState extends State<GameSuspendHost>
                     chromeOpacity: card.chromeOpacity,
                     radius: card.radius,
                     onRight: onRight,
-                    flushOuterEdge: card.flushOuterEdge,
-                    showClose: revealed && card.shotOpacity >= 0.72,
+                    outerCornerSquareFactor: card.outerCornerSquareFactor,
+                    showClose: showClose,
+                    closeScale: closeScale,
                     onDismiss: () => unawaited(_dismissFloat(entry)),
                   ),
                 ),
@@ -2865,8 +2975,9 @@ class _FloatWindow extends StatelessWidget {
     required this.chromeOpacity,
     required this.radius,
     required this.onRight,
-    this.flushOuterEdge = false,
+    this.outerCornerSquareFactor = 0,
     this.showClose = false,
+    this.closeScale = 1,
     this.onDismiss,
   });
 
@@ -2875,17 +2986,29 @@ class _FloatWindow extends StatelessWidget {
   final double chromeOpacity;
   final double radius;
   final bool onRight;
-  final bool flushOuterEdge;
+  final double outerCornerSquareFactor;
   final bool showClose;
+  final double closeScale;
   final VoidCallback? onDismiss;
 
-  BorderRadius _borderRadius(double corner) {
-    if (!flushOuterEdge) {
+  BorderRadius _borderRadius(double corner, double outerSquare) {
+    final square = outerSquare.clamp(0.0, 1.0);
+    if (square <= 0.001) {
       return BorderRadius.circular(corner);
     }
-    return BorderRadius.horizontal(
-      left: onRight ? Radius.circular(corner) : Radius.zero,
-      right: onRight ? Radius.zero : Radius.circular(corner),
+    if (square >= 0.999) {
+      return BorderRadius.horizontal(
+        left: onRight ? Radius.circular(corner) : Radius.zero,
+        right: onRight ? Radius.zero : Radius.circular(corner),
+      );
+    }
+    final inner = Radius.circular(corner);
+    final outer = Radius.circular(corner * (1 - square));
+    return BorderRadius.only(
+      topLeft: onRight ? inner : outer,
+      bottomLeft: onRight ? inner : outer,
+      topRight: onRight ? outer : inner,
+      bottomRight: onRight ? outer : inner,
     );
   }
 
@@ -2894,16 +3017,21 @@ class _FloatWindow extends StatelessWidget {
     final corner = radius.clamp(0.0, 28.0);
     final shot = shotOpacity.clamp(0.0, 1.0);
     final chrome = chromeOpacity.clamp(0.0, 1.0);
-    final borderRadius = _borderRadius(corner);
+    final outerSquare = outerCornerSquareFactor.clamp(0.0, 1.0);
+    final borderRadius = _borderRadius(corner, outerSquare);
+    final flushOuter = outerSquare >= 0.999;
     final shotAlignment =
-        flushOuterEdge && shot > 0.01
+        flushOuter && shot > 0.01
             ? (onRight ? Alignment.centerRight : Alignment.centerLeft)
             : Alignment.center;
+    final closeOpacity = showClose
+        ? ((shot - 0.08) / 0.25).clamp(0.0, 1.0)
+        : 0.0;
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: borderRadius,
         boxShadow:
-            flushOuterEdge
+            flushOuter
                 ? null
                 : [
                   BoxShadow(
@@ -2948,12 +3076,20 @@ class _FloatWindow extends StatelessWidget {
                   ),
                 ),
               ),
-            if (showClose && shot > 0.55 && onDismiss != null)
+            if (showClose && closeOpacity > 0.01 && onDismiss != null)
               Positioned(
                 top: 4,
                 left: onRight ? 4 : null,
                 right: onRight ? null : 4,
-                child: _FloatCloseButton(onPressed: onDismiss!),
+                child: Opacity(
+                  opacity: closeOpacity,
+                  child: Transform.scale(
+                    scale: closeScale.clamp(0.35, 1.0),
+                    alignment:
+                        onRight ? Alignment.topLeft : Alignment.topRight,
+                    child: _FloatCloseButton(onPressed: onDismiss!),
+                  ),
+                ),
               ),
           ],
         ),

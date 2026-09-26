@@ -43,7 +43,7 @@ void main() {
     );
     expect(docked.rect.right, closeTo(400, 0.001));
     expect(docked.rect.width, gameFloatBarWidth);
-    expect(docked.flushOuterEdge, isFalse);
+    expect(docked.flushOuterEdge, isTrue);
 
     final growing = computeBarPullVisual(
       edge: GameFloatEdge.right,
@@ -54,6 +54,7 @@ void main() {
     );
     expect(growing.rect.right, closeTo(400, 0.001));
     expect(growing.rect.width, greaterThan(gameFloatBarWidth));
+    expect(growing.flushOuterEdge, isTrue);
 
     final thumbWidth = gameFloatThumbSize(screen).width;
     final resting = computeBarPullVisual(
@@ -92,7 +93,7 @@ void main() {
       padding: EdgeInsets.zero,
     );
     expect(visual.cards, isNotEmpty);
-    expect(visual.cards.last.rect.right, closeTo(400, 1));
+    expect(visual.cards.last.rect.right, closeTo(400, 0.001));
 
     final leftMidShrink =
         multiCardStackProgressThreshold(
@@ -110,7 +111,64 @@ void main() {
       padding: EdgeInsets.zero,
     );
     expect(leftVisual.cards, isNotEmpty);
-    expect(leftVisual.cards.first.rect.left, closeTo(0, 1));
+    expect(leftVisual.cards.first.rect.left, closeTo(0, 0.001));
+  });
+
+  test('dock close button visibility follows peel progress not phase', () {
+    expect(
+      dockCardShouldShowClose(shotOpacity: 0.72, cardWidth: 80),
+      isTrue,
+    );
+    expect(
+      dockCardShouldShowClose(shotOpacity: 0.05, cardWidth: 80),
+      isFalse,
+    );
+    expect(
+      dockCardShouldShowClose(shotOpacity: 0.5, cardWidth: gameFloatBarWidth),
+      isFalse,
+    );
+    expect(
+      dockCardCloseScale(cardWidth: 54, referenceWidth: 108),
+      closeTo(0.5, 0.01),
+    );
+  });
+
+  test('multi-card shrink attach phase eases outer corners at the edge', () {
+    const screen = Size(400, 844);
+    final stackThreshold = multiCardStackProgressThreshold(
+      screen: screen,
+      edge: GameFloatEdge.right,
+      count: 2,
+    );
+    final justBelowStack = computeDockClusterVisual(
+      entryIds: ['a', 'b'],
+      edge: GameFloatEdge.right,
+      centerY: 200,
+      progress: stackThreshold - 0.02,
+      screen: screen,
+      padding: EdgeInsets.zero,
+    );
+    final justAboveStack = computeDockClusterVisual(
+      entryIds: ['a', 'b'],
+      edge: GameFloatEdge.right,
+      centerY: 200,
+      progress: stackThreshold + 0.02,
+      screen: screen,
+      padding: EdgeInsets.zero,
+    );
+    final belowEdge = justBelowStack.cards.firstWhere(
+      (card) => card.entryId == 'b',
+    );
+    final aboveEdge = justAboveStack.cards.firstWhere(
+      (card) => card.entryId == 'b',
+    );
+    expect(belowEdge.outerCornerSquareFactor, lessThan(1.0));
+    expect(aboveEdge.outerCornerSquareFactor, 0);
+    expect(
+      (belowEdge.outerCornerSquareFactor - aboveEdge.outerCornerSquareFactor)
+          .abs(),
+      lessThan(0.35),
+    );
   });
 
   test('multi-card collapse keeps rounded corners on the edge card', () {
@@ -143,9 +201,37 @@ void main() {
       padding: EdgeInsets.zero,
     );
     expect(
-      shrinking.cards.every((card) => !card.flushOuterEdge),
+      shrinking.cards.every((card) => card.flushOuterEdge),
       isTrue,
     );
+    expect(shrinking.cards.first.rect.right, closeTo(400, 0.001));
+  });
+
+  test('shrink peel keeps the outer edge pinned to the screen boundary', () {
+    const screen = Size(400, 844);
+    final cardSize = gameFloatDockCardSize(screen, 2);
+    final open = computeBarShrinkVisual(
+      edge: GameFloatEdge.right,
+      centerY: 200,
+      progress: 1,
+      screen: screen,
+      padding: EdgeInsets.zero,
+      cardWidth: cardSize.width,
+      cardHeight: cardSize.height,
+    );
+    final mid = computeBarShrinkVisual(
+      edge: GameFloatEdge.right,
+      centerY: 200,
+      progress: 0.45,
+      screen: screen,
+      padding: EdgeInsets.zero,
+      cardWidth: cardSize.width,
+      cardHeight: cardSize.height,
+    );
+    expect(open.rect.right, closeTo(400, 0.001));
+    expect(mid.rect.right, closeTo(400, 0.001));
+    expect(mid.rect.width, lessThan(open.rect.width));
+    expect(mid.rect.left, greaterThan(open.rect.left));
   });
 
   test('multi-card collapse stacks the inner card onto the edge card', () {
