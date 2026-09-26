@@ -343,7 +343,7 @@ Color _musicAccentForTrack(MusicTrack? track) {
 String _musicLibraryTitle(String? id) {
   return switch ((id ?? '').trim().toLowerCase()) {
     'focus' => '专注',
-    'ambient' => 'Ambient',
+    'ambient' => '氛围',
     'sleep' => '睡眠',
     'relax' => '放松',
     'vocal' => '原声',

@@ -45,7 +45,7 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
   ];
   static const _fallbackLibraries = [
     MusicLibrary(id: 'focus', title: '专注', subtitle: '工作和阅读'),
-    MusicLibrary(id: 'ambient', title: 'Ambient', subtitle: '随机频道'),
+    MusicLibrary(id: 'ambient', title: '氛围', subtitle: '随机频道'),
     MusicLibrary(id: 'sleep', title: '睡眠', subtitle: '夜间陪伴'),
   ];
 
