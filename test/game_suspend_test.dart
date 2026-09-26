@@ -76,16 +76,203 @@ void main() {
 
   test('dock cluster keeps cards flush with the screen edge while pulling', () {
     const screen = Size(400, 844);
+    final rightMidShrink =
+        multiCardStackProgressThreshold(
+          screen: screen,
+          edge: GameFloatEdge.right,
+          count: 2,
+        ) *
+        0.35;
     final visual = computeDockClusterVisual(
       entryIds: ['a', 'b'],
       edge: GameFloatEdge.right,
       centerY: 200,
-      progress: 0.45,
+      progress: rightMidShrink,
       screen: screen,
       padding: EdgeInsets.zero,
     );
     expect(visual.cards, isNotEmpty);
     expect(visual.cards.last.rect.right, closeTo(400, 1));
+
+    final leftMidShrink =
+        multiCardStackProgressThreshold(
+          screen: screen,
+          edge: GameFloatEdge.left,
+          count: 2,
+        ) *
+        0.35;
+    final leftVisual = computeDockClusterVisual(
+      entryIds: ['a', 'b'],
+      edge: GameFloatEdge.left,
+      centerY: 200,
+      progress: leftMidShrink,
+      screen: screen,
+      padding: EdgeInsets.zero,
+    );
+    expect(leftVisual.cards, isNotEmpty);
+    expect(leftVisual.cards.first.rect.left, closeTo(0, 1));
+  });
+
+  test('multi-card collapse stacks the inner card onto the edge card', () {
+    const screen = Size(400, 844);
+    final spread = computeDockClusterVisual(
+      entryIds: ['a', 'b'],
+      edge: GameFloatEdge.right,
+      centerY: 200,
+      progress: 1,
+      screen: screen,
+      padding: EdgeInsets.zero,
+    );
+    final cardA = spread.cards.firstWhere((card) => card.entryId == 'a');
+    final cardB = spread.cards.firstWhere((card) => card.entryId == 'b');
+    expect(cardA.rect.left, lessThan(cardB.rect.left));
+
+    final stackThreshold = multiCardStackProgressThreshold(
+      screen: screen,
+      edge: GameFloatEdge.right,
+      count: 2,
+    );
+    final stacked = computeDockClusterVisual(
+      entryIds: ['a', 'b'],
+      edge: GameFloatEdge.right,
+      centerY: 200,
+      progress: stackThreshold,
+      screen: screen,
+      padding: EdgeInsets.zero,
+    );
+    expect(stacked.cards.first.rect.left, closeTo(cardB.rect.left, 1));
+    expect(stacked.cards.last.rect.left, closeTo(cardB.rect.left, 1));
+
+    final mid = computeDockClusterVisual(
+      entryIds: ['a', 'b'],
+      edge: GameFloatEdge.right,
+      centerY: 200,
+      progress: 0.81,
+      screen: screen,
+      padding: EdgeInsets.zero,
+    );
+    final midA = mid.cards.firstWhere((card) => card.entryId == 'a');
+    final midB = mid.cards.firstWhere((card) => card.entryId == 'b');
+    expect(midA.rect.left, greaterThan(cardA.rect.left));
+    expect(midA.rect.right, greaterThan(midB.rect.left));
+  });
+
+  test('multi-game dock cluster respects left edge at full reveal', () {
+    const screen = Size(400, 844);
+    final visual = computeDockClusterVisual(
+      entryIds: ['a', 'b'],
+      edge: GameFloatEdge.left,
+      centerY: 200,
+      progress: 1,
+      screen: screen,
+      padding: EdgeInsets.zero,
+    );
+    expect(visual.cards, hasLength(2));
+    expect(visual.cards.first.rect.left, closeTo(gameFloatThumbGap, 2));
+  });
+
+  test('dock preview scrim fades in with peel progress', () {
+    expect(scrimOpacityFromDockPullProgress(0), 0);
+    expect(scrimOpacityFromDockPullProgress(0.04), 0);
+    expect(
+      scrimOpacityFromDockPullProgress(1),
+      closeTo(gameFloatDockScrimMaxOpacity, 0.01),
+    );
+  });
+
+  test('multi-card collapse pull distance fits stack plus shrink travel', () {
+    const screen = Size(400, 844);
+    for (final count in [2, 3]) {
+      final collapseMax = maxDockPullDistance(
+        screen: screen,
+        edge: GameFloatEdge.right,
+        count: count,
+        collapsing: true,
+      );
+      final expandMax = maxDockPullDistance(
+        screen: screen,
+        edge: GameFloatEdge.right,
+        count: count,
+        collapsing: false,
+      );
+      final expected =
+          multiCardStackTravel(screen: screen, count: count) +
+          multiCardShrinkTravel(screen: screen, edge: GameFloatEdge.right);
+      expect(collapseMax, closeTo(expected, 0.01));
+      expect(collapseMax, lessThan(expandMax));
+
+      final progressAtFullCollapse = dockPullProgressFromDragDelta(
+        dragDelta: Offset(collapseMax, 0),
+        startProgress: 1,
+        screen: screen,
+        edge: GameFloatEdge.right,
+        count: count,
+      );
+      expect(progressAtFullCollapse, closeTo(0, 0.01));
+    }
+  });
+
+  test('multi-card stack threshold scales with card count', () {
+    const screen = Size(400, 844);
+    final twoCard = multiCardStackProgressThreshold(
+      screen: screen,
+      edge: GameFloatEdge.right,
+      count: 2,
+    );
+    final threeCard = multiCardStackProgressThreshold(
+      screen: screen,
+      edge: GameFloatEdge.right,
+      count: 3,
+    );
+    expect(twoCard, greaterThan(0));
+    expect(twoCard, lessThan(1));
+    expect(threeCard, lessThan(twoCard));
+  });
+
+  test('outward drag from a resting preview reduces pull progress', () {
+    const screen = Size(400, 844);
+    final maxPull = maxDockPullDistance(
+      screen: screen,
+      edge: GameFloatEdge.right,
+      count: 1,
+    );
+    expect(
+      dockPullProgressFromDragDelta(
+        dragDelta: Offset(maxPull * 0.5, 0),
+        startProgress: 1,
+        screen: screen,
+        edge: GameFloatEdge.right,
+        count: 1,
+      ),
+      closeTo(0.5, 0.01),
+    );
+    final leftPeel = dockPullProgressFromDragDelta(
+      dragDelta: const Offset(-40, 0),
+      startProgress: 1,
+      screen: screen,
+      edge: GameFloatEdge.left,
+      count: 2,
+    );
+    expect(leftPeel, lessThan(1.0));
+    expect(leftPeel, greaterThan(0.0));
+  });
+
+  test('cluster snap prefers the closer screen edge by bounds', () {
+    const screenWidth = 400.0;
+    expect(
+      nearestHorizontalEdgeForBounds(
+        bounds: const Rect.fromLTWH(8, 0, 220, 100),
+        screenWidth: screenWidth,
+      ),
+      GameFloatEdge.left,
+    );
+    expect(
+      nearestHorizontalEdgeForBounds(
+        bounds: const Rect.fromLTWH(172, 0, 220, 100),
+        screenWidth: screenWidth,
+      ),
+      GameFloatEdge.right,
+    );
   });
 
   test('docked multi-game cluster shows only the thin bar at progress zero', () {
@@ -101,6 +288,23 @@ void main() {
     expect(visual.showBar, isTrue);
     expect(visual.cards, isEmpty);
     expect(visual.barRect.width, gameFloatBarWidth);
+  });
+
+  test('free preview layout centers cards on the given point', () {
+    const screen = Size(400, 844);
+    const center = Offset(180, 220);
+    final visual = computeDockClusterVisualFree(
+      entryIds: ['a'],
+      center: center,
+      screen: screen,
+      padding: EdgeInsets.zero,
+    );
+    expect(visual.cards, hasLength(1));
+    expect(
+      clusterBoundsFromVisual(visual).center.dx,
+      closeTo(center.dx, 1),
+    );
+    expect(visual.showBar, isFalse);
   });
 
   test('early dock pull clips cards to the visible strip width', () {
@@ -490,30 +694,146 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('swiping a revealed preview collapses back toward the bar', (
+  testWidgets('dock preview scrim is hidden while only the bar is shown', (
     tester,
   ) async {
     final controller = GameSuspendController();
-    await _pumpHost(tester, controller, entryIds: ['gomoku', 'chess']);
+    await _pumpHost(tester, controller);
 
-    for (final id in ['gomoku', 'chess']) {
-      await tester.tap(find.text('open-$id'));
+    await tester.tap(find.text('open-gomoku'));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('game-suspend-button-gomoku')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('game-float-dock-bar')), findsOneWidget);
+    expect(find.byKey(const ValueKey('game-float-dock-scrim')), findsNothing);
+
+    controller.closeAll();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('tapping outside a revealed preview collapses back to the bar', (
+    tester,
+  ) async {
+    final controller = GameSuspendController();
+    await _pumpHost(tester, controller);
+
+    await tester.tap(find.text('open-gomoku'));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('game-suspend-button-gomoku')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('game-float-dock-bar')));
+    await tester.pumpAndSettle();
+    expect(controller.find('gomoku')!.phase, GameFloatPhase.thumbnail);
+    expect(find.byKey(const ValueKey('game-float-dock-scrim')), findsOneWidget);
+
+    await tester.tapAt(const Offset(200, 300));
+    await tester.pumpAndSettle();
+    expect(controller.find('gomoku')!.phase, GameFloatPhase.bar);
+    expect(find.byKey(const ValueKey('game-float-dock-scrim')), findsNothing);
+
+    controller.closeAll();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets(
+    'dragging a snapped preview toward the edge collapses into the bar',
+    (tester) async {
+      final controller = GameSuspendController();
+      await _pumpHost(tester, controller);
+
+      await tester.tap(find.text('open-gomoku'));
       await tester.pump();
-      await tester.tap(find.byKey(ValueKey('game-suspend-button-$id')));
+      await tester.tap(find.byKey(const ValueKey('game-suspend-button-gomoku')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 900));
       await tester.pumpAndSettle();
-    }
+
+      await tester.tap(find.byKey(const ValueKey('game-float-dock-bar')));
+      await tester.pumpAndSettle();
+      expect(controller.find('gomoku')!.phase, GameFloatPhase.thumbnail);
+
+      final card = find.byKey(const ValueKey('game-float-dock-card-gomoku'));
+      await tester.drag(card, const Offset(120, 0), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(controller.find('gomoku')!.phase, GameFloatPhase.bar);
+
+      controller.closeAll();
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'multiple revealed previews snap to the left when dragged there',
+    (tester) async {
+      final controller = GameSuspendController();
+      await _pumpHost(tester, controller, entryIds: ['gomoku', 'chess']);
+
+      for (final id in ['gomoku', 'chess']) {
+        await tester.tap(find.text('open-$id'));
+        await tester.pump();
+        await tester.tap(find.byKey(ValueKey('game-suspend-button-$id')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 900));
+        await tester.pumpAndSettle();
+      }
+
+      await tester.tap(find.byKey(const ValueKey('game-float-dock-bar')));
+      await tester.pumpAndSettle();
+      expect(controller.find('gomoku')!.phase, GameFloatPhase.thumbnail);
+      expect(controller.find('chess')!.phase, GameFloatPhase.thumbnail);
+
+      final card = find.byKey(const ValueKey('game-float-dock-card-gomoku'));
+      await tester.drag(card, const Offset(-600, 20), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(controller.find('gomoku')!.edge, GameFloatEdge.left);
+      expect(controller.find('chess')!.edge, GameFloatEdge.left);
+      final leftCard = tester.getTopLeft(
+        find.byKey(const ValueKey('game-float-dock-card-gomoku')),
+      );
+      expect(leftCard.dx, closeTo(gameFloatThumbGap, 4));
+
+      controller.closeAll();
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets('a revealed preview can move freely and snap to the nearest edge', (
+    tester,
+  ) async {
+    final controller = GameSuspendController();
+    await _pumpHost(tester, controller);
+
+    await tester.tap(find.text('open-gomoku'));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('game-suspend-button-gomoku')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('game-float-dock-bar')));
     await tester.pumpAndSettle();
     expect(controller.find('gomoku')!.phase, GameFloatPhase.thumbnail);
 
     final card = find.byKey(const ValueKey('game-float-dock-card-gomoku'));
-    await tester.drag(card, const Offset(280, 0));
+    final before = tester.getTopLeft(card);
+    await tester.drag(card, const Offset(-400, 40), warnIfMissed: false);
+    await tester.pump();
+    final during = tester.getTopLeft(card);
+    expect(during.dx, lessThan(before.dx - 80));
+    expect(during.dy, greaterThan(before.dy + 10));
+
     await tester.pumpAndSettle();
-    expect(controller.find('gomoku')!.phase, GameFloatPhase.bar);
-    expect(controller.find('chess')!.phase, GameFloatPhase.bar);
+    expect(controller.find('gomoku')!.phase, GameFloatPhase.thumbnail);
+    expect(controller.find('gomoku')!.edge, GameFloatEdge.left);
+    final after = tester.getTopLeft(card);
+    expect(after.dx, lessThan(40));
 
     controller.closeAll();
     await tester.pumpAndSettle();

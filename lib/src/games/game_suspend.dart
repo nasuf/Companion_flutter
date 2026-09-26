@@ -23,6 +23,10 @@ const gameFloatMaxSuspended = 3;
 const gameFloatMaxEntries = gameFloatMaxSuspended + 1;
 
 const gameFloatDockCardGap = 8.0;
+/// Preview scrim begins once peel progress passes this threshold.
+const gameFloatDockScrimRevealStart = 0.05;
+/// Peak dim strength while a dock preview is open (70% black).
+const gameFloatDockScrimMaxOpacity = 0.7;
 
 const _minimizeDuration = Duration(milliseconds: 560);
 const _revealDuration = Duration(milliseconds: 380);
@@ -58,6 +62,22 @@ GameFloatEdge nearestHorizontalEdge({
   required double width,
 }) {
   return centerX < width / 2 ? GameFloatEdge.left : GameFloatEdge.right;
+}
+
+/// Wide dock clusters snap by whichever outer edge is closer to the screen.
+GameFloatEdge nearestHorizontalEdgeForBounds({
+  required Rect bounds,
+  required double screenWidth,
+}) {
+  if (bounds.width <= 0) {
+    return nearestHorizontalEdge(centerX: bounds.center.dx, width: screenWidth);
+  }
+  final leftGap = bounds.left;
+  final rightGap = screenWidth - bounds.right;
+  if (leftGap != rightGap) {
+    return leftGap < rightGap ? GameFloatEdge.left : GameFloatEdge.right;
+  }
+  return nearestHorizontalEdge(centerX: bounds.center.dx, width: screenWidth);
 }
 
 double thumbLeftForEdge({
@@ -206,11 +226,48 @@ double barPullProgressFromDrag({
   return (pullPx / max).clamp(0.0, 1.0);
 }
 
+/// Horizontal travel while multi-card previews stack onto the edge card.
+double multiCardStackTravel({
+  required Size screen,
+  required int count,
+}) {
+  if (count <= 1) return 0;
+  final cardWidth = gameFloatDockCardSize(screen, count).width;
+  return (count - 1) * (cardWidth + gameFloatDockCardGap);
+}
+
+/// Horizontal travel while a stacked preview shrinks back into the edge bar.
+double multiCardShrinkTravel({
+  required Size screen,
+  required GameFloatEdge edge,
+}) {
+  return maxBarPullDistance(
+    screen: screen,
+    edge: edge,
+    thumbWidth: gameFloatThumbSize(screen).width,
+  );
+}
+
+/// Progress at which multi-card stacking finishes and bar shrink begins.
+double multiCardStackProgressThreshold({
+  required Size screen,
+  required GameFloatEdge edge,
+  required int count,
+}) {
+  if (count <= 1) return 0;
+  final stack = multiCardStackTravel(screen: screen, count: count);
+  final shrink = multiCardShrinkTravel(screen: screen, edge: edge);
+  final total = stack + shrink;
+  if (total <= 0) return 0.5;
+  return shrink / total;
+}
+
 /// Pull distance for a dock cluster with [count] cards.
 double maxDockPullDistance({
   required Size screen,
   required GameFloatEdge edge,
   required int count,
+  bool collapsing = false,
 }) {
   if (count <= 1) {
     return maxBarPullDistance(
@@ -219,15 +276,22 @@ double maxDockPullDistance({
       thumbWidth: gameFloatThumbSize(screen).width,
     );
   }
+  if (collapsing) {
+    return multiCardStackTravel(screen: screen, count: count) +
+        multiCardShrinkTravel(screen: screen, edge: edge);
+  }
   final cardSize = gameFloatDockCardSize(screen, count);
   final fullWidth =
       count * cardSize.width + (count - 1) * gameFloatDockCardGap;
-  final dockedLeft = barLeftForEdge(edge: edge, screenWidth: screen.width);
-  final finalRight = screen.width - gameFloatThumbGap;
-  final finalLeft = finalRight - fullWidth;
+  final dockedBarLeft = barLeftForEdge(edge: edge, screenWidth: screen.width);
   final growPull = fullWidth - gameFloatBarWidth;
-  final slidePull = (dockedLeft - finalLeft).abs();
-  return growPull + slidePull;
+  if (edge == GameFloatEdge.right) {
+    final finalRight = screen.width - gameFloatThumbGap;
+    final finalLeft = finalRight - fullWidth;
+    return growPull + (dockedBarLeft - finalLeft).abs();
+  }
+  final finalLeft = gameFloatThumbGap;
+  return growPull + (finalLeft - dockedBarLeft).abs();
 }
 
 double dockPullProgressFromDrag({
@@ -243,6 +307,41 @@ double dockPullProgressFromDrag({
   );
   if (max <= 0) return 1;
   return (pullPx / max).clamp(0.0, 1.0);
+}
+
+/// Pull progress while dragging from a resting edge preview (1) or docked bar (0).
+/// Scrim opacity while a dock preview is peeling open or fully revealed.
+double scrimOpacityFromDockPullProgress(double progress) {
+  if (progress <= gameFloatDockScrimRevealStart) return 0;
+  final t = Curves.easeOut.transform(
+    ((progress - gameFloatDockScrimRevealStart) /
+            (1 - gameFloatDockScrimRevealStart))
+        .clamp(0.0, 1.0),
+  );
+  return t * gameFloatDockScrimMaxOpacity;
+}
+
+double dockPullProgressFromDragDelta({
+  required Offset dragDelta,
+  required double startProgress,
+  required Size screen,
+  required GameFloatEdge edge,
+  required int count,
+}) {
+  final collapsing = startProgress >= 1.0 - 1e-6;
+  final maxPull = maxDockPullDistance(
+    screen: screen,
+    edge: edge,
+    count: count,
+    collapsing: collapsing,
+  );
+  if (maxPull <= 0) return 1.0;
+  final startPull = startProgress * maxPull;
+  final pullPx =
+      edge == GameFloatEdge.right
+          ? startPull - dragDelta.dx
+          : startPull + dragDelta.dx;
+  return (pullPx / maxPull).clamp(0.0, 1.0);
 }
 
 class GameDockCardVisual {
@@ -275,6 +374,149 @@ class GameDockClusterVisual {
   final List<GameDockCardVisual> cards;
   final bool showBar;
   final double pullProgress;
+}
+
+double multiCardSpreadLeft({
+  required GameFloatEdge edge,
+  required int index,
+  required int count,
+  required double cardWidth,
+  required double gap,
+  required Size screen,
+}) {
+  if (edge == GameFloatEdge.right) {
+    final stripRight = screen.width - gameFloatThumbGap;
+    final cardRight = stripRight - (count - 1 - index) * (cardWidth + gap);
+    return cardRight - cardWidth;
+  }
+  return gameFloatThumbGap + index * (cardWidth + gap);
+}
+
+List<int> multiCardPaintOrder({
+  required GameFloatEdge edge,
+  required int count,
+}) {
+  if (edge == GameFloatEdge.right) {
+    return List<int>.generate(count, (index) => count - 1 - index);
+  }
+  return List<int>.generate(count, (index) => index);
+}
+
+/// Multi-card dock: spread apart when open, stack toward the edge card, then shrink.
+GameDockClusterVisual computeMultiCardDockClusterVisual({
+  required List<String> entryIds,
+  required GameFloatEdge edge,
+  required double centerY,
+  required double progress,
+  required Size screen,
+  required EdgeInsets padding,
+}) {
+  final count = entryIds.length;
+  final cardSize = gameFloatDockCardSize(screen, count);
+  final cardW = cardSize.width;
+  final cardH = cardSize.height;
+  final gap = gameFloatDockCardGap;
+  final p = progress.clamp(0.0, 1.0);
+  final barRect = barRectFor(
+    edge: edge,
+    centerY: centerY,
+    screen: screen,
+    padding: padding,
+  );
+
+  if (p <= 0.001) {
+    return GameDockClusterVisual(
+      barRect: barRect,
+      cards: const [],
+      showBar: true,
+      pullProgress: p,
+    );
+  }
+
+  final anchorIndex = edge == GameFloatEdge.right ? count - 1 : 0;
+  final anchorLeft = multiCardSpreadLeft(
+    edge: edge,
+    index: anchorIndex,
+    count: count,
+    cardWidth: cardW,
+    gap: gap,
+    screen: screen,
+  );
+  final top = clampFloatTop(
+    centerY: centerY,
+    height: cardH,
+    screenHeight: screen.height,
+    safeTop: padding.top,
+    safeBottom: padding.bottom,
+  );
+  final paintOrder = multiCardPaintOrder(edge: edge, count: count);
+  final stackThreshold = multiCardStackProgressThreshold(
+    screen: screen,
+    edge: edge,
+    count: count,
+  );
+
+  if (p <= stackThreshold) {
+    final shrinkProgress =
+        stackThreshold <= 0 ? 0.0 : (p / stackThreshold).clamp(0.0, 1.0);
+    final stacked = computeBarPullVisual(
+      edge: edge,
+      centerY: centerY,
+      progress: shrinkProgress,
+      screen: screen,
+      padding: padding,
+    );
+    return GameDockClusterVisual(
+      barRect: barRect,
+      cards: [
+        for (final index in paintOrder)
+          GameDockCardVisual(
+            entryId: entryIds[index],
+            rect: stacked.rect,
+            shotOpacity: stacked.shotOpacity,
+            chromeOpacity: stacked.chromeOpacity,
+            radius: stacked.radius,
+            flushOuterEdge: stacked.flushOuterEdge,
+          ),
+      ],
+      showBar: p <= 0.001,
+      pullProgress: p,
+    );
+  }
+
+  final stackT =
+      stackThreshold >= 1
+          ? 1.0
+          : ((p - stackThreshold) / (1 - stackThreshold)).clamp(0.0, 1.0);
+  return GameDockClusterVisual(
+    barRect: barRect,
+    cards: [
+      for (final index in paintOrder)
+        () {
+          final spreadLeft = multiCardSpreadLeft(
+            edge: edge,
+            index: index,
+            count: count,
+            cardWidth: cardW,
+            gap: gap,
+            screen: screen,
+          );
+          final cardLeft = ui.lerpDouble(anchorLeft, spreadLeft, stackT)!;
+          final flushOuterEdge =
+              edge == GameFloatEdge.right ? index == count - 1 : index == 0;
+          return GameDockCardVisual(
+            entryId: entryIds[index],
+            rect: Rect.fromLTWH(cardLeft, top, cardW, cardH),
+            shotOpacity: 1,
+            chromeOpacity: 0,
+            radius: ui.lerpDouble(12, 16, p)!,
+            flushOuterEdge: flushOuterEdge && p < 1.0 - 1e-6,
+          );
+        }(),
+    ],
+    showBar: false,
+    pullProgress: p,
+  );
 }
 
 /// One edge bar; dragging reveals [entryIds.length] cards from the screen edge.
@@ -323,86 +565,69 @@ GameDockClusterVisual computeDockClusterVisual({
     );
   }
 
+  return computeMultiCardDockClusterVisual(
+    entryIds: entryIds,
+    edge: edge,
+    centerY: centerY,
+    progress: progress,
+    screen: screen,
+    padding: padding,
+  );
+}
+
+/// Fully revealed cluster positioned freely before snapping to an edge.
+GameDockClusterVisual computeDockClusterVisualFree({
+  required List<String> entryIds,
+  required Offset center,
+  required Size screen,
+  required EdgeInsets padding,
+}) {
+  final count = entryIds.length;
+  if (count == 0) {
+    throw ArgumentError.value(entryIds, 'entryIds', 'must not be empty');
+  }
   final cardSize = gameFloatDockCardSize(screen, count);
   final cardW = cardSize.width;
   final cardH = cardSize.height;
   final gap = gameFloatDockCardGap;
   final fullWidth = count * cardW + (count - 1) * gap;
-  final p = progress.clamp(0.0, 1.0);
-
-  late double stripRight;
-  late double visibleWidth;
-  if (p <= _barPullGrowPhase) {
-    final t = p / _barPullGrowPhase;
-    visibleWidth = ui.lerpDouble(gameFloatBarWidth, fullWidth, t)!;
-    stripRight = screen.width;
-  } else {
-    visibleWidth = fullWidth;
-    final t = (p - _barPullGrowPhase) / (1 - _barPullGrowPhase);
-    final flushRight = screen.width;
-    final finalRight = screen.width - gameFloatThumbGap;
-    stripRight = ui.lerpDouble(flushRight, finalRight, t)!;
-  }
-  final stripLeft = stripRight - visibleWidth;
   final top = clampFloatTop(
-    centerY: centerY,
+    centerY: center.dy,
     height: cardH,
     screenHeight: screen.height,
     safeTop: padding.top,
     safeBottom: padding.bottom,
   );
-  final barRect = barRectFor(
-    edge: edge,
-    centerY: centerY,
-    screen: screen,
-    padding: padding,
-  );
-
-  // Docked-only: never paint full-size card chrome on top of the thin bar.
-  if (p <= 0.05) {
-    return GameDockClusterVisual(
-      barRect: barRect,
-      cards: const [],
-      showBar: true,
-      pullProgress: p,
-    );
-  }
-
+  final left = center.dx - fullWidth / 2;
   final cards = <GameDockCardVisual>[];
   for (var i = 0; i < count; i++) {
-    final cardRight = stripRight - (count - 1 - i) * (cardW + gap);
-    final cardLeft = cardRight - cardW;
-    final visLeft = math.max(cardLeft, stripLeft);
-    final visRight = math.min(cardRight, stripRight);
-    if (visRight - visLeft < 2) continue;
-    final revealAmount = (visRight - visLeft) / cardW;
-    final shot = Curves.easeOut.transform(
-      ((revealAmount * p - 0.05) / 0.95).clamp(0.0, 1.0),
-    );
-    final flushOuterEdge =
-        edge == GameFloatEdge.right
-            ? cardRight >= screen.width - 0.5
-            : cardLeft <= 0.5;
+    final cardLeft = left + i * (cardW + gap);
     cards.add(
       GameDockCardVisual(
         entryId: entryIds[i],
-        // Only the strip slice that intersects the pull window is painted;
-        // full cardW rects extended left and looked like a giant preview bar.
-        rect: Rect.fromLTRB(visLeft, top, visRight, top + cardH),
-        shotOpacity: shot,
-        chromeOpacity: 1 - shot,
-        radius: ui.lerpDouble(12, 16, p)!,
-        flushOuterEdge: flushOuterEdge && p < 1.0 - 1e-6,
+        rect: Rect.fromLTWH(cardLeft, top, cardW, cardH),
+        shotOpacity: 1,
+        chromeOpacity: 0,
+        radius: 16,
+        flushOuterEdge: false,
       ),
     );
   }
-
   return GameDockClusterVisual(
-    barRect: barRect,
+    barRect: Rect.zero,
     cards: cards,
-    showBar: p <= 0.05,
-    pullProgress: p,
+    showBar: false,
+    pullProgress: 1,
   );
+}
+
+Rect clusterBoundsFromVisual(GameDockClusterVisual visual) {
+  if (visual.cards.isEmpty) return Rect.zero;
+  var bounds = visual.cards.first.rect;
+  for (final card in visual.cards.skip(1)) {
+    bounds = bounds.expandToInclude(card.rect);
+  }
+  return bounds;
 }
 
 class GameFloatVisual {
@@ -938,6 +1163,11 @@ class _GameSuspendHostState extends State<GameSuspendHost>
   double _dragProgress = 0;
   double _dragStartProgress = 0;
   bool _barPointerActive = false;
+  bool _previewPanGestureActive = false;
+  bool _revealedDragActive = false;
+  GameFloatEdge? _dragAnchorEdge;
+  bool _freeFloatActive = false;
+  Offset? _floatCenter;
   final ValueNotifier<bool> _holdCanPop = ValueNotifier<bool>(false);
   bool _holdOpen = false;
   int _holdTicket = 0;
@@ -1355,6 +1585,11 @@ class _GameSuspendHostState extends State<GameSuspendHost>
     _dragStartProgress = 0;
     _panOriginCenter = null;
     _barPointerActive = false;
+    _previewPanGestureActive = false;
+    _revealedDragActive = false;
+    _dragAnchorEdge = null;
+    _freeFloatActive = false;
+    _floatCenter = null;
   }
 
   Rect _restoreThumbRect({
@@ -1417,27 +1652,296 @@ class _GameSuspendHostState extends State<GameSuspendHost>
     );
   }
 
-  void _beginBarDrag(
-    GameFloatEntry entry, {
-    double startProgress = 0,
-  }) {
+  void _beginPreviewDrag(GameFloatEntry entry, double progress) {
     _stopSlide();
     _cancelIdle();
+    final dockEntries = _dockEntries();
     final metrics = _metrics;
+    final revealed =
+        progress >= 1.0 - 1e-6 ||
+        dockEntries.any((dock) => dock.phase == GameFloatPhase.thumbnail);
+    _barPointerActive = true;
+    _dragEntry = entry;
+    _dragDelta = Offset.zero;
+    if (revealed) {
+      _revealedDragActive = true;
+      _dragAnchorEdge = entry.edge;
+      _freeFloatActive = false;
+      _floatCenter = null;
+      _dragStartProgress = 1;
+      _dragProgress = 1;
+      final resting = computeDockClusterVisual(
+        entryIds: dockEntries.map((dock) => dock.id).toList(),
+        edge: entry.edge,
+        centerY: _dockCenterY(metrics),
+        progress: 1,
+        screen: metrics.size,
+        padding: metrics.padding,
+      );
+      _panOriginCenter = clusterBoundsFromVisual(resting).center;
+      _dragCenter = _panOriginCenter;
+      setState(() {});
+      return;
+    }
+    _revealedDragActive = false;
+    _dragAnchorEdge = null;
+    _freeFloatActive = false;
+    _floatCenter = null;
     final rect = barRectFor(
       edge: entry.edge,
       centerY: entry.centerY ?? metrics.size.height * 0.36,
       screen: metrics.size,
       padding: metrics.padding,
     );
-    _barPointerActive = true;
-    _dragEntry = entry;
     _panOriginCenter = rect.center;
     _dragCenter = rect.center;
-    _dragStartProgress = startProgress.clamp(0.0, 1.0);
+    _dragStartProgress = progress.clamp(0.0, 1.0);
     _dragProgress = _dragStartProgress;
-    _dragDelta = Offset.zero;
     setState(() {});
+  }
+
+  void _applyPreviewDrag(GameFloatEntry entry, Offset delta) {
+    if (_revealedDragActive) {
+      _applyRevealedDrag(entry, delta);
+      return;
+    }
+    _applyDockDragDelta(entry, delta);
+  }
+
+  void _applyRevealedDrag(GameFloatEntry entry, Offset delta) {
+    final originCenter = _panOriginCenter;
+    if (_dragEntry != entry || originCenter == null) return;
+    _dragDelta += delta;
+    final metrics = _metrics;
+    final dockEntries = _dockEntries();
+    final count = math.max(1, dockEntries.length);
+    final edge = _dragAnchorEdge ?? entry.edge;
+    final progress = dockPullProgressFromDragDelta(
+      dragDelta: _dragDelta,
+      startProgress: _dragStartProgress,
+      screen: metrics.size,
+      edge: edge,
+      count: count,
+    );
+    _dragProgress = progress;
+    final clusterHeight =
+        count <= 1
+            ? gameFloatThumbSize(metrics.size).height
+            : gameFloatDockCardSize(metrics.size, count).height;
+    final centerY = _clampFloatCenterY(
+      originCenter.dy + _dragDelta.dy,
+      metrics,
+      clusterHeight,
+    );
+    _dragCenter = Offset(originCenter.dx, centerY);
+    if (progress >= 1.0 - 1e-6) {
+      _freeFloatActive = true;
+      final cardSize = gameFloatDockCardSize(metrics.size, count);
+      final fullWidth =
+          count * cardSize.width + (count - 1) * gameFloatDockCardGap;
+      final minCenterX = fullWidth / 2 + 8;
+      final maxCenterX = math.max(
+        minCenterX,
+        metrics.size.width - fullWidth / 2 - 8,
+      );
+      final centerX = (originCenter.dx + _dragDelta.dx).clamp(
+        minCenterX,
+        maxCenterX,
+      );
+      _floatCenter = Offset(centerX.toDouble(), centerY);
+      for (final docked in dockEntries) {
+        docked.centerY = centerY;
+      }
+    } else {
+      _freeFloatActive = false;
+      _floatCenter = null;
+      for (final docked in dockEntries) {
+        docked.centerY = centerY;
+        docked.edge = edge;
+      }
+    }
+    setState(() {});
+  }
+
+  void _finishPreviewDrag(GameFloatEntry entry) {
+    if (_revealedDragActive) {
+      _finishRevealedDrag(entry);
+      return;
+    }
+    _finishBarDrag(entry);
+  }
+
+  void _cancelPreviewDrag(GameFloatEntry entry) {
+    if (_revealedDragActive) {
+      _cancelRevealedDrag(entry);
+      return;
+    }
+    _cancelBarDrag(entry);
+  }
+
+  void _finishRevealedDrag(GameFloatEntry entry) {
+    final center = _floatCenter ?? _dragCenter;
+    final dragDelta = _dragDelta;
+    final progress = _dragProgress;
+    _barPointerActive = false;
+    if (_dragEntry != entry || center == null) {
+      _clearBarDrag();
+      if (mounted) setState(() {});
+      return;
+    }
+    if (dragDelta.distance < gameFloatDragSlop) {
+      _clearBarDrag();
+      if (mounted) setState(() {});
+      return;
+    }
+    if (progress < 1.0 - 1e-6) {
+      if (progress >= gameFloatRevealCommitThreshold) {
+        _snapDockPullReveal(
+          anchor: entry,
+          fromProgress: progress,
+          centerY: center.dy,
+        );
+      } else {
+        _snapDockPull(
+          anchor: entry,
+          fromProgress: progress,
+          centerY: center.dy,
+        );
+      }
+      return;
+    }
+    if (_freeFloatActive) {
+      _finishFloatDrag(entry);
+      return;
+    }
+    _clearBarDrag();
+    _armIdleDock();
+    if (mounted) setState(() {});
+  }
+
+  void _cancelRevealedDrag(GameFloatEntry entry) {
+    _barPointerActive = false;
+    if (_dragEntry != entry) return;
+    final center = _floatCenter ?? _dragCenter;
+    final progress = _dragProgress;
+    if (center != null && progress < 1.0 - 1e-6) {
+      if (progress >= gameFloatRevealCommitThreshold) {
+        _snapDockPullReveal(
+          anchor: entry,
+          fromProgress: progress,
+          centerY: center.dy,
+        );
+      } else {
+        _snapDockPull(
+          anchor: entry,
+          fromProgress: progress,
+          centerY: center.dy,
+        );
+      }
+      return;
+    }
+    if (_freeFloatActive) {
+      _finishFloatDrag(entry);
+      return;
+    }
+    _clearBarDrag();
+    if (mounted) setState(() {});
+  }
+
+  void _finishFloatDrag(GameFloatEntry entry) {
+    final center = _floatCenter ?? _dragCenter;
+    final dragDelta = _dragDelta;
+    _barPointerActive = false;
+    if (_dragEntry != entry || center == null) {
+      _clearBarDrag();
+      if (mounted) setState(() {});
+      return;
+    }
+    if (dragDelta.distance < gameFloatDragSlop) {
+      _clearBarDrag();
+      if (mounted) setState(() {});
+      return;
+    }
+    final metrics = _metrics;
+    final dockEntries = _dockEntries();
+    final entryIds = dockEntries.map((dock) => dock.id).toList();
+    final freeVisual = computeDockClusterVisualFree(
+      entryIds: entryIds,
+      center: center,
+      screen: metrics.size,
+      padding: metrics.padding,
+    );
+    final edge = nearestHorizontalEdgeForBounds(
+      bounds: clusterBoundsFromVisual(freeVisual),
+      screenWidth: metrics.size.width,
+    );
+    final count = math.max(1, dockEntries.length);
+    final clusterHeight =
+        count <= 1
+            ? gameFloatThumbSize(metrics.size).height
+            : gameFloatDockCardSize(metrics.size, count).height;
+    final centerY = _clampFloatCenterY(center.dy, metrics, clusterHeight);
+    final targetVisual = computeDockClusterVisual(
+      entryIds: entryIds,
+      edge: edge,
+      centerY: centerY,
+      progress: 1,
+      screen: metrics.size,
+      padding: metrics.padding,
+    );
+    final targetCenter = clusterBoundsFromVisual(targetVisual).center;
+    _animateFloatSnap(
+      from: center,
+      to: targetCenter,
+      onDone: () {
+        for (final docked in dockEntries) {
+          docked.edge = edge;
+          docked.centerY = centerY;
+          if (targetVisual.cards.length == 1) {
+            docked.thumbTopLeft = targetVisual.cards.first.rect.topLeft;
+          }
+          if (docked.phase == GameFloatPhase.bar) {
+            widget.controller.setPhase(docked.id, GameFloatPhase.thumbnail);
+          }
+        }
+        _clearBarDrag();
+        _armIdleDock();
+        if (mounted) setState(() {});
+      },
+    );
+  }
+
+  void _animateFloatSnap({
+    required Offset from,
+    required Offset to,
+    required VoidCallback onDone,
+  }) {
+    _stopSlide();
+    _cancelIdle();
+    _freeFloatActive = true;
+    _floatCenter = from;
+    final slide = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 260),
+    );
+    _slide = slide;
+    final animation = CurvedAnimation(
+      parent: slide,
+      curve: Curves.easeOutCubic,
+    );
+    _slideCurve = animation;
+    animation.addListener(() {
+      if (!mounted || !identical(_slide, slide)) return;
+      _floatCenter = Offset.lerp(from, to, animation.value)!;
+      if (mounted) setState(() {});
+    });
+    slide.addStatusListener((status) {
+      if (status != AnimationStatus.completed) return;
+      if (!identical(_slide, slide)) return;
+      onDone();
+      _stopSlide();
+    });
+    slide.forward();
   }
 
   void _applyDockDragDelta(GameFloatEntry entry, Offset delta) {
@@ -1447,19 +1951,13 @@ class _GameSuspendHostState extends State<GameSuspendHost>
     final metrics = _metrics;
     final dockEntries = _dockEntries();
     final count = math.max(1, dockEntries.length);
-    final maxPull = maxDockPullDistance(
+    final progress = dockPullProgressFromDragDelta(
+      dragDelta: _dragDelta,
+      startProgress: _dragStartProgress,
       screen: metrics.size,
       edge: entry.edge,
       count: count,
     );
-    final startPull = _dragStartProgress * maxPull;
-    final pullPx =
-        entry.edge == GameFloatEdge.right
-            ? startPull - _dragDelta.dx
-            : startPull + _dragDelta.dx;
-    final progress = maxPull <= 0
-        ? 1.0
-        : (pullPx / maxPull).clamp(0.0, 1.0);
     final clusterHeight =
         count <= 1
             ? computeBarPullVisual(
@@ -1670,6 +2168,29 @@ class _GameSuspendHostState extends State<GameSuspendHost>
     );
   }
 
+  void _snapDockPullReveal({
+    required GameFloatEntry anchor,
+    required double fromProgress,
+    required double centerY,
+  }) {
+    for (final docked in _dockEntries()) {
+      docked.centerY = centerY;
+    }
+    _animateDockProgress(
+      from: fromProgress.clamp(0.0, 1.0),
+      to: 1,
+      duration: const Duration(milliseconds: 260),
+      onDone: () {
+        for (final docked in _dockEntries()) {
+          if (docked.phase == GameFloatPhase.bar) {
+            widget.controller.setPhase(docked.id, GameFloatPhase.thumbnail);
+          }
+        }
+        _armIdleDock();
+      },
+    );
+  }
+
   Future<void> _dismissFloat(GameFloatEntry entry) async {
     _cancelIdle();
     _stopSlide();
@@ -1684,6 +2205,88 @@ class _GameSuspendHostState extends State<GameSuspendHost>
     _slide = null;
     curve?.dispose();
     slide?.dispose();
+  }
+
+  void _stopFlight() {
+    final controller = _flightController;
+    _flightController = null;
+    _flight = null;
+    controller?.dispose();
+  }
+
+  void _dismissDockPreviewFromScrim() {
+    if (_barPointerActive) return;
+    _cancelIdle();
+    final flight = _flight;
+    if (flight != null) {
+      if (flight.kind == _FlightKind.reveal) {
+        _stopFlight();
+        final entry = widget.controller.find(flight.entry.id);
+        if (entry != null && entry.phase == GameFloatPhase.thumbnail) {
+          widget.controller.setPhase(flight.entry.id, GameFloatPhase.bar);
+        }
+        if (mounted) setState(() {});
+      }
+      return;
+    }
+    _clearBarDrag();
+    _stopSlide();
+    final dockEntries = _dockEntries();
+    if (dockEntries.isEmpty) return;
+    if (dockEntries.any((entry) => entry.phase == GameFloatPhase.thumbnail)) {
+      _collapseDock();
+      return;
+    }
+    final progress = _effectiveDockProgress(dockEntries);
+    if (progress <= 0.001) return;
+    final anchor = _dockAnchor();
+    if (anchor == null) return;
+    _snapDockPull(
+      anchor: anchor,
+      fromProgress: progress,
+      centerY: _dockCenterY(_metrics),
+    );
+  }
+
+  Widget _buildDockPreviewScrim(_ScreenMetrics metrics) {
+    final flight = _flight;
+    if (flight != null &&
+        (flight.kind == _FlightKind.reveal ||
+            flight.kind == _FlightKind.collapse)) {
+      final controller = _flightController;
+      if (controller == null) return const SizedBox.shrink();
+      return AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) {
+          final progress =
+              flight.kind == _FlightKind.reveal
+                  ? controller.value
+                  : 1.0 - controller.value;
+          return _dockPreviewScrimLayer(
+            scrimOpacityFromDockPullProgress(progress),
+          );
+        },
+      );
+    }
+    final dockEntries = _visibleDockEntries();
+    if (dockEntries.isEmpty) return const SizedBox.shrink();
+    return _dockPreviewScrimLayer(
+      scrimOpacityFromDockPullProgress(
+        _effectiveDockProgress(dockEntries),
+      ),
+    );
+  }
+
+  Widget _dockPreviewScrimLayer(double opacity) {
+    if (opacity <= 0) return const SizedBox.shrink();
+    return Positioned.fill(
+      child: GestureDetector(
+        key: const ValueKey('game-float-dock-scrim'),
+        behavior: HitTestBehavior.opaque,
+        onTap: _dismissDockPreviewFromScrim,
+        child: ColoredBox(color: Colors.black.withValues(alpha: opacity)),
+      ),
+    );
   }
 
   void _fly({
@@ -1797,6 +2400,7 @@ class _GameSuspendHostState extends State<GameSuspendHost>
   }
 
   double _effectiveDockProgress(List<GameFloatEntry> dockEntries) {
+    if (_freeFloatActive) return 1;
     if (_barPointerActive || _slide != null || _dragProgress > 0.001) {
       return _dragProgress;
     }
@@ -1857,6 +2461,7 @@ class _GameSuspendHostState extends State<GameSuspendHost>
       children: [
         widget.child,
         for (final entry in widget.controller.entries) _keptAlive(entry),
+        _buildDockPreviewScrim(metrics),
         if (_visibleDockEntries().isNotEmpty)
           Positioned.fill(child: _dockCluster(_visibleDockEntries(), metrics)),
         if (_flight case final flight?) _flightLayer(flight),
@@ -1911,33 +2516,57 @@ class _GameSuspendHostState extends State<GameSuspendHost>
   Widget _dockCluster(List<GameFloatEntry> dockEntries, _ScreenMetrics metrics) {
     final anchor = dockEntries.first;
     final edge = anchor.edge;
-    final onRight = edge == GameFloatEdge.right;
     final centerY = _dockCenterY(metrics);
     final progress = _effectiveDockProgress(dockEntries);
-    final visual = computeDockClusterVisual(
-      entryIds: dockEntries.map((entry) => entry.id).toList(),
-      edge: edge,
-      centerY: centerY,
-      progress: progress,
-      screen: metrics.size,
-      padding: metrics.padding,
-    );
+    final entryIds = dockEntries.map((entry) => entry.id).toList();
+    final visual =
+        _freeFloatActive && _floatCenter != null
+            ? computeDockClusterVisualFree(
+              entryIds: entryIds,
+              center: _floatCenter!,
+              screen: metrics.size,
+              padding: metrics.padding,
+            )
+            : computeDockClusterVisual(
+              entryIds: entryIds,
+              edge: edge,
+              centerY: centerY,
+              progress: progress,
+              screen: metrics.size,
+              padding: metrics.padding,
+            );
+    final onRight =
+        _freeFloatActive && _floatCenter != null
+            ? nearestHorizontalEdgeForBounds(
+                  bounds: clusterBoundsFromVisual(visual),
+                  screenWidth: metrics.size.width,
+                ) ==
+                GameFloatEdge.right
+            : edge == GameFloatEdge.right;
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerMove: (event) {
         final dragEntry = _dragEntry;
-        if (!_barPointerActive || dragEntry == null) return;
-        _applyDockDragDelta(dragEntry, event.delta);
+        if (_previewPanGestureActive ||
+            !_barPointerActive ||
+            dragEntry == null) {
+          return;
+        }
+        _applyPreviewDrag(dragEntry, event.delta);
       },
       onPointerUp: (_) {
         final dragEntry = _dragEntry;
-        if (!_barPointerActive || dragEntry == null) return;
-        _finishBarDrag(dragEntry);
+        if (_previewPanGestureActive ||
+            !_barPointerActive ||
+            dragEntry == null) {
+          return;
+        }
+        _finishPreviewDrag(dragEntry);
       },
       onPointerCancel: (_) {
         final dragEntry = _dragEntry;
-        if (dragEntry == null) return;
-        _cancelBarDrag(dragEntry);
+        if (_previewPanGestureActive || dragEntry == null) return;
+        _cancelPreviewDrag(dragEntry);
       },
       child: Stack(
         clipBehavior: Clip.none,
@@ -1951,7 +2580,7 @@ class _GameSuspendHostState extends State<GameSuspendHost>
               height: visual.barRect.height,
               child: Listener(
                 behavior: HitTestBehavior.opaque,
-                onPointerDown: (_) => _beginBarDrag(anchor),
+                onPointerDown: (_) => _beginPreviewDrag(anchor, progress),
                 child: _DockedEdgeBar(onRight: onRight),
               ),
             ),
@@ -1969,14 +2598,21 @@ class _GameSuspendHostState extends State<GameSuspendHost>
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => unawaited(_restore(entry)),
-                  onHorizontalDragStart: (_) {
-                    _beginBarDrag(anchor, startProgress: progress);
+                  onPanStart: (_) {
+                    _previewPanGestureActive = true;
+                    _beginPreviewDrag(anchor, progress);
                   },
-                  onHorizontalDragUpdate: (details) {
-                    _applyDockDragDelta(anchor, details.delta);
+                  onPanUpdate: (details) {
+                    _applyPreviewDrag(anchor, details.delta);
                   },
-                  onHorizontalDragEnd: (_) => _finishBarDrag(anchor),
-                  onHorizontalDragCancel: () => _cancelBarDrag(anchor),
+                  onPanEnd: (_) {
+                    _finishPreviewDrag(anchor);
+                    _previewPanGestureActive = false;
+                  },
+                  onPanCancel: () {
+                    _cancelPreviewDrag(anchor);
+                    _previewPanGestureActive = false;
+                  },
                   child: _FloatWindow(
                     entry: entry,
                     shotOpacity: card.shotOpacity,
