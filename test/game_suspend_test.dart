@@ -43,7 +43,7 @@ void main() {
     );
     expect(docked.rect.right, closeTo(400, 0.001));
     expect(docked.rect.width, gameFloatBarWidth);
-    expect(docked.flushOuterEdge, isTrue);
+    expect(docked.flushOuterEdge, isFalse);
 
     final growing = computeBarPullVisual(
       edge: GameFloatEdge.right,
@@ -111,6 +111,41 @@ void main() {
     );
     expect(leftVisual.cards, isNotEmpty);
     expect(leftVisual.cards.first.rect.left, closeTo(0, 1));
+  });
+
+  test('multi-card collapse keeps rounded corners on the edge card', () {
+    const screen = Size(400, 844);
+    final stackThreshold = multiCardStackProgressThreshold(
+      screen: screen,
+      edge: GameFloatEdge.right,
+      count: 2,
+    );
+    final midStack =
+        stackThreshold + (1 - stackThreshold) * 0.5;
+    final overlap = computeDockClusterVisual(
+      entryIds: ['a', 'b'],
+      edge: GameFloatEdge.right,
+      centerY: 200,
+      progress: midStack,
+      screen: screen,
+      padding: EdgeInsets.zero,
+    );
+    final edgeCard = overlap.cards.firstWhere((card) => card.entryId == 'b');
+    expect(edgeCard.flushOuterEdge, isFalse);
+    expect(edgeCard.radius, greaterThan(0));
+
+    final shrinking = computeDockClusterVisual(
+      entryIds: ['a', 'b'],
+      edge: GameFloatEdge.right,
+      centerY: 200,
+      progress: stackThreshold * 0.5,
+      screen: screen,
+      padding: EdgeInsets.zero,
+    );
+    expect(
+      shrinking.cards.every((card) => !card.flushOuterEdge),
+      isTrue,
+    );
   });
 
   test('multi-card collapse stacks the inner card onto the edge card', () {

@@ -502,15 +502,13 @@ GameDockClusterVisual computeMultiCardDockClusterVisual({
             screen: screen,
           );
           final cardLeft = ui.lerpDouble(anchorLeft, spreadLeft, stackT)!;
-          final flushOuterEdge =
-              edge == GameFloatEdge.right ? index == count - 1 : index == 0;
           return GameDockCardVisual(
             entryId: entryIds[index],
             rect: Rect.fromLTWH(cardLeft, top, cardW, cardH),
             shotOpacity: 1,
             chromeOpacity: 0,
             radius: ui.lerpDouble(12, 16, p)!,
-            flushOuterEdge: flushOuterEdge && p < 1.0 - 1e-6,
+            flushOuterEdge: false,
           );
         }(),
     ],
@@ -729,7 +727,6 @@ GameFloatVisual computeBarPullVisual({
   );
   final shot = Curves.easeOut.transform(((p - 0.05) / 0.95).clamp(0.0, 1.0));
   final chrome = 1 - shot;
-  final flushOuterEdge = p < 1.0 - 1e-6;
   final radius = ui.lerpDouble(12, 16, p)!;
 
   return GameFloatVisual(
@@ -737,7 +734,9 @@ GameFloatVisual computeBarPullVisual({
     shotOpacity: shot,
     chromeOpacity: chrome,
     radius: radius,
-    flushOuterEdge: flushOuterEdge,
+    // Keep preview corners rounded while peeling; the docked bar widget
+    // handles its own edge styling once cards are fully collapsed.
+    flushOuterEdge: false,
   );
 }
 
