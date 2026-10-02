@@ -87,7 +87,7 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
       return;
     }
     setState(() => _checkersResult = _CheckersResultKind.lose);
-    await _finish(ChineseCheckersStatus.agentWon);
+    await _runtime.abort('abandoned', _engine!.summaryJson());
   }
 
   Future<void> _start() async {
@@ -287,11 +287,7 @@ class _ChineseCheckersGamePageState extends State<_ChineseCheckersGamePage> {
       child = _CheckersResultScreen(
         key: const ValueKey('checkers-result'),
         kind: _checkersResult!,
-        pointsDelta: _runtime.pointRules?.deltaFor(
-          _checkersResult == _CheckersResultKind.win
-              ? GameOutcome.win
-              : GameOutcome.lose,
-        ),
+        pointsDelta: _runtime.settledPointsDelta,
         onRestart: _start,
         onExit: _closeCheckersGame,
       );

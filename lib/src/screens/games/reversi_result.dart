@@ -214,18 +214,17 @@ class _ReversiResultScreenState extends State<_ReversiResultScreen>
             children: [
               Image.asset('$_reversiAsset$labelAsset', height: 26),
               const SizedBox(width: 8),
-              if (widget.pointsDelta != null)
-                // Slightly under the label: the digits are solid strokes and
-                // read heavier than the 积分 characters at a matching height.
-                _NativeGameScoreDelta(
-                  delta: widget.pointsDelta!,
-                  assetPrefix: _reversiAsset,
-                  winValue: 4,
-                  loseValue: -3,
-                  fill: const Color(0xFFF1DFC5),
-                  stroke: const Color(0xFF4E1F0F),
-                  height: 24,
-                ),
+              // Slightly under the label: the digits are solid strokes and
+              // read heavier than the 积分 characters at a matching height.
+              _NativeGameScoreDelta(
+                delta: widget.pointsDelta,
+                assetPrefix: _reversiAsset,
+                winValue: 4,
+                loseValue: -3,
+                fill: const Color(0xFFF1DFC5),
+                stroke: const Color(0xFF4E1F0F),
+                height: 24,
+              ),
             ],
           ),
         ),

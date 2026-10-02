@@ -1098,16 +1098,15 @@ class _GoResultScreenState extends State<_GoResultScreen>
               children: [
                 Image.asset('${_goAsset}result_score_label.png', height: 26),
                 const SizedBox(width: 6),
-                if (widget.pointsDelta != null)
-                  _NativeGameScoreDelta(
-                    delta: widget.pointsDelta!,
-                    assetPrefix: _goAsset,
-                    winValue: 5,
-                    loseValue: -4,
-                    fill: const Color(0xFFE8C79B),
-                    stroke: const Color(0xFFAC9473),
-                    height: 26,
-                  ),
+                _NativeGameScoreDelta(
+                  delta: widget.pointsDelta,
+                  assetPrefix: _goAsset,
+                  winValue: 5,
+                  loseValue: -4,
+                  fill: const Color(0xFFE8C79B),
+                  stroke: const Color(0xFFAC9473),
+                  height: 26,
+                ),
               ],
             ),
           ),

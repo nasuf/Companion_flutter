@@ -240,9 +240,8 @@ class GameWallet {
 /// Two shapes: most games score by outcome (win / lose / draw / quit), while
 /// 数字合并 scores by the highest tile reached, with its own quit penalty.
 ///
-/// These only label the result screen — the ledger is always settled by the
-/// server. Both sides therefore carry the same table, each pinned by its own
-/// test, rather than the client fetching it.
+/// Used by the rule editor and help text. Result screens use the actual
+/// server settlement so VIP bonuses and balance limits are reflected.
 class GamePointRules {
   const GamePointRules({
     required this.isMilestone,
@@ -324,10 +323,8 @@ enum GameOutcome { win, lose, draw, aborted }
 
 /// Scoring rules per game, matching the server's `game_point_rules` seed.
 ///
-/// A result screen needs its number the moment it appears, and these values are
-/// product constants, so they live here instead of arriving over the wire.
-/// Pinned to the server's table by test/game_point_rules_test.dart — change one
-/// side and the other has to follow.
+/// Defaults for the rule editor and help text. Actual settlements use the
+/// server configuration and must not be predicted from this table.
 GamePointRules? seedGamePointRules(String gameKey) {
   Map<String, dynamic> outcome(int win, int lose, int quit) => {
     'type': 'outcome',
@@ -513,6 +510,14 @@ class GameSession {
       endedAt: DateTime.tryParse(json['ended_at'] as String? ?? ''),
       createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
     );
+  }
+
+  /// Actual wallet change confirmed by the server, including VIP and the
+  /// balance floor. Null means settlement has not been confirmed yet.
+  int? get settledPointsDelta {
+    final settlement = result?['point_settlement'];
+    final delta = settlement is Map ? settlement['delta'] : null;
+    return delta is num ? delta.round() : null;
   }
 
   /// Seconds this round actually lasted. Prefer the stored client duration,

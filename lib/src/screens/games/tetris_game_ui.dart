@@ -1617,18 +1617,17 @@ class _TetrisResultScreenState extends State<_TetrisResultScreen>
                         fit: BoxFit.contain,
                       ),
                       SizedBox(width: x(8)),
-                      if (widget.pointsDelta != null)
-                        _NativeGameScoreDelta(
-                          delta: widget.pointsDelta!,
-                          assetPrefix: _tetrisFigmaAsset,
-                          winValue: 3,
-                          loseValue: -3,
-                          fill: const Color(0xFFFFFFFF),
-                          stroke: const Color(0xFF1DE1FE),
-                          // Slightly under the 积分 label: the digits are solid
-                          // strokes and read heavier at a matching height.
-                          height: y(25),
-                        ),
+                      _NativeGameScoreDelta(
+                        delta: widget.pointsDelta,
+                        assetPrefix: _tetrisFigmaAsset,
+                        winValue: 3,
+                        loseValue: -3,
+                        fill: const Color(0xFFFFFFFF),
+                        stroke: const Color(0xFF1DE1FE),
+                        // Slightly under the 积分 label: the digits are solid
+                        // strokes and read heavier at a matching height.
+                        height: y(25),
+                      ),
                     ],
                   ),
                 ),

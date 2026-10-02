@@ -83,7 +83,7 @@ class _GoGamePageState extends State<_GoGamePage> {
   Future<void> _forfeit() async {
     if (_result != null || _engine == null || _runtime.completed) return;
     setState(() => _result = _GoResultKind.lose);
-    await _finish(GoStatus.agentWon);
+    await _runtime.abort('abandoned', _engine!.summaryJson());
   }
 
   Future<void> _start() async {
@@ -263,9 +263,7 @@ class _GoGamePageState extends State<_GoGamePage> {
       child = _GoResultScreen(
         key: const ValueKey('go-result'),
         kind: _result!,
-        pointsDelta: _runtime.pointRules?.deltaFor(
-          _result == _GoResultKind.win ? GameOutcome.win : GameOutcome.lose,
-        ),
+        pointsDelta: _runtime.settledPointsDelta,
         onRestart: _start,
         onExit: _closeGame,
       );
