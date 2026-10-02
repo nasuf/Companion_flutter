@@ -36,15 +36,22 @@ class ChatMusicStationState {
   }
 
   static bool userCoListeningActiveFromMessages(
-    Iterable<ChatMessage> messages,
-  ) {
+    Iterable<ChatMessage> messages, {
+    MusicCoListening? currentSession,
+    bool currentSessionKnown = false,
+  }) {
+    // History may be paginated or browsing an old session. Once live metadata
+    // is available, its state (including no session) takes precedence.
+    if (currentSessionKnown) return activeSessionIncludesUser(currentSession);
     var active = false;
     for (final message in messages) {
       final metadata = message.metadata;
       if (metadata == null) continue;
       if (message.isMusicActivityBurst) {
         for (final segment in musicActivitySegmentsFromMetadata(metadata)) {
-          if (segment.isListened) {
+          if (segment.shared && segment.isJoined) {
+            active = true;
+          } else if (segment.isListened || segment.isExited) {
             active = false;
           }
         }

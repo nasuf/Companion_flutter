@@ -384,6 +384,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (!mounted) return;
     final next = ChatMusicStationState.userCoListeningActiveFromMessages(
       _messages,
+      currentSession: _conversationMeta?.musicCoListening,
+      currentSessionKnown: _conversationMeta != null,
     );
     if (next == _localUserCoListeningActive) return;
     _localUserCoListeningActive = next;
