@@ -1,6 +1,26 @@
 part of 'package:companion_flutter/companion_api.dart';
 
 mixin _CompanionApiChat on _CompanionApiCore {
+  Future<String> getWebSocketTicket(String conversationId) async {
+    try {
+      final json =
+          await _request(
+                'POST',
+                '/chat/${Uri.encodeComponent(conversationId)}/ws-ticket',
+              )
+              as Map<String, dynamic>;
+      final ticket = json['ticket'];
+      if (json['protocol'] != 'companion.chat.v1' ||
+          ticket is! String ||
+          !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(ticket)) {
+        throw const SocketTicketException(502);
+      }
+      return ticket;
+    } on ApiException catch (error) {
+      throw SocketTicketException(error.statusCode);
+    }
+  }
+
   @override
   Future<Conversation> getConversation(String conversationId) async {
     final json =

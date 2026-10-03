@@ -799,9 +799,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _connectSocket() {
+    final conversationId = _conversationId;
     final socket = ChatSocket(
       baseUrl: widget.api.baseUrl,
-      conversationId: _conversationId,
+      conversationId: conversationId,
+      ticketProvider: () => widget.api.getWebSocketTicket(conversationId),
     );
     _socket = socket;
     _stateSub = socket.states.listen((state) {
@@ -826,6 +828,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           if (_agentTyping) _notifyTranscript(() => _agentTyping = false);
           _loadLatestMessages(showLoading: false);
         case ChatSocketStatus.error:
+          if (state.code == 401 || state.code == 403) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(state.reason ?? '聊天连接不可用')),
+            );
+          }
           break;
         case ChatSocketStatus.closed:
           break;

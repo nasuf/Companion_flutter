@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import 'models.dart';
 import 'offline_models.dart';
+import 'socket_ticket.dart';
 
 part 'src/api/auth_api.dart';
 part 'src/api/chat_api.dart';

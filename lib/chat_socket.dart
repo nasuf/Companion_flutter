@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'models.dart';
+import 'socket_ticket.dart';
 
 enum ChatSocketStatus { disconnected, connecting, open, closed, error }
 
@@ -15,10 +16,17 @@ class ChatSocketState {
 }
 
 class ChatSocket {
-  ChatSocket({required this.baseUrl, required this.conversationId});
+  ChatSocket({
+    required this.baseUrl,
+    required this.conversationId,
+    required this.ticketProvider,
+  });
 
   final String baseUrl;
   final String conversationId;
+  final Future<String> Function() ticketProvider;
+  bool _connecting = false;
+  int _generation = 0;
 
   final _events = StreamController<WsEnvelope>.broadcast();
   final _states = StreamController<ChatSocketState>.broadcast();
@@ -42,7 +50,7 @@ class ChatSocket {
   }
 
   Future<void> connect() async {
-    if (_disposed) return;
+    if (_disposed || _connecting) return;
     final current = _socket;
     if (current != null &&
         (current.readyState == WebSocket.open ||
@@ -50,11 +58,21 @@ class ChatSocket {
       return;
     }
 
+    _connecting = true;
+    final generation = ++_generation;
     _intentionalClose = false;
     _states.add(const ChatSocketState(ChatSocketStatus.connecting));
     try {
-      final socket = await WebSocket.connect(_wsUri().toString());
-      if (_disposed) {
+      final ticket = await ticketProvider();
+      if (_disposed || generation != _generation) return;
+      if (!RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(ticket)) {
+        throw const SocketTicketException(502);
+      }
+      final socket = await WebSocket.connect(
+        _wsUri().toString(),
+        protocols: ['companion.chat.v1', 'companion.ticket.$ticket'],
+      );
+      if (_disposed || generation != _generation) {
         await socket.close(1000, 'disposed');
         return;
       }
@@ -74,8 +92,22 @@ class ChatSocket {
         cancelOnError: false,
       );
     } catch (error) {
-      _states.add(ChatSocketState(ChatSocketStatus.error, reason: '$error'));
-      _scheduleReconnect();
+      if (_disposed || generation != _generation) return;
+      final status = error is SocketTicketException ? error.statusCode : null;
+      _states.add(
+        ChatSocketState(
+          ChatSocketStatus.error,
+          code: status,
+          reason: status == 401
+              ? '登录已过期，请重新登录'
+              : status == 403
+              ? '无权访问此会话'
+              : '聊天连接暂时不可用',
+        ),
+      );
+      if (![401, 403, 404, 410].contains(status)) _scheduleReconnect();
+    } finally {
+      if (generation == _generation) _connecting = false;
     }
   }
 
@@ -131,7 +163,7 @@ class ChatSocket {
         reason: socket.closeReason,
       ),
     );
-    if (!_intentionalClose) _scheduleReconnect();
+    if (!_intentionalClose && socket.closeCode != 4403) _scheduleReconnect();
   }
 
   void _startKeepalive() {
@@ -166,6 +198,8 @@ class ChatSocket {
   Future<void> close() async {
     _intentionalClose = true;
     _disposed = true;
+    _generation += 1;
+    _connecting = false;
     _reconnectTimer?.cancel();
     _stopKeepalive();
     final socket = _socket;
