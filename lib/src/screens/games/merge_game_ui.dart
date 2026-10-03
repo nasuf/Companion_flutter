@@ -461,7 +461,7 @@ class _MergeGameScreen extends StatelessWidget {
         rules: const [
           '1、上下左右滑动移动全部数字方块',
           '2、相同数字相撞合并，数值相加',
-          '3、合成 2048 即可通关，格子填满无法移动则失败',
+          '3、正常结束时最大数字达到 128 即获胜，可继续挑战 2048；无法移动时结束对局',
         ],
       );
     } finally {
@@ -876,8 +876,7 @@ class _MergeResultScreen extends StatefulWidget {
 
   final _MergeResultKind kind;
 
-  /// What this round settled for; null while the wallet hasn't loaded, in which
-  /// case the number is simply left off rather than shown wrong.
+  /// Actual settlement; null while server confirmation is pending.
   final int? pointsDelta;
   final Future<void> Function() onRestart;
   final Future<void> Function() onExit;
@@ -1018,20 +1017,19 @@ class _MergeResultScreenState extends State<_MergeResultScreen>
                               height: 22,
                             ),
                             const SizedBox(width: 6),
-                            if (widget.pointsDelta != null)
-                              _NativeGameScoreDelta(
-                                delta: widget.pointsDelta!,
-                                // Milestone payouts (+2…+25) and the below-
-                                // threshold penalty never match a fixed piece
-                                // of art, so this one is always drawn as text
-                                // and ships no win / lose score image.
-                                assetPrefix: _mergeFigmaAsset,
-                                winValue: null,
-                                loseValue: null,
-                                fill: const Color(0xFFFFFFFF),
-                                stroke: const Color(0xFF000000),
-                                height: 22,
-                              ),
+                            _NativeGameScoreDelta(
+                              delta: widget.pointsDelta,
+                              // Milestone payouts (+2…+25) and the below-
+                              // threshold penalty never match a fixed piece
+                              // of art, so this one is always drawn as text
+                              // and ships no win / lose score image.
+                              assetPrefix: _mergeFigmaAsset,
+                              winValue: null,
+                              loseValue: null,
+                              fill: const Color(0xFFFFFFFF),
+                              stroke: const Color(0xFF000000),
+                              height: 22,
+                            ),
                           ],
                         ),
                       ),

@@ -103,16 +103,15 @@ class _GomokuResultScreenState extends State<_GomokuResultScreen>
           children: [
             Image.asset('${_gomokuHomeAsset}result_score_label.png', height: 28),
             const SizedBox(width: 7),
-            if (widget.pointsDelta != null)
-              _NativeGameScoreDelta(
-                delta: widget.pointsDelta!,
-                assetPrefix: _gomokuHomeAsset,
-                winValue: 3,
-                loseValue: -2,
-                fill: const Color(0xFFFFFFFF),
-                stroke: const Color(0xFF000000),
-                height: 28,
-              ),
+            _NativeGameScoreDelta(
+              delta: widget.pointsDelta,
+              assetPrefix: _gomokuHomeAsset,
+              winValue: 3,
+              loseValue: -2,
+              fill: const Color(0xFFFFFFFF),
+              stroke: const Color(0xFF000000),
+              height: 28,
+            ),
           ],
         ),
       ),

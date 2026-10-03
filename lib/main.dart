@@ -34,6 +34,8 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'chat_socket.dart';
+import 'task_waiting.dart';
+import 'src/widgets/chat/task_waiting_card.dart';
 import 'companion_api.dart';
 import 'models.dart';
 import 'src/chat/game_activity_logic.dart';

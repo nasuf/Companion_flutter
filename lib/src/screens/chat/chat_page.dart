@@ -176,6 +176,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _highlightMessageKey = GlobalKey(debugLabel: 'chat-highlight-message');
   final _musicStation = ChatMusicStationState();
   final _transcript = ChatTranscriptController();
+  final _agentTasks = <String, TaskViewState>{};
   final _typingVisible = ValueNotifier(false);
   // Composer chrome and message-list music UI rebuild independently of the
   // header / station dock so WS ack/reply does not repaint the whole page.
@@ -333,10 +334,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   String? _inFlightClientId;
   late final ReplyUiDelayController _replyUiDelay = ReplyUiDelayController(
     onApply: ({required clientId, messageId}) {
-      _applyDelayedReplyUiFeedback(
-        clientId: clientId,
-        messageId: messageId,
-      );
+      _applyDelayedReplyUiFeedback(clientId: clientId, messageId: messageId);
     },
   );
   static const _sendTimeoutDuration = Duration(seconds: 20);
@@ -384,6 +382,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (!mounted) return;
     final next = ChatMusicStationState.userCoListeningActiveFromMessages(
       _messages,
+      currentSession: _conversationMeta?.musicCoListening,
+      currentSessionKnown: _conversationMeta != null,
     );
     if (next == _localUserCoListeningActive) return;
     _localUserCoListeningActive = next;
@@ -607,6 +607,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _syncChatVisibility();
     }
     if (oldWidget.session.conversationId != widget.session.conversationId ||
+        oldWidget.session.token != widget.session.token ||
         oldWidget.api.baseUrl != widget.api.baseUrl) {
       _bootstrapChat();
     }
@@ -713,6 +714,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _bootstrapChat() async {
+    if (_agentTasks.isNotEmpty) {
+      setState(_agentTasks.clear);
+    }
     if (_preparingVoice || _recordingVoice) {
       await _cancelVoiceRecording();
     }
@@ -797,13 +801,23 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _connectSocket() {
+    final api = widget.api;
+    final conversationId = _conversationId;
+    final token = widget.session.token;
     final socket = ChatSocket(
-      baseUrl: widget.api.baseUrl,
-      conversationId: _conversationId,
+      baseUrl: api.baseUrl,
+      conversationId: conversationId,
+      ticketProvider: () => api.getWebSocketTicket(conversationId),
+      replyEventProvider: (after) => api.loadReplyEvents(conversationId, after),
     );
     _socket = socket;
     _stateSub = socket.states.listen((state) {
-      if (!mounted) return;
+      if (!mounted ||
+          _socket != socket ||
+          _conversationId != conversationId ||
+          widget.session.token != token) {
+        return;
+      }
       switch (state.status) {
         case ChatSocketStatus.connecting:
           break;
@@ -824,14 +838,29 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           if (_agentTyping) _notifyTranscript(() => _agentTyping = false);
           _loadLatestMessages(showLoading: false);
         case ChatSocketStatus.error:
+          if (state.code == 401 || state.code == 403) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.reason ?? '聊天连接不可用')));
+          }
           break;
         case ChatSocketStatus.closed:
+          if (state.code == 4403 && _agentTasks.isNotEmpty) {
+            setState(_agentTasks.clear);
+          }
           break;
         case ChatSocketStatus.disconnected:
           break;
       }
     });
-    _eventSub = socket.events.listen(_handleWsEvent);
+    _eventSub = socket.events.listen((envelope) {
+      if (mounted &&
+          _socket == socket &&
+          _conversationId == conversationId &&
+          widget.session.token == token) {
+        _handleWsEvent(envelope);
+      }
+    });
     unawaited(socket.connect());
   }
 
@@ -1037,6 +1066,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _loadLatestMessages({required bool showLoading}) async {
+    final conversationId = _conversationId;
+    final token = widget.session.token;
+    final idsAtStart = _messages.map((message) => message.id).toSet();
     final hadScrollPosition = _hasLaidOutScroll();
     final oldPixels = hadScrollPosition ? _scrollController.position.pixels : 0;
     final wasNearBottom = hadScrollPosition ? _isNearBottomNow() : true;
@@ -1048,14 +1080,18 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
     try {
       final newestFirst = await widget.api.loadMessages(
-        _conversationId,
+        conversationId,
         limit: _messagePageSize,
       );
-      if (!mounted) return;
+      if (!mounted ||
+          _conversationId != conversationId ||
+          widget.session.token != token) {
+        return;
+      }
       final chronological = newestFirst.reversed.toList();
       _notifyTranscript(() {
         if (showLoading) {
-          _replaceWithServerMessages(chronological);
+          _replaceWithServerMessages(chronological, idsAtStart: idsAtStart);
         } else {
           _mergeLatestServerMessages(chronological);
         }
@@ -1066,7 +1102,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       });
       _adoptLatestMusicStationFromMessages();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_hasLaidOutScroll()) return;
+        if (!mounted ||
+            _conversationId != conversationId ||
+            widget.session.token != token ||
+            !_hasLaidOutScroll()) {
+          return;
+        }
         if (showLoading) {
           _jumpToBottomSettled();
         } else if (!hadScrollPosition || wasNearBottom) {
@@ -1081,16 +1122,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _scheduleStationDockCheck();
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted ||
+          _conversationId != conversationId ||
+          widget.session.token != token) {
+        return;
+      }
       _notifyTranscript(() => _historyError = _asMessage(error));
     } finally {
-      if (mounted && showLoading) {
+      if (mounted &&
+          showLoading &&
+          _conversationId == conversationId &&
+          widget.session.token == token) {
         _notifyTranscript(() => _loadingInitial = false);
       }
     }
   }
 
-  void _replaceWithServerMessages(List<ChatMessage> serverMessages) {
+  void _replaceWithServerMessages(
+    List<ChatMessage> serverMessages, {
+    Set<String>? idsAtStart,
+  }) {
     final serverIds = serverMessages.map((item) => item.id).toSet();
     final serverClientIds = serverMessages
         .map((item) => item.clientId)
@@ -1103,8 +1154,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           !serverClientIds.contains(clientId);
     }).toList();
     final transientAssistantReplies = _messages.where((item) {
-      if (item.isMine || !item.isDraft) return false;
-      return !_hasMatchingServerAssistant(item, serverMessages);
+      if (item.isMine || serverIds.contains(item.id)) return false;
+      if (item.isDraft) {
+        return !_hasMatchingServerAssistant(item, serverMessages);
+      }
+      return idsAtStart != null && !idsAtStart.contains(item.id);
     }).toList();
     _messages
       ..clear()
@@ -1567,7 +1621,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       return;
     }
     try {
-      final rank = await widget.api.fetchMessageRank(_conversationId, messageId);
+      final rank = await widget.api.fetchMessageRank(
+        _conversationId,
+        messageId,
+      );
       if (!mounted || rank == null) return;
       await _jumpToRank(rank, messageId, '');
     } catch (_) {
@@ -1946,8 +2003,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _notifyTranscript(() => _historyError = '这首歌暂时播放不了，正在换一首。');
       }
     } catch (error) {
-      if (mounted && !auto)
+      if (mounted && !auto) {
         _notifyTranscript(() => _historyError = _asMessage(error));
+      }
     } finally {
       _advancingStation = false;
       _syncStationDockLifecycle();
@@ -2156,7 +2214,25 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void _handleWsEvent(WsEnvelope envelope) {
     final payload = envelope.data;
+    final runId = envelope.data['agent_run_id'];
+    if (runId is String &&
+        ['task_waiting', 'task_state', 'done'].contains(envelope.type)) {
+      final next = taskEvent(_agentTasks[runId], envelope);
+      if (next != null) {
+        _agentTasks[runId] = next;
+        if (widget.isActive) setState(() {});
+      }
+    }
     switch (envelope.type) {
+      case 'task_waiting':
+        _replyUiDelay.cancel();
+        _patchShellAndTranscript(
+          shell: () => _sending = false,
+          transcript: () => _agentTyping = false,
+        );
+        break;
+      case 'task_state':
+        break;
       case 'ack':
         final clientId = payload['client_id']?.toString() ?? '';
         final messageId = payload['message_id']?.toString() ?? '';
@@ -2277,6 +2353,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             ? Map<String, dynamic>.from(rawOfflineFragment)
             : null;
         final metadata = <String, dynamic>{
+          if (payload['event_sequence'] is int)
+            'event_sequence': payload['event_sequence'],
           if (componentCard != null) 'component_card': componentCard.toJson(),
           if (attachments.isNotEmpty)
             'attachments': attachments.map((item) => item.toJson()).toList(),
@@ -2289,18 +2367,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           // 思绪碎片气泡：携带 tier/lead_in/source_message_id，_MessageRow 据此渲染。
           if (offlineFragment != null) 'offline_fragment': offlineFragment,
         };
-        final stableId = assistantMessageId?.isNotEmpty == true
-            ? assistantMessageId
-            : messageId?.isNotEmpty == true
-            ? messageId
-            : null;
-        final draft = ChatMessage.draft(
+        final draft = ChatMessage.fromReply(
           conversationId: _conversationId,
-          role: 'assistant',
           content: text,
-          clientId: stableId,
+          payload: payload,
           metadata: metadata.isEmpty ? null : metadata,
         );
+        final duplicate = _messages.any((message) => message.id == draft.id);
         _patchShellAndTranscript(
           shell: () {
             _sending = false;
@@ -2325,14 +2398,27 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 }
               }
             }
-            _messages.add(draft);
+            if (draft.isDraft) {
+              _messages.add(draft);
+            } else {
+              _upsertServerMessage(draft);
+            }
+            _messages.sort((a, b) {
+              final timeOrder = a.createdAt.compareTo(b.createdAt);
+              if (timeOrder != 0) return timeOrder;
+              final left = a.metadata?['event_sequence'];
+              final right = b.metadata?['event_sequence'];
+              return left is int && right is int ? left.compareTo(right) : 0;
+            });
             _agentTyping = false;
-            if (!shouldAutoScroll) {
+            if (!shouldAutoScroll && !duplicate) {
               _newMessageCount += 1;
             }
           },
         );
-        if (shouldEmitInAppNotification) {
+        if (shouldEmitInAppNotification &&
+            !duplicate &&
+            payload['replayed'] != true) {
           AppNotificationService.instance.emitAgentMessage(
             text: text,
             session: widget.session,
@@ -4247,6 +4333,49 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     key: ValueKey('offline-taskbar-${_taskBarActivity!.id}'),
                     activity: _taskBarActivity!,
                     onTap: () => _openTaskBarCheckin(_taskBarActivity!),
+                  ),
+                ),
+              if (_agentTasks.values.any((view) => view.waiting != null))
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(context).height * 0.3,
+                  ),
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final view in _agentTasks.values)
+                        if (view.waiting != null)
+                          TaskWaitingCard(
+                            key: ValueKey((
+                              view.waiting!.runId,
+                              view.waiting!.pendingId,
+                              view.waiting!.revision,
+                              view.waiting!.sequence,
+                            )),
+                            task: view.waiting!,
+                            resume: (task, response) => widget.api.resumeTask(
+                              task.runId,
+                              task.pendingId,
+                              task.revision,
+                              response,
+                            ),
+                            cancel: (task) => widget.api.cancelTask(task.runId),
+                            onAccepted: (task) {
+                              final current = _agentTasks[task.runId]?.waiting;
+                              if (current == null ||
+                                  current.pendingId != task.pendingId ||
+                                  current.revision != task.revision ||
+                                  current.sequence != task.sequence) {
+                                return;
+                              }
+                              setState(
+                                () => _agentTasks[task.runId] = TaskViewState(
+                                  _agentTasks[task.runId]!.sequence,
+                                ),
+                              );
+                            },
+                          ),
+                    ],
                   ),
                 ),
               Expanded(

@@ -145,13 +145,11 @@ class ChatMessage {
   bool get isMusicStatus => metadata?['music_status'] != null;
   bool get isMusicActivityBurst =>
       metadata?['kind']?.toString() == 'music_activity_burst';
-  bool get isMusicActivityTimeline =>
-      isMusicActivityBurst || isMusicStatus;
+  bool get isMusicActivityTimeline => isMusicActivityBurst || isMusicStatus;
   bool get isGameStatus => metadata?['game_status'] != null;
   bool get isGameActivityBurst =>
       metadata?['kind']?.toString() == 'game_activity_burst';
-  bool get isGameActivityTimeline =>
-      isGameActivityBurst || isGameStatus;
+  bool get isGameActivityTimeline => isGameActivityBurst || isGameStatus;
   bool get isOfferingReceived =>
       metadata?['offering_received'] == true ||
       metadata?['offering_received']?.toString() == 'true';
@@ -239,6 +237,38 @@ class ChatMessage {
       metadata: {...?metadata, if (clientId != null) 'client_id': clientId},
       pending: true,
       read: false,
+    );
+  }
+
+  factory ChatMessage.fromReply({
+    required String conversationId,
+    required String content,
+    required Map<String, dynamic> payload,
+    Map<String, dynamic>? metadata,
+  }) {
+    final stableId = [
+      payload['assistant_message_id'],
+      payload['message_id'],
+    ].whereType<String>().where((id) => id.isNotEmpty).firstOrNull;
+    if (stableId == null) {
+      return ChatMessage.draft(
+        conversationId: conversationId,
+        role: 'assistant',
+        content: content,
+        metadata: metadata,
+      );
+    }
+    return ChatMessage(
+      id: stableId,
+      conversationId: conversationId,
+      role: 'assistant',
+      content: content,
+      createdAt:
+          DateTime.tryParse(payload['created_at']?.toString() ?? '') ??
+          DateTime.now(),
+      metadata: metadata,
+      pending: false,
+      read: true,
     );
   }
 
@@ -1011,6 +1041,29 @@ class GiftSendResult {
   }
 }
 
+class ReplyEventPage {
+  const ReplyEventPage({
+    required this.events,
+    required this.nextSequence,
+    required this.hasMore,
+    this.activeWaitsTruncated = false,
+  });
+  final List<WsEnvelope> events;
+  final int nextSequence;
+  final bool hasMore;
+  final bool activeWaitsTruncated;
+  factory ReplyEventPage.fromJson(Map<String, dynamic> json) => ReplyEventPage(
+    events: (json['events'] as List)
+        .map(
+          (event) =>
+              WsEnvelope.fromJson(Map<String, dynamic>.from(event as Map)),
+        )
+        .toList(),
+    nextSequence: json['next_sequence'] as int,
+    hasMore: json['has_more'] as bool,
+    activeWaitsTruncated: json['active_waits_truncated'] == true,
+  );
+}
 
 class WsEnvelope {
   const WsEnvelope({required this.type, required this.data});

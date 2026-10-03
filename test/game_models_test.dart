@@ -47,4 +47,26 @@ void main() {
     expect(response.persistedEventId, 'event-1');
     expect(response.duplicate, isTrue);
   });
+  test(
+    'result uses actual settlement for VIP, limited deductions and zero',
+    () {
+      for (final delta in [38, -1, 0]) {
+        final response = GameEventResponse.fromJson({
+          'session': {
+            'id': 'round-1',
+            'result': {
+              'point_settlement': {'delta': delta, 'base_delta': 25},
+            },
+          },
+        });
+        expect(response.session.settledPointsDelta, delta);
+      }
+      expect(
+        GameSession.fromJson({
+          'result': {'user_outcome': 'win'},
+        }).settledPointsDelta,
+        isNull,
+      );
+    },
+  );
 }

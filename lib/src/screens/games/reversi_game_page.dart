@@ -251,7 +251,7 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
     if (!mounted || _result != null || _engine == null) return;
     if (_runtime.completed) return;
     setState(() => _result = _ReversiResultKind.lose);
-    await _finish(ReversiStatus.agentWon);
+    await _runtime.abort('abandoned', _engine!.summaryJson());
   }
 
   Future<void> _finish(ReversiStatus status) async {
@@ -301,11 +301,7 @@ class _ReversiGamePageState extends State<_ReversiGamePage> {
       child = _ReversiResultScreen(
         key: const ValueKey('reversi-result'),
         kind: _result!,
-        pointsDelta: _runtime.pointRules?.deltaFor(
-          _result == _ReversiResultKind.win
-              ? GameOutcome.win
-              : GameOutcome.lose,
-        ),
+        pointsDelta: _runtime.settledPointsDelta,
         onAgain: () async {
           setState(() => _result = null);
           await _start();

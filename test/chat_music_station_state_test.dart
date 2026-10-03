@@ -62,6 +62,62 @@ void main() {
     expect(ended, isFalse);
   });
 
+  test('confirmed shared starts and exits restore history membership', () {
+    ChatMessage sharedStatus(String action, String actor) => ChatMessage(
+      id: action,
+      conversationId: 'conv-1',
+      role: 'assistant',
+      content: '',
+      createdAt: DateTime(2026, 10, 1),
+      metadata: {
+        'kind': 'music_activity_burst',
+        'segments': [
+          {'action': action, 'actor': actor, 'shared': true},
+        ],
+      },
+    );
+    expect(
+      ChatMusicStationState.userCoListeningActiveFromMessages([
+        sharedStatus('joined', 'agent'),
+      ]),
+      isTrue,
+    );
+    expect(
+      ChatMusicStationState.userCoListeningActiveFromMessages([
+        sharedStatus('joined', 'user'),
+        sharedStatus('exited', 'agent'),
+      ]),
+      isFalse,
+    );
+  });
+
+  test('live session state takes precedence over a historical user join', () {
+    final history = [_statusMessage('started', 'user', 1)];
+    for (final session in [
+      null,
+      _session('user_joined', status: 'ended'),
+      _session('user_joined', status: 'agent_waiting_user'),
+      _session('agent_auto'),
+    ]) {
+      expect(
+        ChatMusicStationState.userCoListeningActiveFromMessages(
+          history,
+          currentSession: session,
+          currentSessionKnown: true,
+        ),
+        isFalse,
+      );
+    }
+    expect(
+      ChatMusicStationState.userCoListeningActiveFromMessages(
+        [],
+        currentSession: _session('user_joined'),
+        currentSessionKnown: true,
+      ),
+      isTrue,
+    );
+  });
+
   test('agent-only sessions are not treated as user membership', () {
     expect(
       ChatMusicStationState.activeSessionIncludesUser(_session('agent')),

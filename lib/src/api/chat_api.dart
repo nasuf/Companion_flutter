@@ -1,6 +1,66 @@
 part of 'package:companion_flutter/companion_api.dart';
 
 mixin _CompanionApiChat on _CompanionApiCore {
+  Future<String> getWebSocketTicket(String conversationId) async {
+    try {
+      final json =
+          await _request(
+                'POST',
+                '/chat/${Uri.encodeComponent(conversationId)}/ws-ticket',
+              )
+              as Map<String, dynamic>;
+      final ticket = json['ticket'];
+      if (json['protocol'] != 'companion.chat.v1' ||
+          ticket is! String ||
+          !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(ticket)) {
+        throw const SocketTicketException(502);
+      }
+      return ticket;
+    } on ApiException catch (error) {
+      throw SocketTicketException(error.statusCode);
+    }
+  }
+
+  Future<ReplyEventPage> loadReplyEvents(
+    String conversationId,
+    int? afterSequence,
+  ) async {
+    final query = afterSequence == null ? '' : '?after_sequence=$afterSequence';
+    final path = '/conversations/${Uri.encodeComponent(conversationId)}';
+    Map<String, dynamic> json;
+    try {
+      json =
+          await _request('GET', '$path/events$query') as Map<String, dynamic>;
+    } on ApiException catch (error) {
+      if (error.statusCode != 404) rethrow;
+      json =
+          await _request('GET', '$path/reply-events$query')
+              as Map<String, dynamic>;
+    }
+    return ReplyEventPage.fromJson(json);
+  }
+
+  Future<void> resumeTask(
+    String runId,
+    String pendingId,
+    int revision,
+    Map<String, dynamic> response,
+  ) async {
+    await _request(
+      'POST',
+      '/agent-runs/${Uri.encodeComponent(runId)}/resume',
+      body: {
+        'pending_action_id': pendingId,
+        'revision': revision,
+        'response': response,
+      },
+    );
+  }
+
+  Future<void> cancelTask(String runId) async {
+    await _request('POST', '/agent-runs/${Uri.encodeComponent(runId)}/cancel');
+  }
+
   @override
   Future<Conversation> getConversation(String conversationId) async {
     final json =
@@ -39,10 +99,12 @@ mixin _CompanionApiChat on _CompanionApiCore {
   /// 某条消息在会话中的实时 rank（= loadMessages 的 offset），用于跳转定位。
   /// 找不到返回 null。
   Future<int?> fetchMessageRank(String conversationId, String messageId) async {
-    final json = await _request(
-      'GET',
-      '/conversations/$conversationId/messages/$messageId/rank',
-    ) as Map<String, dynamic>;
+    final json =
+        await _request(
+              'GET',
+              '/conversations/$conversationId/messages/$messageId/rank',
+            )
+            as Map<String, dynamic>;
     final rank = json['rank'];
     return rank is int ? rank : (rank is num ? rank.toInt() : null);
   }

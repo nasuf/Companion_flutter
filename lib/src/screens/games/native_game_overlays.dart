@@ -129,6 +129,7 @@ class _NativeGameInteractionLayerState
               gameTitle: widget.game.title,
               agentName: runtime.agentName,
               payload: payload,
+              pointsDelta: runtime.settledPointsDelta,
               presentedAt: runtime.terminalPresentedAt ?? DateTime.now(),
               onPrimary: widget.onPlayAgain,
               onClose: widget.onCloseGame,
@@ -359,6 +360,7 @@ class _NativeGameOverlay extends StatefulWidget {
     required this.onClose,
     this.payload,
     this.presentedAt,
+    this.pointsDelta,
   });
 
   final String gameKey;
@@ -366,6 +368,7 @@ class _NativeGameOverlay extends StatefulWidget {
   final String agentName;
   final Map<String, dynamic>? payload;
   final DateTime? presentedAt;
+  final int? pointsDelta;
   final Future<void> Function() onPrimary;
   final Future<void> Function() onClose;
 
@@ -519,6 +522,16 @@ class _NativeGameOverlayState extends State<_NativeGameOverlay> {
                       fontSize: 12,
                       height: 1.5,
                       fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    widget.pointsDelta == null
+                        ? '积分结算中'
+                        : '积分 ${widget.pointsDelta! > 0 ? '+' : ''}${widget.pointsDelta}',
+                    style: TextStyle(
+                      color: visual.chromeForeground,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -750,7 +763,7 @@ class _NativeGameScoreDelta extends StatelessWidget {
     required this.height,
   });
 
-  final int delta;
+  final int? delta;
   final String assetPrefix;
 
   /// What this game's win / lose art actually reads, or null when the game
@@ -778,7 +791,11 @@ class _NativeGameScoreDelta extends StatelessWidget {
       Image.asset('$assetPrefix$name', height: height, fit: BoxFit.contain);
 
   Widget _text() {
-    final label = delta > 0 ? '+$delta' : '$delta';
+    final label = delta == null
+        ? '结算中'
+        : delta! > 0
+        ? '+$delta'
+        : '$delta';
     // The art is a heavy display face; approximate its weight so a fallback
     // number doesn't read as a different element.
     final fontSize = height * 0.92;

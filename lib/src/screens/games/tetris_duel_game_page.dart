@@ -361,22 +361,17 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
     }
   }
 
-  /// [forfeited] marks giving up mid-duel. Without it the engine is still
-  /// `playing`, so the outcome fell through to 'draw' and the round settled at
-  /// zero points even though the player was shown the 失败 screen.
-  Future<void> _finish({bool forfeited = false}) async {
+  Future<void> _finish() async {
     final engine = _engine;
     if (engine == null || _finishing) return;
     _finishing = true;
     _ticker?.cancel();
     await _eventChain;
-    final outcome = forfeited
-        ? 'lose'
-        : switch (engine.status) {
-            TetrisDuelStatus.userWon => 'win',
-            TetrisDuelStatus.agentWon => 'lose',
-            _ => 'draw',
-          };
+    final outcome = switch (engine.status) {
+      TetrisDuelStatus.userWon => 'win',
+      TetrisDuelStatus.agentWon => 'lose',
+      _ => 'draw',
+    };
     await _runtime.finish({
       ...engine.summaryJson(),
       'user_outcome': outcome,
@@ -484,7 +479,10 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
     if (_result != null || _engine == null || _runtime.completed) return;
     _stopSoftDrop();
     setState(() => _result = _TetrisResultKind.lose);
-    await _finish(forfeited: true);
+    _finishing = true;
+    _ticker?.cancel();
+    await _eventChain;
+    await _runtime.abort('abandoned', _sessionSummary());
   }
 
   void _onPanStart(DragStartDetails details) {
@@ -561,9 +559,7 @@ class _TetrisDuelGamePageState extends State<_TetrisDuelGamePage> {
       child = _TetrisResultScreen(
         key: const ValueKey('tetris-result'),
         kind: _result!,
-        pointsDelta: _runtime.pointRules?.deltaFor(
-          _result == _TetrisResultKind.win ? GameOutcome.win : GameOutcome.lose,
-        ),
+        pointsDelta: _runtime.settledPointsDelta,
         onRestart: _start,
         onExit: _closeGame,
       );

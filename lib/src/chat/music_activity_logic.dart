@@ -1,8 +1,6 @@
 import 'package:companion_flutter/models.dart';
 import 'package:companion_flutter/src/chat/game_activity_logic.dart';
 
-const Duration kMusicActivityBurstWindow = Duration(minutes: 5);
-
 class MusicActivitySegment {
   const MusicActivitySegment({
     required this.at,
@@ -12,6 +10,7 @@ class MusicActivitySegment {
     this.trackId = '',
     this.trackTitle = '',
     this.actorName = '',
+    this.shared = false,
   });
 
   final DateTime at;
@@ -22,38 +21,41 @@ class MusicActivitySegment {
   final String trackTitle;
   final String actorName;
 
-  bool get isJoined => action == 'joined';
-  bool get isListened => action == 'listened';
+  /// The server confirmed that this transition includes both participants.
+  final bool shared;
 
-  factory MusicActivitySegment.fromJson(Map<String, dynamic> json) {
+  bool get isJoined => action == 'joined';
+  bool get isListened => action == 'listened'; // Legacy participant exit.
+  bool get isExited => action == 'exited'; // Confirmed shared exit.
+
+  factory MusicActivitySegment.fromJson(
+    Map<String, dynamic> json, {
+    required DateTime fallbackAt,
+    String trackId = '',
+    String trackTitle = '',
+  }) {
     return MusicActivitySegment(
-      at: DateTime.tryParse(json['at']?.toString() ?? '') ?? DateTime.now(),
-      action: json['action']?.toString() ?? 'joined',
+      at: DateTime.tryParse(json['at']?.toString() ?? '') ?? fallbackAt,
+      action: json['action']?.toString() ?? '',
       actor: json['actor']?.toString() ?? '',
       sessionId: json['session_id']?.toString() ?? '',
-      trackId: json['track_id']?.toString() ?? '',
-      trackTitle: json['track_title']?.toString() ?? '',
+      trackId: json['track_id']?.toString() ?? trackId,
+      trackTitle: json['track_title']?.toString() ?? trackTitle,
       actorName: json['actor_name']?.toString() ?? '',
+      shared: json['shared'] == true,
     );
   }
 
-  MusicActivitySegment withFallback({
-    String? trackId,
-    String? trackTitle,
-    String? actorName,
-  }) {
+  MusicActivitySegment asShared({bool exited = false}) {
     return MusicActivitySegment(
       at: at,
-      action: action,
+      action: exited ? 'exited' : 'joined',
       actor: actor,
       sessionId: sessionId,
-      trackId: this.trackId.isNotEmpty ? this.trackId : (trackId ?? ''),
-      trackTitle: this.trackTitle.isNotEmpty
-          ? this.trackTitle
-          : (trackTitle ?? ''),
-      actorName: this.actorName.isNotEmpty
-          ? this.actorName
-          : (actorName ?? ''),
+      trackId: trackId,
+      trackTitle: trackTitle,
+      actorName: actorName,
+      shared: true,
     );
   }
 
@@ -63,295 +65,176 @@ class MusicActivitySegment {
       'action': action,
       'actor': actor,
       'session_id': sessionId,
-      if (trackId.isNotEmpty) 'track_id': trackId,
-      if (trackTitle.isNotEmpty) 'track_title': trackTitle,
+      'track_id': trackId,
+      'track_title': trackTitle,
       if (actorName.isNotEmpty) 'actor_name': actorName,
+      if (shared) 'shared': true,
     };
   }
 }
 
-class MusicActivitySummary {
-  const MusicActivitySummary({
-    required this.trackId,
-    required this.trackTitle,
-    required this.firstAt,
-    required this.lastAt,
-    required this.listenCount,
-    required this.segments,
-  });
-
-  final String trackId;
-  final String trackTitle;
-  final DateTime firstAt;
-  final DateTime lastAt;
-  final int listenCount;
-  final List<MusicActivitySegment> segments;
-}
-
 List<MusicActivitySegment> musicActivitySegmentsFromMetadata(
-  Map<String, dynamic>? metadata,
-) {
+  Map<String, dynamic>? metadata, {
+  DateTime? fallbackAt,
+}) {
   final raw = metadata?['segments'];
   if (raw is! List) return const [];
-  final fallbackTrackId = metadata?['music_track_id']?.toString() ?? '';
-  final fallbackTrackTitle = metadata?['music_track_title']?.toString() ?? '';
-  final fallbackActorName =
-      metadata?['music_status_actor_name']?.toString() ?? '';
   return [
     for (final item in raw)
       if (item is Map)
         MusicActivitySegment.fromJson(
           Map<String, dynamic>.from(item),
-        ).withFallback(
-          trackId: fallbackTrackId,
-          trackTitle: fallbackTrackTitle,
-          actorName: fallbackActorName,
+          fallbackAt: fallbackAt ?? DateTime.fromMillisecondsSinceEpoch(0),
+          trackId: metadata?['music_track_id']?.toString() ?? '',
+          trackTitle: metadata?['music_track_title']?.toString() ?? '',
         ),
   ];
-}
-
-MusicActivityBurstPresentation? parseMusicActivityBurst(ChatMessage message) {
-  if (message.isMusicActivityBurst) {
-    final segments = musicActivitySegmentsFromMetadata(message.metadata);
-    if (segments.isEmpty) return null;
-    return MusicActivityBurstPresentation(
-      anchorMessage: message,
-      segments: segments,
-    );
-  }
-  if (message.isMusicStatus) {
-    final status = message.metadata?['music_status']?.toString();
-    final actor = message.metadata?['music_status_actor']?.toString() ?? '';
-    final action = status == 'ended' ? 'listened' : 'joined';
-    if (status == 'started' && actor == 'user') {
-      return null;
-    }
-    return MusicActivityBurstPresentation(
-      anchorMessage: message,
-      segments: [
-        MusicActivitySegment(
-          at: message.createdAt,
-          action: action,
-          actor: actor,
-          sessionId: message.conversationId,
-          trackId: message.metadata?['music_track_id']?.toString() ?? '',
-          trackTitle: message.metadata?['music_track_title']?.toString() ?? '',
-          actorName: message.metadata?['music_status_actor_name']?.toString() ??
-              '',
-        ),
-      ],
-    );
-  }
-  return null;
-}
-
-class MusicActivityBurstPresentation {
-  const MusicActivityBurstPresentation({
-    required this.anchorMessage,
-    required this.segments,
-  });
-
-  final ChatMessage anchorMessage;
-  final List<MusicActivitySegment> segments;
-}
-
-bool isMusicActivityTimelineMessage(ChatMessage message) {
-  return message.isMusicActivityBurst || message.isMusicStatus;
 }
 
 List<MusicActivitySegment> segmentsFromMusicActivityMessage(
   ChatMessage message,
 ) {
-  final presentation = parseMusicActivityBurst(message);
-  if (presentation == null) return const [];
-  return presentation.segments;
-}
-
-List<MusicActivitySummary> summarizeMusicActivity(
-  List<MusicActivitySegment> segments,
-) {
-  if (segments.isEmpty) return const [];
-  final listened = segments.where((item) => item.isListened).toList();
-  final source = listened.isNotEmpty ? listened : segments;
-  final order = <String>[];
-  final grouped = <String, List<MusicActivitySegment>>{};
-  for (final segment in source) {
-    final key = segment.trackId.isNotEmpty
-        ? 'id:${segment.trackId}'
-        : (segment.trackTitle.isNotEmpty
-              ? 'title:${segment.trackTitle}'
-              : 'unknown');
-    if (!grouped.containsKey(key)) {
-      order.add(key);
-      grouped[key] = [];
-    }
-    grouped[key]!.add(segment);
+  if (message.isMusicActivityBurst) {
+    return musicActivitySegmentsFromMetadata(
+      message.metadata,
+      fallbackAt: message.createdAt,
+    );
   }
+  if (!message.isMusicStatus) return const [];
+  final status = message.metadata?['music_status']?.toString();
+  if (status != 'started' && status != 'ended') return const [];
   return [
-    for (final key in order)
-      () {
-        final items = grouped[key]!;
-        final listens = items.where((item) => item.isListened).length;
-        return MusicActivitySummary(
-          trackId: items.first.trackId,
-          trackTitle: items.first.trackTitle.isNotEmpty
-              ? items.first.trackTitle
-              : '共听',
-          firstAt: items.first.at,
-          lastAt: items.last.at,
-          listenCount: listens > 0 ? listens : 1,
-          segments: items,
-        );
-      }(),
+    MusicActivitySegment(
+      at: message.createdAt,
+      action: status == 'ended' ? 'listened' : 'joined',
+      actor: message.metadata?['music_status_actor']?.toString() ?? '',
+      sessionId: message.conversationId,
+      trackId: message.metadata?['music_track_id']?.toString() ?? '',
+      trackTitle: message.metadata?['music_track_title']?.toString() ?? '',
+    ),
   ];
 }
 
+String musicSharedStatusLabel(MusicActivitySegment segment) {
+  final title = segment.trackTitle.isNotEmpty ? segment.trackTitle : '音乐';
+  return segment.isExited ? '你们已退出共听《$title》' : '你们一起在听《$title》';
+}
+
+String? musicActivityTimelineLabel(ChatMessage message) {
+  final statuses = preprocessMusicActivityMessages([message]).$1;
+  return statuses.isEmpty ? null : statuses.last.content;
+}
+
+/// Expand old digests into shared transitions and keep new status rows intact.
+/// Participant exits never become a listen count or a joint exit by themselves.
 (List<ChatMessage> visibleMessages, Set<String> hiddenMessageIds)
 preprocessMusicActivityMessages(List<ChatMessage> messages) {
-  if (messages.isEmpty) {
-    return (messages, const {});
+  final events =
+      <({ChatMessage message, MusicActivitySegment? segment, int order})>[];
+  for (final message in messages) {
+    if (!message.isMusicActivityTimeline) {
+      events.add((message: message, segment: null, order: events.length));
+      continue;
+    }
+    for (final segment in segmentsFromMusicActivityMessage(message)) {
+      events.add((message: message, segment: segment, order: events.length));
+    }
   }
-  final hidden = <String>{};
-  final visible = <ChatMessage>[];
-  var index = 0;
-  while (index < messages.length) {
-    final current = messages[index];
-    if (!isMusicActivityTimelineMessage(current)) {
-      visible.add(current);
-      index += 1;
-      continue;
-    }
-
-    final group = <ChatMessage>[current];
-    var next = index + 1;
-    while (next < messages.length) {
-      final candidate = messages[next];
-      if (!isMusicActivityTimelineMessage(candidate)) break;
-      final gap = candidate.createdAt.difference(group.last.createdAt);
-      if (gap > kMusicActivityBurstWindow) break;
-      group.add(candidate);
-      next += 1;
-    }
-
-    final segments = [
-      for (final item in group) ...segmentsFromMusicActivityMessage(item),
-    ];
-    final hadAgentJoin = segments.any(
-      (segment) => segment.isJoined && segment.actor == 'agent',
+  // An old digest's exits may occur after ordinary replies stored beside it.
+  events.sort((a, b) {
+    final time = (a.segment?.at ?? a.message.createdAt).compareTo(
+      b.segment?.at ?? b.message.createdAt,
     );
-    final hasListened = segments.any((segment) => segment.isListened);
-    if (hasListened && !hadAgentJoin) {
-      for (final item in group) {
-        hidden.add(item.id);
+    return time != 0 ? time : a.order.compareTo(b.order);
+  });
+
+  final visible = <ChatMessage>[];
+  final projectedById = <String, List<int>>{};
+  final agentPresent = <String>{};
+  final sharedSessions = <String>{};
+  final lastSharedStatus = <String, String>{};
+  for (final event in events) {
+    final message = event.message;
+    final segment = event.segment;
+    if (segment == null) {
+      visible.add(message);
+      continue;
+    }
+    final sessionId = segment.sessionId.isEmpty
+        ? message.conversationId
+        : segment.sessionId;
+    final session = '${message.conversationId}:$sessionId';
+    MusicActivitySegment? shared;
+    if (segment.shared && (segment.isJoined || segment.isExited)) {
+      shared = segment;
+      if (segment.isJoined) {
+        agentPresent.add(session);
+        sharedSessions.add(session);
+      } else {
+        agentPresent.remove(session);
+        sharedSessions.remove(session);
       }
-      index = next;
-      continue;
-    }
-    final summaries = summarizeMusicActivity(segments);
-    if (summaries.isEmpty) {
-      for (final item in group) {
-        hidden.add(item.id);
+    } else if (segment.isJoined && segment.actor == 'agent') {
+      // Legacy agent joins were emitted only after accepting a user's invite.
+      agentPresent.add(session);
+      sharedSessions.add(session);
+      shared = segment.asShared();
+    } else if (segment.isJoined &&
+        segment.actor == 'user' &&
+        agentPresent.contains(session)) {
+      sharedSessions.add(session);
+      shared = segment.asShared();
+    } else if (segment.isListened && segment.actor == 'agent') {
+      // The agent's exit closes the shared session, including its wait period.
+      if (sharedSessions.remove(session)) {
+        shared = segment.asShared(exited: true);
       }
-      index = next;
-      continue;
+      agentPresent.remove(session);
     }
-
-    if (group.length == 1 &&
-        summaries.length <= 1 &&
-        summaries.first.segments.length <= 1 &&
-        !summaries.first.segments.first.isListened) {
-      hidden.add(group.first.id);
-      index = next;
-      continue;
-    }
-
-    final anchor = group.last;
-    final mergedMetadata = Map<String, dynamic>.from(anchor.metadata ?? {});
-    mergedMetadata['kind'] = 'music_activity_burst';
-    mergedMetadata['segments'] = [
-      for (final segment in segments) segment.toJson(),
-    ];
-    if (summaries.length == 1) {
-      mergedMetadata['music_track_id'] ??= summaries.first.trackId;
-      mergedMetadata['music_track_title'] = summaries.first.trackTitle;
-    } else {
-      mergedMetadata.remove('music_track_id');
-      mergedMetadata['music_track_title'] = summaries
-          .map((item) => item.trackTitle)
-          .join('、');
-    }
-    mergedMetadata['music_status_actor_name'] ??=
-        anchor.metadata?['music_status_actor_name']?.toString() ?? '';
-
+    if (shared == null) continue;
+    final trackKey = shared.trackId.isNotEmpty
+        ? shared.trackId
+        : shared.trackTitle;
+    final statusKey = '${shared.action}:$trackKey';
+    if (lastSharedStatus[session] == statusKey) continue;
+    lastSharedStatus[session] = statusKey;
+    final positions = projectedById.putIfAbsent(message.id, () => []);
+    positions.add(visible.length);
     visible.add(
       ChatMessage(
-        id: anchor.id,
-        conversationId: anchor.conversationId,
-        role: anchor.role,
-        content: collapsedMusicActivityLabel(summaries),
-        createdAt: anchor.createdAt,
-        metadata: mergedMetadata,
-        read: anchor.read,
+        id: '${message.id}:music-status:${positions.length}',
+        conversationId: message.conversationId,
+        role: message.role,
+        content: musicSharedStatusLabel(shared),
+        createdAt: shared.at,
+        metadata: {
+          'kind': 'music_activity_burst',
+          'music_track_id': shared.trackId,
+          'music_track_title': shared.trackTitle,
+          'segments': [shared.toJson()],
+        },
+        read: message.read,
       ),
     );
-    for (final item in group.where((message) => message.id != anchor.id)) {
-      hidden.add(item.id);
-    }
-    index = next;
   }
+
+  // Preserve the server ID for reconciliation, scrolling and history anchors.
+  for (final entry in projectedById.entries) {
+    final last = entry.value.last;
+    visible[last] = visible[last].copyWith(id: entry.key);
+  }
+  final hidden = {
+    for (final message in messages)
+      if (message.isMusicActivityTimeline &&
+          !projectedById.containsKey(message.id))
+        message.id,
+  };
   return (visible, hidden);
-}
-
-String collapsedMusicActivityLabel(List<MusicActivitySummary> summaries) {
-  if (summaries.isEmpty) return '刚才打开了共听';
-  final listened = summaries.any(
-    (item) => item.segments.any((segment) => segment.isListened),
-  );
-  if (!listened) {
-    return summaries.length == 1
-        ? '刚才打开了共听'
-        : '刚才打开了 ${summaries.length} 次共听';
-  }
-  if (summaries.length == 1) {
-    return '一起听了《${summaries.first.trackTitle}》';
-  }
-  return '一起听了 ${summaries.length} 首歌';
-}
-
-String musicActivityDigestHeading(List<MusicActivitySummary> summaries) {
-  if (summaries.length <= 1) {
-    return summaries.isEmpty
-        ? '刚才的共听'
-        : '《${summaries.first.trackTitle}》';
-  }
-  return '刚才的共听';
-}
-
-String formatMusicActivityClock(DateTime value) {
-  final local = value.toLocal();
-  final hour = local.hour.toString().padLeft(2, '0');
-  final minute = local.minute.toString().padLeft(2, '0');
-  return '$hour:$minute';
-}
-
-String formatMusicActivityTimeRange(List<MusicActivitySummary> summaries) {
-  if (summaries.isEmpty) return '';
-  final first = summaries.first.firstAt;
-  final last = summaries.last.lastAt;
-  final start = formatMusicActivityClock(first);
-  final end = formatMusicActivityClock(last);
-  if (start == end) return start;
-  return '$start – $end';
-}
-
-bool canOpenMusicActivityDigest(List<MusicActivitySummary> summaries) {
-  if (summaries.length > 1) return true;
-  if (summaries.isEmpty) return false;
-  return summaries.first.segments.length > 1;
 }
 
 (List<ChatMessage> visibleMessages, Set<String> hiddenMessageIds)
 preprocessTimelineActivityMessages(List<ChatMessage> messages) {
-  final gameProcessed = preprocessGameActivityMessages(messages);
-  return preprocessMusicActivityMessages(gameProcessed.$1);
+  final game = preprocessGameActivityMessages(messages);
+  final music = preprocessMusicActivityMessages(game.$1);
+  return (music.$1, {...game.$2, ...music.$2});
 }

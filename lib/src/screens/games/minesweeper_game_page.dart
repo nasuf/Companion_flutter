@@ -76,7 +76,7 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
   Future<void> _forfeit() async {
     if (_result != null || _engine == null || _runtime.completed) return;
     setState(() => _result = _MinesweeperResultKind.lose);
-    await _finish(MinesweeperStatus.failed);
+    await _runtime.abort('abandoned', _sessionSummary());
   }
 
   Future<void> _start() async {
@@ -357,11 +357,7 @@ class _MinesweeperGamePageState extends State<_MinesweeperGamePage> {
       child = _MinesweeperResultScreen(
         key: const ValueKey('mine-result'),
         kind: _result!,
-        pointsDelta: _runtime.pointRules?.deltaFor(
-          _result == _MinesweeperResultKind.win
-              ? GameOutcome.win
-              : GameOutcome.lose,
-        ),
+        pointsDelta: _runtime.settledPointsDelta,
         onRestart: _start,
         onExit: _closeGame,
       );

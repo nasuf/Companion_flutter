@@ -25,11 +25,12 @@ class NativeGameEventOutbox {
   factory NativeGameEventOutbox.forApi({
     required CompanionApi api,
     required AuthSession authSession,
+    void Function(GameEventResponse response)? onResponse,
   }) => NativeGameEventOutbox(
     apiBaseUrl: api.baseUrl,
     userId: authSession.userId,
     sendEvent: (event) async {
-      await api.sendNativeGameEvent(
+      final response = await api.sendNativeGameEvent(
         sessionId: event['session_id']! as String,
         eventType: event['event_type']! as String,
         state: event['state'] as String?,
@@ -37,6 +38,7 @@ class NativeGameEventOutbox {
         source: 'replay',
         clientEventId: event['client_event_id']! as String,
       );
+      onResponse?.call(response);
     },
   );
 

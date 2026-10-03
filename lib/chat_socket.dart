@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'models.dart';
+import 'socket_ticket.dart';
+import 'companion_api.dart';
 
 enum ChatSocketStatus { disconnected, connecting, open, closed, error }
 
@@ -15,10 +17,18 @@ class ChatSocketState {
 }
 
 class ChatSocket {
-  ChatSocket({required this.baseUrl, required this.conversationId});
+  ChatSocket({
+    required this.baseUrl,
+    required this.conversationId,
+    required this.ticketProvider,
+    this.replyEventProvider,
+  });
 
   final String baseUrl;
   final String conversationId;
+  final Future<String> Function() ticketProvider;
+  int _generation = 0;
+  final Future<ReplyEventPage> Function(int? afterSequence)? replyEventProvider;
 
   final _events = StreamController<WsEnvelope>.broadcast();
   final _states = StreamController<ChatSocketState>.broadcast();
@@ -28,6 +38,11 @@ class ChatSocket {
   bool _disposed = false;
   bool _intentionalClose = false;
   int _reconnectAttempt = 0;
+  bool _connecting = false;
+  final _seenEventIds = <String>{};
+  int? _replySequence;
+  WebSocket? _replayingFor;
+  bool _replayUnavailable = false;
 
   Stream<WsEnvelope> get events => _events.stream;
   Stream<ChatSocketState> get states => _states.stream;
@@ -42,7 +57,7 @@ class ChatSocket {
   }
 
   Future<void> connect() async {
-    if (_disposed) return;
+    if (_disposed || _connecting) return;
     final current = _socket;
     if (current != null &&
         (current.readyState == WebSocket.open ||
@@ -50,11 +65,38 @@ class ChatSocket {
       return;
     }
 
+    _connecting = true;
+    final generation = ++_generation;
     _intentionalClose = false;
     _states.add(const ChatSocketState(ChatSocketStatus.connecting));
     try {
-      final socket = await WebSocket.connect(_wsUri().toString());
-      if (_disposed) {
+      final ticket = await ticketProvider().timeout(
+        const Duration(seconds: 15),
+      );
+      if (_disposed || generation != _generation) return;
+      if (!RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(ticket)) {
+        throw const SocketTicketException(502);
+      }
+      var timedOut = false;
+      final opening = WebSocket.connect(
+        _wsUri().toString(),
+        protocols: ['companion.chat.v1', 'companion.ticket.$ticket'],
+      );
+      unawaited(
+        opening.then((lateSocket) async {
+          if (_disposed || generation != _generation || timedOut) {
+            await lateSocket.close(1000, 'cancelled');
+          }
+        }, onError: (Object error) {}),
+      );
+      final socket = await opening.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          timedOut = true;
+          throw TimeoutException('WebSocket connection timed out');
+        },
+      );
+      if (_disposed || generation != _generation) {
         await socket.close(1000, 'disposed');
         return;
       }
@@ -62,9 +104,15 @@ class ChatSocket {
       _reconnectAttempt = 0;
       _states.add(const ChatSocketState(ChatSocketStatus.open));
       _startKeepalive();
+      unawaited(_replayReplies(socket));
 
       socket.listen(
-        _handleMessage,
+        (message) {
+          if (!_disposed && _socket == socket) {
+            _handleMessage(message);
+            unawaited(_replayReplies(socket));
+          }
+        },
         onDone: () => _handleClose(socket),
         onError: (_) {
           if (_socket == socket) {
@@ -74,8 +122,22 @@ class ChatSocket {
         cancelOnError: false,
       );
     } catch (error) {
-      _states.add(ChatSocketState(ChatSocketStatus.error, reason: '$error'));
-      _scheduleReconnect();
+      if (_disposed || generation != _generation) return;
+      final status = error is SocketTicketException ? error.statusCode : null;
+      _states.add(
+        ChatSocketState(
+          ChatSocketStatus.error,
+          code: status,
+          reason: status == 401
+              ? '登录已过期，请重新登录'
+              : status == 403
+              ? '无权访问此会话'
+              : '聊天连接暂时不可用',
+        ),
+      );
+      if (![401, 403, 404, 410].contains(status)) _scheduleReconnect();
+    } finally {
+      if (generation == _generation) _connecting = false;
     }
   }
 
@@ -112,11 +174,70 @@ class ChatSocket {
     try {
       final json = jsonDecode(message as String);
       if (json is Map<String, dynamic>) {
-        final envelope = WsEnvelope.fromJson(json);
-        _events.add(envelope);
+        _emitEnvelope(WsEnvelope.fromJson(json));
       }
     } catch (_) {
       // Ignore malformed frames; the server protocol is JSON envelopes.
+    }
+  }
+
+  void _emitEnvelope(WsEnvelope envelope) {
+    if (_disposed) return;
+    final eventId = envelope.data['event_id'];
+    if (eventId is String && eventId.isNotEmpty && eventId.length <= 128) {
+      if (!_seenEventIds.add(eventId)) return;
+      if (_seenEventIds.length > 2048) {
+        _seenEventIds.remove(_seenEventIds.first);
+      }
+    }
+    _events.add(envelope);
+  }
+
+  Future<void> _replayReplies(WebSocket socket) async {
+    final provider = replyEventProvider;
+    if (provider == null ||
+        _disposed ||
+        _socket != socket ||
+        _replayingFor == socket ||
+        _replayUnavailable) {
+      return;
+    }
+    _replayingFor = socket;
+    var more = false;
+    try {
+      for (var pageNumber = 0; pageNumber < 8; pageNumber++) {
+        final page = await provider(
+          _replySequence,
+        ).timeout(const Duration(seconds: 15));
+        if (_disposed || _socket != socket) return;
+        if (page.nextSequence < (_replySequence ?? 0) ||
+            (page.hasMore &&
+                (page.events.isEmpty ||
+                    page.nextSequence <= (_replySequence ?? 0)))) {
+          throw StateError('Invalid replay cursor');
+        }
+        for (final event in page.events) {
+          _emitEnvelope(event);
+        }
+        final recoverAll = _replySequence == null && page.activeWaitsTruncated;
+        _replySequence = recoverAll ? 0 : page.nextSequence;
+        more = recoverAll || page.hasMore;
+        if (!more) break;
+      }
+    } catch (error) {
+      if (!_disposed && _socket == socket && error is ApiException) {
+        if (error.statusCode == 404) _replayUnavailable = true;
+        if ([401, 403, 410].contains(error.statusCode)) {
+          _replayUnavailable = true;
+          await socket.close(4403, '授权已失效');
+        }
+      }
+      more = false;
+    } finally {
+      if (_replayingFor == socket) _replayingFor = null;
+    }
+    if (more && !_disposed && _socket == socket) {
+      Timer.run(() => unawaited(_replayReplies(socket)));
     }
   }
 
@@ -131,13 +252,15 @@ class ChatSocket {
         reason: socket.closeReason,
       ),
     );
-    if (!_intentionalClose) _scheduleReconnect();
+    if (!_intentionalClose && socket.closeCode != 4403) _scheduleReconnect();
   }
 
   void _startKeepalive() {
     _stopKeepalive();
     _pingTimer = Timer.periodic(const Duration(seconds: 25), (_) {
       send({'type': 'ping'});
+      final socket = _socket;
+      if (socket != null) unawaited(_replayReplies(socket));
     });
   }
 
@@ -166,6 +289,8 @@ class ChatSocket {
   Future<void> close() async {
     _intentionalClose = true;
     _disposed = true;
+    _generation += 1;
+    _connecting = false;
     _reconnectTimer?.cancel();
     _stopKeepalive();
     final socket = _socket;

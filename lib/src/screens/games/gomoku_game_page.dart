@@ -101,7 +101,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
   Future<void> _forfeit() async {
     if (_result != null || _engine == null || _runtime.completed) return;
     setState(() => _result = _GomokuResultKind.lose);
-    await _finishGame(GomokuGameStatus.agentWon);
+    await _runtime.abort('abandoned', _engine!.summaryJson());
   }
 
   Future<void> _handleBoardTap(GomokuPoint point) async {
@@ -248,11 +248,7 @@ class _NativeGomokuGamePageState extends State<_NativeGomokuGamePage> {
       child = _GomokuResultScreen(
         key: const ValueKey('gomoku-result'),
         kind: _result!,
-        pointsDelta: _runtime.pointRules?.deltaFor(
-          _result == _GomokuResultKind.win
-              ? GameOutcome.win
-              : GameOutcome.lose,
-        ),
+        pointsDelta: _runtime.settledPointsDelta,
         onRestart: _startGame,
         onExit: _closeGame,
       );

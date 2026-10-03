@@ -26,8 +26,6 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
   // Non-null once the win / lose scene has taken over from the board.
   _MergeResultKind? _result;
   Timer? _resultTimer;
-  // Points this round settles for, shown on the result screen.
-  int? _resultDelta;
 
   @override
   void initState() {
@@ -65,7 +63,6 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
       _actionHistory.clear();
       _resolving = false;
       _result = null;
-      _resultDelta = null;
     });
   }
 
@@ -75,7 +72,6 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
     if (_result != null) {
       setState(() {
         _result = null;
-        _resultDelta = null;
       });
     }
     if (_runtime.session != null && !_runtime.completed) {
@@ -270,7 +266,7 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
     final engine = _engine!;
     await _runtime.finish({
       ..._sessionSummary(),
-      'user_outcome': status == NumberMergeStatus.completed ? 'win' : 'lose',
+      'user_outcome': engine.maxTile >= 128 ? 'win' : 'lose',
       'shared_outcome': status == NumberMergeStatus.completed
           ? 'target_reached'
           : 'no_legal_moves',
@@ -304,17 +300,11 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
         engine.isFinished &&
         _result == null &&
         _resultTimer == null) {
-      final win = engine.status == NumberMergeStatus.completed;
-      // A board played to the end scores by milestone, win or lose.
-      final delta = _runtime.pointRules?.deltaFor(
-        win ? GameOutcome.win : GameOutcome.lose,
-        maxTile: engine.maxTile,
-      );
+      final win = engine.maxTile >= 128;
       _resultTimer = Timer(const Duration(milliseconds: 1400), () {
         if (!mounted || _result != null) return;
         setState(() {
           _result = win ? _MergeResultKind.win : _MergeResultKind.lose;
-          _resultDelta = delta;
         });
       });
     }
@@ -322,7 +312,7 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
     if (engine != null && _result != null) {
       body = _MergeResultScreen(
         kind: _result!,
-        pointsDelta: _resultDelta,
+        pointsDelta: _runtime.settledPointsDelta,
         onRestart: _start,
         onExit: _closeGame,
       );
@@ -381,10 +371,7 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
         ),
       );
     }
-    return GameSuspendForfeitBinding(
-      onForfeit: _forfeitFromFloat,
-      child: body,
-    );
+    return GameSuspendForfeitBinding(onForfeit: _forfeitFromFloat, child: body);
   }
 
   Future<void> _forfeitFromFloat() async {
@@ -394,28 +381,13 @@ class _NumberMergeGamePageState extends State<_NumberMergeGamePage> {
     }
   }
 
-  /// Quitting or restarting from the pause sheet gives up the board, so the
-  /// lose screen takes over and the player chooses from there.
-  ///
-  /// The round is settled by the follow-up _start / _closeGame as an abort,
-  /// which the server charges at this game's 中途退出 rate. Unlike the other
-  /// games this one is scored by milestone, so reporting a loss here would
-  /// *award* the highest-tile points instead of deducting any — the penalty
-  /// has to come from the abort path.
+  /// Settle abandonment immediately so the result uses confirmed wallet data.
   void _abandonRound() {
+    if (_result != null || _runtime.completed) return;
     _resultTimer?.cancel();
     _resultTimer = null;
-    final engine = _engine;
-    setState(() {
-      _result = _MergeResultKind.lose;
-      // Abandoning is charged the 中途退出 rate, not the milestone payout.
-      _resultDelta = engine == null
-          ? null
-          : _runtime.pointRules?.deltaFor(
-              GameOutcome.aborted,
-              maxTile: engine.maxTile,
-            );
-    });
+    setState(() => _result = _MergeResultKind.lose);
+    unawaited(_runtime.abort('abandoned', _sessionSummary()));
   }
 
   void _setPaused(bool value) {

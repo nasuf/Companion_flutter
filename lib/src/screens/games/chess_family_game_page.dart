@@ -146,7 +146,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
   Future<void> _forfeitXiangqi() async {
     if (_xiangqiResult != null || _engine == null || _runtime.completed) return;
     setState(() => _xiangqiResult = _XiangqiResultKind.lose);
-    await _finish(ChessFamilyStatus.agentWon);
+    await _runtime.abort('abandoned', _engine!.summaryJson());
   }
 
   void _setXiangqiTimerPaused(bool paused) {
@@ -160,7 +160,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
   Future<void> _forfeitChess() async {
     if (_chessResult != null || _engine == null || _runtime.completed) return;
     setState(() => _chessResult = _ChessResultKind.lose);
-    await _finish(ChessFamilyStatus.agentWon);
+    await _runtime.abort('abandoned', _engine!.summaryJson());
   }
 
   Future<void> _handleSquareTap(int square) async {
@@ -373,11 +373,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
         chessChild = _ChessResultScreen(
           key: const ValueKey('chess-result'),
           kind: _chessResult!,
-          pointsDelta: _runtime.pointRules?.deltaFor(
-            _chessResult == _ChessResultKind.win
-                ? GameOutcome.win
-                : GameOutcome.lose,
-          ),
+          pointsDelta: _runtime.settledPointsDelta,
           onRestart: _startGame,
           onExit: _closeGame,
         );
@@ -470,11 +466,7 @@ class _ChessFamilyGamePageState extends State<_ChessFamilyGamePage> {
         xiangqiChild = _XiangqiResultScreen(
           key: const ValueKey('xiangqi-result'),
           kind: _xiangqiResult!,
-          pointsDelta: _runtime.pointRules?.deltaFor(
-            _xiangqiResult == _XiangqiResultKind.win
-                ? GameOutcome.win
-                : GameOutcome.lose,
-          ),
+          pointsDelta: _runtime.settledPointsDelta,
           onRestart: _startGame,
           onExit: _closeGame,
         );

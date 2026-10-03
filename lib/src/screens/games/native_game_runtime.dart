@@ -31,10 +31,8 @@ class _NativeGameRuntime {
   // the games-hub gate; refreshed from the wallet (which applies the daily
   // grant server-side) before every start.
   bool canPlay = true;
-  // This game's scoring rules, so result screens can show what the round was
-  // worth. Read from the built-in table: the values are product constants, and
-  // making the result screen wait on a round-trip only ever delayed the number.
-  late final GamePointRules? pointRules = seedGamePointRules(gameKey);
+  int? get settledPointsDelta => session?.settledPointsDelta;
+
   Map<String, dynamic>? terminalPayload;
   DateTime? terminalPresentedAt;
   bool turnTimeoutVisible = false;
@@ -50,6 +48,13 @@ class _NativeGameRuntime {
   late final NativeGameEventOutbox _eventOutbox = NativeGameEventOutbox.forApi(
     api: api,
     authSession: authSession,
+    onResponse: (response) {
+      if (response.session.id == session?.id &&
+          response.session.settledPointsDelta != null) {
+        session = response.session;
+        _notify();
+      }
+    },
   );
 
   String get agentName =>
@@ -190,6 +195,14 @@ class _NativeGameRuntime {
       if (stats != null) await _applyRecordStats(stats);
       final sessions = await sessionsFuture;
       if (_disposed) return;
+      // Only update the active round: a delayed reply from a previous round
+      // must never replace the new session or its score.
+      for (final candidate in sessions) {
+        if (candidate.id == session?.id &&
+            candidate.settledPointsDelta != null) {
+          session = candidate;
+        }
+      }
       rounds = sessions.where(_GameRoundSummary.canShow).toList();
       if (stats == null) {
         // Session page is capped, so this sample must not replace a stored
@@ -295,6 +308,14 @@ class _NativeGameRuntime {
       if (_disposed) return;
       final sessions = await sessionsFuture;
       if (_disposed) return;
+      // Only update the active round: a delayed reply from a previous round
+      // must never replace the new session or its score.
+      for (final candidate in sessions) {
+        if (candidate.id == session?.id &&
+            candidate.settledPointsDelta != null) {
+          session = candidate;
+        }
+      }
       rounds = sessions.where(_GameRoundSummary.canShow).toList();
       await _applyRecordStats(
         stats ?? NativeGameRecordStats.fromSessions(rounds),
@@ -623,13 +644,17 @@ class _NativeGameRuntime {
     Object? lastError;
     for (var attempt = 0; attempt < attempts; attempt += 1) {
       try {
-        await api.sendNativeGameEvent(
+        final response = await api.sendNativeGameEvent(
           sessionId: sessionId,
           eventType: eventType,
           state: state,
           payload: payload,
           clientEventId: clientEventId,
         );
+        if (session?.id == sessionId) {
+          session = response.session;
+          _notify(updateUi);
+        }
         if (session?.id == sessionId &&
             critical &&
             syncNotice?.startsWith('本地过程日志暂时无法写入') == true) {
