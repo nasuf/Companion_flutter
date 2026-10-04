@@ -2197,6 +2197,7 @@ class _AdminTtsVoiceLibrary extends StatefulWidget {
 
 class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
   final AudioRecorder _recorder = AudioRecorder();
+  final Stopwatch _recordingWatch = Stopwatch();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _prefixController = TextEditingController(
     text: 'voice',
@@ -2205,6 +2206,7 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
   bool _loading = true;
   bool _saving = false;
   bool _recording = false;
+  bool _recordingTransition = false;
   bool _consent = false;
   String _gender = 'female';
   String? _recordingPath;
@@ -2221,6 +2223,7 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
   @override
   void dispose() {
     _recordingTimer?.cancel();
+    _recordingWatch.stop();
     unawaited(_recorder.dispose());
     final path = _recordingPath;
     if (path != null) unawaited(_deleteRecordingFile(path));
@@ -2258,53 +2261,122 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
   }
 
   Future<void> _startRecording() async {
-    if (!await _recorder.hasPermission()) {
-      setState(() => _error = '请先允许麦克风权限');
-      return;
-    }
-    final directory = await getTemporaryDirectory();
-    final previousPath = _recordingPath;
-    if (previousPath != null) {
-      try {
-        await File(previousPath).delete();
-      } catch (_) {}
-    }
-    final path =
-        '${directory.path}/tts_clone_${DateTime.now().microsecondsSinceEpoch}.m4a';
-    await _recorder.start(chatVoiceRecordConfig, path: path);
-    _recordingTimer?.cancel();
-    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) return;
-      setState(() => _recordingSeconds += 1);
-      if (_recordingSeconds >= 30) unawaited(_stopRecording());
-    });
-    if (!mounted) return;
+    if (_saving || _recording || _recordingTransition) return;
     setState(() {
-      _recording = true;
-      _recordingSeconds = 0;
-      _recordingPath = null;
+      _recordingTransition = true;
       _error = null;
     });
+    String? candidatePath;
+    try {
+      final permitted = await _recorder.hasPermission();
+      if (!mounted) return;
+      if (!permitted) {
+        setState(() => _error = '请先允许麦克风权限');
+        return;
+      }
+      final directory = await getTemporaryDirectory();
+      if (!mounted) return;
+      final previousPath = _recordingPath;
+      final path =
+          '${directory.path}/tts_clone_${DateTime.now().microsecondsSinceEpoch}.m4a';
+      candidatePath = path;
+      await _recorder.start(chatVoiceRecordConfig, path: path);
+      if (!mounted) {
+        try {
+          await _recorder.stop();
+        } finally {
+          await _deleteRecordingFile(path);
+        }
+        return;
+      }
+      _recordingWatch
+        ..reset()
+        ..start();
+      setState(() {
+        _recording = true;
+        _recordingSeconds = 0;
+        _recordingPath = path;
+      });
+      _recordingTimer?.cancel();
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) return;
+        setState(() => _recordingSeconds = _recordingWatch.elapsed.inSeconds);
+        if (_recordingSeconds >= 30) unawaited(_stopRecording());
+      });
+      if (previousPath != null) await _deleteRecordingFile(previousPath);
+    } catch (error) {
+      if (candidatePath != null) {
+        try {
+          await _recorder.cancel();
+        } catch (_) {}
+        await _deleteRecordingFile(candidatePath);
+      }
+      if (mounted) setState(() => _error = _asMessage(error));
+    } finally {
+      if (mounted) setState(() => _recordingTransition = false);
+    }
   }
 
   Future<void> _stopRecording() async {
-    if (!_recording) return;
+    if (!_recording || _recordingTransition) return;
+    setState(() => _recordingTransition = true);
     _recordingTimer?.cancel();
     _recordingTimer = null;
-    if (mounted) setState(() => _recording = false);
-    final path = await _recorder.stop();
-    if (!mounted) return;
-    setState(() {
-      _recordingPath = path;
-    });
+    _recordingWatch.stop();
+    try {
+      final path = await _recorder.stop();
+      if (!mounted) {
+        if (path != null) await _deleteRecordingFile(path);
+        return;
+      }
+      final previousPath = _recordingPath;
+      setState(() {
+        _recording = false;
+        _recordingSeconds = _recordingWatch.elapsed.inSeconds;
+        _recordingPath = path;
+        if (path == null) _error = '录音未保存，请重新录制';
+      });
+      if (previousPath != null && previousPath != path) {
+        await _deleteRecordingFile(previousPath);
+      }
+    } catch (error) {
+      var cancelled = false;
+      try {
+        await _recorder.cancel();
+        cancelled = true;
+      } catch (_) {}
+      if (cancelled) {
+        final path = _recordingPath;
+        if (path != null) await _deleteRecordingFile(path);
+        if (mounted) {
+          setState(() {
+            _recording = false;
+            _recordingPath = null;
+            _recordingSeconds = 0;
+            _error = '录音保存失败，请重新录制：${_asMessage(error)}';
+          });
+        }
+      } else if (mounted) {
+        _recordingWatch.start();
+        setState(() => _error = '停止录音失败，请再次点击停止：${_asMessage(error)}');
+        _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          if (mounted) {
+            setState(() => _recordingSeconds = _recordingWatch.elapsed.inSeconds);
+          }
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _recordingTransition = false);
+    }
   }
 
   Future<void> _cloneVoice() async {
+    if (_saving || _recording || _recordingTransition) return;
     final path = _recordingPath;
     final name = _nameController.text.trim();
     final prefix = _prefixController.text.trim();
-    if (path == null || _recordingSeconds < 3) {
-      setState(() => _error = '请先录制 3–30 秒清晰人声');
+    if (path == null || _recordingSeconds < 5) {
+      setState(() => _error = '请先录制至少 5 秒清晰人声，建议录制 10–20 秒');
       return;
     }
     if (name.isEmpty || !RegExp(r'^[A-Za-z0-9]{1,10}$').hasMatch(prefix)) {
@@ -2431,7 +2503,11 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
             children: [
               _adminModelsTitle(context, '录制真人音色'),
               const SizedBox(height: 6),
-              _adminModelsCaption(context, '录制 3–30 秒清晰人声；创建前必须取得本人授权。'),
+              _adminModelsCaption(
+                context,
+                '建议录制 10–20 秒自然聊天，至少包含 5 秒清晰人声；最长 30 秒。'
+                '在安静环境单人说话，创建前必须取得本人授权。',
+              ),
               const SizedBox(height: 14),
               CupertinoTextField(
                 controller: _nameController,
@@ -2493,7 +2569,7 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
                       color: _recording
                           ? CupertinoColors.destructiveRed
                           : const Color(0xFF2D73FF),
-                      onPressed: _saving
+                      onPressed: _saving || _recordingTransition
                           ? null
                           : (_recording ? _stopRecording : _startRecording),
                       child: Text(
@@ -2534,7 +2610,9 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
               SizedBox(
                 width: double.infinity,
                 child: CupertinoButton.filled(
-                  onPressed: _saving ? null : _cloneVoice,
+                  onPressed: _saving || _recording || _recordingTransition
+                      ? null
+                      : _cloneVoice,
                   child: Text(_saving ? '创建中...' : '创建复刻音色'),
                 ),
               ),
