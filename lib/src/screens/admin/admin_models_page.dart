@@ -13,57 +13,6 @@ part of 'package:companion_flutter/main.dart';
 
 // ── API bindings ───────────────────────────────────────────────────────────
 
-Future<dynamic> _adminMultipartRequest(
-  CompanionApi api,
-  String path, {
-  required Map<String, String> fields,
-  required String fileName,
-  required String fileMime,
-  required List<int> fileBytes,
-}) async {
-  final client = HttpClient();
-  client.connectionTimeout = const Duration(seconds: 70);
-  try {
-    final boundary =
-        'companion-admin-${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}';
-    final request = await client.postUrl(Uri.parse('${api.baseUrl}$path'));
-    request.headers.contentType = ContentType(
-      'multipart',
-      'form-data',
-      parameters: {'boundary': boundary},
-    );
-    if (api.authToken != null && api.authToken!.isNotEmpty) {
-      request.headers.set(
-        HttpHeaders.authorizationHeader,
-        'Bearer ${api.authToken}',
-      );
-    }
-    for (final entry in fields.entries) {
-      request.write(
-        '--$boundary\r\n'
-        'Content-Disposition: form-data; name="${entry.key}"\r\n\r\n'
-        '${entry.value}\r\n',
-      );
-    }
-    request.write(
-      '--$boundary\r\n'
-      'Content-Disposition: form-data; name="file"; '
-      'filename="${fileName.replaceAll('"', '_')}"\r\n'
-      'Content-Type: $fileMime\r\n\r\n',
-    );
-    request.add(fileBytes);
-    request.write('\r\n--$boundary--\r\n');
-    final response = await request.close();
-    final text = await response.transform(utf8.decoder).join();
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException(response.statusCode, _adminErrorText(text));
-    }
-    return text.isEmpty ? null : jsonDecode(text);
-  } finally {
-    client.close(force: true);
-  }
-}
-
 extension _AdminModelsApi on CompanionApi {
   Future<_RuntimeConfigBundle> fetchAdminRuntimeConfig() async {
     final json =
@@ -188,21 +137,13 @@ extension _AdminModelsApi on CompanionApi {
     required String gender,
     required String prefix,
   }) async {
-    final json =
-        await _adminMultipartRequest(
-              this,
-              '/admin-api/tts/voices/clone',
-              fields: {
-                'display_name': displayName,
-                'gender': gender,
-                'prefix': prefix,
-                'consent_confirmed': 'true',
-              },
-              fileName: file.uri.pathSegments.last,
-              fileMime: 'audio/mp4',
-              fileBytes: await file.readAsBytes(),
-            )
-            as Map<String, dynamic>;
+    final json = await createAdminClonedVoice(
+      file: file,
+      displayName: displayName,
+      gender: gender,
+      prefix: prefix,
+      consentConfirmed: true,
+    );
     return _AdminTtsVoiceProfile.fromJson(json);
   }
 

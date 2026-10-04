@@ -342,9 +342,10 @@ abstract class _CompanionApiCore {
     required String fileMime,
     required Uint8List fileBytes,
     String? debugLabel,
+    Duration connectionTimeout = const Duration(seconds: 8),
   }) async {
     final client = HttpClient();
-    client.connectionTimeout = const Duration(seconds: 8);
+    client.connectionTimeout = connectionTimeout;
     final stopwatch = Stopwatch()..start();
     try {
       final boundary =
@@ -535,4 +536,31 @@ class CompanionApi extends _CompanionApiCore
         _CompanionApiStore,
         _CompanionApiCapsule {
   CompanionApi({required super.baseUrl});
+
+  /// Uses the shared UTF-8 multipart uploader so Chinese voice names and
+  /// binary recordings are transmitted without HttpClient.write encoding errors.
+  Future<Map<String, dynamic>> createAdminClonedVoice({
+    required File file,
+    required String displayName,
+    required String gender,
+    required String prefix,
+    required bool consentConfirmed,
+  }) async {
+    final json = await _requestMultipart(
+      'POST',
+      '/admin-api/tts/voices/clone',
+      connectionTimeout: const Duration(seconds: 70),
+      fields: {
+        'display_name': displayName,
+        'gender': gender,
+        'prefix': prefix,
+        'consent_confirmed': consentConfirmed.toString(),
+      },
+      fileField: 'file',
+      fileName: file.uri.pathSegments.last,
+      fileMime: 'audio/mp4',
+      fileBytes: await file.readAsBytes(),
+    );
+    return json as Map<String, dynamic>;
+  }
 }
