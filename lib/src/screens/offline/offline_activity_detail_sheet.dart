@@ -13,6 +13,20 @@ Future<String?> openOfflineActivityDetail(
   VoidCallback? onChanged,
   VoidCallback? onNavigateToChat,
 }) async {
+  try {
+    activity = await api.fetchOfflineActivity(activity.id);
+  } on ApiException catch (error) {
+    if (context.mounted) _showActivityToast(context, error.message);
+    return null;
+  } catch (_) {
+    if (context.mounted) _showActivityToast(context, '暂时无法加载活动，请稍后重试');
+    return null;
+  }
+  if (!context.mounted) return null;
+  if (activity.status == 'cancelled' || activity.status == 'expired') {
+    _showActivityToast(context, '这项活动已移除或过期');
+    return null;
+  }
   if (activity.status == 'accepted') {
     await Navigator.of(context).push(
       CompanionPageRoute<void>(
@@ -213,16 +227,26 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _ActivityImage(
-                    activity: activity,
-                    height: 178,
+                  _CheckinGallery(
+                    imageUrls: activity.imageUrls,
+                    category: activity.category,
                     authToken: widget.api.authToken,
-                    borderRadius: BorderRadius.circular(22),
                   ),
                   const SizedBox(height: 18),
                   Text(activity.title, style: _titleStyle(context, 24)),
                   const SizedBox(height: 10),
-                  Text(activity.description, style: _mutedStyle(context, 16)),
+                  SelectableText(
+                    activity.summary,
+                    style: _mutedStyle(context, 16),
+                  ),
+                  if (activity.description != activity.summary) ...[
+                    const SizedBox(height: 12),
+                    SelectableText(
+                      activity.description,
+                      style: _mutedStyle(context, 14),
+                    ),
+                  ],
+                  _OfflineSourceLink(url: activity.officialUrl),
                   const SizedBox(height: 16),
                   _MetaLine(activity: activity),
                   if (canRespond) ...[

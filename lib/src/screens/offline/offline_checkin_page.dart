@@ -66,20 +66,38 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
     if (_arriving) return;
     setState(() => _arriving = true);
     try {
-      // 尽力取一次定位（用于服务端可选的 ≤200m 校验）；取不到也不拦，允许直接到达。
+      final manual = !(_activity?.arrivalVerificationAvailable ?? false);
+      if (manual) {
+        final confirmed = await _confirmOfflineAction(
+          context,
+          title: '手动记录到达',
+          message: '这个地点暂无可靠坐标，无法核验距离。这次将记录为你手动确认到达。',
+          action: '确认记录',
+        );
+        if (!confirmed || !mounted) return;
+      }
+      // Native GPS is free; an unavailable fix cannot pass verified arrival.
       DeviceLocationSnapshot? snapshot;
       try {
-        snapshot = await requestCurrentDeviceLocation(
-          api: widget.api,
-          openSettingsWhenBlocked: false,
-        );
+        if (!manual) {
+          snapshot = await requestCurrentDeviceLocation(
+            api: widget.api,
+            openSettingsWhenBlocked: false,
+          );
+        }
       } catch (_) {
         snapshot = null;
+      }
+      if (!manual && snapshot == null) {
+        if (mounted) _showActivityToast(context, '需要当前位置才能确认到达，请开启定位后重试');
+        return;
       }
       final updated = await widget.api.arriveOfflineActivity(
         widget.activityId,
         lat: snapshot?.latitude,
         lng: snapshot?.longitude,
+        accuracyMeters: snapshot?.accuracyMeters,
+        manualConfirmation: manual,
       );
       if (!mounted) return;
       setState(() => _activity = updated);
@@ -225,6 +243,7 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
   Widget _buildDock(OfflineActivity activity) {
     final w = _W2b.resolve(context);
     final reached = activity.reached;
+    final active = activity.status == 'accepted';
     final hasProphecy = (activity.prophecyText ?? '').isNotEmpty;
     return Container(
       decoration: BoxDecoration(
@@ -242,14 +261,14 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (reached) ...[
-            _ArrivedStatusRow(color: w.ink),
+            _ArrivedStatusRow(color: w.ink, verified: activity.arrivalVerified),
             const SizedBox(height: 10),
             // spec §5.4-(6) 已到达坞：「收好这次旅途回忆」为描边按钮（区别于未到达的实心主按钮）。
             SizedBox(
               width: double.infinity,
               child: _SecondaryActivityPillButton(
                 label: _archiving ? '收好中...' : '收好这次旅途回忆',
-                enabled: !_archiving,
+                enabled: active && !_archiving,
                 onPressed: _onArchive,
               ),
             ),
@@ -257,9 +276,13 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
             SizedBox(
               width: double.infinity,
               child: _PrimaryActivityPillButton(
-                label: _arriving ? '定位中...' : '我已经抵达这里',
+                label: _arriving
+                    ? '确认中...'
+                    : activity.arrivalVerificationAvailable
+                    ? '我已经抵达这里'
+                    : '手动记录到达',
                 icon: '📍',
-                enabled: !_arriving,
+                enabled: active && !_arriving && !_loading,
                 onPressed: _onArrive,
               ),
             ),
@@ -268,11 +291,37 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
               width: double.infinity,
               child: _SecondaryActivityPillButton(
                 label: hasProphecy ? '查看此行小预言' : '抽一句此行小预言',
-                enabled: !_drawing,
+                enabled: active && !_drawing,
                 onPressed: _onProphecyAction,
               ),
             ),
           ],
+          if (!reached && active)
+            CupertinoButton(
+              onPressed: _arriving
+                  ? null
+                  : () async {
+                      if (!await _confirmOfflineAction(
+                        context,
+                        title: '删除待出行活动',
+                        message: '从待出行列表移除这项活动？',
+                        action: '删除',
+                      )) {
+                        return;
+                      }
+                      try {
+                        await widget.api.deleteOfflineActivity(activity.id);
+                        widget.onChanged?.call();
+                        if (mounted) Navigator.of(context).pop();
+                      } on ApiException catch (error) {
+                        if (mounted) _showActivityToast(context, error.message);
+                      }
+                    },
+              child: const Text(
+                '删除待出行活动',
+                style: TextStyle(color: CupertinoColors.destructiveRed),
+              ),
+            ),
           const SizedBox(height: 6),
           Center(
             child: CupertinoButton(
@@ -295,9 +344,10 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
 }
 
 class _ArrivedStatusRow extends StatelessWidget {
-  const _ArrivedStatusRow({required this.color});
+  const _ArrivedStatusRow({required this.color, required this.verified});
 
   final Color color;
+  final bool verified;
 
   @override
   Widget build(BuildContext context) {
@@ -311,12 +361,15 @@ class _ArrivedStatusRow extends StatelessWidget {
             color: Color(0xFF3D8A4F),
             shape: BoxShape.circle,
           ),
-          child: const Icon(CupertinoIcons.check_mark,
-              size: 13, color: Colors.white),
+          child: const Icon(
+            CupertinoIcons.check_mark,
+            size: 13,
+            color: Colors.white,
+          ),
         ),
         const SizedBox(width: 8),
         Text(
-          '已确认到达',
+          verified ? '已通过定位确认到达' : '已手动记录到达（未定位核验）',
           style: TextStyle(
             color: color,
             fontSize: 14,
@@ -357,11 +410,16 @@ class _CheckinPlaceCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: Text(activity.title, style: _titleStyle(context, 19))),
+              Expanded(
+                child: Text(activity.title, style: _titleStyle(context, 19)),
+              ),
               if ((activity.category ?? '').isNotEmpty) ...[
                 const SizedBox(width: 10),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: _kActivityAccent.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(999),
@@ -395,7 +453,10 @@ class _CheckinPlaceCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 CupertinoButton(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   minimumSize: Size.zero,
                   borderRadius: BorderRadius.circular(999),
                   color: _kActivityAccent.withValues(alpha: 0.12),
@@ -415,7 +476,19 @@ class _CheckinPlaceCard extends StatelessWidget {
           ],
           if (theme.isNotEmpty) ...[
             const SizedBox(height: 14),
-            Text(theme, style: _mutedStyle(context, 14).copyWith(height: 1.65)),
+            SelectableText(
+              theme,
+              style: _mutedStyle(context, 14).copyWith(height: 1.65),
+            ),
+            if (activity.description.isNotEmpty &&
+                activity.description != theme) ...[
+              const SizedBox(height: 12),
+              SelectableText(
+                activity.description,
+                style: _mutedStyle(context, 14).copyWith(height: 1.65),
+              ),
+            ],
+            _OfflineSourceLink(url: activity.officialUrl),
           ],
           // 氛围 / 适合（活动推荐大模型生成的短标签，图标对齐 demo）。
           if (vibe.isNotEmpty || suitable.isNotEmpty) ...[
@@ -446,10 +519,10 @@ class _CheckinPlaceCard extends StatelessWidget {
         const SizedBox(width: 6),
         Text(
           '$label：',
-          style: _mutedStyle(context, 13).copyWith(
-            fontWeight: FontWeight.w600,
-            color: w.ink,
-          ),
+          style: _mutedStyle(
+            context,
+            13,
+          ).copyWith(fontWeight: FontWeight.w600, color: w.ink),
         ),
         Expanded(child: Text(value, style: _mutedStyle(context, 13))),
       ],
@@ -513,7 +586,10 @@ class _CheckinGalleryState extends State<_CheckinGallery> {
                 top: 12,
                 right: 12,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(999),

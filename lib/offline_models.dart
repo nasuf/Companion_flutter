@@ -37,6 +37,7 @@ class OfflineActivityReview {
     required this.hasMemoryNote,
     this.travelNote,
     this.arrivalMessageId,
+    this.canGenerateMemoryNote = false,
   });
 
   final String id;
@@ -50,6 +51,7 @@ class OfflineActivityReview {
   final List<OfflineActivityFragment> fragments;
   final List<String> eventTags;
   final bool hasMemoryNote;
+  final bool canGenerateMemoryNote;
   final String? travelNote;
   final String? arrivalMessageId;
 
@@ -70,6 +72,7 @@ class OfflineActivityReview {
         ],
         eventTags: _stringList(json['event_tags']),
         hasMemoryNote: json['has_memory_note'] == true,
+        canGenerateMemoryNote: json['can_generate_memory_note'] == true,
         travelNote: _asString(json['travel_note']),
         arrivalMessageId: _asString(json['arrival_message_id']),
       );
@@ -87,6 +90,7 @@ class OfflineActivityReview {
         fragments: fragments,
         eventTags: eventTags,
         hasMemoryNote: hasMemoryNote,
+        canGenerateMemoryNote: canGenerateMemoryNote,
         travelNote: travelNote,
         arrivalMessageId: arrivalMessageId,
       );
@@ -120,13 +124,13 @@ class OfflineMemoryNote {
       );
 
   OfflineMemoryNote copyWith({String? coverUrl}) => OfflineMemoryNote(
-        title: title,
-        dateText: dateText,
-        coverUrl: coverUrl ?? this.coverUrl,
-        travelNote: travelNote,
-        fragmentTags: fragmentTags,
-        moodTags: moodTags,
-      );
+    title: title,
+    dateText: dateText,
+    coverUrl: coverUrl ?? this.coverUrl,
+    travelNote: travelNote,
+    fragmentTags: fragmentTags,
+    moodTags: moodTags,
+  );
 }
 
 /// 管理员测试页检视：活动详情 + 拍摄物品(任务) + 已产出碎片。
@@ -162,16 +166,24 @@ class OfflineActivityInspect {
         summary: json['summary']?.toString() ?? '',
         status: json['status']?.toString() ?? '',
         reached: json['reached'] == true,
-        items: (json['items'] as List?)
+        items:
+            (json['items'] as List?)
                 ?.whereType<Map>()
-                .map((e) =>
-                    OfflineActivityInspectItem.fromJson(Map<String, dynamic>.from(e)))
+                .map(
+                  (e) => OfflineActivityInspectItem.fromJson(
+                    Map<String, dynamic>.from(e),
+                  ),
+                )
                 .toList() ??
             const [],
-        fragments: (json['fragments'] as List?)
+        fragments:
+            (json['fragments'] as List?)
                 ?.whereType<Map>()
-                .map((e) => OfflineActivityInspectFragment.fromJson(
-                    Map<String, dynamic>.from(e)))
+                .map(
+                  (e) => OfflineActivityInspectFragment.fromJson(
+                    Map<String, dynamic>.from(e),
+                  ),
+                )
                 .toList() ??
             const [],
       );
@@ -200,7 +212,10 @@ class OfflineActivityInspectItem {
 }
 
 class OfflineActivityInspectFragment {
-  const OfflineActivityInspectFragment({required this.tier, required this.text});
+  const OfflineActivityInspectFragment({
+    required this.tier,
+    required this.text,
+  });
 
   final String tier;
   final String text;
@@ -319,6 +334,8 @@ class OfflineActivity {
     this.completedAt,
     this.expiresAt,
     this.reached = false,
+    this.arrivalVerified = false,
+    this.arrivalVerificationAvailable = false,
     this.arrivalConfirmedAt,
     this.prophecyText,
     this.autoArchiveAt,
@@ -351,6 +368,8 @@ class OfflineActivity {
   final String? completedAt;
   final String? expiresAt;
   final bool reached;
+  final bool arrivalVerified;
+  final bool arrivalVerificationAvailable;
   final String? arrivalConfirmedAt;
   final String? prophecyText;
   final String? autoArchiveAt;
@@ -386,6 +405,9 @@ class OfflineActivity {
         completedAt: _asString(json['completed_at']),
         expiresAt: _asString(json['expires_at']),
         reached: json['reached'] == true,
+        arrivalVerified: json['arrival_verified'] == true,
+        arrivalVerificationAvailable:
+            json['arrival_verification_available'] == true,
         arrivalConfirmedAt: _asString(json['arrival_confirmed_at']),
         prophecyText: _asString(json['prophecy_text']),
         autoArchiveAt: _asString(json['auto_archive_at']),
@@ -427,6 +449,8 @@ class OfflineActivity {
       completedAt: completedAt,
       expiresAt: expiresAt,
       reached: reached,
+      arrivalVerified: arrivalVerified,
+      arrivalVerificationAvailable: arrivalVerificationAvailable,
       arrivalConfirmedAt: arrivalConfirmedAt,
       prophecyText: prophecyText,
       autoArchiveAt: autoArchiveAt,

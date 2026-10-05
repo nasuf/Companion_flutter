@@ -61,9 +61,15 @@ class _OfflineReviewPageState extends State<OfflineReviewPage> {
     if (_generatingNote) return;
     setState(() => _generatingNote = true);
     try {
-      final note = await widget.api.generateOfflineMemoryNote(widget.activityId);
+      final note = await widget.api.generateOfflineMemoryNote(
+        widget.activityId,
+      );
       if (!mounted) return;
-      await showOfflineMemoryNote(context, note: note, authToken: widget.api.authToken);
+      await showOfflineMemoryNote(
+        context,
+        note: note,
+        authToken: widget.api.authToken,
+      );
     } on ApiException catch (error) {
       if (mounted) _showActivityToast(context, error.message);
     } finally {
@@ -154,8 +160,7 @@ class _OfflineReviewPageState extends State<OfflineReviewPage> {
             child: _ReviewCard(
               title: '素材画廊',
               child: review.gallery.isEmpty
-                  ? Text('本次没有留下图片素材',
-                      style: _mutedStyle(context, 13))
+                  ? Text('本次没有留下图片素材', style: _mutedStyle(context, 13))
                   : _ReviewGallery(
                       urls: review.gallery,
                       authToken: widget.api.authToken,
@@ -169,8 +174,7 @@ class _OfflineReviewPageState extends State<OfflineReviewPage> {
             child: _ReviewCard(
               title: '思绪碎片集',
               child: review.fragments.isEmpty
-                  ? Text('本次没有收藏任何思绪碎片',
-                      style: _mutedStyle(context, 13))
+                  ? Text('本次没有收藏任何思绪碎片', style: _mutedStyle(context, 13))
                   : _ReviewFragmentRow(fragments: review.fragments),
             ),
           ),
@@ -187,7 +191,8 @@ class _OfflineReviewPageState extends State<OfflineReviewPage> {
                   if (review.eventTags.isEmpty)
                     Text('暂无事件记录', style: _mutedStyle(context, 13))
                   else
-                    for (final tag in review.eventTags) _ReviewEventTag(tag: tag),
+                    for (final tag in review.eventTags)
+                      _ReviewEventTag(tag: tag),
                 ],
               ),
             ),
@@ -199,9 +204,15 @@ class _OfflineReviewPageState extends State<OfflineReviewPage> {
             child: SizedBox(
               width: double.infinity,
               child: _PrimaryActivityPillButton(
-                label: _generatingNote ? '正在生成…' : '生成记忆手札',
+                label: _generatingNote
+                    ? '正在生成…'
+                    : review.hasMemoryNote
+                    ? '查看记忆手札'
+                    : review.canGenerateMemoryNote
+                    ? '生成记忆手札'
+                    : '暂无可整理的旅途内容',
                 icon: '✨',
-                enabled: !_generatingNote,
+                enabled: !_generatingNote && review.canGenerateMemoryNote,
                 onPressed: _openMemoryNote,
               ),
             ),
@@ -377,8 +388,10 @@ class _ReviewGallery extends StatelessWidget {
                 width: 96,
                 height: 96,
                 color: AppColors.of(context).surfaceMuted,
-                child: Icon(CupertinoIcons.photo,
-                    color: AppColors.of(context).muted),
+                child: Icon(
+                  CupertinoIcons.photo,
+                  color: AppColors.of(context).muted,
+                ),
               ),
             ),
           ),

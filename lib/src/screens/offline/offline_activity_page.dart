@@ -123,7 +123,9 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
       ),
     );
     if (!mounted) return;
-    if (jumpId != null && jumpId.isNotEmpty && widget.onOpenChatAtMessage != null) {
+    if (jumpId != null &&
+        jumpId.isNotEmpty &&
+        widget.onOpenChatAtMessage != null) {
       Navigator.of(context).pop(); // 关掉活动列表页，露出 Tab 骨架
       widget.onOpenChatAtMessage!(jumpId);
     }
@@ -235,14 +237,15 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
     // spec：推荐(pending)只作为聊天推荐卡存在，不在活动列表出现。accepted 再按是否
     // 已到达细分：进行中(reached) / 待出行(未到达)。后端把 pending+accepted 都放在
     // pending 字段返回，这里只取 accepted。
-    final accepted = _dedupeActivities(data?.pending ?? const <OfflineActivity>[])
-        .where((activity) => activity.status == 'accepted')
-        .toList();
+    final accepted = _dedupeActivities(
+      data?.pending ?? const <OfflineActivity>[],
+    ).where((activity) => activity.status == 'accepted').toList();
     final ongoing = accepted.where((a) => a.reached).toList(); // 进行中(已到达)
     final toGo = accepted.where((a) => !a.reached).toList(); // 待出行(未到达)
     final ignored = data?.ignored ?? const <OfflineActivity>[];
     final completed = data?.completed ?? const <OfflineActivity>[];
-    final hasAnyActivity = ongoing.isNotEmpty ||
+    final hasAnyActivity =
+        ongoing.isNotEmpty ||
         toGo.isNotEmpty ||
         ignored.isNotEmpty ||
         completed.isNotEmpty;
@@ -302,7 +305,12 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                           if (ongoing.isNotEmpty) ...[
                             SliverToBoxAdapter(
                               child: Padding(
-                                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                                padding: const EdgeInsets.fromLTRB(
+                                  20,
+                                  20,
+                                  20,
+                                  0,
+                                ),
                                 child: _SectionTitle(
                                   title: '进行中',
                                   trailing: '${ongoing.length}个',
@@ -710,9 +718,7 @@ class _ActivityInfoTile extends StatelessWidget {
       decoration: onTap == null
           ? base
           : base.copyWith(
-              border: Border.all(
-                color: colors.accent.withValues(alpha: 0.30),
-              ),
+              border: Border.all(color: colors.accent.withValues(alpha: 0.30)),
             ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -763,53 +769,6 @@ class _ActivityInfoTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(22),
       onPressed: onTap,
       child: child,
-    );
-  }
-}
-
-class _ActivityImage extends StatelessWidget {
-  const _ActivityImage({
-    required this.activity,
-    required this.height,
-    required this.authToken,
-    this.borderRadius,
-  });
-
-  final OfflineActivity activity;
-  final double height;
-  final String? authToken;
-  final BorderRadius? borderRadius;
-
-  @override
-  Widget build(BuildContext context) {
-    final image = activity.imageUrls.isNotEmpty
-        ? activity.imageUrls.first
-        : null;
-    return ClipRRect(
-      borderRadius: borderRadius ?? BorderRadius.circular(18),
-      child: Container(
-        height: height,
-        width: double.infinity,
-        color: const Color(0xFFB9D9F2),
-        child: image == null
-            ? Center(
-                child: Text(
-                  _categoryEmoji(activity.category),
-                  style: const TextStyle(fontSize: 58),
-                ),
-              )
-            : Image.network(
-                image,
-                fit: BoxFit.cover,
-                headers: _mediaHeadersForUrl(image, authToken),
-                errorBuilder: (_, __, ___) => Center(
-                  child: Text(
-                    _categoryEmoji(activity.category),
-                    style: const TextStyle(fontSize: 58),
-                  ),
-                ),
-              ),
-      ),
     );
   }
 }

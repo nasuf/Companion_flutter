@@ -95,6 +95,10 @@ mixin _CompanionApiOffline on _CompanionApiCore {
     return _normalizeOfflineActivity(OfflineActivity.fromJson(json));
   }
 
+  Future<void> deleteOfflineActivity(String activityId) async {
+    await _request('DELETE', '/offline/activities/$activityId');
+  }
+
   Future<OfflineActivity> ignoreOfflineActivity(String activityId) async {
     final json =
         await _request('POST', '/offline/activities/$activityId/ignore')
@@ -108,11 +112,15 @@ mixin _CompanionApiOffline on _CompanionApiCore {
     String activityId, {
     double? lat,
     double? lng,
+    double? accuracyMeters,
+    bool manualConfirmation = false,
   }) async {
-    // 坐标可选：拿到就带上（地点已地理编码时服务端做 ≤200m 校验），拿不到也放行。
+    // 有可靠目的地坐标时强制定位校验；缺目的地坐标仅允许显式手动确认。
     final body = <String, dynamic>{
       if (lat != null) 'lat': lat,
       if (lng != null) 'lng': lng,
+      if (accuracyMeters != null) 'accuracy_m': accuracyMeters,
+      'manual_confirmation': manualConfirmation,
     };
     final json =
         await _request(
@@ -154,10 +162,12 @@ mixin _CompanionApiOffline on _CompanionApiCore {
   Future<OfflineActivityInspect> adminGenerateOfflineActivityItems(
     String activityId,
   ) async {
-    final json = await _request(
-      'POST',
-      '/offline/admin/activities/$activityId/generate-items',
-    ) as Map<String, dynamic>;
+    final json =
+        await _request(
+              'POST',
+              '/offline/admin/activities/$activityId/generate-items',
+            )
+            as Map<String, dynamic>;
     return OfflineActivityInspect.fromJson(json);
   }
 

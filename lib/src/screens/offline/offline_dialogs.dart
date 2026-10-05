@@ -48,7 +48,7 @@ Future<void> showOfflinePlayGuideDialog(BuildContext context) {
   const items = <String>[
     '你拍下的现场照片，有机会唤醒一段旅途思绪。',
     '有些思绪是瞬间的偶然感受，重复拍到一样景物，也不一定再次出现。',
-    '旅途结束后，照片、对话和收集到的思绪，都会整理成记忆手札。',
+    '旅途结束后，可以把留下的照片和感想整理成记忆手札。只确认到达时，会保留到达记录。',
     '如果忘记手动结束旅途，确认到达满 24 小时会自动帮你归档。',
   ];
   return showGeneralDialog<void>(
@@ -125,8 +125,7 @@ Future<bool> showOfflineArchiveConfirm(BuildContext context) async {
                     Expanded(
                       child: _SecondaryActivityPillButton(
                         label: '再等等',
-                        onPressed: () =>
-                            Navigator.of(dialogContext).pop(false),
+                        onPressed: () => Navigator.of(dialogContext).pop(false),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -185,14 +184,19 @@ Future<void> showOfflineLocationSheet(
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(CupertinoIcons.location_solid,
-                          size: 16, color: w.inkSoft),
+                      Icon(
+                        CupertinoIcons.location_solid,
+                        size: 16,
+                        color: w.inkSoft,
+                      ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           display,
-                          style: _mutedStyle(sheetContext, 14)
-                              .copyWith(height: 1.5),
+                          style: _mutedStyle(
+                            sheetContext,
+                            14,
+                          ).copyWith(height: 1.5),
                         ),
                       ),
                     ],
@@ -392,4 +396,70 @@ Widget _blurGlassBarrier(
       _dialogScaleFade(anim, child),
     ],
   );
+}
+
+Future<bool> _confirmOfflineAction(
+  BuildContext context, {
+  required String title,
+  required String message,
+  required String action,
+}) async =>
+    await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(action),
+          ),
+        ],
+      ),
+    ) ??
+    false;
+
+class _OfflineSourceLink extends StatelessWidget {
+  const _OfflineSourceLink({this.url});
+  final String? url;
+  @override
+  Widget build(BuildContext context) {
+    final uri = Uri.tryParse(url ?? '');
+    if (uri == null ||
+        !{'http', 'https'}.contains(uri.scheme) ||
+        uri.host.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Wrap(
+      children: [
+        CupertinoButton(
+          onPressed: () async {
+            try {
+              final opened = await launchUrl(
+                uri,
+                mode: LaunchMode.externalApplication,
+              );
+              if (!opened && context.mounted) {
+                _showActivityToast(context, '暂时无法打开，可复制链接');
+              }
+            } catch (_) {
+              if (context.mounted) _showActivityToast(context, '暂时无法打开，可复制链接');
+            }
+          },
+          child: const Text('查看来源'),
+        ),
+        CupertinoButton(
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: uri.toString()));
+            if (context.mounted) _showActivityToast(context, '链接已复制');
+          },
+          child: const Text('复制链接'),
+        ),
+      ],
+    );
+  }
 }
