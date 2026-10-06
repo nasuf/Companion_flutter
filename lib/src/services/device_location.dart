@@ -129,6 +129,12 @@ Future<DeviceLocationSnapshot?> requestCurrentDeviceLocation({
     String? country;
     String? address;
     try {
+      // Keep city names searchable in the app's language even on English phones.
+      try {
+        await geocoding.setLocaleIdentifier('zh_CN');
+      } catch (_) {
+        // Some platform geocoders do not support a locale override.
+      }
       final places = await geocoding.placemarkFromCoordinates(
         position.latitude,
         position.longitude,
@@ -141,13 +147,11 @@ Future<DeviceLocationSnapshot?> requestCurrentDeviceLocation({
           place.administrativeArea,
         ]);
         region = _firstNonEmpty([
-          place.administrativeArea,
+          place.subLocality,
           place.subAdministrativeArea,
+          place.administrativeArea,
         ]);
-        country = _firstNonEmpty([
-          place.country,
-          place.isoCountryCode,
-        ]);
+        country = _firstNonEmpty([place.country, place.isoCountryCode]);
         final composed = _composeAddress(place).trim();
         if (composed.isNotEmpty) {
           address = composed;
