@@ -298,10 +298,7 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
                 onPressed: () => showOfflinePlayGuideDialog(context),
                 child: Text(
                   '出门小说明',
-                  style: _mutedStyle(context, 13).copyWith(
-                    decoration: TextDecoration.underline,
-                    decorationColor: w.inkSoft,
-                  ),
+                  style: TextStyle(color: w.inkSoft, fontSize: 13),
                 ),
               ),
               if (!reached && active) ...[
