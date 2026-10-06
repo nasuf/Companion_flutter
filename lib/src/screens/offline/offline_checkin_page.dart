@@ -296,46 +296,64 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
               ),
             ),
           ],
-          if (!reached && active)
-            CupertinoButton(
-              onPressed: _arriving
-                  ? null
-                  : () async {
-                      if (!await _confirmOfflineAction(
-                        context,
-                        title: '删除待出行活动',
-                        message: '从待出行列表移除这项活动？',
-                        action: '删除',
-                      )) {
-                        return;
-                      }
-                      try {
-                        await widget.api.deleteOfflineActivity(activity.id);
-                        widget.onChanged?.call();
-                        if (mounted) Navigator.of(context).pop();
-                      } on ApiException catch (error) {
-                        if (mounted) _showActivityToast(context, error.message);
-                      }
-                    },
-              child: const Text(
-                '删除待出行活动',
-                style: TextStyle(color: CupertinoColors.destructiveRed),
-              ),
-            ),
           const SizedBox(height: 6),
-          Center(
-            child: CupertinoButton(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-              minimumSize: Size.zero,
-              onPressed: () => showOfflinePlayGuideDialog(context),
-              child: Text(
-                '出门小说明',
-                style: _mutedStyle(context, 13).copyWith(
-                  decoration: TextDecoration.underline,
-                  decorationColor: w.inkSoft,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CupertinoButton(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 8,
+                  horizontal: 10,
+                ),
+                minimumSize: Size.zero,
+                onPressed: () => showOfflinePlayGuideDialog(context),
+                child: Text(
+                  '出门小说明',
+                  style: _mutedStyle(context, 13).copyWith(
+                    decoration: TextDecoration.underline,
+                    decorationColor: w.inkSoft,
+                  ),
                 ),
               ),
-            ),
+              if (!reached && active) ...[
+                Text('｜', style: _mutedStyle(context, 13)),
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 8,
+                    horizontal: 10,
+                  ),
+                  minimumSize: Size.zero,
+                  onPressed: _arriving
+                      ? null
+                      : () async {
+                          if (!await _confirmOfflineAction(
+                            context,
+                            title: '删除待出行活动',
+                            message: '删除后会取消这次出行计划，已有聊天和真实回忆会保留。',
+                            action: '删除',
+                          )) {
+                            return;
+                          }
+                          try {
+                            await widget.api.deleteOfflineActivity(activity.id);
+                            widget.onChanged?.call();
+                            if (mounted) Navigator.of(context).pop();
+                          } on ApiException catch (error) {
+                            if (mounted) {
+                              _showActivityToast(context, error.message);
+                            }
+                          }
+                        },
+                  child: const Text(
+                    '删除该活动',
+                    style: TextStyle(
+                      color: CupertinoColors.destructiveRed,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),
@@ -488,7 +506,6 @@ class _CheckinPlaceCard extends StatelessWidget {
                 style: _mutedStyle(context, 14).copyWith(height: 1.65),
               ),
             ],
-            _OfflineSourceLink(url: activity.officialUrl),
           ],
           // 氛围 / 适合（活动推荐大模型生成的短标签，图标对齐 demo）。
           if (vibe.isNotEmpty || suitable.isNotEmpty) ...[

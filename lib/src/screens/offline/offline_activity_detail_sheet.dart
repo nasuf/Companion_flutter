@@ -246,7 +246,6 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
                       style: _mutedStyle(context, 14),
                     ),
                   ],
-                  _OfflineSourceLink(url: activity.officialUrl),
                   const SizedBox(height: 16),
                   _MetaLine(activity: activity),
                   if (canRespond) ...[

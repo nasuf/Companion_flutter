@@ -4,7 +4,6 @@ import 'package:companion_flutter/models.dart';
 import 'package:companion_flutter/offline_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const session = AuthSession(
@@ -71,7 +70,7 @@ class FakeApi extends CompanionApi {
 }
 
 Future<void> showCheckin(WidgetTester tester, FakeApi api) async {
-  tester.view.physicalSize = const Size(900, 1400);
+  tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -90,7 +89,7 @@ Future<void> showCheckin(WidgetTester tester, FakeApi api) async {
 
 void main() {
   testWidgets(
-    'detail shows full gallery and consistent recommendation with copyable source',
+    'detail shows full gallery and recommendation without source actions',
     (tester) async {
       final api = FakeApi(activity());
       await showCheckin(tester, api);
@@ -98,28 +97,14 @@ void main() {
       expect(find.text('沿湖慢慢走走'), findsOneWidget);
       expect(find.text('按自己的节奏看看湖边'), findsOneWidget);
       expect(find.text('1 / 3'), findsOneWidget);
-      await tester.drag(find.byType(PageView), const Offset(-700, 0));
+      await tester.drag(
+        find.byType(PageView),
+        Offset(-tester.getSize(find.byType(PageView)).width * .8, 0),
+      );
       await tester.pumpAndSettle();
       expect(find.text('2 / 3'), findsOneWidget);
-      String? copied;
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        (call) async {
-          if (call.method == 'Clipboard.setData') {
-            copied = (call.arguments as Map)['text'] as String;
-          }
-          return null;
-        },
-      );
-      addTearDown(
-        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          SystemChannels.platform,
-          null,
-        ),
-      );
-      await tester.tap(find.text('复制链接'));
-      await tester.pumpAndSettle();
-      expect(copied, 'https://example.com/place');
+      expect(find.text('查看来源'), findsNothing);
+      expect(find.text('复制链接'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -150,7 +135,13 @@ void main() {
   ) async {
     final api = FakeApi(activity());
     await showCheckin(tester, api);
-    await tester.tap(find.text('删除待出行活动'));
+    final guide = tester.getCenter(find.text('出门小说明'));
+    final separator = tester.getCenter(find.text('｜'));
+    final deletion = tester.getCenter(find.text('删除该活动'));
+    expect(guide.dy, closeTo(deletion.dy, 1));
+    expect(guide.dx, lessThan(separator.dx));
+    expect(separator.dx, lessThan(deletion.dx));
+    await tester.tap(find.text('删除该活动'));
     await tester.pumpAndSettle();
     expect(api.deleted, 0);
     await tester.tap(find.widgetWithText(CupertinoDialogAction, '删除'));
