@@ -245,18 +245,7 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
     final reached = activity.reached;
     final active = activity.status == 'accepted';
     final hasProphecy = (activity.prophecyText ?? '').isNotEmpty;
-    return Container(
-      decoration: BoxDecoration(
-        color: w.glass,
-        border: Border(top: BorderSide(color: w.glassBorder)),
-        boxShadow: w.panelShadow,
-      ),
-      padding: EdgeInsets.fromLTRB(
-        20,
-        14,
-        20,
-        MediaQuery.paddingOf(context).bottom + 14,
-      ),
+    return _CollapsibleActivityDock(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -357,6 +346,145 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Natural-height actions with two snap positions; the handle never dismisses.
+class _CollapsibleActivityDock extends StatefulWidget {
+  const _CollapsibleActivityDock({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_CollapsibleActivityDock> createState() =>
+      _CollapsibleActivityDockState();
+}
+
+class _CollapsibleActivityDockState extends State<_CollapsibleActivityDock>
+    with SingleTickerProviderStateMixin {
+  final _contentKey = GlobalKey();
+  late final AnimationController _expansion = AnimationController(
+    vsync: this,
+    value: 1,
+    duration: const Duration(milliseconds: 240),
+  );
+
+  @override
+  void dispose() {
+    _expansion.dispose();
+    super.dispose();
+  }
+
+  void _snapTo(double target) {
+    _expansion.animateTo(
+      target,
+      duration: MediaQuery.of(context).disableAnimations
+          ? Duration.zero
+          : const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _drag(DragUpdateDetails details) {
+    // SizeTransition clips its child but retains the child's full layout size.
+    // Header grows by 16 px when collapsed to keep a comfortable touch target.
+    final travel = (_contentKey.currentContext?.size?.height ?? 0) - 16;
+    if (travel <= 0) return;
+    _expansion.value = (_expansion.value - details.delta.dy / travel)
+        .clamp(0.0, 1.0)
+        .toDouble();
+  }
+
+  void _release(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    _snapTo(
+      velocity.abs() >= 400
+          ? (velocity < 0 ? 1 : 0)
+          : (_expansion.value >= .5 ? 1 : 0),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
+    return AnimatedBuilder(
+      animation: _expansion,
+      child: Padding(
+        key: _contentKey,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: widget.child,
+      ),
+      builder: (context, child) {
+        final value = _expansion.value;
+        void toggle() => _snapTo(value >= .5 ? 0 : 1);
+        return GestureDetector(
+          key: const ValueKey('offlineActivityDock'),
+          behavior: HitTestBehavior.opaque,
+          onVerticalDragStart: (_) => _expansion.stop(),
+          onVerticalDragUpdate: _drag,
+          onVerticalDragEnd: _release,
+          onVerticalDragCancel: () => _snapTo(_expansion.value >= .5 ? 1 : 0),
+          child: Container(
+            decoration: BoxDecoration(
+              color: w.glass,
+              border: Border(top: BorderSide(color: w.glassBorder)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
+              boxShadow: w.panelShadow,
+            ),
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.paddingOf(context).bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Semantics(
+                  button: true,
+                  label: value >= .5 ? '收起活动操作' : '展开活动操作',
+                  onTap: toggle,
+                  child: GestureDetector(
+                    key: const ValueKey('offlineActivityDockHandle'),
+                    behavior: HitTestBehavior.opaque,
+                    excludeFromSemantics: true,
+                    onTap: toggle,
+                    child: SizedBox(
+                      // 28 px expanded replaces the old 14 px top/bottom insets.
+                      height: 44 - 16 * value,
+                      width: double.infinity,
+                      child: Center(
+                        child: Container(
+                          key: const ValueKey('offlineActivityDockGrip'),
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: w.inkSoft.withValues(
+                              alpha: .16 + .26 * value,
+                            ),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                SizeTransition(
+                  sizeFactor: _expansion,
+                  alignment: Alignment.topCenter,
+                  child: IgnorePointer(
+                    ignoring: value < 1,
+                    child: ExcludeSemantics(
+                      excluding: value < 1,
+                      child: child!,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
