@@ -67,15 +67,6 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
     setState(() => _arriving = true);
     try {
       final manual = !(_activity?.arrivalVerificationAvailable ?? false);
-      if (manual) {
-        final confirmed = await _confirmOfflineAction(
-          context,
-          title: '手动记录到达',
-          message: '这个地点暂无可靠坐标，无法核验距离。这次将记录为你手动确认到达。',
-          action: '确认记录',
-        );
-        if (!confirmed || !mounted) return;
-      }
       // Native GPS is free; an unavailable fix cannot pass verified arrival.
       DeviceLocationSnapshot? snapshot;
       try {
@@ -250,7 +241,7 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (reached) ...[
-            _ArrivedStatusRow(color: w.ink, verified: activity.arrivalVerified),
+            _ArrivedStatusRow(color: w.ink),
             const SizedBox(height: 10),
             // spec §5.4-(6) 已到达坞：「收好这次旅途回忆」为描边按钮（区别于未到达的实心主按钮）。
             SizedBox(
@@ -265,11 +256,7 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
             SizedBox(
               width: double.infinity,
               child: _PrimaryActivityPillButton(
-                label: _arriving
-                    ? '确认中...'
-                    : activity.arrivalVerificationAvailable
-                    ? '我已经抵达这里'
-                    : '手动记录到达',
+                label: _arriving ? '确认中...' : '我已经抵达这里',
                 icon: '📍',
                 enabled: active && !_arriving && !_loading,
                 onPressed: _onArrive,
@@ -487,10 +474,9 @@ class _CollapsibleActivityDockState extends State<_CollapsibleActivityDock>
 }
 
 class _ArrivedStatusRow extends StatelessWidget {
-  const _ArrivedStatusRow({required this.color, required this.verified});
+  const _ArrivedStatusRow({required this.color});
 
   final Color color;
-  final bool verified;
 
   @override
   Widget build(BuildContext context) {
@@ -512,7 +498,7 @@ class _ArrivedStatusRow extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Text(
-          verified ? '已通过定位确认到达' : '已手动记录到达（未定位核验）',
+          '已确认到达',
           style: TextStyle(
             color: color,
             fontSize: 14,

@@ -17,11 +17,13 @@ const session = AuthSession(
 OfflineActivity activity({
   bool known = false,
   bool reached = false,
+  bool verified = false,
   String status = 'accepted',
 }) => OfflineActivity.fromJson({
   'id': 'activity',
   'status': status,
   'reached': reached,
+  'arrival_verified': verified,
   'title': '莲湖公园走走',
   'summary': '沿湖慢慢走走',
   'description': '按自己的节奏看看湖边',
@@ -60,6 +62,11 @@ class FakeApi extends CompanionApi {
   }) async {
     arrived++;
     manual = manualConfirmation;
+    current = activity(
+      known: current.arrivalVerificationAvailable,
+      reached: true,
+      verified: !manualConfirmation,
+    );
     return current;
   }
 
@@ -204,25 +211,48 @@ void main() {
     },
   );
 
-  testWidgets('unverified arrival requires an explicit confirmation', (
+  testWidgets('arrival without place coordinates completes in one tap', (
     tester,
   ) async {
     final api = FakeApi(activity());
     await showCheckin(tester, api);
-    await tester.tap(find.text('手动记录到达'));
-    await tester.pumpAndSettle();
-    expect(api.arrived, 0);
-    expect(find.textContaining('不代表定位'), findsNothing);
-    expect(find.textContaining('无法核验距离'), findsOneWidget);
-    await tester.tap(find.text('取消'));
-    await tester.pumpAndSettle();
-    expect(api.arrived, 0);
-    await tester.tap(find.text('手动记录到达'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('确认记录'));
+    await tester.tap(find.text('我已经抵达这里'));
     await tester.pumpAndSettle();
     expect(api.arrived, 1);
     expect(api.manual, isTrue);
+    expect(api.current.arrivalVerified, isFalse);
+    expect(find.byType(CupertinoAlertDialog), findsNothing);
+    expect(find.text('已确认到达'), findsOneWidget);
+    expect(find.text('收好这次旅途回忆'), findsOneWidget);
+    expect(find.textContaining('手动'), findsNothing);
+    expect(find.textContaining('核验'), findsNothing);
+    expect(find.textContaining('坐标'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final verified in [false, true]) {
+    testWidgets(
+      'arrival status has the same copy regardless of verification: $verified',
+      (tester) async {
+        await showCheckin(
+          tester,
+          FakeApi(activity(reached: true, known: verified, verified: verified)),
+        );
+        expect(find.text('已确认到达'), findsOneWidget);
+        expect(find.textContaining('手动'), findsNothing);
+        expect(find.textContaining('定位'), findsNothing);
+        expect(find.textContaining('核验'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('arrival button is unchanged when coordinates are available', (
+    tester,
+  ) async {
+    await showCheckin(tester, FakeApi(activity(known: true)));
+    expect(find.text('我已经抵达这里'), findsOneWidget);
+    expect(find.textContaining('手动'), findsNothing);
   });
 
   testWidgets('pending departure can be deleted after confirmation', (
@@ -256,7 +286,7 @@ void main() {
       final dock = find.byKey(const ValueKey('offlineActivityDock'));
       final handle = find.byKey(const ValueKey('offlineActivityDockHandle'));
       final grip = find.byKey(const ValueKey('offlineActivityDockGrip'));
-      final action = find.text(reached ? '收好这次旅途回忆' : '手动记录到达');
+      final action = find.text(reached ? '收好这次旅途回忆' : '我已经抵达这里');
       final originalHeight = tester.getSize(dock).height;
       final expandedColor =
           (tester.widget<Container>(grip).decoration! as BoxDecoration).color!;
@@ -305,7 +335,7 @@ void main() {
     expect(tester.getSize(dock).height, closeTo(originalHeight, 1));
 
     // Dragging from a button must move the sheet, without triggering arrival.
-    await tester.drag(find.text('手动记录到达'), Offset(0, originalHeight));
+    await tester.drag(find.text('我已经抵达这里'), Offset(0, originalHeight));
     await tester.pumpAndSettle();
     expect(tester.getSize(dock).height, closeTo(44, 1));
     expect(api.arrived, 0);
@@ -313,9 +343,11 @@ void main() {
     await tester.tap(handle);
     await tester.pumpAndSettle();
     expect(tester.getSize(dock).height, closeTo(originalHeight, 1));
-    await tester.tap(find.text('手动记录到达'));
+    await tester.tap(find.text('我已经抵达这里'));
     await tester.pumpAndSettle();
-    expect(find.text('确认记录'), findsOneWidget);
+    expect(api.arrived, 1);
+    expect(find.text('已确认到达'), findsOneWidget);
+    expect(find.byType(CupertinoAlertDialog), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
