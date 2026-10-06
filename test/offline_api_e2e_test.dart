@@ -15,6 +15,14 @@ void main() {
       await HttpOverrides.runZoned(() async {
         final api = CompanionApi(baseUrl: base)
           ..authToken = Platform.environment['OFFLINE_E2E_TOKEN'];
+        await expectLater(
+          api.createOfflineActivityRecommendation(),
+          throwsA(
+            isA<ApiException>()
+                .having((e) => e.statusCode, 'status', 503)
+                .having((e) => e.message, 'message', '暂时没找到合适的新去处，请稍后再试。'),
+          ),
+        );
         final id = Platform.environment['OFFLINE_E2E_ACTIVITY']!;
         final toDelete = Platform.environment['OFFLINE_E2E_DELETE']!;
         final activity = await api.fetchOfflineActivity(id);

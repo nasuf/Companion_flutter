@@ -152,7 +152,7 @@ class _OfflineActivityTestPageState extends State<_OfflineActivityTestPage> {
         _activity = activity;
         _inspect = null;
         if (activity == null) {
-          _error = '暂时没有生成活动：请确认已授权定位且有可用聊天会话。';
+          _error = '暂时没找到合适的新去处，请稍后再试。';
         }
       });
       if (activity != null) {
