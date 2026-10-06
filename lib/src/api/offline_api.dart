@@ -181,6 +181,7 @@ mixin _CompanionApiOffline on _CompanionApiCore {
     final review = OfflineActivityReview.fromJson(json);
     return review.copyWith(
       coverUrl: review.coverUrl == null ? null : _absoluteUrl(review.coverUrl!),
+      imageUrls: review.imageUrls.map(_absoluteUrl).toList(),
       gallery: review.gallery.map(_absoluteUrl).toList(),
     );
   }

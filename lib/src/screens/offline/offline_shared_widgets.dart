@@ -388,3 +388,128 @@ void _showActivityToast(BuildContext context, String message) {
     ),
   );
 }
+
+/// 活动详情、打卡和回忆共用的横滑相册，保留图片鉴权与页码提示。
+class _ActivityImageGallery extends StatefulWidget {
+  const _ActivityImageGallery({
+    required this.imageUrls,
+    required this.category,
+    required this.authToken,
+    this.height = 200,
+    this.radius = 20,
+    this.overlay,
+  });
+
+  final List<String> imageUrls;
+  final String? category;
+  final String? authToken;
+  final double height;
+  final double radius;
+  final Widget? overlay;
+
+  @override
+  State<_ActivityImageGallery> createState() => _ActivityImageGalleryState();
+}
+
+class _ActivityImageGalleryState extends State<_ActivityImageGallery> {
+  final _controller = PageController();
+  int _index = 0;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final urls = widget.imageUrls.where((u) => u.trim().isNotEmpty).toList();
+    final count = urls.isEmpty ? 1 : urls.length;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(widget.radius),
+      child: SizedBox(
+        height: widget.height,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: urls.isEmpty
+                  ? _fallbackCover()
+                  : PageView.builder(
+                      controller: _controller,
+                      onPageChanged: (i) => setState(() => _index = i),
+                      itemCount: urls.length,
+                      itemBuilder: (_, i) => Image.network(
+                        urls[i],
+                        fit: BoxFit.cover,
+                        headers: _mediaHeadersForUrl(urls[i], widget.authToken),
+                        errorBuilder: (_, __, ___) => _fallbackCover(),
+                      ),
+                    ),
+            ),
+            if (widget.overlay != null)
+              Positioned.fill(child: IgnorePointer(child: widget.overlay!)),
+            if (count > 1) ...[
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${_index + 1} / $count',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 10,
+                left: 0,
+                right: 0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (var i = 0; i < count; i++)
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 220),
+                        margin: const EdgeInsets.symmetric(horizontal: 2.5),
+                        width: i == _index ? 14 : 5,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(
+                            alpha: i == _index ? 1 : 0.55,
+                          ),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _fallbackCover() {
+    return Container(
+      color: const Color(0xFFB9D9F2),
+      child: Center(
+        child: Text(
+          _categoryEmoji(widget.category),
+          style: const TextStyle(fontSize: 58),
+        ),
+      ),
+    );
+  }
+}

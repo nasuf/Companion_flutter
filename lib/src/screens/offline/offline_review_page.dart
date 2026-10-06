@@ -242,91 +242,89 @@ class _ReviewHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final images = review.imageUrls
+        .where((url) => url.trim().isNotEmpty)
+        .toList();
     final cover = review.coverUrl;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: SizedBox(
-        height: 208,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (cover != null && cover.isNotEmpty)
-              Image.network(
-                cover,
-                fit: BoxFit.cover,
-                headers: _mediaHeadersForUrl(cover, authToken),
-                errorBuilder: (_, __, ___) =>
-                    const ColoredBox(color: Color(0xFFB9D9F2)),
-              )
-            else
-              const ColoredBox(color: Color(0xFFB9D9F2)),
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Color(0xB3000000)],
-                  stops: [0.4, 1],
-                ),
+    // Older servers only expose cover_url; keep their single-photo fallback.
+    if (images.isEmpty && cover != null && cover.trim().isNotEmpty) {
+      images.add(cover);
+    }
+    return _ActivityImageGallery(
+      imageUrls: images,
+      category: null,
+      authToken: authToken,
+      height: 208,
+      radius: 24,
+      overlay: Stack(
+        fit: StackFit.expand,
+        children: [
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Color(0xB3000000)],
+                stops: [0.4, 1],
               ),
             ),
-            Positioned(
-              left: 18,
-              right: 18,
-              bottom: 16,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '旅途回忆',
-                    style: TextStyle(
-                      color: Color(0xE6FFFFFF),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2,
-                      decoration: TextDecoration.none,
-                    ),
+          ),
+          Positioned(
+            left: 18,
+            right: 18,
+            bottom: images.length > 1 ? 24 : 16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '旅途回忆',
+                  style: TextStyle(
+                    color: Color(0xE6FFFFFF),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 2,
+                    decoration: TextDecoration.none,
                   ),
-                  const SizedBox(height: 6),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  review.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    height: 1.2,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _reviewTimeRange(review.startedAt, review.endedAt),
+                  style: const TextStyle(
+                    color: Color(0xCCFFFFFF),
+                    fontSize: 12,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                if ((review.address ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 3),
                   Text(
-                    review.title,
-                    maxLines: 2,
+                    '📍 ${review.address}',
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      height: 1.2,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _reviewTimeRange(review.startedAt, review.endedAt),
                     style: const TextStyle(
                       color: Color(0xCCFFFFFF),
                       fontSize: 12,
                       decoration: TextDecoration.none,
                     ),
                   ),
-                  if ((review.address ?? '').isNotEmpty) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      '📍 ${review.address}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xCCFFFFFF),
-                        fontSize: 12,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                  ],
                 ],
-              ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

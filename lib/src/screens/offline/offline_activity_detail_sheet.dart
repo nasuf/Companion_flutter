@@ -227,7 +227,7 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _CheckinGallery(
+                  _ActivityImageGallery(
                     imageUrls: activity.imageUrls,
                     category: activity.category,
                     authToken: widget.api.authToken,

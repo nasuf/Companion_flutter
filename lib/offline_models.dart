@@ -28,6 +28,7 @@ class OfflineActivityReview {
     required this.title,
     this.address,
     this.coverUrl,
+    this.imageUrls = const [],
     this.startedAt,
     this.endedAt,
     required this.story,
@@ -44,6 +45,9 @@ class OfflineActivityReview {
   final String title;
   final String? address;
   final String? coverUrl;
+
+  /// Original place photos; [gallery] contains user-created journey media.
+  final List<String> imageUrls;
   final String? startedAt;
   final String? endedAt;
   final String story;
@@ -61,6 +65,7 @@ class OfflineActivityReview {
         title: json['title']?.toString() ?? '',
         address: _asString(json['address']),
         coverUrl: _asString(json['cover_url']),
+        imageUrls: _stringList(json['image_urls']),
         startedAt: _asString(json['started_at']),
         endedAt: _asString(json['ended_at']),
         story: json['story']?.toString() ?? '',
@@ -77,23 +82,27 @@ class OfflineActivityReview {
         arrivalMessageId: _asString(json['arrival_message_id']),
       );
 
-  OfflineActivityReview copyWith({String? coverUrl, List<String>? gallery}) =>
-      OfflineActivityReview(
-        id: id,
-        title: title,
-        address: address,
-        coverUrl: coverUrl ?? this.coverUrl,
-        startedAt: startedAt,
-        endedAt: endedAt,
-        story: story,
-        gallery: gallery ?? this.gallery,
-        fragments: fragments,
-        eventTags: eventTags,
-        hasMemoryNote: hasMemoryNote,
-        canGenerateMemoryNote: canGenerateMemoryNote,
-        travelNote: travelNote,
-        arrivalMessageId: arrivalMessageId,
-      );
+  OfflineActivityReview copyWith({
+    String? coverUrl,
+    List<String>? imageUrls,
+    List<String>? gallery,
+  }) => OfflineActivityReview(
+    id: id,
+    title: title,
+    address: address,
+    coverUrl: coverUrl ?? this.coverUrl,
+    imageUrls: imageUrls ?? this.imageUrls,
+    startedAt: startedAt,
+    endedAt: endedAt,
+    story: story,
+    gallery: gallery ?? this.gallery,
+    fragments: fragments,
+    eventTags: eventTags,
+    hasMemoryNote: hasMemoryNote,
+    canGenerateMemoryNote: canGenerateMemoryNote,
+    travelNote: travelNote,
+    arrivalMessageId: arrivalMessageId,
+  );
 }
 
 class OfflineMemoryNote {

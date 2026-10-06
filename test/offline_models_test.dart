@@ -2,6 +2,33 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:companion_flutter/offline_models.dart';
 
 void main() {
+  test(
+    'review keeps original images separate from user gallery through copying',
+    () {
+      final review = OfflineActivityReview.fromJson({
+        'id': 'a1',
+        'title': '公园',
+        'cover_url': '/cover.jpg',
+        'image_urls': ['/one.jpg', '/two.jpg', '/three.jpg'],
+        'gallery': ['/user.jpg'],
+      });
+      expect(review.imageUrls, ['/one.jpg', '/two.jpg', '/three.jpg']);
+      expect(
+        review.copyWith(coverUrl: '/other.jpg').imageUrls,
+        review.imageUrls,
+      );
+      final normalized = review.copyWith(
+        imageUrls: ['https://example.com/one.jpg'],
+      );
+      expect(normalized.imageUrls, ['https://example.com/one.jpg']);
+      expect(normalized.gallery, ['/user.jpg']);
+      expect(
+        OfflineActivityReview.fromJson({'cover_url': '/legacy.jpg'}).imageUrls,
+        isEmpty,
+      );
+    },
+  );
+
   test('offline activity response parses nested fields', () {
     final data = OfflineActivities.fromJson({
       'latest': {

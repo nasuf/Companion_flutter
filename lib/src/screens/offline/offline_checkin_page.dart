@@ -221,7 +221,7 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _CheckinGallery(
+          _ActivityImageGallery(
             imageUrls: activity.imageUrls,
             category: activity.category,
             authToken: widget.api.authToken,
@@ -668,123 +668,6 @@ class _CheckinPlaceCard extends StatelessWidget {
         ),
         Expanded(child: Text(value, style: _mutedStyle(context, 13))),
       ],
-    );
-  }
-}
-
-/// 横滑相册 + 页码角标 + 圆点指示（spec §5.4-6）。
-class _CheckinGallery extends StatefulWidget {
-  const _CheckinGallery({
-    required this.imageUrls,
-    required this.category,
-    required this.authToken,
-  });
-
-  final List<String> imageUrls;
-  final String? category;
-  final String? authToken;
-
-  @override
-  State<_CheckinGallery> createState() => _CheckinGalleryState();
-}
-
-class _CheckinGalleryState extends State<_CheckinGallery> {
-  final _controller = PageController();
-  int _index = 0;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final urls = widget.imageUrls.where((u) => u.trim().isNotEmpty).toList();
-    final count = urls.isEmpty ? 1 : urls.length;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: SizedBox(
-        height: 200,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: urls.isEmpty
-                  ? _fallbackCover()
-                  : PageView.builder(
-                      controller: _controller,
-                      onPageChanged: (i) => setState(() => _index = i),
-                      itemCount: urls.length,
-                      itemBuilder: (_, i) => Image.network(
-                        urls[i],
-                        fit: BoxFit.cover,
-                        headers: _mediaHeadersForUrl(urls[i], widget.authToken),
-                        errorBuilder: (_, __, ___) => _fallbackCover(),
-                      ),
-                    ),
-            ),
-            if (count > 1) ...[
-              Positioned(
-                top: 12,
-                right: 12,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    '${_index + 1} / $count',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 10,
-                left: 0,
-                right: 0,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    for (var i = 0; i < count; i++)
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 220),
-                        margin: const EdgeInsets.symmetric(horizontal: 2.5),
-                        width: i == _index ? 14 : 5,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(
-                            alpha: i == _index ? 1 : 0.55,
-                          ),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _fallbackCover() {
-    return Container(
-      color: const Color(0xFFB9D9F2),
-      child: Center(
-        child: Text(
-          _categoryEmoji(widget.category),
-          style: const TextStyle(fontSize: 58),
-        ),
-      ),
     );
   }
 }

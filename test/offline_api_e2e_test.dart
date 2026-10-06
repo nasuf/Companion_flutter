@@ -19,6 +19,11 @@ void main() {
         final toDelete = Platform.environment['OFFLINE_E2E_DELETE']!;
         final activity = await api.fetchOfflineActivity(id);
         expect(activity.title, '莲湖公园走走');
+        final expectedImages = [
+          for (var i = 0; i < 3; i++)
+            '$base/offline/media/place_fixture_$i.jpg',
+        ];
+        expect(activity.imageUrls, expectedImages);
         expect(activity.arrivalVerificationAvailable, isFalse);
         await expectLater(
           api.arriveOfflineActivity(id),
@@ -33,6 +38,14 @@ void main() {
         final archived = await api.archiveOfflineActivity(id);
         expect(archived.status, 'completed');
         final review = await api.fetchOfflineActivityReview(id);
+        expect(archived.imageUrls, expectedImages);
+        expect(review.imageUrls, expectedImages);
+        expect(review.coverUrl, expectedImages.first);
+        expect(review.gallery, isEmpty);
+        expect(
+          (await api.fetchOfflineActivityReview(id)).imageUrls,
+          expectedImages,
+        );
         expect(review.canGenerateMemoryNote, isFalse);
         expect(review.story, contains('还没有留下'));
         await expectLater(

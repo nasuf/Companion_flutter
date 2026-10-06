@@ -39,6 +39,7 @@ OfflineActivity activity({
 class FakeApi extends CompanionApi {
   FakeApi(this.current) : super(baseUrl: 'https://example.test');
   OfflineActivity current;
+  Map<String, dynamic> reviewOverrides = {};
   int arrived = 0;
   int deleted = 0;
   bool? manual;
@@ -67,9 +68,13 @@ class FakeApi extends CompanionApi {
       OfflineActivityReview.fromJson({
         'id': id,
         'title': current.title,
+        'image_urls': current.imageUrls,
+        'cover_url': current.imageUrls.isEmpty ? null : current.imageUrls.first,
+        'address': current.address,
         'story': '你确认到了莲湖公园，随后收好了这次旅途。还没有留下照片或感想。',
         'can_generate_memory_note': false,
         'has_memory_note': false,
+        ...reviewOverrides,
       });
 }
 
@@ -92,6 +97,92 @@ Future<void> showCheckin(WidgetTester tester, FakeApi api) async {
 }
 
 void main() {
+  testWidgets('review swipes all original photos even across title overlay', (
+    tester,
+  ) async {
+    final api = FakeApi(activity(status: 'completed', reached: true))
+      ..authToken = 'test'
+      ..reviewOverrides = {
+        'image_urls': [
+          for (var i = 1; i <= 3; i++)
+            'https://example.test/offline/media/place_$i.jpg',
+        ],
+        'gallery': ['https://example.test/offline/media/user.jpg'],
+      };
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: OfflineReviewPage(
+          api: api,
+          session: session,
+          activityId: 'activity',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final pager = find.byType(PageView);
+    for (var i = 1; i <= 3; i++) {
+      expect(find.text('$i / 3'), findsOneWidget);
+      expect(find.text('莲湖公园走走'), findsOneWidget);
+      expect(find.text('📍 桥头镇莲湖路'), findsOneWidget);
+      final photos = tester
+          .widgetList<Image>(
+            find.descendant(of: pager, matching: find.byType(Image)),
+          )
+          .map((image) => image.image as NetworkImage)
+          .toList();
+      expect(photos.any((image) => image.url.endsWith('place_$i.jpg')), isTrue);
+      expect(
+        photos.every(
+          (image) => image.headers?['Authorization'] == 'Bearer test',
+        ),
+        isTrue,
+      );
+      expect(photos.every((image) => !image.url.endsWith('user.jpg')), isTrue);
+      if (i < 3) {
+        await tester.dragFrom(
+          tester.getCenter(find.text('莲湖公园走走')),
+          const Offset(-300, 0),
+        );
+        await tester.pumpAndSettle();
+      }
+    }
+    await tester.drag(pager, const Offset(300, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('2 / 3'), findsOneWidget);
+    expect(find.text('素材画廊'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final cover in <String?>[null, 'https://example.com/legacy.jpg']) {
+    testWidgets('review supports legacy cover and empty album: $cover', (
+      tester,
+    ) async {
+      final api = FakeApi(activity())
+        ..reviewOverrides = {'image_urls': [], 'cover_url': cover};
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OfflineReviewPage(
+            api: api,
+            session: session,
+            activityId: 'activity',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('莲湖公园走走'), findsOneWidget);
+      expect(find.text('1 / 1'), findsNothing);
+      expect(
+        find.byType(PageView),
+        cover == null ? findsNothing : findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets(
     'detail shows full gallery and recommendation without source actions',
     (tester) async {
