@@ -21,6 +21,12 @@ void main() {
         expect(activity.title, Platform.environment['OFFLINE_E2E_PLACE']);
         expect(activity.kind, 'place');
         expect(activity.imageUrls, hasLength(3));
+        expect(activity.description.length, greaterThanOrEqualTo(120));
+        expect(
+          activity.description.split('\n\n').length,
+          greaterThanOrEqualTo(3),
+        );
+        expect(activity.summary, isNot('可以去${activity.locationName}看看'));
         expect(activity.arrivalVerificationAvailable, isTrue);
         expect(activity.placeLat, isNotNull);
         expect(activity.placeLng, isNotNull);
@@ -28,7 +34,28 @@ void main() {
         final detail = await api.fetchOfflineActivity(activity.id);
         expect(detail.title, activity.title);
         expect(detail.imageUrls, activity.imageUrls);
+        expect(detail.description, activity.description);
+        expect(detail.summary, activity.summary);
         expect(detail.placeLat, activity.placeLat);
+        for (final imageUrl in activity.imageUrls) {
+          final client = HttpClient();
+          try {
+            final request = await client.getUrl(
+              Uri.parse(base).resolve(imageUrl),
+            );
+            request.headers.set('Authorization', 'Bearer ${api.authToken}');
+            final response = await request.close();
+            expect(response.statusCode, 200);
+            expect(response.headers.contentType?.mimeType, 'image/jpeg');
+            final bytes = await response.fold<List<int>>(
+              <int>[],
+              (all, chunk) => all..addAll(chunk),
+            );
+            expect(bytes.take(3), <int>[0xff, 0xd8, 0xff]);
+          } finally {
+            client.close(force: true);
+          }
+        }
         await api.acceptOfflineActivity(activity.id);
         await expectLater(
           api.arriveOfflineActivity(
