@@ -17,10 +17,11 @@ part 'src/api/store_api.dart';
 part 'src/api/capsule_api.dart';
 
 class ApiException implements Exception {
-  const ApiException(this.statusCode, this.message);
+  const ApiException(this.statusCode, this.message, {this.reason});
 
   final int statusCode;
   final String message;
+  final String? reason;
 
   @override
   String toString() => message;
@@ -289,7 +290,11 @@ abstract class _CompanionApiCore {
         );
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw ApiException(response.statusCode, _extractError(text));
+        throw ApiException(
+          response.statusCode,
+          _extractError(text),
+          reason: _extractErrorReason(text),
+        );
       }
       if (response.statusCode == 204 || text.isEmpty) return null;
       return jsonDecode(text);
@@ -317,6 +322,17 @@ abstract class _CompanionApiCore {
       return text;
     } catch (_) {
       return text;
+    }
+  }
+
+  String? _extractErrorReason(String text) {
+    try {
+      final json = jsonDecode(text);
+      final detail = json is Map ? json['detail'] : null;
+      final reason = detail is Map ? detail['reason'] : null;
+      return reason is String ? reason : null;
+    } catch (_) {
+      return null;
     }
   }
 

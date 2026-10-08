@@ -13,6 +13,7 @@ class OfflineCheckinPage extends StatefulWidget {
     this.initialActivity,
     this.onChanged,
     this.onNavigateToChat,
+    this.locationLoader,
   });
 
   final CompanionApi api;
@@ -23,6 +24,9 @@ class OfflineCheckinPage extends StatefulWidget {
 
   /// Shell navigation after a successful arrive (pop routes + chat tab).
   final VoidCallback? onNavigateToChat;
+
+  /// Defaults to the device GPS reader; injectable for arrival flow tests.
+  final Future<DeviceLocationSnapshot?> Function()? locationLoader;
 
   @override
   State<OfflineCheckinPage> createState() => _OfflineCheckinPageState();
@@ -68,31 +72,69 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
     if (_arriving) return;
     setState(() => _arriving = true);
     try {
-      final manual = !(_activity?.arrivalVerificationAvailable ?? false);
-      // Native GPS is free; an unavailable fix cannot pass verified arrival.
+      var confirmed = !(_activity?.arrivalVerificationAvailable ?? false);
       DeviceLocationSnapshot? snapshot;
       try {
-        if (!manual) {
-          snapshot = await requestCurrentDeviceLocation(
-            api: widget.api,
-            openSettingsWhenBlocked: false,
-          );
+        if (!confirmed) {
+          snapshot =
+              await (widget.locationLoader?.call() ??
+                  requestCurrentDeviceLocation(
+                    api: widget.api,
+                    openSettingsWhenBlocked: false,
+                  ));
         }
       } catch (_) {
         snapshot = null;
       }
-      if (!manual && snapshot == null) {
-        if (mounted) _showActivityToast(context, '需要当前位置才能确认到达，请开启定位后重试');
-        return;
+      if (!mounted) return;
+      if (snapshot != null &&
+          (!snapshot.latitude.isFinite ||
+              !snapshot.longitude.isFinite ||
+              snapshot.latitude.abs() > 90 ||
+              snapshot.longitude.abs() > 180 ||
+              (snapshot.accuracyMeters != null &&
+                  (!snapshot.accuracyMeters!.isFinite ||
+                      snapshot.accuracyMeters! < 0)))) {
+        snapshot = null;
       }
-      final updated = await widget.api.arriveOfflineActivity(
-        widget.activityId,
-        lat: snapshot?.latitude,
-        lng: snapshot?.longitude,
-        accuracyMeters: snapshot?.accuracyMeters,
-        observedAt: snapshot?.observedAt,
-        manualConfirmation: manual,
-      );
+      if (!confirmed && snapshot == null) {
+        confirmed = await showOfflineArrivalConfirm(context);
+        if (!confirmed || !mounted) return;
+      }
+      Future<OfflineActivity> submit(bool confirmation) =>
+          widget.api.arriveOfflineActivity(
+            widget.activityId,
+            lat: confirmation ? null : snapshot?.latitude,
+            lng: confirmation ? null : snapshot?.longitude,
+            accuracyMeters: confirmation ? null : snapshot?.accuracyMeters,
+            observedAt: confirmation ? null : snapshot?.observedAt,
+            manualConfirmation: confirmation,
+          );
+      OfflineActivity updated;
+      try {
+        updated = await submit(confirmed);
+      } on ApiException catch (error) {
+        // Only location failures can be overridden, never lifecycle/auth errors.
+        const locationReasons = {
+          'too_far',
+          'location_required',
+          'low_accuracy',
+          'stale_location',
+          'no_geocode',
+        };
+        if (confirmed ||
+            error.statusCode != 422 ||
+            !locationReasons.contains(error.reason)) {
+          rethrow;
+        }
+        if (!mounted) return;
+        final retry = await showOfflineArrivalConfirm(
+          context,
+          nearbyMismatch: error.reason == 'too_far',
+        );
+        if (!retry || !mounted) return;
+        updated = await submit(true);
+      }
       if (!mounted) return;
       setState(() => _activity = updated);
       widget.onChanged?.call();

@@ -96,6 +96,35 @@ Future<void> showOfflinePlayGuideDialog(BuildContext context) {
   );
 }
 
+/// Location uncertainty must not prevent a user from starting their trip.
+Future<bool> showOfflineArrivalConfirm(
+  BuildContext context, {
+  bool nearbyMismatch = false,
+}) async =>
+    await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('已经到这里了吗？'),
+        content: Text(
+          nearbyMismatch
+              ? '定位显示你好像还没到附近。\n如果你已经在这里，就直接确认吧。'
+              : '暂时没能确认你的位置。\n如果你已经在这里，就直接确认吧。',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('再等等'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('我已确认到达'),
+          ),
+        ],
+      ),
+    ) ??
+    false;
+
 /// 归档确认（spec §5.4-12）：收好 / 再等等。返回 true 表示确认收好。
 Future<bool> showOfflineArchiveConfirm(BuildContext context) async {
   final result = await showGeneralDialog<bool>(

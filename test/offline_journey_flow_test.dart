@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:companion_flutter/companion_api.dart';
 import 'package:companion_flutter/main.dart';
 import 'package:companion_flutter/models.dart';
 import 'package:companion_flutter/offline_models.dart';
+import 'package:companion_flutter/src/services/device_location.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,6 +49,9 @@ class FakeApi extends CompanionApi {
   int arrived = 0;
   int deleted = 0;
   bool? manual;
+  final arrivalErrors = <ApiException>[];
+  final arrivalRequests = <Map<String, Object?>>[];
+  Future<void>? arrivalGate;
   @override
   Future<OfflineActivity> fetchOfflineActivity(String id) async => current;
   @override
@@ -64,6 +70,15 @@ class FakeApi extends CompanionApi {
   }) async {
     arrived++;
     manual = manualConfirmation;
+    arrivalRequests.add({
+      'manual': manualConfirmation,
+      'lat': lat,
+      'lng': lng,
+      'accuracy': accuracyMeters,
+      'observedAt': observedAt,
+    });
+    await arrivalGate;
+    if (arrivalErrors.isNotEmpty) throw arrivalErrors.removeAt(0);
     current = activity(
       known: current.arrivalVerificationAvailable,
       reached: true,
@@ -87,7 +102,12 @@ class FakeApi extends CompanionApi {
       });
 }
 
-Future<void> showCheckin(WidgetTester tester, FakeApi api) async {
+Future<void> showCheckin(
+  WidgetTester tester,
+  FakeApi api, {
+  Future<DeviceLocationSnapshot?> Function()? locationLoader,
+  VoidCallback? onNavigate,
+}) async {
   tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -98,7 +118,8 @@ Future<void> showCheckin(WidgetTester tester, FakeApi api) async {
         api: api,
         session: session,
         activityId: 'activity',
-        onNavigateToChat: () {},
+        onNavigateToChat: onNavigate ?? () {},
+        locationLoader: locationLoader,
       ),
     ),
   );
@@ -273,6 +294,213 @@ void main() {
     await showCheckin(tester, FakeApi(activity(known: true)));
     expect(find.text('我已经抵达这里'), findsOneWidget);
     expect(find.textContaining('手动'), findsNothing);
+  });
+
+  const gps = DeviceLocationSnapshot(
+    latitude: 23.01,
+    longitude: 113.75,
+    permissionStatus: 'granted',
+    accuracyMeters: 10,
+  );
+  testWidgets('GPS verified arrival remains one tap', (tester) async {
+    final api = FakeApi(activity(known: true));
+    await showCheckin(tester, api, locationLoader: () async => gps);
+    await tester.tap(find.text('我已经抵达这里'));
+    await tester.pumpAndSettle();
+    expect(api.arrived, 1);
+    expect(api.manual, isFalse);
+    expect(api.current.arrivalVerified, isTrue);
+    expect(find.byType(CupertinoAlertDialog), findsNothing);
+  });
+
+  for (final reason in [
+    'too_far',
+    'location_required',
+    'low_accuracy',
+    'stale_location',
+    'no_geocode',
+  ]) {
+    for (final confirm in [false, true]) {
+      testWidgets('location $reason can be cancelled/confirmed: $confirm', (
+        tester,
+      ) async {
+        final api = FakeApi(activity(known: true))
+          ..arrivalErrors.add(ApiException(422, '定位未通过', reason: reason));
+        var navigated = 0;
+        await showCheckin(
+          tester,
+          api,
+          locationLoader: () async => gps,
+          onNavigate: () => navigated++,
+        );
+        await tester.tap(find.text('我已经抵达这里'));
+        await tester.pumpAndSettle();
+        expect(find.text('已经到这里了吗？'), findsOneWidget);
+        expect(
+          find.textContaining(
+            reason == 'too_far' ? '定位显示你好像还没到附近' : '暂时没能确认你的位置',
+          ),
+          findsOneWidget,
+        );
+        expect(api.arrived, 1);
+        expect(api.current.reached, isFalse);
+        await tester.tap(find.text(confirm ? '我已确认到达' : '再等等'));
+        await tester.pumpAndSettle();
+        expect(api.arrived, confirm ? 2 : 1);
+        expect(navigated, confirm ? 1 : 0);
+        expect(api.current.reached, confirm);
+        expect(api.current.arrivalVerified, isFalse);
+        if (confirm) {
+          expect(api.arrivalRequests.last, {
+            'manual': true,
+            'lat': null,
+            'lng': null,
+            'accuracy': null,
+            'observedAt': null,
+          });
+          expect(find.text('已确认到达'), findsOneWidget);
+          expect(find.textContaining('手动'), findsNothing);
+          expect(find.textContaining('核验'), findsNothing);
+        }
+        expect(find.byType(CupertinoAlertDialog), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  for (final missing in ['null', 'exception', 'invalid']) {
+    testWidgets('missing device location can be confirmed: $missing', (
+      tester,
+    ) async {
+      final api = FakeApi(activity(known: true));
+      await showCheckin(
+        tester,
+        api,
+        locationLoader: () async {
+          if (missing == 'exception') throw StateError('GPS unavailable');
+          if (missing == 'invalid') {
+            return const DeviceLocationSnapshot(
+              latitude: double.nan,
+              longitude: 113.75,
+              permissionStatus: 'granted',
+            );
+          }
+          return null;
+        },
+      );
+      await tester.tap(find.text('我已经抵达这里'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('暂时没能确认你的位置'), findsOneWidget);
+      expect(api.arrived, 0);
+      await tester.tap(find.text('我已确认到达'));
+      await tester.pumpAndSettle();
+      expect(api.arrived, 1);
+      expect(api.manual, isTrue);
+      expect(api.current.arrivalVerified, isFalse);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('cancel missing GPS leaves arrival untouched and permits retry', (
+    tester,
+  ) async {
+    final api = FakeApi(activity(known: true));
+    var fixes = 0;
+    await showCheckin(
+      tester,
+      api,
+      locationLoader: () async {
+        return fixes++ == 0 ? null : gps;
+      },
+    );
+    await tester.tap(find.text('我已经抵达这里'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('再等等'));
+    await tester.pumpAndSettle();
+    expect(api.arrived, 0);
+    await tester.tap(find.text('我已经抵达这里'));
+    await tester.pumpAndSettle();
+    expect(api.arrived, 1);
+    expect(api.current.arrivalVerified, isTrue);
+  });
+
+  for (final status in [401, 404, 409, 422, 503]) {
+    testWidgets('non-location rejection never offers override: $status', (
+      tester,
+    ) async {
+      final api = FakeApi(activity(known: true))
+        ..arrivalErrors.add(
+          ApiException(
+            status,
+            '活动现在不能到达',
+            reason: status == 422 ? 'other_validation' : 'too_far',
+          ),
+        );
+      await showCheckin(tester, api, locationLoader: () async => gps);
+      await tester.tap(find.text('我已经抵达这里'));
+      await tester.pumpAndSettle();
+      expect(find.text('我已确认到达'), findsNothing);
+      expect(api.arrived, 1);
+      expect(api.current.reached, isFalse);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('failed override does not open another confirmation', (
+    tester,
+  ) async {
+    final api = FakeApi(activity(known: true))
+      ..arrivalErrors.addAll([
+        const ApiException(422, '定位未通过', reason: 'too_far'),
+        const ApiException(409, '旅途已结束'),
+      ]);
+    await showCheckin(tester, api, locationLoader: () async => gps);
+    await tester.tap(find.text('我已经抵达这里'));
+    await tester.pumpAndSettle();
+    expect(api.arrived, 1);
+    expect(find.byType(CupertinoAlertDialog), findsOneWidget);
+    await tester.tap(find.text('我已确认到达'));
+    await tester.pumpAndSettle();
+    expect(api.arrived, 2);
+    expect(api.current.reached, isFalse);
+    expect(find.text('已经到这里了吗？'), findsNothing);
+    expect(find.text('旅途已结束'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('rapid arrival taps send one request and one confirmation', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    final api = FakeApi(activity(known: true))
+      ..arrivalGate = gate.future
+      ..arrivalErrors.add(const ApiException(422, '定位未通过', reason: 'too_far'));
+    await showCheckin(tester, api, locationLoader: () async => gps);
+    await tester.tap(find.text('我已经抵达这里'));
+    await tester.tap(find.text('我已经抵达这里'));
+    expect(api.arrived, 1);
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('已经到这里了吗？'), findsOneWidget);
+    await tester.tap(find.text('我已确认到达'));
+    await tester.pumpAndSettle();
+    expect(api.arrived, 2);
+    expect(api.current.reached, isTrue);
+  });
+
+  testWidgets('leaving during location lookup never starts an arrival', (
+    tester,
+  ) async {
+    final fix = Completer<DeviceLocationSnapshot?>();
+    final api = FakeApi(activity(known: true));
+    await showCheckin(tester, api, locationLoader: () => fix.future);
+    await tester.tap(find.text('我已经抵达这里'));
+    await tester.pumpWidget(const SizedBox());
+    fix.complete(null);
+    await tester.pumpAndSettle();
+    expect(api.arrived, 0);
+    expect(find.text('我已确认到达'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('pending departure can be deleted after confirmation', (

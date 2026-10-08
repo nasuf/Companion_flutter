@@ -116,7 +116,7 @@ mixin _CompanionApiOffline on _CompanionApiCore {
     DateTime? observedAt,
     bool manualConfirmation = false,
   }) async {
-    // 有可靠目的地坐标时强制定位校验；缺目的地坐标仅允许显式手动确认。
+    // 默认校验定位；用户主动二次确认时只绕过定位检查。
     final body = <String, dynamic>{
       if (lat != null) 'lat': lat,
       if (lng != null) 'lng': lng,
