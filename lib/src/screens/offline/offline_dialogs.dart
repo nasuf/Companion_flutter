@@ -154,8 +154,20 @@ Future<void> showOfflineLocationSheet(
   BuildContext context, {
   required String name,
   required String? address,
+  String? city,
+  double? latitude,
+  double? longitude,
+  String coordinateSystem = 'gcj02',
 }) {
-  final display = (address == null || address.trim().isEmpty) ? name : address;
+  final street = (address == null || address.trim().isEmpty)
+      ? name
+      : address.trim();
+  final display =
+      city != null &&
+          city.isNotEmpty &&
+          !street.contains(city.replaceFirst(RegExp(r'市$'), ''))
+      ? '$city $street'
+      : street;
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -226,7 +238,13 @@ Future<void> showOfflineLocationSheet(
                     icon: '🧭',
                     onPressed: () async {
                       Navigator.of(sheetContext).pop();
-                      await _openOfflineMapQuery(context, display);
+                      await _openOfflineMapQuery(
+                        context,
+                        display,
+                        latitude: latitude,
+                        longitude: longitude,
+                        coordinateSystem: coordinateSystem,
+                      );
                     },
                   ),
                 ),
@@ -239,7 +257,13 @@ Future<void> showOfflineLocationSheet(
   );
 }
 
-Future<void> _openOfflineMapQuery(BuildContext context, String query) async {
+Future<void> _openOfflineMapQuery(
+  BuildContext context,
+  String query, {
+  double? latitude,
+  double? longitude,
+  String coordinateSystem = 'gcj02',
+}) async {
   final q = Uri.encodeComponent(query);
   final src = Uri.encodeComponent('伴生');
   final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
@@ -247,18 +271,20 @@ Future<void> _openOfflineMapQuery(BuildContext context, String query) async {
   // 高德 URI 的导航 action 需要目的地坐标（没有坐标时 iosamap://search 之类会被高德判
   // 「版本不支持该功能」）。用系统地理编码把地址解析成坐标——免费、无需高德 key。国内
   // Apple CLGeocoder 返回 GCJ-02，与高德同坐标系，故 dev=0 不再二次偏移。
-  double? lat;
-  double? lon;
-  try {
-    final results = await geocoding
-        .locationFromAddress(query)
-        .timeout(const Duration(seconds: 4));
-    if (results.isNotEmpty) {
-      lat = results.first.latitude;
-      lon = results.first.longitude;
+  double? lat = latitude;
+  double? lon = longitude;
+  if (lat == null || lon == null) {
+    try {
+      final results = await geocoding
+          .locationFromAddress(query)
+          .timeout(const Duration(seconds: 4));
+      if (results.isNotEmpty) {
+        lat = results.first.latitude;
+        lon = results.first.longitude;
+      }
+    } catch (_) {
+      // 解析失败（如安卓无 Google 后端）→ 走下面的关键字兜底。
     }
-  } catch (_) {
-    // 解析失败（如安卓无 Google 后端）→ 走下面的关键字兜底。
   }
 
   // 1) 有坐标 → 唤起高德 App 导航（iOS 需 Info.plist 声明 iosamap；
@@ -266,8 +292,8 @@ Future<void> _openOfflineMapQuery(BuildContext context, String query) async {
   if (lat != null && lon != null) {
     final amap = Uri.parse(
       isIOS
-          ? 'iosamap://navi?sourceApplication=$src&poiname=$q&lat=$lat&lon=$lon&dev=0&style=2'
-          : 'androidamap://navi?sourceApplication=$src&poiname=$q&lat=$lat&lon=$lon&dev=0&style=2',
+          ? 'iosamap://navi?sourceApplication=$src&poiname=$q&lat=$lat&lon=$lon&dev=${coordinateSystem == 'wgs84' ? 1 : 0}&style=2'
+          : 'androidamap://navi?sourceApplication=$src&poiname=$q&lat=$lat&lon=$lon&dev=${coordinateSystem == 'wgs84' ? 1 : 0}&style=2',
     );
     try {
       if (await canLaunchUrl(amap)) {

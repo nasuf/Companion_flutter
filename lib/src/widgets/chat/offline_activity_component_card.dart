@@ -130,6 +130,20 @@ class _OfflineActivityComponentCard extends StatelessWidget {
                         ),
                       ],
                       if (card.footer.isNotEmpty) ...[
+                        if ((card.payload['schedule_label']?.toString() ?? '')
+                            .isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            card.payload['schedule_label'].toString(),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: colors.muted,
+                              fontSize: 12,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 11),
                         Row(
                           children: [

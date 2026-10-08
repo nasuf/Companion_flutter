@@ -15,6 +15,7 @@ class DeviceLocationSnapshot {
     this.country,
     this.address,
     this.accuracyMeters,
+    this.observedAt,
   });
 
   final double latitude;
@@ -25,6 +26,7 @@ class DeviceLocationSnapshot {
   final String? country;
   final String? address;
   final double? accuracyMeters;
+  final DateTime? observedAt;
 
   String get displayTitle {
     final cityLabel = _firstNonEmpty([city, region]);
@@ -181,6 +183,7 @@ Future<DeviceLocationSnapshot?> requestCurrentDeviceLocation({
       country: country,
       address: address,
       accuracyMeters: position.accuracy,
+      observedAt: position.timestamp,
     );
   } catch (_) {
     return null;

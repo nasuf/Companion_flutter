@@ -3,6 +3,35 @@ import 'package:companion_flutter/offline_models.dart';
 
 void main() {
   test(
+    'event facts survive media normalization and copy without fake times',
+    () {
+      final event = OfflineActivity.fromJson({
+        'id': 'event1',
+        'title': '秋日市集',
+        'kind': 'event',
+        'time_precision': 'date',
+        'event_status': 'scheduled',
+        'schedule_label': '2026/10/24—10/25 每日10:00—18:00',
+        'starts_at': '2026-10-24T00:00:00+08:00',
+        'ends_at': '2026-10-25T23:59:59+08:00',
+        'place_lat': 32.2,
+        'place_lng': 119.4,
+        'coordinate_system': 'wgs84',
+      });
+      final normalized = event.copyWith(imageUrls: ['/photo.jpg']);
+      expect(normalized.kind, 'event');
+      expect(normalized.timePrecision, 'date');
+      expect(normalized.eventStatus, 'scheduled');
+      expect(normalized.placeLat, 32.2);
+      expect(normalized.placeLng, 119.4);
+      expect(normalized.coordinateSystem, 'wgs84');
+      expect(normalized.scheduleLabel, '2026/10/24—10/25 每日10:00—18:00');
+      expect(normalized.scheduleLabel, isNot(contains('00:00')));
+      expect(OfflineActivity.fromJson({'id': 'legacy'}).kind, 'place');
+    },
+  );
+
+  test(
     'review keeps original images separate from user gallery through copying',
     () {
       final review = OfflineActivityReview.fromJson({

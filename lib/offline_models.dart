@@ -333,6 +333,13 @@ class OfflineActivity {
     this.address,
     this.startsAt,
     this.endsAt,
+    this.kind = 'place',
+    this.timePrecision,
+    this.eventStatus,
+    this.scheduleLabel,
+    this.placeLat,
+    this.placeLng,
+    this.coordinateSystem = 'gcj02',
     this.officialUrl,
     required this.imageUrls,
     this.taskHint,
@@ -367,6 +374,13 @@ class OfflineActivity {
   final String? address;
   final String? startsAt;
   final String? endsAt;
+  final String kind;
+  final String? timePrecision;
+  final String? eventStatus;
+  final String? scheduleLabel;
+  final double? placeLat;
+  final double? placeLng;
+  final String coordinateSystem;
   final String? officialUrl;
   final List<String> imageUrls;
   final String? taskHint;
@@ -402,6 +416,13 @@ class OfflineActivity {
         address: _asString(json['address']),
         startsAt: _asString(json['starts_at']),
         endsAt: _asString(json['ends_at']),
+        kind: _asString(json['kind']) ?? 'place',
+        timePrecision: _asString(json['time_precision']),
+        eventStatus: _asString(json['event_status']),
+        scheduleLabel: _asString(json['schedule_label']),
+        placeLat: (json['place_lat'] as num?)?.toDouble(),
+        placeLng: (json['place_lng'] as num?)?.toDouble(),
+        coordinateSystem: json['coordinate_system']?.toString() ?? 'gcj02',
         officialUrl: _asString(json['official_url']),
         imageUrls: _stringList(json['image_urls']),
         taskHint: _asString(json['task_hint']),
@@ -448,6 +469,13 @@ class OfflineActivity {
       address: address,
       startsAt: startsAt,
       endsAt: endsAt,
+      kind: kind,
+      timePrecision: timePrecision,
+      eventStatus: eventStatus,
+      scheduleLabel: scheduleLabel,
+      placeLat: placeLat,
+      placeLng: placeLng,
+      coordinateSystem: coordinateSystem,
       officialUrl: officialUrl,
       imageUrls: imageUrls ?? this.imageUrls,
       taskHint: taskHint,

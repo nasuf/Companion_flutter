@@ -113,6 +113,7 @@ mixin _CompanionApiOffline on _CompanionApiCore {
     double? lat,
     double? lng,
     double? accuracyMeters,
+    DateTime? observedAt,
     bool manualConfirmation = false,
   }) async {
     // 有可靠目的地坐标时强制定位校验；缺目的地坐标仅允许显式手动确认。
@@ -120,6 +121,8 @@ mixin _CompanionApiOffline on _CompanionApiCore {
       if (lat != null) 'lat': lat,
       if (lng != null) 'lng': lng,
       if (accuracyMeters != null) 'accuracy_m': accuracyMeters,
+      if (observedAt != null)
+        'observed_at': observedAt.toUtc().toIso8601String(),
       'manual_confirmation': manualConfirmation,
     };
     final json =

@@ -58,6 +58,7 @@ class FakeApi extends CompanionApi {
     double? lat,
     double? lng,
     double? accuracyMeters,
+    DateTime? observedAt,
     bool manualConfirmation = false,
   }) async {
     arrived++;
@@ -104,6 +105,24 @@ Future<void> showCheckin(WidgetTester tester, FakeApi api) async {
 }
 
 void main() {
+  testWidgets('event detail displays the canonical session without midnight', (
+    tester,
+  ) async {
+    final event = OfflineActivity.fromJson({
+      'id': 'activity',
+      'status': 'accepted',
+      'title': '秋日市集',
+      'location_name': '莲湖公园',
+      'kind': 'event',
+      'time_precision': 'date',
+      'schedule_label': '2026/10/24—10/25 每日10:00—18:00',
+    });
+    await showCheckin(tester, FakeApi(event));
+    expect(find.text('2026/10/24—10/25 每日10:00—18:00'), findsOneWidget);
+    expect(find.textContaining('00:00'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('review swipes all original photos even across title overlay', (
     tester,
   ) async {

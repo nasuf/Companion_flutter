@@ -88,6 +88,7 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
         lat: snapshot?.latitude,
         lng: snapshot?.longitude,
         accuracyMeters: snapshot?.accuracyMeters,
+        observedAt: snapshot?.observedAt,
         manualConfirmation: manual,
       );
       if (!mounted) return;
@@ -224,6 +225,10 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
               context,
               name: activity.locationName ?? activity.title,
               address: activity.address,
+              city: activity.city,
+              latitude: activity.placeLat,
+              longitude: activity.placeLng,
+              coordinateSystem: activity.coordinateSystem,
             ),
           ),
         ],
@@ -602,6 +607,10 @@ class _CheckinPlaceCard extends StatelessWidget {
                 ),
               ],
             ),
+          ],
+          if ((activity.scheduleLabel ?? '').isNotEmpty) ...[
+            const SizedBox(height: 14),
+            _metaRow(context, '🗓', '时间', activity.scheduleLabel!, w),
           ],
           if (theme.isNotEmpty) ...[
             const SizedBox(height: 14),

@@ -74,6 +74,9 @@ Future<String?> openOfflineActivityDetail(
         onAccept: () async {
           try {
             return await api.acceptOfflineActivity(activity.id);
+          } on ApiException catch (error) {
+            if (context.mounted) _showActivityToast(context, error.message);
+            return null;
           } catch (_) {
             return null;
           }
@@ -233,6 +236,11 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
                     authToken: widget.api.authToken,
                   ),
                   const SizedBox(height: 18),
+                  if (activity.kind == 'event' &&
+                      activity.imageUrls.isNotEmpty) ...[
+                    Text('活动地点实景', style: _mutedStyle(context, 12)),
+                    const SizedBox(height: 8),
+                  ],
                   Text(activity.title, style: _titleStyle(context, 24)),
                   const SizedBox(height: 10),
                   SelectableText(

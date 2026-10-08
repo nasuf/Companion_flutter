@@ -88,6 +88,7 @@ void main() {
       expect(location.region, '京口区');
       expect(location.toComponentCard().payload['region'], '京口区');
       expect(location.accuracyMeters, 10);
+      expect(location.observedAt, DateTime(2026, 10, 6));
     },
   );
 

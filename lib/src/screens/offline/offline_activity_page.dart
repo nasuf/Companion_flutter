@@ -781,9 +781,12 @@ class _MetaLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final parts = [
-      if ((activity.startsAt ?? '').isNotEmpty)
+      if ((activity.scheduleLabel ?? '').isNotEmpty)
+        '🗓 ${activity.scheduleLabel}'
+      else if ((activity.startsAt ?? '').isNotEmpty)
         '🗓 ${_shortDate(activity.startsAt!)}',
-      if ((activity.endsAt ?? '').isNotEmpty)
+      if ((activity.scheduleLabel ?? '').isEmpty &&
+          (activity.endsAt ?? '').isNotEmpty)
         '⏰ ${_shortTimeRange(activity.startsAt, activity.endsAt)}',
       if ((activity.locationName ?? activity.address ?? '').isNotEmpty)
         '📍 ${activity.locationName ?? activity.address}',
