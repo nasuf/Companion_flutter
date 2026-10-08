@@ -35,6 +35,8 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
   bool _arriving = false;
   bool _drawing = false;
   bool _archiving = false;
+  final _dockKey = GlobalKey<_CollapsibleActivityDockState>();
+  bool _contentScrollHandled = false;
 
   @override
   void initState() {
@@ -207,31 +209,44 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
   }
 
   Widget _buildBody(OfflineActivity activity) {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _ActivityImageGallery(
-            imageUrls: activity.imageUrls,
-            category: activity.category,
-            authToken: widget.api.authToken,
-          ),
-          const SizedBox(height: 16),
-          _CheckinPlaceCard(
-            activity: activity,
-            onViewLocation: () => showOfflineLocationSheet(
-              context,
-              name: activity.locationName ?? activity.title,
-              address: activity.address,
-              city: activity.city,
-              latitude: activity.placeLat,
-              longitude: activity.placeLng,
-              coordinateSystem: activity.coordinateSystem,
+    return NotificationListener<ScrollUpdateNotification>(
+      onNotification: (notification) {
+        if (!_contentScrollHandled &&
+            notification.depth == 0 &&
+            notification.metrics.axis == Axis.vertical &&
+            notification.dragDetails != null &&
+            (notification.scrollDelta ?? 0) > 0) {
+          _contentScrollHandled = true;
+          _dockKey.currentState?.collapse();
+        }
+        return false;
+      },
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _ActivityImageGallery(
+              imageUrls: activity.imageUrls,
+              category: activity.category,
+              authToken: widget.api.authToken,
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            _CheckinPlaceCard(
+              activity: activity,
+              onViewLocation: () => showOfflineLocationSheet(
+                context,
+                name: activity.locationName ?? activity.title,
+                address: activity.address,
+                city: activity.city,
+                latitude: activity.placeLat,
+                longitude: activity.placeLng,
+                coordinateSystem: activity.coordinateSystem,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -242,6 +257,7 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
     final active = activity.status == 'accepted';
     final hasProphecy = (activity.prophecyText ?? '').isNotEmpty;
     return _CollapsibleActivityDock(
+      key: _dockKey,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -341,7 +357,7 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
 
 /// Natural-height actions with two snap positions; the handle never dismisses.
 class _CollapsibleActivityDock extends StatefulWidget {
-  const _CollapsibleActivityDock({required this.child});
+  const _CollapsibleActivityDock({super.key, required this.child});
 
   final Widget child;
 
@@ -374,6 +390,8 @@ class _CollapsibleActivityDockState extends State<_CollapsibleActivityDock>
       curve: Curves.easeOutCubic,
     );
   }
+
+  void collapse() => _snapTo(0);
 
   void _drag(DragUpdateDetails details) {
     // SizeTransition clips its child but retains the child's full layout size.

@@ -19,6 +19,7 @@ OfflineActivity activity({
   bool reached = false,
   bool verified = false,
   String status = 'accepted',
+  String description = '按自己的节奏看看湖边',
 }) => OfflineActivity.fromJson({
   'id': 'activity',
   'status': status,
@@ -26,7 +27,7 @@ OfflineActivity activity({
   'arrival_verified': verified,
   'title': '莲湖公园走走',
   'summary': '沿湖慢慢走走',
-  'description': '按自己的节奏看看湖边',
+  'description': description,
   'location_name': '莲湖公园',
   'address': '桥头镇莲湖路',
   'official_url': 'https://example.com/place',
@@ -294,6 +295,62 @@ void main() {
   });
 
   for (final reached in [false, true]) {
+    testWidgets(
+      'first upward content swipe folds once per visit, reached=$reached',
+      (tester) async {
+        final api = FakeApi(
+          activity(
+            reached: reached,
+            description: List.filled(20, '沿着湖边走走，看看树影和水面。').join('\n'),
+          ),
+        );
+        await showCheckin(tester, api);
+        final dock = find.byKey(const ValueKey('offlineActivityDock'));
+        final handle = find.byKey(const ValueKey('offlineActivityDockHandle'));
+        final body = find.byType(SingleChildScrollView).first;
+        final expandedHeight = tester.getSize(dock).height;
+
+        // Horizontal photos and a downward body swipe must not consume the rule.
+        await tester.drag(find.byType(PageView), const Offset(-250, 0));
+        await tester.pumpAndSettle();
+        expect(find.text('2 / 3'), findsOneWidget);
+        await tester.drag(body, const Offset(0, 100));
+        await tester.pumpAndSettle();
+        expect(tester.getSize(dock).height, closeTo(expandedHeight, 1));
+
+        await tester.drag(body, const Offset(0, -100));
+        await tester.pumpAndSettle();
+        expect(tester.getSize(dock).height, closeTo(44, 1));
+        expect(handle.hitTestable(), findsOneWidget);
+        for (final dy in [100.0, -100.0, 100.0]) {
+          await tester.drag(body, Offset(0, dy));
+          await tester.pumpAndSettle();
+          expect(tester.getSize(dock).height, closeTo(44, 1));
+        }
+
+        // Manual expansion stays open after the one automatic collapse.
+        await tester.tap(handle);
+        await tester.pumpAndSettle();
+        for (final dy in [-100.0, 100.0]) {
+          await tester.drag(body, Offset(0, dy));
+          await tester.pumpAndSettle();
+          expect(tester.getSize(dock).height, closeTo(expandedHeight, 1));
+        }
+        expect(api.arrived, 0);
+        expect(api.deleted, 0);
+        expect(tester.takeException(), isNull);
+
+        // A newly mounted visit starts expanded and gets its own first swipe.
+        await tester.pumpWidget(const SizedBox());
+        await showCheckin(tester, api);
+        expect(tester.getSize(dock).height, closeTo(expandedHeight, 1));
+        await tester.drag(body, const Offset(0, -100));
+        await tester.pumpAndSettle();
+        expect(tester.getSize(dock).height, closeTo(44, 1));
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     testWidgets('dock drags to a visible peek and expands, reached=$reached', (
       tester,
     ) async {
