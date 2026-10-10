@@ -1099,7 +1099,7 @@ class _PhoneLoginSheetState extends State<_PhoneLoginSheet> {
 
   void _startCountdown() {
     _countdownTimer?.cancel();
-    setState(() => _countdown = 60);
+    setState(() => _countdown = 30);
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
@@ -1122,11 +1122,12 @@ class _PhoneLoginSheetState extends State<_PhoneLoginSheet> {
       _sending = true;
       _error = null;
     });
+    // Start on the attempt: a failed response does not prove no SMS was sent.
+    _startCountdown();
     try {
       final api = CompanionApi(baseUrl: _baseUrl());
       await api.smsSend(_phoneController.text.trim());
       if (!mounted) return;
-      _startCountdown();
       _codeFocus.requestFocus();
     } catch (error) {
       if (mounted) setState(() => _error = _asMessage(error));
