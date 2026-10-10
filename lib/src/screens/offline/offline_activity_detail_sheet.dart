@@ -247,6 +247,14 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
                     activity.summary,
                     style: _mutedStyle(context, 16),
                   ),
+                  if ((activity.recommendationMessage ?? '')
+                      .trim()
+                      .isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    _ActivityRecommendationMessage(
+                      message: activity.recommendationMessage!,
+                    ),
+                  ],
                   if (activity.description != activity.summary) ...[
                     const SizedBox(height: 12),
                     SelectableText(

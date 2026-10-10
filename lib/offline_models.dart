@@ -325,6 +325,7 @@ class OfflineActivity {
     required this.title,
     required this.summary,
     required this.description,
+    this.recommendationMessage,
     this.category,
     this.city,
     this.vibe,
@@ -366,6 +367,7 @@ class OfflineActivity {
   final String title;
   final String summary;
   final String description;
+  final String? recommendationMessage;
   final String? category;
   final String? city;
   final String? vibe;
@@ -408,6 +410,7 @@ class OfflineActivity {
         title: json['title']?.toString() ?? '',
         summary: json['summary']?.toString() ?? '',
         description: json['description']?.toString() ?? '',
+        recommendationMessage: _asString(json['recommendation_message']),
         category: _asString(json['category']),
         city: _asString(json['city']),
         vibe: _asString(json['vibe']),
@@ -461,6 +464,7 @@ class OfflineActivity {
       title: title,
       summary: summary,
       description: description,
+      recommendationMessage: recommendationMessage,
       category: category,
       city: city,
       vibe: vibe,
