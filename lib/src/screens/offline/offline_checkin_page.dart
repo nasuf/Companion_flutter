@@ -339,52 +339,59 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CupertinoButton(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 8,
-                  horizontal: 10,
-                ),
-                minimumSize: Size.zero,
-                onPressed: () => showOfflinePlayGuideDialog(context),
-                child: Text(
-                  '出门小说明',
-                  style: TextStyle(color: w.inkSoft, fontSize: 13),
-                ),
-              ),
-              if (!reached && active) ...[
-                Text('｜', style: _mutedStyle(context, 13)),
-                CupertinoButton(
+              Flexible(
+                child: CupertinoButton(
                   padding: const EdgeInsets.symmetric(
                     vertical: 8,
                     horizontal: 10,
                   ),
                   minimumSize: Size.zero,
-                  onPressed: _arriving
-                      ? null
-                      : () async {
-                          if (!await _confirmOfflineAction(
-                            context,
-                            title: '删除待出行活动',
-                            message: '删除后会取消这次出行计划，已有聊天和真实回忆会保留。',
-                            action: '删除',
-                          )) {
-                            return;
-                          }
-                          try {
-                            await widget.api.deleteOfflineActivity(activity.id);
-                            widget.onChanged?.call();
-                            if (mounted) Navigator.of(context).pop();
-                          } on ApiException catch (error) {
-                            if (mounted) {
-                              _showActivityToast(context, error.message);
+                  onPressed: () => showOfflinePlayGuideDialog(context),
+                  child: Text(
+                    '出门小说明',
+                    style: TextStyle(color: w.inkSoft, fontSize: 13),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+              if (!reached && active) ...[
+                Text('｜', style: _mutedStyle(context, 13)),
+                Flexible(
+                  child: CupertinoButton(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 8,
+                      horizontal: 10,
+                    ),
+                    minimumSize: Size.zero,
+                    onPressed: _arriving
+                        ? null
+                        : () async {
+                            if (!await _confirmOfflineAction(
+                              context,
+                              title: '删除待出行活动',
+                              message: '删除后会取消这次出行计划，已有聊天和真实回忆会保留。',
+                              action: '删除',
+                            )) {
+                              return;
                             }
-                          }
-                        },
-                  child: const Text(
-                    '删除该活动',
-                    style: TextStyle(
-                      color: CupertinoColors.destructiveRed,
-                      fontSize: 13,
+                            try {
+                              await widget.api.deleteOfflineActivity(
+                                activity.id,
+                              );
+                              widget.onChanged?.call();
+                              if (mounted) Navigator.of(context).pop();
+                            } on ApiException catch (error) {
+                              if (mounted) {
+                                _showActivityToast(context, error.message);
+                              }
+                            }
+                          },
+                    child: const Text(
+                      '删除该活动',
+                      style: TextStyle(
+                        color: CupertinoColors.destructiveRed,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ),
@@ -678,14 +685,20 @@ class _CheckinPlaceCard extends StatelessWidget {
               theme,
               style: _mutedStyle(context, 14).copyWith(height: 1.65),
             ),
-            if (activity.description.isNotEmpty &&
-                activity.description != theme) ...[
-              const SizedBox(height: 12),
-              SelectableText(
-                activity.description,
-                style: _mutedStyle(context, 14).copyWith(height: 1.65),
-              ),
-            ],
+          ],
+          if ((activity.recommendationMessage ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _ActivityRecommendationMessage(
+              message: activity.recommendationMessage!,
+            ),
+          ],
+          if (activity.description.isNotEmpty &&
+              activity.description != theme) ...[
+            const SizedBox(height: 12),
+            SelectableText(
+              activity.description,
+              style: _mutedStyle(context, 14).copyWith(height: 1.65),
+            ),
           ],
           // 氛围 / 适合（活动推荐大模型生成的短标签，图标对齐 demo）。
           if (vibe.isNotEmpty || suitable.isNotEmpty) ...[

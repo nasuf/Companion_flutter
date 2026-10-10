@@ -22,6 +22,15 @@ void main() {
         expect(activity.kind, 'place');
         expect(activity.imageUrls, hasLength(3));
         expect(activity.description.length, greaterThanOrEqualTo(120));
+        expect(activity.recommendationMessage, isNotNull);
+        expect(
+          activity.recommendationMessage!.length,
+          greaterThanOrEqualTo(100),
+        );
+        expect(
+          activity.copyWith(imageUrls: []).recommendationMessage,
+          activity.recommendationMessage,
+        );
         expect(
           activity.description.split('\n\n').length,
           greaterThanOrEqualTo(3),
@@ -36,6 +45,7 @@ void main() {
         expect(detail.imageUrls, activity.imageUrls);
         expect(detail.description, activity.description);
         expect(detail.summary, activity.summary);
+        expect(detail.recommendationMessage, activity.recommendationMessage);
         expect(detail.placeLat, activity.placeLat);
         for (final imageUrl in activity.imageUrls) {
           final client = HttpClient();
@@ -56,7 +66,8 @@ void main() {
             client.close(force: true);
           }
         }
-        await api.acceptOfflineActivity(activity.id);
+        final accepted = await api.acceptOfflineActivity(activity.id);
+        expect(accepted.recommendationMessage, activity.recommendationMessage);
         await expectLater(
           api.arriveOfflineActivity(
             activity.id,
@@ -89,8 +100,10 @@ void main() {
           observedAt: DateTime.now(),
         );
         expect(arrived.arrivalVerified, isTrue);
+        expect(arrived.recommendationMessage, activity.recommendationMessage);
         final archived = await api.archiveOfflineActivity(activity.id);
         expect(archived.status, 'completed');
+        expect(archived.recommendationMessage, activity.recommendationMessage);
         final review = await api.fetchOfflineActivityReview(activity.id);
         expect(review.imageUrls, activity.imageUrls);
         expect(review.gallery, isEmpty);

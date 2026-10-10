@@ -184,10 +184,7 @@ class _OfflineErrorBlock extends StatelessWidget {
 }
 
 class _BottomSheetFrame extends StatelessWidget {
-  const _BottomSheetFrame({
-    required this.child,
-    this.backgroundColor,
-  });
+  const _BottomSheetFrame({required this.child, this.backgroundColor});
 
   final Widget child;
 
@@ -285,9 +282,7 @@ Widget _sheetGrabber(BuildContext context) {
 
 // 高斯模糊弹层上的卡片/次按钮用实底：背景继续 blur，内容区不透底。
 Color _opaqueActivitySurface(BuildContext context) {
-  return _W2b.resolve(context).isDark
-      ? const Color(0xFF141A24)
-      : Colors.white;
+  return _W2b.resolve(context).isDark ? const Color(0xFF141A24) : Colors.white;
 }
 
 Color _opaqueActivityBorder(BuildContext context) {
@@ -337,6 +332,116 @@ String _categoryEmoji(String? category) {
   if (value.contains('展') || value.contains('艺术')) return '🎨';
   if (value.contains('户外') || value.contains('公园')) return '🌿';
   return '🎯';
+}
+
+/// A personal invitation, kept distinct from the factual venue introduction.
+class _ActivityRecommendationMessage extends StatefulWidget {
+  const _ActivityRecommendationMessage({required this.message});
+
+  final String message;
+
+  @override
+  State<_ActivityRecommendationMessage> createState() =>
+      _ActivityRecommendationMessageState();
+}
+
+class _ActivityRecommendationMessageState
+    extends State<_ActivityRecommendationMessage> {
+  bool _expanded = false;
+
+  @override
+  void didUpdateWidget(_ActivityRecommendationMessage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.message != widget.message) _expanded = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
+    final style = _mutedStyle(
+      context,
+      14,
+    ).copyWith(color: w.ink, fontWeight: FontWeight.w400, height: 1.7);
+    return Container(
+      key: const ValueKey('activity-recommendation-message'),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+      decoration: BoxDecoration(
+        color: _kActivityAccent.withValues(alpha: w.isDark ? 0.10 : 0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _kActivityAccent.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                CupertinoIcons.chat_bubble_text,
+                size: 16,
+                color: _kActivityAccent,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '想推荐给你',
+                  style: style.copyWith(
+                    color: _kActivityAccent,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final painter = TextPainter(
+                text: TextSpan(text: widget.message, style: style),
+                textDirection: Directionality.of(context),
+                textScaler: MediaQuery.textScalerOf(context),
+                maxLines: 5,
+              )..layout(maxWidth: constraints.maxWidth);
+              final canExpand = painter.didExceedMaxLines;
+              painter.dispose();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_expanded || !canExpand)
+                    SelectableText(widget.message, style: style)
+                  else
+                    Text(
+                      widget.message,
+                      style: style,
+                      maxLines: 5,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  if (canExpand)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: CupertinoButton(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        minimumSize: const Size(44, 44),
+                        onPressed: () => setState(() => _expanded = !_expanded),
+                        child: Text(
+                          _expanded ? '收起' : '展开全文',
+                          style: style.copyWith(
+                            color: _kActivityAccent,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    const SizedBox(height: 6),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 String? _chipEmoji(String text) {
