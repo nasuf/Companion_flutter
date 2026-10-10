@@ -37,6 +37,12 @@ mixin _CompanionApiOffline on _CompanionApiCore {
     return AdminActivityClearResult.fromJson(json);
   }
 
+  Future<AdminGiftClearResult> clearOfflineGiftsForCurrentUser() async {
+    final json = await _request('DELETE', '/offline/admin/gifts')
+        as Map<String, dynamic>;
+    return AdminGiftClearResult.fromJson(json);
+  }
+
   /// 管理员测试：为当前用户注入一份走 mock 链路的礼物（含物流轨迹）。
   /// [delivered] 为 true 时直接注入「已送达」礼物并推送送达消息。
   /// Admin QA: manually fire one proactive chat message for the current user.

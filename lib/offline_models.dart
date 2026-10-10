@@ -762,3 +762,26 @@ int _asInt(dynamic value) {
   if (value is num) return value.toInt();
   return int.tryParse(value?.toString() ?? '') ?? 0;
 }
+
+class AdminGiftClearResult {
+  const AdminGiftClearResult({
+    required this.deletedGifts,
+    required this.deletedTrackingEvents,
+    required this.deletedMessages,
+    required this.resetTriggerStates,
+  });
+
+  final int deletedGifts;
+  final int deletedTrackingEvents;
+  final int deletedMessages;
+  final int resetTriggerStates;
+
+  factory AdminGiftClearResult.fromJson(Map<String, dynamic> json) {
+    return AdminGiftClearResult(
+      deletedGifts: (json['deleted_gifts'] as num).toInt(),
+      deletedTrackingEvents: (json['deleted_tracking_events'] as num).toInt(),
+      deletedMessages: (json['deleted_messages'] as num).toInt(),
+      resetTriggerStates: (json['reset_trigger_states'] as num).toInt(),
+    );
+  }
+}
