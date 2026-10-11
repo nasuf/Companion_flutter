@@ -79,6 +79,25 @@ void main() {
         }
         expect(find.text('想推荐给你'), findsOneWidget);
         expect(find.text('地点介绍保持独立，不会被寄语覆盖。'), findsOneWidget);
+        final invitation = tester.getRect(
+          find.byKey(const ValueKey('activity-recommendation-message')),
+        );
+        final introduction = tester.getRect(
+          find.byKey(const ValueKey('activity-description')),
+        );
+        expect(introduction.left, invitation.left);
+        expect(introduction.width, invitation.width);
+        final description = tester.widget<SelectableText>(
+          find.widgetWithText(SelectableText, api.current.description),
+        );
+        final preview = tester.widget<Text>(find.text(message));
+        expect(description.style!.fontSize, preview.style!.fontSize);
+        expect(description.style!.fontWeight, FontWeight.w400);
+        expect(description.style!.height, preview.style!.height);
+        expect(
+          tester.getTopLeft(find.text(message)).dx,
+          tester.getTopLeft(find.text(api.current.description)).dx,
+        );
         expect(tester.widget<Text>(find.text(message)).maxLines, 5);
         await tester.drag(
           find.byType(SingleChildScrollView).first,
@@ -118,42 +137,62 @@ void main() {
     });
   }
 
-  testWidgets('dark theme and large text keep the note readable', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(320, 740);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final api = journey.FakeApi(notedActivity());
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData.dark(),
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: const TextScaler.linear(1.8)),
-          child: child!,
-        ),
-        home: OfflineCheckinPage(
-          api: api,
-          session: journey.session,
-          activityId: 'activity',
-          initialActivity: api.current,
-        ),
-      ),
+  for (final pending in [true, false]) {
+    testWidgets(
+      'dark large text stays readable in ${pending ? 'detail' : 'checkin'}',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 740);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final api = journey.FakeApi(
+          notedActivity(status: pending ? 'pending' : 'accepted'),
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData.dark(),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(1.8)),
+              child: child!,
+            ),
+            home: pending
+                ? Builder(
+                    builder: (context) => Scaffold(
+                      body: TextButton(
+                        onPressed: () => openOfflineActivityDetail(
+                          context,
+                          api: api,
+                          session: journey.session,
+                          activity: api.current,
+                        ),
+                        child: const Text('打开活动'),
+                      ),
+                    ),
+                  )
+                : OfflineCheckinPage(
+                    api: api,
+                    session: journey.session,
+                    activityId: 'activity',
+                    initialActivity: api.current,
+                  ),
+          ),
+        );
+        if (pending) await tester.tap(find.text('打开活动'));
+        await tester.pumpAndSettle();
+        await tester.drag(
+          find.byType(SingleChildScrollView).first,
+          const Offset(0, -500),
+        );
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('展开全文'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('展开全文'));
+        await tester.pumpAndSettle();
+        expect(find.widgetWithText(SelectableText, message), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
     );
-    await tester.pumpAndSettle();
-    await tester.drag(
-      find.byType(SingleChildScrollView).first,
-      const Offset(0, -500),
-    );
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('展开全文'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('展开全文'));
-    await tester.pumpAndSettle();
-    expect(find.widgetWithText(SelectableText, message), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+  }
 }

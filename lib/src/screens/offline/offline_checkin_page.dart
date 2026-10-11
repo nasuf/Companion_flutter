@@ -612,7 +612,10 @@ class _CheckinPlaceCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Text(activity.title, style: _titleStyle(context, 19)),
+                child: Text(
+                  activity.title,
+                  style: _activityTitleStyle(context),
+                ),
               ),
               if ((activity.category ?? '').isNotEmpty) ...[
                 const SizedBox(width: 10),
@@ -683,7 +686,7 @@ class _CheckinPlaceCard extends StatelessWidget {
             const SizedBox(height: 14),
             SelectableText(
               theme,
-              style: _mutedStyle(context, 14).copyWith(height: 1.65),
+              style: _activityBodyStyle(context, secondary: true),
             ),
           ],
           if ((activity.recommendationMessage ?? '').trim().isNotEmpty) ...[
@@ -692,13 +695,10 @@ class _CheckinPlaceCard extends StatelessWidget {
               message: activity.recommendationMessage!,
             ),
           ],
-          if (activity.description.isNotEmpty &&
+          if (activity.description.trim().isNotEmpty &&
               activity.description != theme) ...[
-            const SizedBox(height: 12),
-            SelectableText(
-              activity.description,
-              style: _mutedStyle(context, 14).copyWith(height: 1.65),
-            ),
+            const SizedBox(height: 16),
+            _ActivityDescription(text: activity.description),
           ],
           // 氛围 / 适合（活动推荐大模型生成的短标签，图标对齐 demo）。
           if (vibe.isNotEmpty || suitable.isNotEmpty) ...[
