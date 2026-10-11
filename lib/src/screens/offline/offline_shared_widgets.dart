@@ -123,12 +123,13 @@ class _SoftEmptyPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 154,
+      constraints: const BoxConstraints(minHeight: 154),
       padding: const EdgeInsets.all(20),
       // 保留 _softCardDecoration 的玻璃亮白描边(不再 copyWith 一条淡橙边把玻璃
       // 边缘盖没、读成灰底)。
       decoration: _softCardDecoration(context, radius: 22),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           _RoundIcon(icon: icon, color: accent),
@@ -266,12 +267,12 @@ class _SoftSuccessBar extends StatelessWidget {
   }
 }
 
-Widget _sheetGrabber(BuildContext context) {
+Widget _sheetGrabber(BuildContext context, {double bottomSpacing = 18}) {
   return Center(
     child: Container(
       width: 44,
       height: 5,
-      margin: const EdgeInsets.only(bottom: 18),
+      margin: EdgeInsets.only(bottom: bottomSpacing),
       decoration: BoxDecoration(
         color: AppColors.of(context).hairline,
         borderRadius: BorderRadius.circular(999),

@@ -27,11 +27,18 @@ class _AddressEditSheetState extends State<_AddressEditSheet> {
   String? _district;
   bool _regionsLoading = true;
   bool _saving = false;
+  bool _confirmingDelete = false;
+  bool _addressLoading = false;
+  bool _hasSavedAddress = false;
+  String? _addressError;
+  String? _operationError;
 
   @override
   void initState() {
     super.initState();
-    final initial = widget.initial;
+    _hasSavedAddress = widget.initial?.hasAddress == true;
+    // Home data is masked. Never seed editable fields from that snapshot.
+    final initial = _hasSavedAddress ? null : widget.initial;
     _name = TextEditingController(text: initial?.recipientName ?? '');
     _phone = TextEditingController(text: initial?.phone ?? '');
     _province = _emptyToNull(initial?.province);
@@ -39,6 +46,7 @@ class _AddressEditSheetState extends State<_AddressEditSheet> {
     _district = _emptyToNull(initial?.district);
     _detail = TextEditingController(text: initial?.detail ?? '');
     _loadRegions();
+    if (_hasSavedAddress) unawaited(_loadAddress());
   }
 
   @override
@@ -51,13 +59,94 @@ class _AddressEditSheetState extends State<_AddressEditSheet> {
     super.dispose();
   }
 
+  Future<void> _loadAddress() async {
+    setState(() {
+      _addressLoading = true;
+      _addressError = null;
+    });
+    try {
+      final address = await widget.api.fetchGiftAddress();
+      if (!mounted) return;
+      setState(() {
+        _hasSavedAddress = address.hasAddress;
+        _name.text = address.recipientName ?? '';
+        _phone.text = address.phone ?? '';
+        _detail.text = address.detail ?? '';
+        _province = _emptyToNull(address.province);
+        _city = _emptyToNull(address.city);
+        _district = _emptyToNull(address.district);
+      });
+    } catch (_) {
+      if (mounted) setState(() => _addressError = '地址加载失败，请重试');
+    } finally {
+      if (mounted) setState(() => _addressLoading = false);
+    }
+  }
+
+  Future<void> _delete() async {
+    if (_saving || _confirmingDelete || _addressLoading || !_hasSavedAddress) {
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _confirmingDelete = true;
+      _operationError = null;
+    });
+    try {
+      final confirmed = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (dialogContext) => CupertinoAlertDialog(
+          title: const Text('删除收货地址？'),
+          content: const Text('新的礼物需要重新填写地址，已下单礼物的配送不受影响。'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('删除'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || confirmed != true) return;
+      setState(() {
+        _confirmingDelete = false;
+        _saving = true;
+      });
+      await widget.api.deleteGiftAddress();
+      widget.onSaved();
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      if (mounted) setState(() => _operationError = '地址删除失败，请重试');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _confirmingDelete = false;
+          _saving = false;
+        });
+      }
+    }
+  }
+
   Future<void> _save() async {
+    if (_saving ||
+        _confirmingDelete ||
+        _addressLoading ||
+        _addressError != null) {
+      return;
+    }
     final validationError = _validateAddress();
     if (validationError != null) {
       await _showAddressError(validationError);
       return;
     }
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _operationError = null;
+    });
     try {
       await widget.api.saveGiftAddress(
         recipientName: _name.text.trim(),
@@ -69,6 +158,8 @@ class _AddressEditSheetState extends State<_AddressEditSheet> {
       );
       widget.onSaved();
       if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      if (mounted) setState(() => _operationError = '地址保存失败，请重试');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -310,64 +401,200 @@ class _AddressEditSheetState extends State<_AddressEditSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return _BottomSheetFrame(
-      // 玻璃底色，让下面的玻璃输入框/下拉框衬出来(参考打卡计划新增 sheet)。
-      backgroundColor: _W2b.resolve(context).base,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _sheetGrabber(context),
-          Text('收货地址', style: _titleStyle(context, 20)),
-          const SizedBox(height: 16),
-          _AddressField(
-            label: '收件人',
-            controller: _name,
-            focusNode: _nameFocus,
-            textInputAction: TextInputAction.next,
-            onSubmitted: (_) => _phoneFocus.requestFocus(),
+    final media = MediaQuery.of(context);
+    final keyboard = media.viewInsets.bottom;
+    final busy =
+        _saving ||
+        _confirmingDelete ||
+        _addressLoading ||
+        _addressError != null;
+    final sheet = LayoutBuilder(
+      builder: (context, constraints) {
+        // Fit the complete form when space permits. With the IME or large text,
+        // cap the sheet below the safe top and scroll only the form.
+        // viewPadding remains stable as the IME closes. A keyboard > 0 branch
+        // would jump from 12px to the home-indicator inset on its final frame.
+        final bottom = math.max(keyboard, media.viewPadding.bottom) + 18;
+        return ConstrainedBox(
+          key: const ValueKey('gift-address-sheet'),
+          constraints: BoxConstraints(
+            maxHeight: constraints.maxHeight - 12,
+            minWidth: constraints.maxWidth,
           ),
-          _AddressField(
-            label: '手机号',
-            controller: _phone,
-            focusNode: _phoneFocus,
-            keyboardType: TextInputType.phone,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => FocusScope.of(context).unfocus(),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            child: _OfflineDetailSurface(
+              glass: true,
+              child: DefaultTextStyle(
+                style: _mutedStyle(context, 15),
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: bottom),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        key: const ValueKey('gift-address-grabber'),
+                        padding: const EdgeInsets.only(top: 10),
+                        child: _sheetGrabber(context, bottomSpacing: 6),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(22, 0, 10, 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      '收货地址',
+                                      style: _titleStyle(
+                                        context,
+                                        18,
+                                      ).copyWith(fontWeight: FontWeight.w700),
+                                    ),
+                                  ),
+                                  // Loading must not add height to the form:
+                                  // the content-sized sheet would jump on completion.
+                                  if (_addressLoading)
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 12),
+                                      child: Semantics(
+                                        label: '正在加载收货地址',
+                                        child:
+                                            const CupertinoActivityIndicator(),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            if (_hasSavedAddress)
+                              CupertinoButton(
+                                key: const ValueKey('gift-address-delete'),
+                                onPressed: busy ? null : _delete,
+                                child: const Icon(
+                                  CupertinoIcons.trash,
+                                  semanticLabel: '删除收货地址',
+                                  size: 20,
+                                  color: CupertinoColors.systemRed,
+                                ),
+                              )
+                            else
+                              const SizedBox(height: 44),
+                          ],
+                        ),
+                      ),
+                      Flexible(
+                        fit: FlexFit.loose,
+                        child: SingleChildScrollView(
+                          key: const ValueKey('gift-address-scroll'),
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.manual,
+                          padding: const EdgeInsets.fromLTRB(22, 0, 22, 6),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (_addressError != null)
+                                _OfflineErrorBlock(
+                                  message: _addressError!,
+                                  onRetry: _loadAddress,
+                                ),
+                              AbsorbPointer(
+                                absorbing: busy,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _AddressField(
+                                      label: '收件人',
+                                      controller: _name,
+                                      focusNode: _nameFocus,
+                                      textInputAction: TextInputAction.next,
+                                      onSubmitted: (_) =>
+                                          _phoneFocus.requestFocus(),
+                                    ),
+                                    _AddressField(
+                                      label: '手机号',
+                                      controller: _phone,
+                                      focusNode: _phoneFocus,
+                                      keyboardType: TextInputType.phone,
+                                      textInputAction: TextInputAction.done,
+                                      onSubmitted: (_) =>
+                                          FocusScope.of(context).unfocus(),
+                                    ),
+                                    _AddressSelectField(
+                                      label: '省份',
+                                      value: _province,
+                                      placeholder: _regionsLoading
+                                          ? '地址数据加载中...'
+                                          : '选择省份',
+                                      onTap: _selectProvince,
+                                    ),
+                                    _AddressSelectField(
+                                      label: '所在城市',
+                                      value: _city,
+                                      placeholder: _regionsLoading
+                                          ? '地址数据加载中...'
+                                          : (_province == null
+                                                ? '请先选择省份'
+                                                : '选择城市'),
+                                      onTap: _selectCity,
+                                    ),
+                                    _AddressSelectField(
+                                      label: '所在地区',
+                                      value: _district,
+                                      placeholder: _regionsLoading
+                                          ? '地址数据加载中...'
+                                          : (_city == null ? '请先选择城市' : '选择地区'),
+                                      onTap: _selectDistrict,
+                                    ),
+                                    _AddressField(
+                                      label: '详细地址',
+                                      controller: _detail,
+                                      textInputAction: TextInputAction.done,
+                                      onSubmitted: (_) =>
+                                          FocusScope.of(context).unfocus(),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_operationError != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: Text(
+                                    _operationError!,
+                                    style: _mutedStyle(context, 13).copyWith(
+                                      color: CupertinoColors.systemRed,
+                                    ),
+                                  ),
+                                ),
+                              const SizedBox(height: 10),
+                              _AddressSaveButton(
+                                busy: _saving,
+                                onPressed: busy ? null : _save,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
-          _AddressSelectField(
-            label: '省份',
-            value: _province,
-            placeholder: _regionsLoading ? '地址数据加载中...' : '选择省份',
-            onTap: _selectProvince,
-          ),
-          _AddressSelectField(
-            label: '所在城市',
-            value: _city,
-            placeholder: _regionsLoading
-                ? '地址数据加载中...'
-                : (_province == null ? '请先选择省份' : '选择城市'),
-            onTap: _selectCity,
-          ),
-          _AddressSelectField(
-            label: '所在地区',
-            value: _district,
-            placeholder: _regionsLoading
-                ? '地址数据加载中...'
-                : (_city == null ? '请先选择城市' : '选择地区'),
-            onTap: _selectDistrict,
-          ),
-          _AddressField(
-            label: '详细地址',
-            controller: _detail,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => FocusScope.of(context).unfocus(),
-          ),
-          const SizedBox(height: 10),
-          // 参考打卡计划新增 sheet 的主按钮(_CheckinPrimaryButton)：整宽胶囊、
-          // 主题蓝填充 + 柔和投影、白字 20/w600、忙碌显示转圈、禁用变淡。
-          _AddressSaveButton(busy: _saving, onPressed: _saving ? null : _save),
-        ],
+        );
+      },
+    );
+    return PopScope<void>(
+      // Barrier taps use maybePop. While the IME is visible, consume that tap
+      // to unfocus first; allow the next tap after the keyboard has closed.
+      canPop: keyboard == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) FocusScope.of(context).unfocus();
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: sheet,
       ),
     );
   }

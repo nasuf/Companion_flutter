@@ -84,7 +84,7 @@ mixin _CompanionApiOffline on _CompanionApiCore {
     final json =
         await _request('POST', '/offline/admin/gifts/mock?$query')
             as Map<String, dynamic>;
-    return RealWorldGift.fromJson(json);
+    return _offlineGiftFromJson(json);
   }
 
   Future<OfflineActivity> fetchOfflineActivity(String activityId) async {
@@ -307,7 +307,27 @@ mixin _CompanionApiOffline on _CompanionApiCore {
   Future<GiftsHome> fetchOfflineGifts({String? workspaceId}) async {
     final path = _pathWithWorkspace('/offline/gifts', workspaceId);
     final json = await _request('GET', path) as Map<String, dynamic>;
-    return GiftsHome.fromJson(json);
+    final home = GiftsHome.fromJson(json);
+    return GiftsHome(
+      address: home.address,
+      shippingGift: json['shipping_gift'] is Map
+          ? _offlineGiftFromJson(
+              Map<String, dynamic>.from(json['shipping_gift'] as Map),
+            )
+          : null,
+      groups: [
+        for (final raw in (json['groups'] as List? ?? const []))
+          if (raw is Map)
+            GiftYearGroup(
+              year: GiftYearGroup.fromJson(Map<String, dynamic>.from(raw)).year,
+              gifts: [
+                for (final gift in (raw['gifts'] as List? ?? const []))
+                  if (gift is Map)
+                    _offlineGiftFromJson(Map<String, dynamic>.from(gift)),
+              ],
+            ),
+      ],
+    );
   }
 
   Future<GiftAddress> fetchGiftAddress() async {
@@ -341,10 +361,14 @@ mixin _CompanionApiOffline on _CompanionApiCore {
     return GiftAddress.fromJson(json);
   }
 
+  Future<void> deleteGiftAddress() async {
+    await _request('DELETE', '/offline/gifts/address');
+  }
+
   Future<RealWorldGift> fetchOfflineGift(String giftId) async {
     final json =
         await _request('GET', '/offline/gifts/$giftId') as Map<String, dynamic>;
-    return RealWorldGift.fromJson(json);
+    return _offlineGiftFromJson(json);
   }
 
   Future<GiftTracking> fetchGiftTracking(String giftId) async {
@@ -371,6 +395,15 @@ mixin _CompanionApiOffline on _CompanionApiCore {
             )
             as Map<String, dynamic>;
     final gift = json['gift'];
-    return RealWorldGift.fromJson(Map<String, dynamic>.from(gift as Map));
+    return _offlineGiftFromJson(Map<String, dynamic>.from(gift as Map));
+  }
+
+  RealWorldGift _offlineGiftFromJson(Map<String, dynamic> json) {
+    final image = json['product_image_url']?.toString().trim();
+    return RealWorldGift.fromJson({
+      ...json,
+      if (image != null && image.isNotEmpty)
+        'product_image_url': _absoluteUrl(image),
+    });
   }
 }

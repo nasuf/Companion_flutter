@@ -203,92 +203,58 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
     final canRespond = activity.status == 'pending';
     final canReaccept = activity.status == 'ignored';
     final isCompleted = activity.status == 'completed';
-    final bottomPadding = MediaQuery.paddingOf(context).bottom + 18;
-    // sheet 底用极光玻璃底色（跟地址 sheet 一致），衬出内部分层玻璃。
-    final w = _W2b.resolve(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: w.base,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 28,
-            offset: const Offset(0, -12),
+    return _OfflineDetailSheetFrame(
+      title: '活动详情',
+      scrollController: widget.scrollController,
+      children: [
+        _ActivityImageGallery(
+          imageUrls: activity.imageUrls,
+          category: activity.category,
+          authToken: widget.api.authToken,
+        ),
+        const SizedBox(height: 18),
+        if (activity.kind == 'event' && activity.imageUrls.isNotEmpty) ...[
+          Text('活动地点实景', style: _mutedStyle(context, 12)),
+          const SizedBox(height: 8),
+        ],
+        Text(activity.title, style: _activityTitleStyle(context)),
+        const SizedBox(height: 10),
+        SelectableText(
+          activity.summary,
+          style: _activityBodyStyle(context, secondary: true),
+        ),
+        if ((activity.recommendationMessage ?? '').trim().isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _ActivityRecommendationMessage(
+            message: activity.recommendationMessage!,
           ),
         ],
-      ),
-      child: Column(
-        children: [
-          _ExpandedSheetTopBar(
-            title: '活动详情',
-            onClose: () => Navigator.of(context).pop(),
+        if (activity.description.trim().isNotEmpty &&
+            activity.description != activity.summary) ...[
+          const SizedBox(height: 16),
+          _ActivityDescription(text: activity.description),
+        ],
+        const SizedBox(height: 16),
+        _MetaLine(activity: activity),
+        if (canRespond) ...[
+          const SizedBox(height: 22),
+          _ActivityResponseButtons(
+            working: _responding,
+            onAccept: _accept,
+            onIgnore: _ignore,
           ),
-          Expanded(
-            child: SingleChildScrollView(
-              controller: widget.scrollController,
-              padding: EdgeInsets.fromLTRB(22, 4, 22, bottomPadding),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _ActivityImageGallery(
-                    imageUrls: activity.imageUrls,
-                    category: activity.category,
-                    authToken: widget.api.authToken,
-                  ),
-                  const SizedBox(height: 18),
-                  if (activity.kind == 'event' &&
-                      activity.imageUrls.isNotEmpty) ...[
-                    Text('活动地点实景', style: _mutedStyle(context, 12)),
-                    const SizedBox(height: 8),
-                  ],
-                  Text(activity.title, style: _activityTitleStyle(context)),
-                  const SizedBox(height: 10),
-                  SelectableText(
-                    activity.summary,
-                    style: _activityBodyStyle(context, secondary: true),
-                  ),
-                  if ((activity.recommendationMessage ?? '')
-                      .trim()
-                      .isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    _ActivityRecommendationMessage(
-                      message: activity.recommendationMessage!,
-                    ),
-                  ],
-                  if (activity.description.trim().isNotEmpty &&
-                      activity.description != activity.summary) ...[
-                    const SizedBox(height: 16),
-                    _ActivityDescription(text: activity.description),
-                  ],
-                  const SizedBox(height: 16),
-                  _MetaLine(activity: activity),
-                  if (canRespond) ...[
-                    const SizedBox(height: 22),
-                    _ActivityResponseButtons(
-                      working: _responding,
-                      onAccept: _accept,
-                      onIgnore: _ignore,
-                    ),
-                  ] else if (canReaccept) ...[
-                    const SizedBox(height: 22),
-                    _ActivityReacceptButton(
-                      working: _responding,
-                      onPressed: _accept,
-                    ),
-                  ] else if (isCompleted) ...[
-                    const SizedBox(height: 18),
-                    _ActivityCompletionFeedbackView(
-                      feedback: activity.completionFeedback,
-                      api: widget.api,
-                      authToken: widget.api.authToken,
-                    ),
-                  ],
-                ],
-              ),
-            ),
+        ] else if (canReaccept) ...[
+          const SizedBox(height: 22),
+          _ActivityReacceptButton(working: _responding, onPressed: _accept),
+        ] else if (isCompleted) ...[
+          const SizedBox(height: 18),
+          _ActivityCompletionFeedbackView(
+            feedback: activity.completionFeedback,
+            api: widget.api,
+            authToken: widget.api.authToken,
           ),
         ],
-      ),
+      ],
     );
   }
 }
