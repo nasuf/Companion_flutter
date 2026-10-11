@@ -291,16 +291,24 @@ void main() {
         _Api(gift: _gift(image: 'https://images.test/retry.png')),
       );
       await tester.pumpAndSettle();
-      expect(find.text('图片暂时加载失败'), findsOneWidget);
+      expect(
+        find.descendant(of: _scroll, matching: find.text('图片暂时加载失败')),
+        findsOneWidget,
+      );
       cache.fails = false;
-      await tester.tap(find.text('重新加载'));
+      await tester.tap(
+        find.descendant(of: _scroll, matching: find.text('重新加载')),
+      );
       await tester.pump();
       await tester.pump();
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 80)),
       );
       await tester.pumpAndSettle();
-      expect(find.text('图片暂时加载失败'), findsNothing);
+      expect(
+        find.descendant(of: _scroll, matching: find.text('图片暂时加载失败')),
+        findsNothing,
+      );
       expect(find.text('正在加载图片…'), findsNothing);
       expect(cache.downloads, 1);
       expect(tester.takeException(), isNull);
@@ -318,7 +326,7 @@ void main() {
       expect(find.text('收到的礼物'), findsOneWidget);
       expect(find.text('1 份'), findsOneWidget);
       expect(find.text('暂无在途礼物'), findsNothing);
-      expect(find.text('9月2日'), findsOneWidget);
+      expect(find.text('最近收到 · 9月2日'), findsOneWidget);
       expect(find.text('暖手宝').hitTestable(), findsOneWidget);
       expect(
         tester.getSize(find.byKey(const ValueKey('gift-address-entry'))).height,
@@ -431,6 +439,12 @@ void main() {
       await tester.tap(find.text('重试'));
       await tester.pumpAndSettle();
       expect(find.text('还没有收到礼物'), findsOneWidget);
+      expect(find.text('0 份'), findsNothing);
+      expect(find.text('收到的礼物'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('gift-empty-collection')),
+        findsOneWidget,
+      );
       expect(find.text('期待下一份小惊喜'), findsNothing);
       expect(find.text('去聊聊'), findsNothing);
     },
@@ -474,7 +488,10 @@ void main() {
   });
   testWidgets('missing picture has a dedicated placeholder', (tester) async {
     await _show(tester, _Api());
-    expect(find.text('暂无礼物图片'), findsOneWidget);
+    expect(
+      find.descendant(of: _scroll, matching: find.text('暂无礼物图片')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
   for (final url in [
@@ -502,8 +519,13 @@ void main() {
             ? {'Authorization': 'Bearer synthetic'}
             : isNull,
       );
-      expect(find.text('图片暂时加载失败'), findsOneWidget);
-      await tester.tap(find.text('重新加载'));
+      expect(
+        find.descendant(of: _scroll, matching: find.text('图片暂时加载失败')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.descendant(of: _scroll, matching: find.text('重新加载')),
+      );
       await tester.pumpAndSettle();
       expect(find.text('礼物详情'), findsOneWidget);
       expect(tester.takeException(), isNull);

@@ -145,19 +145,38 @@ class _OfflineGiftPageState extends State<OfflineGiftPage> {
   @override
   Widget build(BuildContext context) {
     final data = _data;
-    final giftCount =
-        data?.groups.fold<int>(
-          0,
-          (count, group) => count + group.gifts.length,
-        ) ??
-        0;
+    final received = <RealWorldGift>[];
+    final ids = <String>{};
+    for (final group in data?.groups ?? const <GiftYearGroup>[]) {
+      for (final gift in group.gifts) {
+        if (gift.id != data?.shippingGift?.id && ids.add(gift.id)) {
+          received.add(gift);
+        }
+      }
+    }
+    // The API can contain legacy/out-of-order groups. Select by date, not position.
+    received.sort((a, b) {
+      final date = (DateTime.tryParse(b.createdAt)?.millisecondsSinceEpoch ?? 0)
+          .compareTo(
+            DateTime.tryParse(a.createdAt)?.millisecondsSinceEpoch ?? 0,
+          );
+      return date != 0 ? date : a.id.compareTo(b.id);
+    });
+    final featured =
+        data?.shippingGift ?? (received.isEmpty ? null : received.first);
+    final history = received.where((gift) => gift.id != featured?.id).toList();
+    final years = <int, List<RealWorldGift>>{};
+    for (final gift in history) {
+      final year = DateTime.tryParse(gift.createdAt)?.toLocal().year ?? 0;
+      years.putIfAbsent(year, () => []).add(gift);
+    }
     final colors = AppColors.of(context);
     return CupertinoPageScaffold(
       backgroundColor: colors.page,
       child: DefaultTextStyle(
         style: TextStyle(
           color: colors.text,
-          fontSize: 15,
+          fontSize: 14,
           decoration: TextDecoration.none,
         ),
         child: Stack(
@@ -165,137 +184,252 @@ class _OfflineGiftPageState extends State<OfflineGiftPage> {
             const _ActivityPageBackdrop(),
             SafeArea(
               bottom: false,
-              child: _loading && data == null
-                  ? const Center(child: CupertinoActivityIndicator())
-                  : CustomScrollView(
-                      physics: const BouncingScrollPhysics(
-                        parent: AlwaysScrollableScrollPhysics(),
+              child: CustomScrollView(
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
+                slivers: [
+                  CupertinoSliverRefreshControl(onRefresh: _load),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
+                      child: _OfflineSubpageTopBar(
+                        title: '我的礼物',
+                        onBack: () => Navigator.of(context).maybePop(),
                       ),
-                      slivers: [
-                        CupertinoSliverRefreshControl(onRefresh: _load),
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
-                            child: _OfflineSubpageTopBar(
-                              title: '我的礼物',
-                              onBack: () => Navigator.of(context).maybePop(),
-                            ),
-                          ),
-                        ),
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (_error != null) ...[
-                                  const SizedBox(height: 16),
-                                  _OfflineErrorBlock(
-                                    message: _error!,
-                                    onRetry: _load,
-                                  ),
-                                ],
-                                if (data != null) ...[
-                                  _AddressCard(
-                                    address: data.address,
-                                    onTap: _editAddress,
-                                  ),
-                                  if (data.shippingGift != null) ...[
-                                    const SizedBox(height: 18),
-                                    _ShippingGiftCard(
-                                      api: widget.api,
-                                      gift: data.shippingGift!,
-                                      onTap: () =>
-                                          _showGift(data.shippingGift!),
-                                    ),
-                                  ],
-                                  const SizedBox(height: 28),
-                                  Row(
-                                    key: const ValueKey(
-                                      'gift-collection-header',
-                                    ),
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          '收到的礼物',
-                                          style: _titleStyle(context, 16)
-                                              .copyWith(
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                        ),
-                                      ),
-                                      Text(
-                                        '$giftCount 份',
-                                        style: _mutedStyle(context, 12),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
-                        for (final group
-                            in (data?.groups ?? const <GiftYearGroup>[]).where(
-                              (group) => group.gifts.isNotEmpty,
-                            )) ...[
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-                              child: Row(
-                                children: [
-                                  Text(
-                                    '${group.year} 年',
-                                    style: _mutedStyle(
-                                      context,
-                                      12,
-                                    ).copyWith(fontWeight: FontWeight.w600),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Container(
-                                      height: 0.5,
-                                      color: _W2b.resolve(
-                                        context,
-                                      ).inkFaint.withValues(alpha: 0.18),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          SliverList.separated(
-                            itemCount: group.gifts.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 10),
-                            itemBuilder: (context, index) => Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                              ),
-                              child: _GiftListCard(
-                                gift: group.gifts[index],
-                                api: widget.api,
-                                onTap: () => _showGift(group.gifts[index]),
-                              ),
-                            ),
-                          ),
-                        ],
-                        if (data != null &&
-                            data.groups.every((g) => g.gifts.isEmpty))
-                          const SliverToBoxAdapter(
-                            child: Padding(
-                              padding: EdgeInsets.fromLTRB(20, 14, 20, 0),
-                              child: _SoftEmptyPanel(
-                                icon: CupertinoIcons.gift,
-                                title: '还没有收到礼物',
-                                subtitle: '收到的心意，会好好收藏在这里',
-                                accent: _kGiftAccent,
-                              ),
-                            ),
-                          ),
-                        const SliverToBoxAdapter(child: SizedBox(height: 36)),
-                      ],
                     ),
+                  ),
+                  if (_loading && data == null)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(child: CupertinoActivityIndicator()),
+                    ),
+                  if (_error != null)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                        child: _OfflineErrorBlock(
+                          message: _error!,
+                          onRetry: _load,
+                        ),
+                      ),
+                    ),
+                  if (data != null) ...[
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                        child: _AddressCard(
+                          address: data.address,
+                          onTap: _editAddress,
+                        ),
+                      ),
+                    ),
+                    if (featured != null)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 26, 20, 14),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  data.shippingGift != null ? '正在送达' : '收到的礼物',
+                                  key: const ValueKey('gift-collection-header'),
+                                  style: _titleStyle(
+                                    context,
+                                    16,
+                                  ).copyWith(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                              Text(
+                                data.shippingGift != null
+                                    ? '1 份在途'
+                                    : '${received.length} 份',
+                                style: _mutedStyle(
+                                  context,
+                                  12,
+                                ).copyWith(fontWeight: FontWeight.w400),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    if (featured != null)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: data.shippingGift != null
+                              ? _ShippingGiftCard(
+                                  key: ValueKey(featured.id),
+                                  api: widget.api,
+                                  gift: featured,
+                                  onTap: () => _showGift(featured),
+                                )
+                              : _GiftSpotlight(
+                                  api: widget.api,
+                                  gift: featured,
+                                  onTap: () => _showGift(featured),
+                                ),
+                        ),
+                      ),
+                    if (history.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  data.shippingGift != null ? '收到的礼物' : '以往的礼物',
+                                  style: _titleStyle(
+                                    context,
+                                    16,
+                                  ).copyWith(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                              Text(
+                                '${history.length} 份',
+                                style: _mutedStyle(
+                                  context,
+                                  12,
+                                ).copyWith(fontWeight: FontWeight.w400),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    for (final group in years.entries) ...[
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                          child: Text(
+                            group.key == 0 ? '日期未记录' : '${group.key} 年',
+                            style: _mutedStyle(
+                              context,
+                              12,
+                            ).copyWith(fontWeight: FontWeight.w400),
+                          ),
+                        ),
+                      ),
+                      SliverList.separated(
+                        itemCount: group.value.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) => Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: _GiftListCard(
+                            gift: group.value[index],
+                            api: widget.api,
+                            onTap: () => _showGift(group.value[index]),
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (received.isEmpty && featured != null)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
+                          child: Text(
+                            '在途的心意，抵达后会收藏在这里',
+                            textAlign: TextAlign.center,
+                            style: _mutedStyle(
+                              context,
+                              12,
+                            ).copyWith(fontWeight: FontWeight.w400),
+                          ),
+                        ),
+                      ),
+                    if (featured == null)
+                      const SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: _GiftEmptyCollection(),
+                      ),
+                  ],
+                  if (featured != null || data == null)
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: MediaQuery.paddingOf(context).bottom + 32,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// A true empty collection is a quiet part of the page, not a disabled card.
+class _GiftEmptyCollection extends StatelessWidget {
+  const _GiftEmptyCollection();
+
+  @override
+  Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
+    return Padding(
+      key: const ValueKey('gift-empty-collection'),
+      padding: EdgeInsets.fromLTRB(
+        32,
+        40,
+        32,
+        48 + MediaQuery.paddingOf(context).bottom,
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: _kGiftAccent.withValues(alpha: .10),
+                    blurRadius: 32,
+                    spreadRadius: 4,
+                  ),
+                ],
+              ),
+              child: ClipOval(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                  child: Container(
+                    width: 88,
+                    height: 88,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [w.glass, _kGiftAccent.withValues(alpha: .08)],
+                      ),
+                      border: Border.all(color: w.glassBorder),
+                    ),
+                    child: const Icon(
+                      CupertinoIcons.gift,
+                      size: 34,
+                      color: _kGiftAccent,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              '还没有收到礼物',
+              textAlign: TextAlign.center,
+              style: _titleStyle(
+                context,
+                16,
+              ).copyWith(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '每一份收到的心意\n都会在这里好好收藏',
+              textAlign: TextAlign.center,
+              style: _mutedStyle(
+                context,
+                14,
+              ).copyWith(fontWeight: FontWeight.w400, height: 1.6),
             ),
           ],
         ),
@@ -347,12 +481,15 @@ class _AddressCard extends StatelessWidget {
                     style: _mutedStyle(
                       context,
                       12,
-                    ).copyWith(fontWeight: FontWeight.w800),
+                    ).copyWith(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     address?.display ?? '添加地址，方便接收礼物',
-                    style: _mutedStyle(context, 13),
+                    style: _mutedStyle(
+                      context,
+                      12,
+                    ).copyWith(fontWeight: FontWeight.w400),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -373,6 +510,7 @@ class _AddressCard extends StatelessWidget {
 
 class _ShippingGiftCard extends StatefulWidget {
   const _ShippingGiftCard({
+    super.key,
     required this.api,
     required this.gift,
     required this.onTap,
@@ -401,7 +539,7 @@ class _ShippingGiftCardState extends State<_ShippingGiftCard> {
   @override
   void didUpdateWidget(covariant _ShippingGiftCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.gift.id != widget.gift.id) {
+    if (oldWidget.gift != widget.gift || oldWidget.api != widget.api) {
       unawaited(_loadTracking());
     }
   }
@@ -430,77 +568,151 @@ class _ShippingGiftCardState extends State<_ShippingGiftCard> {
   @override
   Widget build(BuildContext context) {
     final events = _dedupeTrackingEvents(_tracking?.events ?? const []);
-    final step = _trackingStepIndex(widget.gift.status, events);
-    final latest = events.isEmpty ? null : events.last;
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      onPressed: widget.onTap,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-        decoration: _softCardDecoration(context, radius: 22).copyWith(
-          border: Border.all(color: const Color(0x66FF8C4B), width: 1.4),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x16FF8C4B),
-              blurRadius: 26,
-              offset: Offset(0, 14),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                _GiftThumb(gift: widget.gift, size: 56, api: widget.api),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.gift.giftName,
-                        style: _titleStyle(
-                          context,
-                          16,
-                        ).copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 4),
-                      Text('配送进度', style: _mutedStyle(context, 12)),
-                    ],
-                  ),
-                ),
-                _ShippingStateChip(
-                  text: _shippingStatusText(widget.gift.status),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            _GiftProgressBar(currentStep: step),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                Text('物流追踪', style: _titleStyle(context, 16)),
-                const Spacer(),
-                Text(
-                  '查看详情',
-                  style: _mutedStyle(
-                    context,
-                    12,
-                  ).copyWith(fontWeight: FontWeight.w800),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
+    return _GiftSpotlight(
+      api: widget.api,
+      gift: widget.gift,
+      onTap: widget.onTap,
+      delivery: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _GiftProgressBar(
+            currentStep: _trackingStepIndex(widget.gift.status, events),
+          ),
+          if (_loading || _error != null || events.isEmpty) ...[
+            const SizedBox(height: 14),
             if (_loading)
               const _TrackingLoadingBlock()
             else if (_error != null)
               _TrackingErrorBlock(onRetry: _loadTracking)
-            else if (latest != null)
-              _TrackingTimeline(events: events, compact: true)
             else
               const _TrackingEmptyBlock(),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+String _giftNote(RealWorldGift gift) =>
+    (gift.giftNote?.trim().isNotEmpty == true ? gift.giftNote : gift.giftReason)
+        ?.trim() ??
+    '';
+
+class _GiftSpotlight extends StatelessWidget {
+  const _GiftSpotlight({
+    required this.api,
+    required this.gift,
+    required this.onTap,
+    this.delivery,
+  });
+  final CompanionApi api;
+  final RealWorldGift gift;
+  final VoidCallback onTap;
+  final Widget? delivery;
+
+  @override
+  Widget build(BuildContext context) {
+    final w = _W2b.resolve(context);
+    final note = _giftNote(gift);
+    return CupertinoButton(
+      key: ValueKey('gift-spotlight-${gift.id}'),
+      padding: EdgeInsets.zero,
+      onPressed: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: Container(
+            decoration: _softCardDecoration(
+              context,
+              radius: 28,
+            ).copyWith(boxShadow: []),
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _GiftThumb(gift: gift, size: 210, api: api, wide: true),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 18, 6, 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (delivery == null) ...[
+                        Text(
+                          '最近收到 · ${_giftCollectionDate(gift.createdAt)}',
+                          style: _mutedStyle(
+                            context,
+                            12,
+                          ).copyWith(fontWeight: FontWeight.w400),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      Text(
+                        gift.giftName,
+                        style: _titleStyle(
+                          context,
+                          20,
+                        ).copyWith(fontWeight: FontWeight.w600, height: 1.25),
+                      ),
+                      if (note.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.only(left: 12),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              left: BorderSide(
+                                color: _kGiftAccent.withValues(alpha: .45),
+                                width: 2,
+                              ),
+                            ),
+                          ),
+                          child: Text(
+                            note,
+                            style: TextStyle(
+                              fontSize: 14,
+                              height: 1.5,
+                              color: w.inkSoft,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (delivery != null) ...[
+                        const SizedBox(height: 22),
+                        delivery!,
+                      ],
+                      const SizedBox(height: 18),
+                      Container(
+                        height: .5,
+                        color: w.inkFaint.withValues(alpha: .16),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              delivery != null ? '查看配送详情' : '打开这份心意',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: w.inkSoft,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            CupertinoIcons.arrow_right,
+                            size: 17,
+                            color: w.inkSoft,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -513,7 +725,6 @@ class _GiftListCard extends StatelessWidget {
     required this.onTap,
     required this.api,
   });
-
   final RealWorldGift gift;
   final CompanionApi api;
   final VoidCallback onTap;
@@ -521,14 +732,18 @@ class _GiftListCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CupertinoButton(
+      key: ValueKey('gift-history-${gift.id}'),
       padding: EdgeInsets.zero,
       onPressed: onTap,
       child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: _softCardDecoration(context, radius: 22),
+        padding: const EdgeInsets.all(14),
+        decoration: _softCardDecoration(
+          context,
+          radius: 22,
+        ).copyWith(boxShadow: []),
         child: Row(
           children: [
-            _GiftThumb(gift: gift, size: 72, api: api),
+            _GiftThumb(gift: gift, size: 64, api: api),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -536,36 +751,41 @@ class _GiftListCard extends StatelessWidget {
                 children: [
                   Text(
                     gift.giftName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: _titleStyle(
                       context,
-                      16,
-                    ).copyWith(fontWeight: FontWeight.w700),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                      14,
+                    ).copyWith(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 5),
                   Text(
                     _giftCollectionDate(gift.createdAt),
-                    style: _mutedStyle(context, 12),
+                    style: _mutedStyle(
+                      context,
+                      12,
+                    ).copyWith(fontWeight: FontWeight.w400),
                   ),
-                  if ((gift.giftNote ?? gift.giftReason ?? '')
-                      .trim()
-                      .isNotEmpty) ...[
+                  if (_giftNote(gift).isNotEmpty) ...[
                     const SizedBox(height: 6),
                     Text(
-                      gift.giftNote ?? gift.giftReason ?? '',
-                      style: _mutedStyle(context, 12),
-                      maxLines: 2,
+                      _giftNote(gift),
+                      style: _mutedStyle(
+                        context,
+                        12,
+                      ).copyWith(fontWeight: FontWeight.w400),
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ],
               ),
             ),
-            const Icon(
+            const SizedBox(width: 8),
+            Icon(
               CupertinoIcons.chevron_right,
-              size: 18,
-              color: Color(0x8897A3AD),
+              size: 14,
+              color: _W2b.resolve(context).inkFaint,
             ),
           ],
         ),
@@ -670,7 +890,10 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
             Expanded(
               child: Text(
                 widget.gift.giftName,
-                style: _titleStyle(context, 22),
+                style: _titleStyle(
+                  context,
+                  20,
+                ).copyWith(fontWeight: FontWeight.w600),
               ),
             ),
             const SizedBox(width: 10),
@@ -680,7 +903,7 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
         const SizedBox(height: 6),
         Text(
           _shortDate(widget.gift.createdAt),
-          style: _mutedStyle(context, 13),
+          style: _mutedStyle(context, 12).copyWith(fontWeight: FontWeight.w400),
         ),
         const SizedBox(height: 14),
         if ((widget.gift.giftNote ?? '').isNotEmpty)
@@ -692,19 +915,33 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: _W2b.resolve(context).glassBorder),
             ),
-            child: Text(
-              widget.gift.giftNote!,
-              style: TextStyle(
-                color: AppColors.isDark(context)
-                    ? const Color(0xFFFFC99E)
-                    : const Color(0xFF7C5A42),
-                height: 1.5,
-                fontWeight: FontWeight.w700,
-                decoration: TextDecoration.none,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'TA 的赠言',
+                  style: _mutedStyle(
+                    context,
+                    12,
+                  ).copyWith(fontWeight: FontWeight.w400),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  widget.gift.giftNote!,
+                  style: TextStyle(
+                    color: AppColors.isDark(context)
+                        ? const Color(0xFFFFC99E)
+                        : const Color(0xFF7C5A42),
+                    height: 1.5,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
             ),
           ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 24),
         Row(
           children: [
             Text('物流追踪详情', style: _titleStyle(context, 16)),
@@ -722,14 +959,10 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
               if ((widget.gift.trackingNumber ?? '').trim().isNotEmpty)
                 '运单号 ${widget.gift.trackingNumber}',
             ].join(' · '),
-            style: _mutedStyle(context, 12),
-          ),
-        ],
-        if ((widget.gift.lastTrackingSyncedAt ?? '').trim().isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            '上次同步 ${_shortDate(widget.gift.lastTrackingSyncedAt!)}',
-            style: _mutedStyle(context, 12),
+            style: _mutedStyle(
+              context,
+              12,
+            ).copyWith(fontWeight: FontWeight.w400),
           ),
         ],
         const SizedBox(height: 10),
@@ -763,7 +996,7 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
                 _sending ? '正在传达...' : '向 TA 说声谢谢',
                 style: const TextStyle(
                   color: CupertinoColors.white,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w600,
                   decoration: TextDecoration.none,
                 ),
               ),
@@ -838,43 +1071,47 @@ class _GiftProgressStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = active ? const Color(0xFFFF9A57) : const Color(0xFFE1D4C8);
-    return Column(
-      children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          width: current ? 34 : 30,
-          height: current ? 34 : 30,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: active ? color : CupertinoColors.white,
-            border: Border.all(color: color, width: current ? 2.5 : 1.6),
-            boxShadow: active
-                ? const [
-                    BoxShadow(
-                      color: Color(0x33FF8C4B),
-                      blurRadius: 12,
-                      offset: Offset(0, 6),
-                    ),
-                  ]
-                : null,
+    return Semantics(
+      selected: current,
+      child: Column(
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            key: ValueKey('gift-progress-$label'),
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: active ? color : CupertinoColors.white,
+              border: Border.all(color: color, width: 1.6),
+              boxShadow: active
+                  ? const [
+                      BoxShadow(
+                        color: Color(0x33FF8C4B),
+                        blurRadius: 12,
+                        offset: Offset(0, 6),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Icon(
+              icon,
+              size: 13,
+              color: active ? CupertinoColors.white : color,
+            ),
           ),
-          child: Icon(
-            icon,
-            size: current ? 15 : 13,
-            color: active ? CupertinoColors.white : color,
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: active ? const Color(0xFFCE7333) : const Color(0xFFB0A090),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              decoration: TextDecoration.none,
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: TextStyle(
-            color: active ? const Color(0xFFCE7333) : const Color(0xFFB0A090),
-            fontSize: 11,
-            fontWeight: FontWeight.w900,
-            decoration: TextDecoration.none,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -906,7 +1143,7 @@ class _ShippingStateChip extends StatelessWidget {
         style: TextStyle(
           color: foreground,
           fontSize: 12,
-          fontWeight: FontWeight.w900,
+          fontWeight: FontWeight.w600,
           decoration: TextDecoration.none,
         ),
       ),
@@ -1040,7 +1277,10 @@ class _GiftThumbState extends State<_GiftThumb> {
                   : url == null
                   ? '暂无礼物图片'
                   : '图片暂时加载失败',
-              style: _mutedStyle(context, 13),
+              style: _mutedStyle(
+                context,
+                12,
+              ).copyWith(fontWeight: FontWeight.w400),
             ),
           ],
           if (url != null && !loading)
@@ -1098,18 +1338,15 @@ class _GiftThumbState extends State<_GiftThumb> {
 }
 
 class _TrackingTimeline extends StatelessWidget {
-  const _TrackingTimeline({required this.events, this.compact = false});
+  const _TrackingTimeline({required this.events});
 
   final List<GiftTrackingEvent> events;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final visibleEvents = compact
-        ? events.reversed.take(3).toList(growable: false)
-        : events.reversed.toList(growable: false);
+    final visibleEvents = events.reversed.toList(growable: false);
     return Container(
-      padding: EdgeInsets.all(compact ? 12 : 14),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: _W2b.resolve(context).glass,
         borderRadius: BorderRadius.circular(18),
@@ -1205,10 +1442,10 @@ class _TrackingTimelineRow extends StatelessWidget {
             children: [
               Text(
                 event.title,
-                style: _titleStyle(
-                  context,
-                  14,
-                ).copyWith(decoration: TextDecoration.none),
+                style: _titleStyle(context, 14).copyWith(
+                  fontWeight: FontWeight.w500,
+                  decoration: TextDecoration.none,
+                ),
               ),
               const SizedBox(height: 4),
               Text(
@@ -1216,19 +1453,19 @@ class _TrackingTimelineRow extends StatelessWidget {
                   _shortDate(event.occurredAt),
                   if ((event.location ?? '').isNotEmpty) event.location!,
                 ].join(' · '),
-                style: _mutedStyle(
-                  context,
-                  12,
-                ).copyWith(decoration: TextDecoration.none),
+                style: _mutedStyle(context, 12).copyWith(
+                  fontWeight: FontWeight.w400,
+                  decoration: TextDecoration.none,
+                ),
               ),
               if ((event.description ?? '').isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(
                   event.description!,
-                  style: _mutedStyle(
-                    context,
-                    12,
-                  ).copyWith(decoration: TextDecoration.none),
+                  style: _mutedStyle(context, 12).copyWith(
+                    fontWeight: FontWeight.w400,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
               ],
             ],
@@ -1255,7 +1492,13 @@ class _TrackingLoadingBlock extends StatelessWidget {
         children: [
           const CupertinoActivityIndicator(radius: 8),
           const SizedBox(width: 10),
-          Text('正在同步物流...', style: _mutedStyle(context, 13)),
+          Text(
+            '正在同步物流...',
+            style: _mutedStyle(
+              context,
+              12,
+            ).copyWith(fontWeight: FontWeight.w400),
+          ),
         ],
       ),
     );
@@ -1274,7 +1517,10 @@ class _TrackingEmptyBlock extends StatelessWidget {
         color: _W2b.resolve(context).glass,
         borderRadius: BorderRadius.circular(18),
       ),
-      child: Text('暂时还没有物流更新', style: _mutedStyle(context, 13)),
+      child: Text(
+        '暂时还没有物流更新',
+        style: _mutedStyle(context, 12).copyWith(fontWeight: FontWeight.w400),
+      ),
     );
   }
 }
@@ -1302,7 +1548,15 @@ class _TrackingErrorBlock extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Expanded(child: Text('物流同步失败', style: _mutedStyle(context, 13))),
+          Expanded(
+            child: Text(
+              '物流同步失败',
+              style: _mutedStyle(
+                context,
+                12,
+              ).copyWith(fontWeight: FontWeight.w400),
+            ),
+          ),
           CupertinoButton(
             minimumSize: Size.zero,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -1314,7 +1568,7 @@ class _TrackingErrorBlock extends StatelessWidget {
               style: TextStyle(
                 color: retryText,
                 fontSize: 12,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w600,
                 decoration: TextDecoration.none,
               ),
             ),
