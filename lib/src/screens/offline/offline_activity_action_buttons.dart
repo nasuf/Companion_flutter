@@ -13,25 +13,47 @@ class _ActivityResponseButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _SecondaryActivityPillButton(
-            label: '先放一放',
-            enabled: !working,
-            onPressed: onIgnore,
+    final ignore = _SecondaryActivityPillButton(
+      label: '先放一放',
+      enabled: !working,
+      onPressed: onIgnore,
+    );
+    final accept = _PrimaryActivityPillButton(
+      label: working ? '处理中...' : '想去看看',
+      icon: '✨',
+      enabled: !working,
+      onPressed: onAccept,
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final label = TextPainter(
+          text: TextSpan(
+            text: working ? '✨ 处理中...' : '✨ 想去看看',
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.2,
+            ),
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _PrimaryActivityPillButton(
-            label: working ? '处理中...' : '想去看看',
-            icon: '✨',
-            enabled: !working,
-            onPressed: onAccept,
-          ),
-        ),
-      ],
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+        )..layout();
+        final stackButtons = (constraints.maxWidth - 12) / 2 < label.width + 24;
+        label.dispose();
+        if (stackButtons) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [accept, const SizedBox(height: 12), ignore],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: ignore),
+            const SizedBox(width: 12),
+            Expanded(child: accept),
+          ],
+        );
+      },
     );
   }
 }

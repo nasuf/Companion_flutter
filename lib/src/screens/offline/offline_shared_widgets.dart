@@ -334,6 +334,47 @@ String _categoryEmoji(String? category) {
   return '🎯';
 }
 
+// Activity reading styles stay local: other offline pages use the heavier
+// shared label styles for controls rather than long-form reading.
+TextStyle _activityTitleStyle(BuildContext context) => TextStyle(
+  color: _W2b.resolve(context).ink,
+  fontSize: 22,
+  fontWeight: FontWeight.w700,
+  height: 1.3,
+  decoration: TextDecoration.none,
+);
+
+TextStyle _activityBodyStyle(BuildContext context, {bool secondary = false}) {
+  final w = _W2b.resolve(context);
+  return TextStyle(
+    color: secondary ? w.inkSoft : w.ink,
+    fontSize: 15,
+    fontWeight: FontWeight.w400,
+    height: 1.65,
+    decoration: TextDecoration.none,
+  );
+}
+
+/// Same reading width and inset as the invitation, without changing its facts.
+class _ActivityDescription extends StatelessWidget {
+  const _ActivityDescription({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('activity-description'),
+    width: double.infinity,
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: _W2b.resolve(context).glass,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: _W2b.resolve(context).glassBorder),
+    ),
+    child: SelectableText(text, style: _activityBodyStyle(context)),
+  );
+}
+
 /// A personal invitation, kept distinct from the factual venue introduction.
 class _ActivityRecommendationMessage extends StatefulWidget {
   const _ActivityRecommendationMessage({required this.message});
@@ -358,10 +399,7 @@ class _ActivityRecommendationMessageState
   @override
   Widget build(BuildContext context) {
     final w = _W2b.resolve(context);
-    final style = _mutedStyle(
-      context,
-      14,
-    ).copyWith(color: w.ink, fontWeight: FontWeight.w400, height: 1.7);
+    final style = _activityBodyStyle(context);
     return Container(
       key: const ValueKey('activity-recommendation-message'),
       width: double.infinity,
@@ -387,7 +425,7 @@ class _ActivityRecommendationMessageState
                   '想推荐给你',
                   style: style.copyWith(
                     color: _kActivityAccent,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -427,6 +465,7 @@ class _ActivityRecommendationMessageState
                           _expanded ? '收起' : '展开全文',
                           style: style.copyWith(
                             color: _kActivityAccent,
+                            fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
                         ),

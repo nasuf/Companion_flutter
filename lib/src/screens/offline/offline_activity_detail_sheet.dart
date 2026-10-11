@@ -241,11 +241,11 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
                     Text('活动地点实景', style: _mutedStyle(context, 12)),
                     const SizedBox(height: 8),
                   ],
-                  Text(activity.title, style: _titleStyle(context, 24)),
+                  Text(activity.title, style: _activityTitleStyle(context)),
                   const SizedBox(height: 10),
                   SelectableText(
                     activity.summary,
-                    style: _mutedStyle(context, 16),
+                    style: _activityBodyStyle(context, secondary: true),
                   ),
                   if ((activity.recommendationMessage ?? '')
                       .trim()
@@ -255,12 +255,10 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
                       message: activity.recommendationMessage!,
                     ),
                   ],
-                  if (activity.description != activity.summary) ...[
-                    const SizedBox(height: 12),
-                    SelectableText(
-                      activity.description,
-                      style: _mutedStyle(context, 14),
-                    ),
+                  if (activity.description.trim().isNotEmpty &&
+                      activity.description != activity.summary) ...[
+                    const SizedBox(height: 16),
+                    _ActivityDescription(text: activity.description),
                   ],
                   const SizedBox(height: 16),
                   _MetaLine(activity: activity),
