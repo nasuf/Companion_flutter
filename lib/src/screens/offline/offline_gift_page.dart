@@ -162,7 +162,7 @@ class _OfflineGiftPageState extends State<OfflineGiftPage> {
         ),
         child: Stack(
           children: [
-            const _ActivityPageBackdrop(),
+            const _GiftCollectionBackdrop(),
             SafeArea(
               bottom: false,
               child: _loading && data == null
@@ -196,12 +196,14 @@ class _OfflineGiftPageState extends State<OfflineGiftPage> {
                                   ),
                                 ],
                                 if (data != null) ...[
+                                  _GiftCollectionIntro(count: giftCount),
+                                  const SizedBox(height: 22),
                                   _AddressCard(
                                     address: data.address,
                                     onTap: _editAddress,
                                   ),
                                   if (data.shippingGift != null) ...[
-                                    const SizedBox(height: 18),
+                                    const SizedBox(height: 24),
                                     _ShippingGiftCard(
                                       api: widget.api,
                                       gift: data.shippingGift!,
@@ -209,26 +211,16 @@ class _OfflineGiftPageState extends State<OfflineGiftPage> {
                                           _showGift(data.shippingGift!),
                                     ),
                                   ],
-                                  const SizedBox(height: 28),
-                                  Row(
+                                  const SizedBox(height: 32),
+                                  Text(
+                                    '收到的礼物',
                                     key: const ValueKey(
                                       'gift-collection-header',
                                     ),
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          '收到的礼物',
-                                          style: _titleStyle(context, 16)
-                                              .copyWith(
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                        ),
-                                      ),
-                                      Text(
-                                        '$giftCount 份',
-                                        style: _mutedStyle(context, 12),
-                                      ),
-                                    ],
+                                    style: _titleStyle(
+                                      context,
+                                      18,
+                                    ).copyWith(fontWeight: FontWeight.w600),
                                   ),
                                 ],
                               ],
@@ -264,19 +256,42 @@ class _OfflineGiftPageState extends State<OfflineGiftPage> {
                               ),
                             ),
                           ),
-                          SliverList.separated(
-                            itemCount: group.gifts.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 10),
-                            itemBuilder: (context, index) => Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                              ),
-                              child: _GiftListCard(
-                                gift: group.gifts[index],
-                                api: widget.api,
-                                onTap: () => _showGift(group.gifts[index]),
-                              ),
+                          SliverPadding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            sliver: SliverLayoutBuilder(
+                              builder: (context, constraints) {
+                                final largeText =
+                                    MediaQuery.textScalerOf(context).scale(16) >
+                                    21;
+                                final columns =
+                                    largeText ||
+                                        constraints.crossAxisExtent < 350
+                                    ? 1
+                                    : 2;
+                                return SliverGrid(
+                                  gridDelegate:
+                                      SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: columns,
+                                        crossAxisSpacing: 14,
+                                        mainAxisSpacing: 16,
+                                        mainAxisExtent: columns == 1
+                                            ? 300 +
+                                                  MediaQuery.textScalerOf(
+                                                    context,
+                                                  ).scale(54)
+                                            : 272,
+                                      ),
+                                  delegate: SliverChildBuilderDelegate(
+                                    (context, index) => _GiftListCard(
+                                      gift: group.gifts[index],
+                                      api: widget.api,
+                                      onTap: () =>
+                                          _showGift(group.gifts[index]),
+                                    ),
+                                    childCount: group.gifts.length,
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ],
@@ -299,6 +314,98 @@ class _OfflineGiftPageState extends State<OfflineGiftPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _GiftCollectionBackdrop extends StatelessWidget {
+  const _GiftCollectionBackdrop();
+  @override
+  Widget build(BuildContext context) {
+    final dark = AppColors.isDark(context);
+    return Positioned.fill(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: dark
+                ? const [
+                    Color(0xFF142323),
+                    Color(0xFF111A23),
+                    Color(0xFF222122),
+                  ]
+                : const [
+                    Color(0xFFF7F6F2),
+                    Color(0xFFEAF3F2),
+                    Color(0xFFF2F0EB),
+                  ],
+          ),
+        ),
+        child: Align(
+          alignment: Alignment.topRight,
+          child: FractionallySizedBox(
+            widthFactor: .8,
+            heightFactor: .5,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFFD4C5AF).withValues(alpha: dark ? .10 : .28),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GiftCollectionIntro extends StatelessWidget {
+  const _GiftCollectionIntro({required this.count});
+  final int count;
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '珍藏的，是心意',
+            style: _titleStyle(context, 30).copyWith(
+              fontWeight: FontWeight.w500,
+              letterSpacing: -1,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Container(
+                width: 18,
+                height: 1,
+                color: _W2b.resolve(context).inkFaint,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '$count 份',
+                style: _mutedStyle(
+                  context,
+                  12,
+                ).copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text('礼物，留住被惦记的瞬间', style: _mutedStyle(context, 12)),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -347,7 +454,7 @@ class _AddressCard extends StatelessWidget {
                     style: _mutedStyle(
                       context,
                       12,
-                    ).copyWith(fontWeight: FontWeight.w800),
+                    ).copyWith(fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -437,16 +544,10 @@ class _ShippingGiftCardState extends State<_ShippingGiftCard> {
       onPressed: widget.onTap,
       child: Container(
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-        decoration: _softCardDecoration(context, radius: 22).copyWith(
-          border: Border.all(color: const Color(0x66FF8C4B), width: 1.4),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x16FF8C4B),
-              blurRadius: 26,
-              offset: Offset(0, 14),
-            ),
-          ],
-        ),
+        decoration: _softCardDecoration(
+          context,
+          radius: 24,
+        ).copyWith(boxShadow: []),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -466,7 +567,7 @@ class _ShippingGiftCardState extends State<_ShippingGiftCard> {
                         ).copyWith(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 4),
-                      Text('配送进度', style: _mutedStyle(context, 12)),
+                      Text('正在向你靠近', style: _mutedStyle(context, 12)),
                     ],
                   ),
                 ),
@@ -480,14 +581,21 @@ class _ShippingGiftCardState extends State<_ShippingGiftCard> {
             const SizedBox(height: 18),
             Row(
               children: [
-                Text('物流追踪', style: _titleStyle(context, 16)),
-                const Spacer(),
-                Text(
-                  '查看详情',
-                  style: _mutedStyle(
-                    context,
-                    12,
-                  ).copyWith(fontWeight: FontWeight.w800),
+                Expanded(
+                  child: Text(
+                    '配送动态',
+                    style: _titleStyle(
+                      context,
+                      14,
+                    ).copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Text('查看物流', style: _mutedStyle(context, 12)),
+                const SizedBox(width: 4),
+                Icon(
+                  CupertinoIcons.arrow_up_right,
+                  size: 13,
+                  color: _W2b.resolve(context).inkSoft,
                 ),
               ],
             ),
@@ -497,7 +605,12 @@ class _ShippingGiftCardState extends State<_ShippingGiftCard> {
             else if (_error != null)
               _TrackingErrorBlock(onRetry: _loadTracking)
             else if (latest != null)
-              _TrackingTimeline(events: events, compact: true)
+              Text(
+                latest.title,
+                style: _mutedStyle(context, 13),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              )
             else
               const _TrackingEmptyBlock(),
           ],
@@ -513,61 +626,80 @@ class _GiftListCard extends StatelessWidget {
     required this.onTap,
     required this.api,
   });
-
   final RealWorldGift gift;
   final CompanionApi api;
   final VoidCallback onTap;
-
   @override
   Widget build(BuildContext context) {
+    final note =
+        (gift.giftNote?.trim().isNotEmpty == true
+                ? gift.giftNote
+                : gift.giftReason)
+            ?.trim();
     return CupertinoButton(
       padding: EdgeInsets.zero,
       onPressed: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: _softCardDecoration(context, radius: 22),
-        child: Row(
-          children: [
-            _GiftThumb(gift: gift, size: 72, api: api),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    gift.giftName,
-                    style: _titleStyle(
-                      context,
-                      16,
-                    ).copyWith(fontWeight: FontWeight.w700),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    _giftCollectionDate(gift.createdAt),
-                    style: _mutedStyle(context, 12),
-                  ),
-                  if ((gift.giftNote ?? gift.giftReason ?? '')
-                      .trim()
-                      .isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      gift.giftNote ?? gift.giftReason ?? '',
-                      style: _mutedStyle(context, 12),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            decoration: _softCardDecoration(
+              context,
+              radius: 24,
+            ).copyWith(boxShadow: []),
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => _GiftThumb(
+                        gift: gift,
+                        api: api,
+                        size: constraints.maxWidth,
+                        fill: true,
+                      ),
                     ),
-                  ],
-                ],
-              ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _giftCollectionDate(gift.createdAt),
+                        style: _mutedStyle(context, 11),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        gift.giftName,
+                        style: _titleStyle(
+                          context,
+                          16,
+                        ).copyWith(fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 7),
+                      SizedBox(
+                        height: MediaQuery.textScalerOf(context).scale(36),
+                        child: Text(
+                          note ?? '',
+                          style: _mutedStyle(context, 12).copyWith(height: 1.5),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const Icon(
-              CupertinoIcons.chevron_right,
-              size: 18,
-              color: Color(0x8897A3AD),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -670,7 +802,10 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
             Expanded(
               child: Text(
                 widget.gift.giftName,
-                style: _titleStyle(context, 22),
+                style: _titleStyle(
+                  context,
+                  24,
+                ).copyWith(fontWeight: FontWeight.w500),
               ),
             ),
             const SizedBox(width: 10),
@@ -692,19 +827,27 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: _W2b.resolve(context).glassBorder),
             ),
-            child: Text(
-              widget.gift.giftNote!,
-              style: TextStyle(
-                color: AppColors.isDark(context)
-                    ? const Color(0xFFFFC99E)
-                    : const Color(0xFF7C5A42),
-                height: 1.5,
-                fontWeight: FontWeight.w700,
-                decoration: TextDecoration.none,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('TA 的赠言', style: _mutedStyle(context, 11)),
+                const SizedBox(height: 8),
+                Text(
+                  widget.gift.giftNote!,
+                  style: TextStyle(
+                    color: AppColors.isDark(context)
+                        ? const Color(0xFFFFC99E)
+                        : const Color(0xFF7C5A42),
+                    height: 1.5,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
             ),
           ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 24),
         Row(
           children: [
             Text('物流追踪详情', style: _titleStyle(context, 16)),
@@ -958,11 +1101,13 @@ class _GiftThumb extends StatefulWidget {
     required this.size,
     required this.api,
     this.wide = false,
+    this.fill = false,
   });
 
   final RealWorldGift gift;
   final double size;
   final bool wide;
+  final bool fill;
   final CompanionApi api;
 
   @override
@@ -1092,24 +1237,23 @@ class _GiftThumbState extends State<_GiftThumb> {
       label: '${widget.gift.giftName}图片',
       child: widget.wide
           ? AspectRatio(aspectRatio: 1.6, child: content)
+          : widget.fill
+          ? SizedBox.expand(child: content)
           : SizedBox(width: widget.size, height: widget.size, child: content),
     );
   }
 }
 
 class _TrackingTimeline extends StatelessWidget {
-  const _TrackingTimeline({required this.events, this.compact = false});
+  const _TrackingTimeline({required this.events});
 
   final List<GiftTrackingEvent> events;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final visibleEvents = compact
-        ? events.reversed.take(3).toList(growable: false)
-        : events.reversed.toList(growable: false);
+    final visibleEvents = events.reversed.toList(growable: false);
     return Container(
-      padding: EdgeInsets.all(compact ? 12 : 14),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: _W2b.resolve(context).glass,
         borderRadius: BorderRadius.circular(18),
