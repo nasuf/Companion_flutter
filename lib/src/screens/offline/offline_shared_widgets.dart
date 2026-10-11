@@ -446,7 +446,9 @@ class _ActivityRecommendationMessageState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (_expanded || !canExpand)
-                    SelectableText(widget.message, style: style)
+                    // Keep the same paragraph renderer as the preview.
+                    // SelectableText uses editable-text font/strut defaults.
+                    SelectionArea(child: Text(widget.message, style: style))
                   else
                     Text(
                       widget.message,

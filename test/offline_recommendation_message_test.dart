@@ -1,6 +1,7 @@
 import 'package:companion_flutter/main.dart';
 import 'package:companion_flutter/offline_models.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'offline_journey_flow_test.dart' as journey;
@@ -27,6 +28,56 @@ OfflineActivity notedActivity({
   'location_name': '小岛咖啡(伯先路店)',
   'address': '伯先路12号',
 });
+
+// Measure the painted glyph lines, rather than just comparing TextStyle.height.
+List<Rect> messageLines(WidgetTester tester) {
+  final panel = find.byKey(const ValueKey('activity-recommendation-message'));
+  final richText = find.descendant(
+    of: panel,
+    matching: find.byWidgetPredicate(
+      (widget) => widget is RichText && widget.text.toPlainText() == message,
+    ),
+  );
+  final editable = find.descendant(
+    of: panel,
+    matching: find.byType(EditableText),
+  );
+  final boxes = richText.evaluate().isNotEmpty
+      ? tester
+            .renderObject<RenderParagraph>(richText)
+            .getBoxesForSelection(
+              const TextSelection(baseOffset: 0, extentOffset: message.length),
+            )
+      : tester
+            .state<EditableTextState>(editable)
+            .renderEditable
+            .getBoxesForSelection(
+              const TextSelection(baseOffset: 0, extentOffset: message.length),
+            );
+  final lines = <Rect>[];
+  for (final box in boxes) {
+    if (lines.isEmpty || (lines.last.top - box.top).abs() > 0.01) {
+      lines.add(box.toRect());
+    }
+  }
+  return lines;
+}
+
+void expectSamePreviewLines(List<Rect> before, List<Rect> after) {
+  expect(before.length, 5);
+  expect(after.length, greaterThan(5));
+  for (var i = 0; i < 4; i++) {
+    expect(after[i].height, closeTo(before[i].height, 0.01));
+    expect(after[i].left, closeTo(before[i].left, 0.01));
+    expect(after[i].width, closeTo(before[i].width, 0.01));
+    if (i > 0) {
+      expect(
+        after[i].top - after[i - 1].top,
+        closeTo(before[i].top - before[i - 1].top, 0.01),
+      );
+    }
+  }
+}
 
 void main() {
   test(
@@ -106,9 +157,17 @@ void main() {
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.text('展开全文'));
         await tester.pumpAndSettle();
+        final before = messageLines(tester);
         await tester.tap(find.text('展开全文'));
         await tester.pumpAndSettle();
-        expect(find.widgetWithText(SelectableText, message), findsOneWidget);
+        expectSamePreviewLines(before, messageLines(tester));
+        expect(
+          find.descendant(
+            of: find.byType(SelectionArea),
+            matching: find.text(message),
+          ),
+          findsOneWidget,
+        );
         await tester.ensureVisible(find.text('收起'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('收起'));
@@ -188,9 +247,17 @@ void main() {
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.text('展开全文'));
         await tester.pumpAndSettle();
+        final before = messageLines(tester);
         await tester.tap(find.text('展开全文'));
         await tester.pumpAndSettle();
-        expect(find.widgetWithText(SelectableText, message), findsOneWidget);
+        expectSamePreviewLines(before, messageLines(tester));
+        expect(
+          find.descendant(
+            of: find.byType(SelectionArea),
+            matching: find.text(message),
+          ),
+          findsOneWidget,
+        );
         expect(tester.takeException(), isNull);
       },
     );
