@@ -440,8 +440,12 @@ echo
 echo "Building TestFlight IPA app version $build_name, build $build_number"
 
 build_started_marker="$(mktemp -t build-testflight-start.XXXXXX)"
+export_options_plist=""
 cleanup() {
   rm -f "$build_started_marker"
+  if [[ -n "${export_options_plist:-}" ]]; then
+    rm -f "$export_options_plist"
+  fi
   remove_flavor_override
 }
 trap cleanup EXIT
@@ -460,23 +464,25 @@ fi
 
 write_flavor_override
 
+# Keep this array nonempty: macOS Bash 3.2 treats an empty array expansion as
+# an unbound variable under set -u, even when the array was initialized.
+build_args=(
+  --release
+  "--build-name=$build_name"
+  "--build-number=$build_number"
+  "--dart-define=API_BASE_URL=$API_BASE_URL"
+)
+
 export_options_plist="$(mktemp -t bansheng-export-options.XXXXXX.plist)"
 if create_ios_export_options_plist "$export_options_plist"; then
-  export_options_args=(--export-options-plist="$export_options_plist")
+  build_args+=("--export-options-plist=$export_options_plist")
   echo "Using app export profile: $IOS_APP_PROFILE_NAME"
   if [[ -n "${IOS_SHARE_EXTENSION_PROFILE_NAME:-}" ]]; then
     echo "Using Share Extension export profile: $IOS_SHARE_EXTENSION_PROFILE_NAME"
   fi
-else
-  export_options_args=()
 fi
 
-flutter build ipa --release \
-  --build-name="$build_name" \
-  --build-number="$build_number" \
-  --dart-define=API_BASE_URL="$API_BASE_URL" \
-  "${export_options_args[@]}" \
-  "$@"
+flutter build ipa "${build_args[@]}" "$@"
 
 shopt -s nullglob
 ipa_files=("$ROOT_DIR"/build/ios/ipa/*.ipa)
