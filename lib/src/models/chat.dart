@@ -49,6 +49,23 @@ class Conversation {
           : null,
     );
   }
+
+  Conversation copyWithStatus({String? aiStatus, String? aiStatusLabel}) {
+    return Conversation(
+      id: id,
+      userId: userId,
+      agentId: agentId,
+      workspaceId: workspaceId,
+      title: title,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      interactionDays: interactionDays,
+      aiStatus: aiStatus ?? this.aiStatus,
+      aiStatusLabel: aiStatusLabel ?? this.aiStatusLabel,
+      aiActivity: aiActivity,
+      musicCoListening: musicCoListening,
+    );
+  }
 }
 
 class WorkspaceInteractionDay {
@@ -293,6 +310,7 @@ class ChatMessage {
 
   ChatMessage copyWith({
     String? id,
+    String? role,
     Map<String, dynamic>? metadata,
     bool? pending,
     bool? read,
@@ -301,7 +319,7 @@ class ChatMessage {
     return ChatMessage(
       id: id ?? this.id,
       conversationId: conversationId,
-      role: role,
+      role: role ?? this.role,
       content: content,
       createdAt: createdAt,
       metadata: metadata ?? this.metadata,

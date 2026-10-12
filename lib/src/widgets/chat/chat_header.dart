@@ -36,6 +36,8 @@ class _ChatHeader extends StatelessWidget {
     required this.onAvatarDoubleTap,
     required this.onInteractionTap,
     required this.onOpenSidebar,
+    this.onExit,
+    this.onStatusTap,
   });
 
   final String agentName;
@@ -50,6 +52,8 @@ class _ChatHeader extends StatelessWidget {
   final VoidCallback onAvatarDoubleTap;
   final VoidCallback onInteractionTap;
   final VoidCallback onOpenSidebar;
+  final VoidCallback? onExit;
+  final VoidCallback? onStatusTap;
 
   @override
   Widget build(BuildContext context) {
@@ -121,11 +125,22 @@ class _ChatHeader extends StatelessWidget {
                 ),
                 if (statusLabel != null) ...[
                   const SizedBox(width: 6),
-                  _HeaderPill(
-                    foreground: statusColor.foreground,
-                    background: statusColor.background,
-                    label: statusLabel,
-                  ),
+                  if (onStatusTap == null)
+                    _HeaderPill(
+                      foreground: statusColor.foreground,
+                      background: statusColor.background,
+                      label: statusLabel,
+                    )
+                  else
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onStatusTap,
+                      child: _HeaderPill(
+                        foreground: statusColor.foreground,
+                        background: statusColor.background,
+                        label: statusLabel,
+                      ),
+                    ),
                 ],
               ],
             ),
@@ -145,14 +160,32 @@ class _ChatHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          IconButton(
-            tooltip: '更多',
-            onPressed: onOpenSidebar,
-            color: dark ? AppColors.text : null,
-            icon: const Icon(CupertinoIcons.ellipsis, size: 24),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: 28, height: 40),
-          ),
+          if (onExit != null)
+            TextButton(
+              onPressed: onExit,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(48, 40),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                '退出',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: dark ? AppColors.text : const Color(0xFF12171B),
+                ),
+              ),
+            )
+          else
+            IconButton(
+              tooltip: '更多',
+              onPressed: onOpenSidebar,
+              color: dark ? AppColors.text : null,
+              icon: const Icon(CupertinoIcons.ellipsis, size: 24),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 28, height: 40),
+            ),
         ],
       ),
     );

@@ -16,6 +16,18 @@ class VoiceRecordingOverlaySnapshot {
   final ValueListenable<double> amplitude;
 }
 
+class TakeoverChatTarget {
+  const TakeoverChatTarget({
+    required this.takeoverId,
+    required this.conversationId,
+    required this.agentName,
+  });
+
+  final String takeoverId;
+  final String conversationId;
+  final String agentName;
+}
+
 class ChatPage extends StatefulWidget {
   const ChatPage({
     super.key,
@@ -23,6 +35,7 @@ class ChatPage extends StatefulWidget {
     required this.session,
     required this.isActive,
     required this.onOpenSidebar,
+    this.takeover,
     this.onAchievementDetailRequested,
     this.onAchievementOverlayChanged,
     this.onVoiceRecordingOverlayChanged,
@@ -34,6 +47,7 @@ class ChatPage extends StatefulWidget {
   final AuthSession session;
   final bool isActive;
   final VoidCallback onOpenSidebar;
+  final TakeoverChatTarget? takeover;
   final ValueChanged<AchievementItem>? onAchievementDetailRequested;
   final ValueChanged<bool>? onAchievementOverlayChanged;
   final ValueChanged<VoiceRecordingOverlaySnapshot?>?
@@ -234,6 +248,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   ChatSocket? _socket;
   StreamSubscription<WsEnvelope>? _eventSub;
+  StreamSubscription<WsEnvelope>? _takeoverSub;
   StreamSubscription<ChatSocketState>? _stateSub;
   StreamSubscription<void>? _musicCompleteSub;
   StreamSubscription<MusicQuotaReport>? _musicQuotaSub;
@@ -341,7 +356,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final Set<String> _favoriteMusicTrackIds = {};
   final Set<String> _busyMusicFavoriteIds = {};
 
-  String get _conversationId => widget.session.conversationId!;
+  bool get _isTakeover => widget.takeover != null;
+
+  String get _conversationId =>
+      widget.takeover?.conversationId ?? widget.session.conversationId!;
+
+  ChatMessage _seatMessage(ChatMessage message) {
+    if (!_isTakeover) return message;
+    if (message.role == 'user') return message.copyWith(role: 'assistant');
+    if (message.role == 'assistant') return message.copyWith(role: 'user');
+    return message;
+  }
 
   void _bumpComposerShell() {
     _composerShell.value = _composerShell.value + 1;
@@ -634,6 +659,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _scrollController.dispose();
     _inputController.dispose();
     _inputFocus.dispose();
+    if (_isTakeover &&
+        TakeoverInbox.instance.activeTakeoverId == widget.takeover?.takeoverId) {
+      TakeoverInbox.instance.activeTakeoverId = null;
+    }
+    _takeoverSub?.cancel();
     _eventSub?.cancel();
     _stateSub?.cancel();
     _socket?.close();
@@ -765,6 +795,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _transcript.publish();
     _syncVoiceRecordingOverlay();
     widget.onAchievementOverlayChanged?.call(false);
+    if (_isTakeover) {
+      await _bootstrapTakeoverChat();
+      return;
+    }
     await Future.wait([
       _loadLatestMessages(showLoading: true),
       _refreshConversationMeta(),
@@ -776,6 +810,98 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     unawaited(_refreshTaskBar());
     _connectSocket();
     unawaited(_listenForSharedLinks());
+  }
+
+  Future<void> _bootstrapTakeoverChat() async {
+    final target = widget.takeover;
+    if (target == null) return;
+    TakeoverInbox.instance.activeTakeoverId = target.takeoverId;
+    TakeoverInbox.instance.start(
+      baseUrl: widget.api.baseUrl,
+      adminId: widget.session.userId,
+      ticketProvider: widget.api.getTakeoverInboxTicket,
+    );
+    await _takeoverSub?.cancel();
+    _takeoverSub = TakeoverInbox.instance.events.listen(_handleTakeoverInbox);
+    await Future.wait([
+      _loadLatestMessages(showLoading: true),
+      _refreshConversationMeta(),
+    ]);
+    try {
+      await widget.api.markTakeoverRead(target.takeoverId);
+    } catch (_) {}
+  }
+
+  void _handleTakeoverInbox(WsEnvelope envelope) {
+    final target = widget.takeover;
+    if (target == null || !mounted) return;
+    final takeoverId = envelope.data['takeover_id']?.toString();
+    if (takeoverId != target.takeoverId) return;
+    if (envelope.type == 'takeover_user_message') {
+      final messageId = envelope.data['message_id']?.toString() ?? '';
+      if (messageId.isEmpty || _messages.any((item) => item.id == messageId)) {
+        return;
+      }
+      final message = _seatMessage(
+        ChatMessage(
+          id: messageId,
+          conversationId: _conversationId,
+          role: 'user',
+          content: envelope.data['text']?.toString() ?? '',
+          createdAt: DateTime.now(),
+          read: true,
+        ),
+      );
+      _notifyTranscript(() => _messages.add(message));
+      if (_isNearBottomNow()) scrollToLatest();
+      unawaited(widget.api.markTakeoverRead(target.takeoverId));
+    }
+  }
+
+  Future<void> _pickTakeoverStatus() async {
+    final target = widget.takeover;
+    if (target == null) return;
+    const options = [
+      ('idle', '空闲'),
+      ('busy', '忙碌'),
+      ('very_busy', '很忙碌'),
+      ('sleep', '睡眠'),
+    ];
+    final selected = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (popupContext) {
+        return CupertinoActionSheet(
+          title: const Text('显示给用户的状态'),
+          actions: [
+            for (final option in options)
+              CupertinoActionSheetAction(
+                onPressed: () => Navigator.of(popupContext).pop(option.$1),
+                child: Text(option.$2),
+              ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(popupContext).pop(),
+            child: const Text('取消'),
+          ),
+        );
+      },
+    );
+    if (selected == null || !mounted) return;
+    try {
+      await widget.api.setTakeoverStatus(target.takeoverId, selected);
+      final label = options.firstWhere((item) => item.$1 == selected).$2;
+      setState(() {
+        _conversationMeta = _conversationMeta?.copyWithStatus(
+          aiStatus: selected,
+          aiStatusLabel: label,
+        );
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('状态更新失败：${_asMessage(error)}')),
+      );
+    }
   }
 
   void _scheduleConversationMetaRefresh() {
@@ -1088,7 +1214,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           widget.session.token != token) {
         return;
       }
-      final chronological = newestFirst.reversed.toList();
+      final chronological = newestFirst.reversed.map(_seatMessage).toList();
       _notifyTranscript(() {
         if (showLoading) {
           _replaceWithServerMessages(chronological, idsAtStart: idsAtStart);
@@ -1239,7 +1365,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         offset: _loadedServerMessages,
       );
       if (!mounted) return;
-      final chronological = newestFirst.reversed.toList();
+      final chronological = newestFirst.reversed.map(_seatMessage).toList();
       _notifyTranscript(() {
         _prependServerMessages(chronological);
         _hasOlderMessages =
@@ -1651,7 +1777,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         offset: start,
       );
       if (!mounted) return;
-      final chronological = newestFirst.reversed.toList();
+      final chronological = newestFirst.reversed.map(_seatMessage).toList();
       _notifyTranscript(() {
         _messages
           ..clear()
@@ -1685,7 +1811,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       if (!mounted) return;
       _notifyTranscript(() {
-        _messages.insertAll(0, newestFirst.reversed);
+        _messages.insertAll(0, newestFirst.reversed.map(_seatMessage));
         _jumpOldestRank = nextOffset + newestFirst.length - 1;
         _hasMoreOlderJump = newestFirst.length == _jumpExtendStep;
         _loadingOlderJump = false;
@@ -1708,7 +1834,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       if (!mounted) return;
       _notifyTranscript(() {
-        _messages.addAll(newestFirst.reversed);
+        _messages.addAll(newestFirst.reversed.map(_seatMessage));
         _jumpNewestRank = nextOffset;
         _hasMoreNewerJump = nextOffset > 0;
         _loadingNewerJump = false;
@@ -2232,6 +2358,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         );
         break;
       case 'task_state':
+        break;
+      case 'ai_status':
+        final statusCode = payload['ai_status']?.toString();
+        final statusLabel = payload['ai_status_label']?.toString();
+        if (statusCode == null || statusCode.isEmpty) break;
+        _conversationMeta = _conversationMeta?.copyWithStatus(
+          aiStatus: statusCode,
+          aiStatusLabel: statusLabel,
+        );
+        if (widget.isActive) setState(() {});
         break;
       case 'ack':
         final clientId = payload['client_id']?.toString() ?? '';
@@ -3081,7 +3217,66 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _sendingGift = false;
   bool _sendingLocation = false;
 
+  Future<void> _sendTakeoverDisplayCard({
+    required String type,
+    required String title,
+    required String subtitle,
+    required String accent,
+  }) async {
+    final note = await showCupertinoDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        final controller = TextEditingController();
+        return CupertinoAlertDialog(
+          title: Text(title),
+          content: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: CupertinoTextField(
+              controller: controller,
+              placeholder: '写一句给对方看的话',
+            ),
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () => Navigator.of(dialogContext).pop(
+                controller.text.trim().isEmpty ? title : controller.text.trim(),
+              ),
+              child: const Text('发送'),
+            ),
+          ],
+        );
+      },
+    );
+    if (note == null || !mounted) return;
+    _sendText(
+      '',
+      componentCard: ChatComponentCard(
+        type: type,
+        title: title,
+        subtitle: subtitle,
+        body: note,
+        footer: '来自你的伙伴',
+        accent: accent,
+        payload: const {'display_only': true},
+      ),
+    );
+  }
+
   Future<void> _onSendRedPacket() async {
+    if (_isTakeover) {
+      await _sendTakeoverDisplayCard(
+        type: 'red_packet',
+        title: '红包',
+        subtitle: '给你的一点心意',
+        accent: '#FF4D5F',
+      );
+      return;
+    }
     if (_sendingRedPacket) return;
     _sendingRedPacket = true;
     _dismissInputSurfaces();
@@ -3127,6 +3322,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _onSendGift() async {
+    if (_isTakeover) {
+      await _sendTakeoverDisplayCard(
+        type: 'gift',
+        title: '礼物',
+        subtitle: '送你一份小礼物',
+        accent: '#FF8A3D',
+      );
+      return;
+    }
     if (_sendingGift) return;
     _sendingGift = true;
     _dismissInputSurfaces();
@@ -3163,16 +3367,18 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       final card = await LocationConfirmPage.push(context, snapshot: snapshot);
       if (!mounted || card == null) return;
       final payload = card.payload;
-      unawaited(
-        widget.api.saveUserLocation(
-          latitude: (payload['latitude'] as num?)?.toDouble(),
-          longitude: (payload['longitude'] as num?)?.toDouble(),
-          city: payload['city']?.toString(),
-          region: payload['region']?.toString(),
-          country: payload['country']?.toString(),
-          permissionStatus: snapshot.permissionStatus,
-        ),
-      );
+      if (!_isTakeover) {
+        unawaited(
+          widget.api.saveUserLocation(
+            latitude: (payload['latitude'] as num?)?.toDouble(),
+            longitude: (payload['longitude'] as num?)?.toDouble(),
+            city: payload['city']?.toString(),
+            region: payload['region']?.toString(),
+            country: payload['country']?.toString(),
+            permissionStatus: snapshot.permissionStatus,
+          ),
+        );
+      }
       sendComponentMessage('', card);
     } catch (error) {
       if (!mounted) return;
@@ -3246,7 +3452,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
     var paidConfirmed = false;
     final quota = _chatQuota;
-    if (quota != null && quota.freeRemaining <= 0) {
+    if (!_isTakeover && quota != null && quota.freeRemaining <= 0) {
       if (quota.mode == ChatQuotaMode.blocked) {
         // 系统弹框不管键盘是否弹出都完整可见; 先收起键盘避免和弹框抢焦点
         // (之前用底部 SnackBar 兜底提示时, 键盘弹出会把它整个盖住看不见)。
@@ -3793,6 +3999,60 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _pendingVoiceReleaseAction = null;
   }
 
+  Future<void> _deliverTakeoverMessage({
+    required String text,
+    required String clientId,
+    ChatComponentCard? componentCard,
+    List<ChatAttachment> attachments = const [],
+  }) async {
+    final target = widget.takeover;
+    if (target == null) return;
+    try {
+      final messageId = await widget.api.sendTakeoverMessage(
+        target.takeoverId,
+        text: text,
+        componentCard: componentCard?.toJson(),
+        attachments: [
+          for (final item in attachments) item.toJson(),
+        ],
+      );
+      if (!mounted) return;
+      _clearSendTimeout();
+      _patchShellAndTranscript(
+        shell: () => _sending = false,
+        transcript: () {
+          for (var i = 0; i < _messages.length; i += 1) {
+            final message = _messages[i];
+            if (message.id == clientId || message.clientId == clientId) {
+              _messages[i] = message.copyWith(
+                id: messageId.isEmpty ? message.id : messageId,
+                pending: false,
+                read: true,
+              );
+            }
+          }
+        },
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _clearSendTimeout();
+      _patchShellAndTranscript(
+        shell: () => _sending = false,
+        transcript: () {
+          for (var i = 0; i < _messages.length; i += 1) {
+            final message = _messages[i];
+            if (message.id == clientId || message.clientId == clientId) {
+              _messages[i] = message.copyWith(pending: false, failed: true);
+            }
+          }
+        },
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('发送失败：${_asMessage(error)}')),
+      );
+    }
+  }
+
   void _sendText(
     String text, {
     ChatComponentCard? componentCard,
@@ -3842,6 +4102,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _armSendTimeout(clientId);
     if (clearComposer && attachments.isEmpty && !panelOpen) {
       _inputFocus.requestFocus();
+    }
+    if (_isTakeover) {
+      unawaited(
+        _deliverTakeoverMessage(
+          text: text,
+          clientId: clientId,
+          componentCard: componentCard,
+          attachments: attachments,
+        ),
+      );
+      return;
     }
 
     final sent =
@@ -4312,7 +4583,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             children: [
               RepaintBoundary(
                 child: _ChatHeader(
-                  agentName: widget.session.agentName ?? 'Companion',
+                  agentName: _isTakeover
+                      ? widget.takeover!.agentName
+                      : (widget.session.agentName ?? 'Companion'),
                   topInset: safeTop,
                   interactionDays: _conversationMeta?.interactionDays,
                   aiStatus: _conversationMeta?.aiStatus,
@@ -4322,9 +4595,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   isMusicPlaying:
                       _conversationMeta?.musicCoListening?.isPlaying ?? false,
                   onMusicTap: _openActiveMusic,
-                  onAvatarDoubleTap: _showDemoAchievementNotice,
-                  onInteractionTap: _openInteractionDetail,
+                  onAvatarDoubleTap: _isTakeover
+                      ? () {}
+                      : _showDemoAchievementNotice,
+                  onInteractionTap: _isTakeover
+                      ? () {}
+                      : _openInteractionDetail,
                   onOpenSidebar: widget.onOpenSidebar,
+                  onExit: _isTakeover
+                      ? () => Navigator.of(context).maybePop()
+                      : null,
+                  onStatusTap: _isTakeover ? _pickTakeoverStatus : null,
                 ),
               ),
               if (_taskBarActivity != null)

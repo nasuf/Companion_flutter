@@ -39,6 +39,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
   Timer? _routeUncoverTimer;
   StreamSubscription<CheckinNotificationPayload>? _notificationSub;
   StreamSubscription<AppNotificationEvent>? _appNotificationSub;
+  StreamSubscription<WsEnvelope>? _takeoverInboxSub;
 
   bool get _chatContentActive =>
       _index == 0 &&
@@ -56,6 +57,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
       _handleAppNotification,
     );
     PushNotificationService.instance.setRouteContext(widget.session);
+    _startTakeoverInbox();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final payload = CheckinNotificationService.instance.takePendingPayload();
       if (payload != null && mounted) _openCheckinFromNotification(payload);
@@ -117,6 +119,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
     appRouteObserver.unsubscribe(this);
     _notificationSub?.cancel();
     _appNotificationSub?.cancel();
+    _takeoverInboxSub?.cancel();
     super.dispose();
   }
 
@@ -314,10 +317,96 @@ class _MainShellState extends State<MainShell> with RouteAware {
     _notificationOverlay = null;
   }
 
+  void _startTakeoverInbox() {
+    if (widget.session.role != UserRole.admin) return;
+    TakeoverInbox.instance.start(
+      baseUrl: widget.api.baseUrl,
+      adminId: widget.session.userId,
+      ticketProvider: widget.api.getTakeoverInboxTicket,
+    );
+    _takeoverInboxSub?.cancel();
+    _takeoverInboxSub = TakeoverInbox.instance.events.listen((envelope) {
+      if (!mounted || envelope.type != 'takeover_user_message') return;
+      final takeoverId = envelope.data['takeover_id']?.toString() ?? '';
+      if (takeoverId.isEmpty ||
+          TakeoverInbox.instance.activeTakeoverId == takeoverId) {
+        return;
+      }
+      AppNotificationService.instance.emit(
+        AppNotificationEvent(
+          id: envelope.data['message_id']?.toString() ?? takeoverId,
+          type: 'admin_takeover_message',
+          title: '用户发来消息',
+          body: envelope.data['text']?.toString() ?? '你收到了一条新消息',
+          route: 'admin_takeover_chat',
+          source: AppNotificationSource.inApp,
+          payload: Map<String, dynamic>.from(envelope.data),
+        ),
+      );
+    });
+  }
+
+  Future<void> _openTakeoverFromNotification(AppNotificationEvent event) async {
+    final takeoverId = event.takeoverId;
+    if (takeoverId == null || takeoverId.isEmpty) return;
+    if (event.isTakeoverReview) {
+      await Navigator.of(context).push(
+        CompanionPageRoute<void>(
+          builder: (_) => AdminTakeoverReviewPage(
+            api: widget.api,
+            session: widget.session,
+            takeoverId: takeoverId,
+          ),
+        ),
+      );
+      return;
+    }
+    TakeoverReview review;
+    try {
+      review = await widget.api.getTakeover(takeoverId);
+    } catch (_) {
+      return;
+    }
+    final conversationId = review.conversationId;
+    if (!mounted || conversationId == null || conversationId.isEmpty) return;
+    if (review.status != 'active' || review.ownerAdminId != widget.session.userId) {
+      await Navigator.of(context).push(
+        CompanionPageRoute<void>(
+          builder: (_) => AdminTakeoverReviewPage(
+            api: widget.api,
+            session: widget.session,
+            takeoverId: takeoverId,
+          ),
+        ),
+      );
+      return;
+    }
+    await Navigator.of(context).push(
+      CompanionPageRoute<void>(
+        builder: (_) => ChatPage(
+          api: widget.api,
+          session: widget.session,
+          isActive: true,
+          onOpenSidebar: () {},
+          takeover: TakeoverChatTarget(
+            takeoverId: review.id,
+            conversationId: conversationId,
+            agentName: review.agentName,
+          ),
+        ),
+      ),
+    );
+  }
+
   void _openAppNotification(AppNotificationEvent event) {
     if (!mounted) return;
     _dismissInAppNotification();
     _setChatSidebarOpen(false);
+    if (widget.session.role == UserRole.admin &&
+        (event.isTakeoverReview || event.isTakeoverChat)) {
+      unawaited(_openTakeoverFromNotification(event));
+      return;
+    }
     Navigator.of(context).popUntil((route) => route.isFirst);
     if (event.isCheckin) {
       unawaited(

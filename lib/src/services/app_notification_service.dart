@@ -37,6 +37,12 @@ class AppNotificationEvent {
   bool get isCapsule => route == 'capsules' || type == 'capsule_ready';
   bool get isAchievement =>
       route == 'achievement' || type == 'achievement_unlocked';
+  bool get isTakeoverReview =>
+      route == 'admin_takeover_review' || type == 'admin_new_user';
+  bool get isTakeoverChat =>
+      route == 'admin_takeover_chat' || type == 'admin_takeover_message';
+
+  String? get takeoverId => payload['takeover_id']?.toString();
 
   factory AppNotificationEvent.fromPushPayload(PushNotificationPayload value) {
     final data = value.data;

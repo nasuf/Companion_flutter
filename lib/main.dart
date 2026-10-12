@@ -34,6 +34,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'chat_socket.dart';
+import 'takeover_inbox.dart';
 import 'task_waiting.dart';
 import 'src/widgets/chat/task_waiting_card.dart';
 import 'companion_api.dart';
@@ -76,6 +77,7 @@ part 'src/app/auth_session_store.dart';
 part 'src/auth/wechat_login_service.dart';
 part 'src/screens/admin/admin_feedback_page.dart';
 part 'src/screens/admin/admin_tools_page.dart';
+part 'src/screens/admin/admin_takeover_page.dart';
 part 'src/screens/admin/admin_users_page.dart';
 part 'src/screens/admin/admin_agent_tts_page.dart';
 part 'src/screens/admin/admin_offline_test_page.dart';

@@ -15,6 +15,7 @@ part 'src/api/games_api.dart';
 part 'src/api/music_api.dart';
 part 'src/api/store_api.dart';
 part 'src/api/capsule_api.dart';
+part 'src/api/takeover_api.dart';
 
 class ApiException implements Exception {
   const ApiException(this.statusCode, this.message, {this.reason});
@@ -550,7 +551,8 @@ class CompanionApi extends _CompanionApiCore
         _CompanionApiGames,
         _CompanionApiMusic,
         _CompanionApiStore,
-        _CompanionApiCapsule {
+        _CompanionApiCapsule,
+        _CompanionApiTakeover {
   CompanionApi({required super.baseUrl});
 
   /// Uses the shared UTF-8 multipart uploader so Chinese voice names and

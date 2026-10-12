@@ -543,6 +543,18 @@ class _AdminToolsPageState extends State<AdminToolsPage>
     super.dispose();
   }
 
+  Future<void> _openTakeoverInbox() async {
+    widget.api.authToken = widget.session.token;
+    await Navigator.of(context).push(
+      CompanionPageRoute<void>(
+        builder: (_) => AdminTakeoverListPage(
+          api: widget.api,
+          session: widget.session,
+        ),
+      ),
+    );
+  }
+
   Future<void> _openUserManagement() async {
     await Navigator.of(context).push(
       CompanionPageRoute<void>(
@@ -1075,6 +1087,13 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                               subtitle: '查看用户详情、对话记录与管理员权限',
                               accent: const Color(0xFF1FA97A),
                               onTap: _openUserManagement,
+                            ),
+                            _ProfileSettingRowV6(
+                              icon: CupertinoIcons.chat_bubble_2_fill,
+                              title: '用户聊天接管',
+                              subtitle: '待处理新用户，以及我已接管的会话',
+                              accent: const Color(0xFF2D73FF),
+                              onTap: _openTakeoverInbox,
                             ),
                           ],
                         ),
