@@ -40,16 +40,23 @@ class _ProfileAdminButton extends StatelessWidget {
                 ),
               ],
             ),
-            child: Text(
-              '管理员入口',
-              maxLines: 1,
-              style: TextStyle(
-                color: isDark ? colors.accentDeep : colors.accent,
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0,
-                decoration: TextDecoration.none,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '管理员入口',
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: isDark ? colors.accentDeep : colors.accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const TakeoverUnreadBadge(),
+              ],
             ),
           ),
         ),
@@ -1093,7 +1100,8 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                               title: '用户聊天接管',
                               subtitle: '待处理新用户，以及我已接管的会话',
                               accent: const Color(0xFF2D73FF),
-                              onTap: _openTakeoverInbox,
+                              trailing: const TakeoverUnreadBadge(),
+              onTap: _openTakeoverInbox,
                             ),
                           ],
                         ),

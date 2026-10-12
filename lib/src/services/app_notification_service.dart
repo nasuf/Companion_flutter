@@ -53,7 +53,9 @@ class AppNotificationEvent {
       title: data['title']?.toString() ?? _defaultTitle(type),
       body: data['body']?.toString() ?? _defaultBody(type),
       route: value.route,
-      source: AppNotificationSource.remotePush,
+      source: data['_foreground_delivery'] == true
+          ? AppNotificationSource.inApp
+          : AppNotificationSource.remotePush,
       conversationId: data['conversation_id']?.toString(),
       workspaceId: data['workspace_id']?.toString(),
       messageId: data['message_id']?.toString(),
@@ -104,6 +106,10 @@ class AppNotificationEvent {
         data['message_id'] ??
         data['trigger_id'] ??
         data['memory_id'];
+    final takeover = data['takeover_id'];
+    if (type == 'admin_new_user' && takeover != null) {
+      return takeover.toString();
+    }
     final value = explicit?.toString();
     if (value != null && value.isNotEmpty) return value;
     return '$type-${DateTime.now().microsecondsSinceEpoch}';

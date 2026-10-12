@@ -183,6 +183,21 @@ import UserNotifications
 
   override func userNotificationCenter(
     _ center: UNUserNotificationCenter,
+    willPresent notification: UNNotification,
+    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+  ) {
+    let payload = normalizeNotificationPayload(notification.request.content.userInfo)
+    let type = payload["type"] as? String
+    if (type == "admin_new_user" || type == "admin_takeover_message"), let channel = pushChannel {
+      channel.invokeMethod("remoteNotificationForeground", arguments: payload)
+      completionHandler([])
+      return
+    }
+    super.userNotificationCenter(center, willPresent: notification, withCompletionHandler: completionHandler)
+  }
+
+  override func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
     didReceive response: UNNotificationResponse,
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {

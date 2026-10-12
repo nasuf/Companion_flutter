@@ -135,6 +135,15 @@ class PushNotificationService with WidgetsBindingObserver {
           _emitPayload(Map<String, dynamic>.from(args));
         }
         break;
+      case 'remoteNotificationForeground':
+        final args = call.arguments;
+        if (args is Map) {
+          _emitPayload({
+            ...Map<String, dynamic>.from(args),
+            '_foreground_delivery': true,
+          });
+        }
+        break;
       case 'apnsRegistrationFailed':
         debugPrint('[push] APNs registration failed: ${call.arguments}');
         break;

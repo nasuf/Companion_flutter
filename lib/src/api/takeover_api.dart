@@ -95,12 +95,29 @@ class TakeoverReview {
   }
 }
 
+class TakeoverUnreadSummary {
+  const TakeoverUnreadSummary(this.count, this.sampledAt);
+  final int count;
+  final DateTime sampledAt;
+}
+
 mixin _CompanionApiTakeover on _CompanionApiCore {
+  Future<TakeoverUnreadSummary> getTakeoverUnreadSummary() async {
+    final json =
+        await _request('GET', '/admin-api/takeovers/unread-summary')
+            as Map<String, dynamic>;
+    final count = json['unread_count'];
+    final sampled = DateTime.tryParse(json['sampled_at']?.toString() ?? '');
+    if (count is! int || count < 0 || sampled == null) {
+      throw const ApiException(502, '未读信息暂时不可用');
+    }
+    return TakeoverUnreadSummary(count, sampled);
+  }
+
   Future<List<TakeoverListItem>> listTakeovers(String scope) async {
-    final json = await _request(
-      'GET',
-      '/admin-api/takeovers?scope=$scope',
-    ) as Map<String, dynamic>;
+    final json =
+        await _request('GET', '/admin-api/takeovers?scope=$scope')
+            as Map<String, dynamic>;
     final items = json['items'];
     if (items is! List) return const [];
     return [
@@ -111,10 +128,12 @@ mixin _CompanionApiTakeover on _CompanionApiCore {
   }
 
   Future<TakeoverReview> getTakeover(String takeoverId) async {
-    final json = await _request(
-      'GET',
-      '/admin-api/takeovers/${Uri.encodeComponent(takeoverId)}',
-    ) as Map<String, dynamic>;
+    final json =
+        await _request(
+              'GET',
+              '/admin-api/takeovers/${Uri.encodeComponent(takeoverId)}',
+            )
+            as Map<String, dynamic>;
     return TakeoverReview.fromJson(json);
   }
 
@@ -126,25 +145,27 @@ mixin _CompanionApiTakeover on _CompanionApiCore {
   }
 
   Future<TakeoverReview> claimTakeover(String takeoverId) async {
-    final json = await _request(
-      'POST',
-      '/admin-api/takeovers/${Uri.encodeComponent(takeoverId)}/claim',
-    ) as Map<String, dynamic>;
+    final json =
+        await _request(
+              'POST',
+              '/admin-api/takeovers/${Uri.encodeComponent(takeoverId)}/claim',
+            )
+            as Map<String, dynamic>;
     return TakeoverReview.fromJson(json);
   }
 
-  Future<void> markTakeoverRead(String takeoverId) async {
+  Future<void> markTakeoverRead(String takeoverId, String messageId) async {
     await _request(
       'POST',
       '/admin-api/takeovers/${Uri.encodeComponent(takeoverId)}/read',
+      body: {'message_id': messageId},
     );
   }
 
   Future<String> getTakeoverInboxTicket() async {
-    final json = await _request(
-      'POST',
-      '/admin-api/takeovers/inbox-ticket',
-    ) as Map<String, dynamic>;
+    final json =
+        await _request('POST', '/admin-api/takeovers/inbox-ticket')
+            as Map<String, dynamic>;
     final ticket = json['ticket'];
     if (ticket is! String || ticket.isEmpty) {
       throw const ApiException(502, '接管通道暂时不可用');
@@ -156,19 +177,17 @@ mixin _CompanionApiTakeover on _CompanionApiCore {
     String takeoverId, {
     required String text,
     String? clientId,
-    Map<String, dynamic>? componentCard,
-    List<Map<String, dynamic>> attachments = const [],
   }) async {
-    final json = await _request(
-      'POST',
-      '/admin-api/takeovers/${Uri.encodeComponent(takeoverId)}/messages',
-      body: {
-        'text': text,
-        if (clientId != null) 'client_id': clientId,
-        if (componentCard != null) 'component_card': componentCard,
-        'attachments': attachments,
-      },
-    ) as Map<String, dynamic>;
+    final json =
+        await _request(
+              'POST',
+              '/admin-api/takeovers/${Uri.encodeComponent(takeoverId)}/messages',
+              body: {
+                'text': text,
+                if (clientId != null) 'client_id': clientId,
+              },
+            )
+            as Map<String, dynamic>;
     return json['message_id']?.toString() ?? '';
   }
 

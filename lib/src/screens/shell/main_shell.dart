@@ -73,6 +73,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
       _voiceRecordingOverlay = null;
     }
     if (oldWidget.session != widget.session) {
+      _startTakeoverInbox();
       PushNotificationService.instance.setRouteContext(widget.session);
     }
   }
@@ -120,6 +121,8 @@ class _MainShellState extends State<MainShell> with RouteAware {
     _notificationSub?.cancel();
     _appNotificationSub?.cancel();
     _takeoverInboxSub?.cancel();
+    TakeoverUnreadController.instance.clear();
+    unawaited(TakeoverInbox.instance.stop());
     super.dispose();
   }
 
@@ -277,6 +280,16 @@ class _MainShellState extends State<MainShell> with RouteAware {
       _openAppNotification(event);
       return;
     }
+    if (event.isTakeoverChat || event.isTakeoverReview) {
+      if (widget.session.role != UserRole.admin) return;
+      if (!_seenTakeoverNotifications.add(event.id)) return;
+      if (_seenTakeoverNotifications.length > 200) {
+        _seenTakeoverNotifications.remove(_seenTakeoverNotifications.first);
+      }
+      unawaited(TakeoverUnreadController.instance.refresh());
+      _showInAppNotification(event);
+      return;
+    }
     if (event.isChat && !_chatContentActive) {
       _showInAppNotification(event);
     }
@@ -317,8 +330,19 @@ class _MainShellState extends State<MainShell> with RouteAware {
     _notificationOverlay = null;
   }
 
+  final Set<String> _seenTakeoverNotifications = {};
+
   void _startTakeoverInbox() {
-    if (widget.session.role != UserRole.admin) return;
+    if (widget.session.role != UserRole.admin) {
+      TakeoverUnreadController.instance.clear();
+      _takeoverInboxSub?.cancel();
+      unawaited(TakeoverInbox.instance.stop());
+      return;
+    }
+    TakeoverUnreadController.instance.configure(
+      widget.api,
+      widget.session.userId,
+    );
     TakeoverInbox.instance.start(
       baseUrl: widget.api.baseUrl,
       adminId: widget.session.userId,
@@ -326,19 +350,28 @@ class _MainShellState extends State<MainShell> with RouteAware {
     );
     _takeoverInboxSub?.cancel();
     _takeoverInboxSub = TakeoverInbox.instance.events.listen((envelope) {
-      if (!mounted || envelope.type != 'takeover_user_message') return;
-      final takeoverId = envelope.data['takeover_id']?.toString() ?? '';
-      if (takeoverId.isEmpty ||
-          TakeoverInbox.instance.activeTakeoverId == takeoverId) {
+      if (!mounted ||
+          !{
+            'takeover_user_message',
+            'admin_new_user',
+          }.contains(envelope.type)) {
         return;
       }
+      final takeoverId = envelope.data['takeover_id']?.toString() ?? '';
+      if (takeoverId.isEmpty) return;
+      final registration = envelope.type == 'admin_new_user';
       AppNotificationService.instance.emit(
         AppNotificationEvent(
           id: envelope.data['message_id']?.toString() ?? takeoverId,
-          type: 'admin_takeover_message',
-          title: '用户发来消息',
-          body: envelope.data['text']?.toString() ?? '你收到了一条新消息',
-          route: 'admin_takeover_chat',
+          type: registration ? 'admin_new_user' : 'admin_takeover_message',
+          title: registration
+              ? '新用户注册'
+              : (envelope.data['user_name']?.toString() ?? '用户'),
+          body:
+              envelope.data['preview']?.toString() ??
+              envelope.data['body']?.toString() ??
+              '你收到了一条新消息',
+          route: registration ? 'admin_takeover_review' : 'admin_takeover_chat',
           source: AppNotificationSource.inApp,
           payload: Map<String, dynamic>.from(envelope.data),
         ),
@@ -369,7 +402,8 @@ class _MainShellState extends State<MainShell> with RouteAware {
     }
     final conversationId = review.conversationId;
     if (!mounted || conversationId == null || conversationId.isEmpty) return;
-    if (review.status != 'active' || review.ownerAdminId != widget.session.userId) {
+    if (review.status != 'active' ||
+        review.ownerAdminId != widget.session.userId) {
       await Navigator.of(context).push(
         CompanionPageRoute<void>(
           builder: (_) => AdminTakeoverReviewPage(

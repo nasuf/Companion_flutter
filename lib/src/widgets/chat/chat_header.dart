@@ -38,9 +38,11 @@ class _ChatHeader extends StatelessWidget {
     required this.onOpenSidebar,
     this.onExit,
     this.onStatusTap,
+    this.showInteraction = true,
   });
 
   final String agentName;
+  final bool showInteraction;
   final double topInset;
   final int? interactionDays;
   final String? aiStatus;
@@ -146,20 +148,21 @@ class _ChatHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onInteractionTap,
-            child: Tooltip(
-              message: interactionDays == null
-                  ? '连续互动天数'
-                  : '连续互动 $interactionDays 天',
-              child: _InteractionMarkIcon(
-                size: 40,
-                stage: interactionFlameStage(interactionDays ?? 0),
+          if (showInteraction)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onInteractionTap,
+              child: Tooltip(
+                message: interactionDays == null
+                    ? '连续互动天数'
+                    : '连续互动 $interactionDays 天',
+                child: _InteractionMarkIcon(
+                  size: 40,
+                  stage: interactionFlameStage(interactionDays ?? 0),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
+          if (showInteraction) const SizedBox(width: 12),
           if (onExit != null)
             TextButton(
               onPressed: onExit,

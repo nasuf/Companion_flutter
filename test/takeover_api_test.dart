@@ -5,50 +5,39 @@ import 'package:companion_flutter/companion_api.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test(
-    'human reply retries keep the message identity and resource IDs',
-    () async {
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      final requests = <Map<String, dynamic>>[];
-      final subscription = server.listen((request) async {
-        expect(
-          request.headers.value('authorization'),
-          'Bearer synthetic-admin',
-        );
-        expect(request.uri.path, '/admin-api/takeovers/case/messages');
-        final body =
-            jsonDecode(await utf8.decoder.bind(request).join())
-                as Map<String, dynamic>;
-        requests.add(body);
-        request.response.headers.contentType = ContentType.json;
-        request.response.write(jsonEncode({'message_id': 'saved-message'}));
-        await request.response.close();
-      });
-      addTearDown(() async {
-        await subscription.cancel();
-        await server.close(force: true);
-      });
-      final api = CompanionApi(baseUrl: 'http://127.0.0.1:${server.port}')
-        ..authToken = 'synthetic-admin';
-      for (var attempt = 0; attempt < 2; attempt++) {
-        final id = await api.sendTakeoverMessage(
-          'case',
-          text: 'hello',
-          clientId: 'stable-retry-id',
-          attachments: [
-            {'id': 'owned-image'},
-          ],
-        );
-        expect(id, 'saved-message');
-      }
-      expect(requests, hasLength(2));
-      expect(requests[0], requests[1]);
-      expect(requests[0]['client_id'], 'stable-retry-id');
-      expect(requests[0]['attachments'], [
-        {'id': 'owned-image'},
-      ]);
-    },
-  );
+  test('human reply retries keep the message identity', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final requests = <Map<String, dynamic>>[];
+    final subscription = server.listen((request) async {
+      expect(request.headers.value('authorization'), 'Bearer synthetic-admin');
+      expect(request.uri.path, '/admin-api/takeovers/case/messages');
+      final body =
+          jsonDecode(await utf8.decoder.bind(request).join())
+              as Map<String, dynamic>;
+      requests.add(body);
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(jsonEncode({'message_id': 'saved-message'}));
+      await request.response.close();
+    });
+    addTearDown(() async {
+      await subscription.cancel();
+      await server.close(force: true);
+    });
+    final api = CompanionApi(baseUrl: 'http://127.0.0.1:${server.port}')
+      ..authToken = 'synthetic-admin';
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final id = await api.sendTakeoverMessage(
+        'case',
+        text: 'hello',
+        clientId: 'stable-retry-id',
+      );
+      expect(id, 'saved-message');
+    }
+    expect(requests, hasLength(2));
+    expect(requests[0], requests[1]);
+    expect(requests[0]['client_id'], 'stable-retry-id');
+    expect(requests[0].containsKey('attachments'), isFalse);
+  });
 
   test(
     'takeover list preserves state and awaiting-agent claim availability',

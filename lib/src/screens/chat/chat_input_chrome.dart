@@ -117,7 +117,9 @@ class _ChatInputChromeLayerState extends State<_ChatInputChromeLayer> {
     final occupancyPanelHeight = _host._panelHeightFor(occupancyPanel);
     final composerHeight = _host._composerHeightForWidth();
     final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
-    final tabBarLift = _ChatPageState._tabBarContentHeight + safeBottom;
+    final tabBarLift =
+        (_host._isTakeover ? 0.0 : _ChatPageState._tabBarContentHeight) +
+        safeBottom;
     final panelVisible = paintedPanel != ComposerPanel.none;
     final panelSurfaceHeight =
         ChatScrollPolicy.keepPanelOccupancy(
@@ -164,6 +166,7 @@ class _ChatInputChromeLayerState extends State<_ChatInputChromeLayer> {
                   bottom: 0,
                   child: RepaintBoundary(
                     child: _Composer(
+                      textOnly: _host._isTakeover,
                       controller: _host._inputController,
                       focusNode: _host._inputFocus,
                       height: composerHeight,

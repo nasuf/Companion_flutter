@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'models.dart';
+import 'companion_api.dart';
 import 'socket_ticket.dart';
 
 /// Admin-only inbox. It never connects to `/ws/{conversationId}`.
@@ -35,6 +36,12 @@ class TakeoverInbox {
       return;
     }
     _baseUrl = baseUrl;
+    _generation++;
+    final previous = _socket;
+    _socket = null;
+    if (previous != null) unawaited(previous.close(1000, 'replaced'));
+    _pingTimer?.cancel();
+    _reconnectTimer?.cancel();
     _adminId = adminId;
     _ticketProvider = ticketProvider;
     _disposed = false;
@@ -81,6 +88,12 @@ class TakeoverInbox {
         return;
       }
       _socket = socket;
+      _events.add(
+        WsEnvelope.fromJson({
+          'type': 'inbox_connected',
+          'data': <String, dynamic>{},
+        }),
+      );
       _pingTimer?.cancel();
       _pingTimer = Timer.periodic(const Duration(seconds: 25), (_) {
         if (socket.readyState == WebSocket.open) {
@@ -90,11 +103,20 @@ class TakeoverInbox {
       socket.listen(
         (message) {
           if (_disposed || _socket != socket) return;
-          final decoded = jsonDecode(message is String ? message : utf8.decode(message));
+          dynamic decoded;
+          try {
+            decoded = jsonDecode(
+              message is String ? message : utf8.decode(message),
+            );
+          } on FormatException {
+            return;
+          }
           if (decoded is Map<String, dynamic>) {
             _events.add(WsEnvelope.fromJson(decoded));
           } else if (decoded is Map) {
-            _events.add(WsEnvelope.fromJson(Map<String, dynamic>.from(decoded)));
+            _events.add(
+              WsEnvelope.fromJson(Map<String, dynamic>.from(decoded)),
+            );
           }
         },
         onDone: () {
@@ -105,11 +127,16 @@ class TakeoverInbox {
         },
         cancelOnError: false,
       );
+    } on ApiException catch (error) {
+      if (generation != _generation) return;
+      if (error.statusCode == 401 || error.statusCode == 403) return;
+      _scheduleReconnect();
     } on SocketTicketException catch (error) {
+      if (generation != _generation) return;
       if (error.statusCode == 401 || error.statusCode == 403) return;
       _scheduleReconnect();
     } catch (_) {
-      _scheduleReconnect();
+      if (generation == _generation) _scheduleReconnect();
     }
   }
 

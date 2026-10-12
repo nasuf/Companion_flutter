@@ -67,6 +67,7 @@ class _Composer extends StatelessWidget {
     required this.onPreviewLink,
     required this.onPasteText,
     this.freeMessagesRemaining,
+    this.textOnly = false,
   });
 
   final TextEditingController controller;
@@ -102,6 +103,7 @@ class _Composer extends StatelessWidget {
   /// 用完就不再显示 (不需要额外变色/文案, 消失本身就是"进入正常发送"的信号)。
   /// null 表示不在免费额度阶段 (VIP 月度 5200 太大, 不值得展示, 见调用侧)。
   final int? freeMessagesRemaining;
+  final bool textOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -144,12 +146,13 @@ class _Composer extends StatelessWidget {
             // bottom of a multi-line input instead of floating to its centre.
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              _VoiceInputToggleButton(
-                enabled: !voiceActive,
-                voiceMode: voiceInputMode,
-                onTap: onToggleVoiceInput,
-              ),
-              const SizedBox(width: 10),
+              if (!textOnly)
+                _VoiceInputToggleButton(
+                  enabled: !voiceActive,
+                  voiceMode: voiceInputMode,
+                  onTap: onToggleVoiceInput,
+                ),
+              if (!textOnly) const SizedBox(width: 10),
               Expanded(
                 child: voiceInputMode
                     ? _VoiceHoldToTalkButton(
@@ -256,20 +259,21 @@ class _Composer extends StatelessWidget {
                       ),
               ),
               const SizedBox(width: 10),
-              _RoundIconButton(
-                tooltip: activePanel == ComposerPanel.emoji ? '键盘' : '表情',
-                icon: activePanel == ComposerPanel.emoji
-                    ? CupertinoIcons.keyboard
-                    : CupertinoIcons.smiley,
-                selected: activePanel == ComposerPanel.emoji,
-                green: activePanel == ComposerPanel.emoji,
-                onTap: voiceActive
-                    ? null
-                    : activePanel == ComposerPanel.emoji
-                    ? onShowKeyboard
-                    : onToggleEmoji,
-              ),
-              const SizedBox(width: 10),
+              if (!textOnly)
+                _RoundIconButton(
+                  tooltip: activePanel == ComposerPanel.emoji ? '键盘' : '表情',
+                  icon: activePanel == ComposerPanel.emoji
+                      ? CupertinoIcons.keyboard
+                      : CupertinoIcons.smiley,
+                  selected: activePanel == ComposerPanel.emoji,
+                  green: activePanel == ComposerPanel.emoji,
+                  onTap: voiceActive
+                      ? null
+                      : activePanel == ComposerPanel.emoji
+                      ? onShowKeyboard
+                      : onToggleEmoji,
+                ),
+              if (!textOnly) const SizedBox(width: 10),
               AnimatedBuilder(
                 animation: controller,
                 builder: (context, _) {
@@ -323,6 +327,8 @@ class _Composer extends StatelessWidget {
                                     ),
                             ),
                           )
+                        : textOnly
+                        ? const SizedBox.shrink()
                         : _RoundIconButton(
                             tooltip: '更多',
                             icon: activePanel == ComposerPanel.more

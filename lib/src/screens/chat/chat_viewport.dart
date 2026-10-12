@@ -111,7 +111,9 @@ class _ChatMessageViewportState extends State<_ChatMessageViewport> {
                       highlightQuery: transcript.highlightQuery,
                       highlightMessageKey: host._highlightMessageKey,
                       agentAvatarUrl: host._agentAvatarUrl,
-                      userAvatarUrl: host.widget.session.userAvatarUrl,
+                      userAvatarUrl: host._isTakeover
+                          ? null
+                          : host.widget.session.userAvatarUrl,
                       authToken: host.widget.api.authToken,
                       apiBaseUrl: host.widget.api.baseUrl,
                       onRetryFailed: host._retryFailedMessage,
@@ -152,7 +154,9 @@ class _TranscriptImeSlide extends StatelessWidget {
               ? host._panelHeightFor(occupancyPanel) + safeBottom
               : 0.0;
           final restLift = ChatScrollPolicy.restLift(
-            tabBarLift: _ChatPageState._tabBarContentHeight + safeBottom,
+            tabBarLift:
+                (host._isTakeover ? 0.0 : _ChatPageState._tabBarContentHeight) +
+                safeBottom,
             panelLift: panelLift,
           );
           final composerBottom = bottomInset > 0
@@ -175,7 +179,9 @@ class _TranscriptImeSlide extends StatelessWidget {
                   left: 0,
                   right: 0,
                   bottom: composerHeight + restLift,
-                  child: const IgnorePointer(child: _AiGeneratedHint()),
+                  child: host._isTakeover
+                      ? const SizedBox.shrink()
+                      : const IgnorePointer(child: _AiGeneratedHint()),
                 ),
                 if (child != null) child,
               ],
@@ -212,7 +218,9 @@ class _ComposerRestGap extends StatelessWidget {
             ? host._panelHeightFor(occupancyPanel) + safeBottom
             : 0.0;
         final restLift = ChatScrollPolicy.restLift(
-          tabBarLift: _ChatPageState._tabBarContentHeight + safeBottom,
+          tabBarLift:
+              (host._isTakeover ? 0.0 : _ChatPageState._tabBarContentHeight) +
+              safeBottom,
           panelLift: panelLift,
         );
         final gap = ChatScrollPolicy.restComposerGap(

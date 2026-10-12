@@ -1,5 +1,52 @@
 part of 'package:companion_flutter/main.dart';
 
+class TakeoverUnreadBadge extends StatelessWidget {
+  const TakeoverUnreadBadge({super.key, this.controller});
+  final TakeoverUnreadController? controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = controller ?? TakeoverUnreadController.instance;
+    return ListenableBuilder(
+      listenable: state,
+      builder: (context, _) {
+        final count = state.count;
+        if (!state.configured || (count == 0 && !state.stale)) {
+          return const SizedBox.shrink();
+        }
+        return Tooltip(
+          message: state.stale
+              ? '未读信息刷新失败，请进入列表重试'
+              : count == null
+              ? '未读信息正在加载'
+              : '$count 条未读消息',
+          child: Container(
+            key: const ValueKey('takeover-unread-badge'),
+            constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE24B4B),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              count == null
+                  ? (state.stale ? '!' : '…')
+                  : '$count${state.stale ? '!' : ''}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class AdminTakeoverListPage extends StatefulWidget {
   const AdminTakeoverListPage({
     super.key,
@@ -14,8 +61,11 @@ class AdminTakeoverListPage extends StatefulWidget {
   State<AdminTakeoverListPage> createState() => _AdminTakeoverListPageState();
 }
 
-class _AdminTakeoverListPageState extends State<AdminTakeoverListPage> {
-  var _scope = 'pending';
+class _AdminTakeoverListPageState extends State<AdminTakeoverListPage>
+    with WidgetsBindingObserver {
+  var _scope = 'mine';
+  int _loadGeneration = 0;
+  StreamSubscription<WsEnvelope>? _inboxEvents;
   var _loading = true;
   String? _error;
   List<TakeoverListItem> _items = const [];
@@ -24,23 +74,41 @@ class _AdminTakeoverListPageState extends State<AdminTakeoverListPage> {
   void initState() {
     super.initState();
     widget.api.authToken = widget.session.token;
+    WidgetsBinding.instance.addObserver(this);
+    _inboxEvents = TakeoverInbox.instance.events.listen((event) {
+      if (event.type != 'pong') unawaited(_load());
+    });
     _load();
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _inboxEvents?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_load());
+  }
+
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
+    final scope = _scope;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final items = await widget.api.listTakeovers(_scope);
-      if (!mounted) return;
+      final items = await widget.api.listTakeovers(scope);
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _items = items;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = error.toString();
         _loading = false;
@@ -89,26 +157,60 @@ class _AdminTakeoverListPageState extends State<AdminTakeoverListPage> {
     final dark = AppColors.isDark(context);
     return Scaffold(
       backgroundColor: AppColors.of(context).page,
-      appBar: AppBar(
-        title: const Text('用户聊天接管'),
-        backgroundColor: AppColors.of(context).page,
-        foregroundColor: dark ? AppColors.text : const Color(0xFF12171B),
-        elevation: 0,
-      ),
       body: Column(
         children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              18,
+              MediaQuery.viewPaddingOf(context).top + 12,
+              18,
+              18,
+            ),
+            child: SizedBox(
+              height: 48,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _AppNavCircleButton(
+                      icon: CupertinoIcons.chevron_left,
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                  Text(
+                    '用户聊天接管',
+                    style: TextStyle(
+                      color: dark ? AppColors.text : const Color(0xFF12171B),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: _AppNavCircleButton(
+                      icon: CupertinoIcons.refresh,
+                      onPressed: () => _load(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: CupertinoSlidingSegmentedControl<String>(
               groupValue: _scope,
               children: const {
-                'pending': Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Text('待处理'),
-                ),
                 'mine': Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),
                   child: Text('我接管的'),
+                ),
+                'pending': Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text('待处理'),
                 ),
               },
               onValueChanged: (value) {
@@ -150,11 +252,11 @@ class _AdminTakeoverListPageState extends State<AdminTakeoverListPage> {
             subtitle: Text(
               _scope == 'pending'
                   ? (item.agentName?.trim().isNotEmpty == true
-                      ? 'Agent：${item.agentName}'
-                      : 'Agent 尚未创建')
+                        ? 'Agent：${item.agentName}'
+                        : 'Agent 尚未创建')
                   : (item.lastMessagePreview?.trim().isNotEmpty == true
-                      ? item.lastMessagePreview!
-                      : '暂无新消息'),
+                        ? item.lastMessagePreview!
+                        : '暂无新消息'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -169,7 +271,9 @@ class _AdminTakeoverListPageState extends State<AdminTakeoverListPage> {
                           color: unread
                               ? const Color(0xFFE24B4B)
                               : const Color(0xFF7B8794),
-                          fontWeight: unread ? FontWeight.w700 : FontWeight.w500,
+                          fontWeight: unread
+                              ? FontWeight.w700
+                              : FontWeight.w500,
                         ),
                       ),
                     ],
@@ -319,14 +423,20 @@ class _AdminTakeoverReviewPageState extends State<AdminTakeoverReviewPage> {
                           _line('城市', review.agent?['city']?.toString()),
                           _line('职业', review.agent?['occupation']?.toString()),
                           _line('背景', review.agent?['background']?.toString()),
-                          _line('生活概述', review.agent?['life_overview']?.toString()),
+                          _line(
+                            '生活概述',
+                            review.agent?['life_overview']?.toString(),
+                          ),
                           _line('MBTI', _brief(review.agent?['mbti'])),
                           _line('价值观', _brief(review.agent?['values'])),
                         ],
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
-                  Text(_error!, style: const TextStyle(color: Color(0xFFE24B4B))),
+                  Text(
+                    _error!,
+                    style: const TextStyle(color: Color(0xFFE24B4B)),
+                  ),
                 ],
                 if (review.status == 'active') ...[
                   const SizedBox(height: 20),
@@ -362,7 +472,10 @@ class _AdminTakeoverReviewPageState extends State<AdminTakeoverReviewPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          ),
           const SizedBox(height: 8),
           ...children,
         ],

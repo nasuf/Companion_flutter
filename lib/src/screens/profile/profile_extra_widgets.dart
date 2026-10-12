@@ -75,6 +75,7 @@ class _ProfileSettingRowV6 extends StatelessWidget {
     required this.subtitle,
     required this.accent,
     this.enabled = true,
+    this.trailing,
     this.onTap,
   });
 
@@ -83,6 +84,7 @@ class _ProfileSettingRowV6 extends StatelessWidget {
   final String subtitle;
   final Color accent;
   final bool enabled;
+  final Widget? trailing;
   final VoidCallback? onTap;
 
   @override
@@ -154,6 +156,7 @@ class _ProfileSettingRowV6 extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (trailing != null) trailing!,
                 const SizedBox(width: 10),
                 Text(
                   '›',

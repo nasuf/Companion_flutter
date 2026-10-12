@@ -162,7 +162,27 @@ Map<String, String>? _mediaHeadersForUrl(String? url, String? authToken) {
   return {'Authorization': 'Bearer $authToken'};
 }
 
-class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
+class _ChatPageState extends State<ChatPage>
+    with WidgetsBindingObserver, RouteAware {
+  PageRoute<dynamic>? _takeoverRoute;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_isTakeover) return;
+    final route = ModalRoute.of(context);
+    if (route is PageRoute<dynamic> && route != _takeoverRoute) {
+      appRouteObserver.unsubscribe(this);
+      _takeoverRoute = route;
+      appRouteObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didPopNext() {
+    if (_isTakeover) unawaited(_syncTakeoverHistory());
+  }
+
   static const _animationDuration = Duration(milliseconds: 260);
   static const _animationCurve = Curves.easeOutCubic;
   static const _composerMinHeight = 68.0;
@@ -183,7 +203,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _inputController = TextEditingController();
   final _inputFocus = FocusNode();
   final _imagePicker = ImagePicker();
-  final _voiceRecorder = AudioRecorder();
+  late final _voiceRecorder = AudioRecorder();
   final ValueNotifier<double> _voiceAmplitude = ValueNotifier(0.12);
   final _playback = MusicPlaybackController.instance;
   final _stationCardKey = GlobalKey(debugLabel: 'chat-station-card');
@@ -357,6 +377,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final Set<String> _busyMusicFavoriteIds = {};
 
   bool get _isTakeover => widget.takeover != null;
+  bool _takeoverSyncing = false;
+  bool _takeoverSyncAgain = false;
+  String? _lastTakeoverReadId;
+
+  bool get _takeoverVisible =>
+      mounted &&
+      widget.isActive &&
+      (ModalRoute.of(context)?.isCurrent ?? false) &&
+      (WidgetsBinding.instance.lifecycleState == null ||
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed);
 
   String get _conversationId =>
       widget.takeover?.conversationId ?? widget.session.conversationId!;
@@ -404,7 +434,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _syncCoListeningFromMessagesIfNeeded() {
-    if (!mounted) return;
+    if (!mounted || _isTakeover) return;
     final next = ChatMusicStationState.userCoListeningActiveFromMessages(
       _messages,
       currentSession: _conversationMeta?.musicCoListening,
@@ -467,6 +497,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   String? get _agentAvatarUrl {
+    if (_isTakeover) return null;
     final explicit = widget.session.agentAvatarUrl?.trim();
     if (explicit != null && explicit.isNotEmpty) return explicit;
     final key = widget.session.agentAvatarKey?.trim();
@@ -481,6 +512,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _scrollController.addListener(_handleScroll);
     _inputController.addListener(_handleInputChanged);
     _inputFocus.addListener(_handleInputFocusChanged);
+    if (_isTakeover) {
+      _bootstrapChat();
+      return;
+    }
     if (widget.isActive) {
       _playback.addListener(_handleStationPlaybackChanged);
       _playbackSubscribed = true;
@@ -546,6 +581,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _refreshChatQuota() async {
+    if (_isTakeover) return;
     try {
       final quota = await widget.api.getChatQuota();
       if (!mounted) return;
@@ -641,6 +677,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    appRouteObserver.unsubscribe(this);
     // Release the shell's hidden tab bar if we die while a panel is docked
     // (deferred: notifying an ancestor synchronously from dispose is unsafe).
     final panelCallback = widget.onComposerPanelChanged;
@@ -660,7 +697,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _inputController.dispose();
     _inputFocus.dispose();
     if (_isTakeover &&
-        TakeoverInbox.instance.activeTakeoverId == widget.takeover?.takeoverId) {
+        TakeoverInbox.instance.activeTakeoverId ==
+            widget.takeover?.takeoverId) {
       TakeoverInbox.instance.activeTakeoverId = null;
     }
     _takeoverSub?.cancel();
@@ -678,7 +716,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _musicCompleteSub?.cancel();
     _musicQuotaSub?.cancel();
     _shareIntentSub?.cancel();
-    unawaited(_voiceRecorder.dispose());
+    if (!_isTakeover) unawaited(_voiceRecorder.dispose());
     _typingVisible.dispose();
     _composerShell.dispose();
     _viewportShell.dispose();
@@ -688,6 +726,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_isTakeover) {
+      if (state == AppLifecycleState.resumed) unawaited(_syncTakeoverHistory());
+      return;
+    }
     if (state != AppLifecycleState.resumed) {
       if (_preparingVoice || _recordingVoice) {
         unawaited(_cancelVoiceRecording());
@@ -719,6 +761,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _composerLineCountEstimate(currentText)) {
       _bumpComposerShell();
     }
+    if (_isTakeover) return;
     unawaited(
       _maybePromoteInputLinkToPendingCard(
         previousText: previousText,
@@ -729,7 +772,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   int _composerLineCountEstimate(String text) {
     if (!mounted) return 1;
-    final inputWidth = math.max(96.0, MediaQuery.sizeOf(context).width - 220.0);
+    final inputWidth = math.max(
+      96.0,
+      MediaQuery.sizeOf(context).width - (_isTakeover ? 100.0 : 220.0),
+    );
     final sample = text.isEmpty ? ' ' : text;
     final painter = TextPainter(
       text: TextSpan(
@@ -827,34 +873,71 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _loadLatestMessages(showLoading: true),
       _refreshConversationMeta(),
     ]);
+  }
+
+  Future<void> _syncTakeoverHistory() async {
+    if (!_takeoverVisible) return;
+    if (_takeoverSyncing) {
+      _takeoverSyncAgain = true;
+      return;
+    }
+    _takeoverSyncing = true;
     try {
-      await widget.api.markTakeoverRead(target.takeoverId);
-    } catch (_) {}
+      await _loadLatestMessages(showLoading: false);
+    } finally {
+      _takeoverSyncing = false;
+      if (_takeoverSyncAgain && mounted) {
+        _takeoverSyncAgain = false;
+        unawaited(_syncTakeoverHistory());
+      }
+    }
+  }
+
+  Future<void> _markTakeoverSnapshotRead(List<ChatMessage> newestFirst) async {
+    if (!_takeoverVisible || widget.takeover == null || !_isNearBottomNow()) {
+      return;
+    }
+    final incoming = newestFirst
+        .where(
+          (m) =>
+              m.role == 'user' &&
+              m.metadata?['human_takeover'] == true &&
+              m.metadata?['takeover_sequence'] is num,
+        )
+        .toList();
+    if (incoming.isEmpty) return;
+    incoming.sort(
+      (a, b) => (b.metadata!['takeover_sequence'] as num).compareTo(
+        a.metadata!['takeover_sequence'] as num,
+      ),
+    );
+    final readId = incoming.first.id;
+    if (readId == _lastTakeoverReadId) return;
+    _lastTakeoverReadId = readId;
+    try {
+      await widget.api.markTakeoverRead(
+        widget.takeover!.takeoverId,
+        incoming.first.id,
+      );
+      await TakeoverUnreadController.instance.refresh();
+    } catch (_) {
+      if (_lastTakeoverReadId == readId) _lastTakeoverReadId = null;
+    } // No receipt on failure; server retains unread count.
   }
 
   void _handleTakeoverInbox(WsEnvelope envelope) {
     final target = widget.takeover;
     if (target == null || !mounted) return;
-    final takeoverId = envelope.data['takeover_id']?.toString();
-    if (takeoverId != target.takeoverId) return;
-    if (envelope.type == 'takeover_user_message') {
-      final messageId = envelope.data['message_id']?.toString() ?? '';
-      if (messageId.isEmpty || _messages.any((item) => item.id == messageId)) {
-        return;
-      }
-      final message = _seatMessage(
-        ChatMessage(
-          id: messageId,
-          conversationId: _conversationId,
-          role: 'user',
-          content: envelope.data['text']?.toString() ?? '',
-          createdAt: DateTime.now(),
-          read: true,
-        ),
-      );
-      _notifyTranscript(() => _messages.add(message));
-      if (_isNearBottomNow()) scrollToLatest();
-      unawaited(widget.api.markTakeoverRead(target.takeoverId));
+    if (envelope.type == 'inbox_connected') {
+      unawaited(_syncTakeoverHistory());
+      return;
+    }
+    if (envelope.data['takeover_id']?.toString() != target.takeoverId) return;
+    if (envelope.type == 'takeover_user_message' ||
+        envelope.type == 'takeover_admin_message') {
+      // SQL history is canonical and carries complete text + media metadata.
+      // Reconcile bounded pages instead of rendering an unverified preview.
+      unawaited(_syncTakeoverHistory());
     }
   }
 
@@ -898,9 +981,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       });
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('状态更新失败：${_asMessage(error)}')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('状态更新失败：${_asMessage(error)}')));
     }
   }
 
@@ -1099,6 +1182,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<bool> _handleComposerPasteText(String text) async {
+    if (_isTakeover) return false;
     if (!mounted || text.trim().isEmpty) return false;
     final match = _firstSupportedSharedLink(text);
     if (match == null) return false;
@@ -1226,7 +1310,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _loadedServerMessages = _countServerMessages(_messages);
         _historyError = null;
       });
-      _adoptLatestMusicStationFromMessages();
+      if (!_isTakeover) _adoptLatestMusicStationFromMessages();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted ||
             _conversationId != conversationId ||
@@ -1245,7 +1329,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           );
           _scrollController.jumpTo(target.toDouble());
         }
-        _scheduleStationDockCheck();
+        if (_isTakeover) {
+          unawaited(_markTakeoverSnapshotRead(newestFirst));
+        } else {
+          _scheduleStationDockCheck();
+        }
       });
     } catch (error) {
       if (!mounted ||
@@ -2313,6 +2401,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (!_hasLaidOutScroll()) return;
     final position = _scrollController.position;
     _cachedNearBottom = ChatScrollPolicy.isNearNewest(position);
+    if (_isTakeover && _cachedNearBottom) {
+      unawaited(
+        _markTakeoverSnapshotRead(_messages.map(_seatMessage).toList()),
+      );
+    }
     if (_isJumpedToHistory) {
       if (ChatScrollPolicy.isNearOldest(position) &&
           _hasMoreOlderJump &&
@@ -3217,66 +3310,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _sendingGift = false;
   bool _sendingLocation = false;
 
-  Future<void> _sendTakeoverDisplayCard({
-    required String type,
-    required String title,
-    required String subtitle,
-    required String accent,
-  }) async {
-    final note = await showCupertinoDialog<String>(
-      context: context,
-      builder: (dialogContext) {
-        final controller = TextEditingController();
-        return CupertinoAlertDialog(
-          title: Text(title),
-          content: Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: CupertinoTextField(
-              controller: controller,
-              placeholder: '写一句给对方看的话',
-            ),
-          ),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('取消'),
-            ),
-            CupertinoDialogAction(
-              isDefaultAction: true,
-              onPressed: () => Navigator.of(dialogContext).pop(
-                controller.text.trim().isEmpty ? title : controller.text.trim(),
-              ),
-              child: const Text('发送'),
-            ),
-          ],
-        );
-      },
-    );
-    if (note == null || !mounted) return;
-    _sendText(
-      '',
-      componentCard: ChatComponentCard(
-        type: type,
-        title: title,
-        subtitle: subtitle,
-        body: note,
-        footer: '来自你的伙伴',
-        accent: accent,
-        payload: const {'display_only': true},
-      ),
-    );
-  }
-
   Future<void> _onSendRedPacket() async {
-    if (_isTakeover) {
-      await _sendTakeoverDisplayCard(
-        type: 'red_packet',
-        title: '红包',
-        subtitle: '给你的一点心意',
-        accent: '#FF4D5F',
-      );
-      return;
-    }
+    if (_isTakeover) return;
     if (_sendingRedPacket) return;
     _sendingRedPacket = true;
     _dismissInputSurfaces();
@@ -3322,15 +3357,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _onSendGift() async {
-    if (_isTakeover) {
-      await _sendTakeoverDisplayCard(
-        type: 'gift',
-        title: '礼物',
-        subtitle: '送你一份小礼物',
-        accent: '#FF8A3D',
-      );
-      return;
-    }
+    if (_isTakeover) return;
     if (_sendingGift) return;
     _sendingGift = true;
     _dismissInputSurfaces();
@@ -4002,8 +4029,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Future<void> _deliverTakeoverMessage({
     required String text,
     required String clientId,
-    ChatComponentCard? componentCard,
-    List<ChatAttachment> attachments = const [],
   }) async {
     final target = widget.takeover;
     if (target == null) return;
@@ -4012,10 +4037,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         target.takeoverId,
         text: text,
         clientId: clientId,
-        componentCard: componentCard?.toJson(),
-        attachments: [
-          for (final item in attachments) item.toJson(),
-        ],
       );
       if (!mounted) return;
       _clearSendTimeout();
@@ -4028,6 +4049,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               _messages[i] = message.copyWith(
                 id: messageId.isEmpty ? message.id : messageId,
                 pending: false,
+                failed: false,
                 read: true,
               );
             }
@@ -4048,9 +4070,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           }
         },
       );
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('发送失败：${_asMessage(error)}')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('发送失败：${_asMessage(error)}')));
     }
   }
 
@@ -4061,6 +4083,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     bool clearComposer = true,
     bool paidConfirmed = false,
   }) {
+    if (_isTakeover && (componentCard != null || attachments.isNotEmpty)) {
+      return;
+    }
     if (text.isEmpty && componentCard == null && attachments.isEmpty) return;
     final clientId =
         'draft-${DateTime.now().microsecondsSinceEpoch}-${(text.isEmpty ? (componentCard?.title ?? attachments.map((item) => item.id).join(',')) : text).hashCode}';
@@ -4105,14 +4130,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _inputFocus.requestFocus();
     }
     if (_isTakeover) {
-      unawaited(
-        _deliverTakeoverMessage(
-          text: text,
-          clientId: clientId,
-          componentCard: componentCard,
-          attachments: attachments,
-        ),
-      );
+      unawaited(_deliverTakeoverMessage(text: text, clientId: clientId));
       return;
     }
 
@@ -4238,6 +4256,23 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   /// 重发) 并移除这条失败草稿——跟额度弹框取消发送时的体验一致, 用户可以
   /// 直接改口或原样再发一次。
   void _retryFailedMessage(ChatMessage message) {
+    if (_isTakeover) {
+      if (_sending) return;
+      final clientId = message.clientId ?? message.id;
+      _patchShellAndTranscript(
+        shell: () => _sending = true,
+        transcript: () {
+          final index = _messages.indexWhere((m) => m.id == message.id);
+          if (index >= 0) {
+            _messages[index] = message.copyWith(pending: true, failed: false);
+          }
+        },
+      );
+      unawaited(
+        _deliverTakeoverMessage(text: message.content, clientId: clientId),
+      );
+      return;
+    }
     _notifyTranscript(() {
       _messages.removeWhere((m) => m.id == message.id);
       if (_inputController.text.trim().isEmpty) {
@@ -4576,7 +4611,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final showStationDock =
         stationTrack != null && _stationDockActive && _stationCardDocked;
 
-    return DecoratedBox(
+    final body = DecoratedBox(
       decoration: BoxDecoration(color: _chatCanvasColor(context)),
       child: Stack(
         children: [
@@ -4588,6 +4623,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       ? widget.takeover!.agentName
                       : (widget.session.agentName ?? 'Companion'),
                   topInset: safeTop,
+                  showInteraction: !_isTakeover,
                   interactionDays: _conversationMeta?.interactionDays,
                   aiStatus: _conversationMeta?.aiStatus,
                   aiStatusLabel: _conversationMeta?.aiStatusLabel,
@@ -4713,5 +4749,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         ],
       ),
     );
+    return _isTakeover
+        ? Scaffold(resizeToAvoidBottomInset: false, body: body)
+        : body;
   }
 }
