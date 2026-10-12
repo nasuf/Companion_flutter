@@ -155,6 +155,7 @@ mixin _CompanionApiTakeover on _CompanionApiCore {
   Future<String> sendTakeoverMessage(
     String takeoverId, {
     required String text,
+    String? clientId,
     Map<String, dynamic>? componentCard,
     List<Map<String, dynamic>> attachments = const [],
   }) async {
@@ -163,6 +164,7 @@ mixin _CompanionApiTakeover on _CompanionApiCore {
       '/admin-api/takeovers/${Uri.encodeComponent(takeoverId)}/messages',
       body: {
         'text': text,
+        if (clientId != null) 'client_id': clientId,
         if (componentCard != null) 'component_card': componentCard,
         'attachments': attachments,
       },

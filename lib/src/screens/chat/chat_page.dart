@@ -4011,6 +4011,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       final messageId = await widget.api.sendTakeoverMessage(
         target.takeoverId,
         text: text,
+        clientId: clientId,
         componentCard: componentCard?.toJson(),
         attachments: [
           for (final item in attachments) item.toJson(),
