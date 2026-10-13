@@ -31,6 +31,10 @@ class _MessageList extends StatelessWidget {
     this.highlightMessageKey,
     this.agentAvatarUrl,
     this.userAvatarUrl,
+    this.incomingAvatarUrl,
+    this.outgoingAvatarUrl,
+    this.incomingAvatarLabel = '伴',
+    this.outgoingAvatarLabel = '我',
     this.authToken,
     this.apiBaseUrl,
     this.onRetryFailed,
@@ -81,6 +85,14 @@ class _MessageList extends StatelessWidget {
   final GlobalKey? highlightMessageKey;
   final String? agentAvatarUrl;
   final String? userAvatarUrl;
+
+  /// Left-side portrait. Null keeps the agent portrait used by a normal chat.
+  final String? incomingAvatarUrl;
+
+  /// Right-side portrait. Null keeps the signed-in user's portrait.
+  final String? outgoingAvatarUrl;
+  final String incomingAvatarLabel;
+  final String outgoingAvatarLabel;
   final String? authToken;
   final String? apiBaseUrl;
   final ValueChanged<ChatMessage>? onRetryFailed;
@@ -184,6 +196,10 @@ class _MessageList extends StatelessWidget {
       highlightQuery: highlightQuery,
       agentAvatarUrl: agentAvatarUrl,
       userAvatarUrl: userAvatarUrl,
+      incomingAvatarUrl: incomingAvatarUrl,
+      outgoingAvatarUrl: outgoingAvatarUrl,
+      incomingAvatarLabel: incomingAvatarLabel,
+      outgoingAvatarLabel: outgoingAvatarLabel,
       onComponentCardTap: onComponentCardTap,
       onAchievementTap: onAchievementTap,
       onResolveMusicTrack: onResolveMusicTrack,
@@ -250,6 +266,10 @@ class _MessageRow extends StatelessWidget {
     this.trackPlaybackUpdates = true,
     this.agentAvatarUrl,
     this.userAvatarUrl,
+    this.incomingAvatarUrl,
+    this.outgoingAvatarUrl,
+    this.incomingAvatarLabel = '伴',
+    this.outgoingAvatarLabel = '我',
     this.authToken,
     this.apiBaseUrl,
     this.onRetryFailed,
@@ -282,6 +302,10 @@ class _MessageRow extends StatelessWidget {
   final bool trackPlaybackUpdates;
   final String? agentAvatarUrl;
   final String? userAvatarUrl;
+  final String? incomingAvatarUrl;
+  final String? outgoingAvatarUrl;
+  final String incomingAvatarLabel;
+  final String outgoingAvatarLabel;
   final String? authToken;
   final String? apiBaseUrl;
   final ValueChanged<ChatMessage>? onRetryFailed;
@@ -297,8 +321,10 @@ class _MessageRow extends StatelessWidget {
   }) {
     return _Avatar(
       size: _avatarSize,
-      label: isMine ? '我' : '伴',
-      imageUrl: isMine ? userAvatarUrl : agentAvatarUrl,
+      label: isMine ? outgoingAvatarLabel : incomingAvatarLabel,
+      imageUrl: isMine
+          ? (outgoingAvatarUrl ?? userAvatarUrl)
+          : (incomingAvatarUrl ?? agentAvatarUrl),
       gradient: isMine
           ? const [Color(0xFFE8F3FF), Color(0xFFF8FBFF)]
           : const [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],

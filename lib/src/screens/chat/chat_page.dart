@@ -22,12 +22,16 @@ class TakeoverChatTarget {
     required this.conversationId,
     required this.userName,
     this.agentName = '',
+    this.userAvatarUrl,
+    this.agentAvatarUrl,
   });
 
   final String takeoverId;
   final String conversationId;
   final String userName;
   final String agentName;
+  final String? userAvatarUrl;
+  final String? agentAvatarUrl;
 }
 
 class ChatPage extends StatefulWidget {
@@ -380,11 +384,27 @@ class _ChatPageState extends State<ChatPage>
 
   bool get _isTakeover => widget.takeover != null;
 
-  String _takeoverAvatarLabel(String name) {
+  String _takeoverAvatarLabel(String name, {String fallback = '用'}) {
     final trimmed = name.trim();
-    if (trimmed.isEmpty) return '用';
+    if (trimmed.isEmpty) return fallback;
     return String.fromCharCode(trimmed.runes.first);
   }
+
+  String? _absoluteAvatarUrl(String? url) {
+    final trimmed = url?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    if (trimmed.startsWith('/')) return '${widget.api.baseUrl}$trimmed';
+    return trimmed;
+  }
+
+  String? get _takeoverUserAvatarUrl =>
+      _absoluteAvatarUrl(widget.takeover?.userAvatarUrl);
+
+  String? get _takeoverAgentAvatarUrl =>
+      _absoluteAvatarUrl(widget.takeover?.agentAvatarUrl);
   bool _takeoverSyncing = false;
   bool _takeoverSyncAgain = false;
   String? _lastTakeoverReadId;
@@ -4633,7 +4653,9 @@ class _ChatPageState extends State<ChatPage>
                   interactionDays: _conversationMeta?.interactionDays,
                   aiStatus: _conversationMeta?.aiStatus,
                   aiStatusLabel: _conversationMeta?.aiStatusLabel,
-                  avatarUrl: agentAvatarUrl,
+                  avatarUrl: _isTakeover
+                      ? _takeoverUserAvatarUrl
+                      : agentAvatarUrl,
                   isMusicListening: _isUserCoListening,
                   isMusicPlaying:
                       _conversationMeta?.musicCoListening?.isPlaying ?? false,

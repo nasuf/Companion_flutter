@@ -110,10 +110,31 @@ class _ChatMessageViewportState extends State<_ChatMessageViewport> {
                       highlightVisible: transcript.highlightVisible,
                       highlightQuery: transcript.highlightQuery,
                       highlightMessageKey: host._highlightMessageKey,
-                      agentAvatarUrl: host._agentAvatarUrl,
+                      agentAvatarUrl: host._isTakeover
+                          ? null
+                          : host._agentAvatarUrl,
                       userAvatarUrl: host._isTakeover
                           ? null
                           : host.widget.session.userAvatarUrl,
+                      // Seating flips roles, so the left bubble is the user and
+                      // the right bubble is the agent the admin is speaking as.
+                      incomingAvatarUrl: host._isTakeover
+                          ? host._takeoverUserAvatarUrl
+                          : null,
+                      outgoingAvatarUrl: host._isTakeover
+                          ? host._takeoverAgentAvatarUrl
+                          : null,
+                      incomingAvatarLabel: host._isTakeover
+                          ? host._takeoverAvatarLabel(
+                              host.widget.takeover!.userName,
+                            )
+                          : '伴',
+                      outgoingAvatarLabel: host._isTakeover
+                          ? host._takeoverAvatarLabel(
+                              host.widget.takeover!.agentName,
+                              fallback: '伴',
+                            )
+                          : '我',
                       authToken: host.widget.api.authToken,
                       apiBaseUrl: host.widget.api.baseUrl,
                       onRetryFailed: host._retryFailedMessage,

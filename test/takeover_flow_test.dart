@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:companion_flutter/companion_api.dart';
 import 'package:companion_flutter/main.dart';
 import 'package:companion_flutter/models.dart';
@@ -21,6 +22,7 @@ class FakeTakeoverApi extends CompanionApi {
   bool failFirstSend = false;
   Completer<TakeoverUnreadSummary>? pendingSummary;
   Completer<List<TakeoverListItem>>? pendingList;
+  List<ChatMessage>? scriptedHistory;
 
   @override
   Future<String> getTakeoverInboxTicket() async =>
@@ -64,6 +66,7 @@ class FakeTakeoverApi extends CompanionApi {
     int offset = 0,
   }) async {
     if (failHistory) throw const ApiException(503, 'history unavailable');
+    if (scriptedHistory != null) return scriptedHistory!;
     return [
       ChatMessage(
         id: 'incoming',
@@ -208,6 +211,77 @@ void main() {
       final sendBottom = tester.getBottomLeft(find.text('发送')).dy;
       expect(sendBottom, greaterThan(844 - 34 - 45));
       expect(api.reads, contains('incoming'));
+      await tester.pumpWidget(const SizedBox());
+      await drain(tester);
+    },
+  );
+
+  testWidgets(
+    'takeover chat puts the user portrait on the left and the agent on the right',
+    (tester) async {
+      const userPath = '/users/avatar/subject.jpg';
+      const agentPath = '/agents/avatar/companion-female-01.png';
+      final api = FakeTakeoverApi()
+        ..scriptedHistory = [
+          ChatMessage(
+            id: 'incoming',
+            conversationId: 'conv',
+            role: 'user',
+            content: '用户完整消息',
+            createdAt: DateTime.utc(2026, 10, 12, 13),
+            metadata: const {'human_takeover': true, 'takeover_sequence': 1},
+          ),
+          ChatMessage(
+            id: 'reply',
+            conversationId: 'conv',
+            role: 'assistant',
+            content: '在呢',
+            createdAt: DateTime.utc(2026, 10, 12, 13, 1),
+          ),
+        ];
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      tester.view.viewPadding = const FakeViewPadding(top: 47, bottom: 34);
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorObservers: [appRouteObserver],
+          home: ChatPage(
+            api: api,
+            session: adminSession(),
+            isActive: true,
+            onOpenSidebar: () {},
+            takeover: const TakeoverChatTarget(
+              takeoverId: 'case',
+              conversationId: 'conv',
+              userName: '我的用户',
+              agentName: '目标角色',
+              userAvatarUrl: userPath,
+              agentAvatarUrl: agentPath,
+            ),
+          ),
+        ),
+      );
+      await drain(tester);
+
+      List<double> centers(String url) {
+        final finder = find.byWidgetPredicate(
+          (widget) =>
+              widget is Image &&
+              widget.image is CachedNetworkImageProvider &&
+              (widget.image as CachedNetworkImageProvider).url == url,
+        );
+        return [
+          for (final element in finder.evaluate())
+            tester.getCenter(find.byWidget(element.widget)).dx,
+        ];
+      }
+
+      final userXs = centers('http://127.0.0.1:1$userPath');
+      final agentXs = centers('http://127.0.0.1:1$agentPath');
+      expect(userXs.length, greaterThanOrEqualTo(2));
+      expect(userXs.every((dx) => dx < 160), isTrue);
+      expect(agentXs, [greaterThan(240)]);
       await tester.pumpWidget(const SizedBox());
       await drain(tester);
     },

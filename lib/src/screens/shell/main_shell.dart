@@ -427,6 +427,8 @@ class _MainShellState extends State<MainShell> with RouteAware {
             conversationId: conversationId,
             userName: review.userName,
             agentName: review.agentName,
+            userAvatarUrl: review.userAvatarUrl,
+            agentAvatarUrl: review.agentAvatarUrl,
           ),
         ),
       ),

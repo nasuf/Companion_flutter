@@ -14,6 +14,8 @@ class TakeoverListItem {
     this.displayName,
     this.lastMessagePreview,
     this.canClaim = false,
+    this.userAvatarUrl,
+    this.agentAvatarUrl,
   });
 
   final String id;
@@ -28,6 +30,8 @@ class TakeoverListItem {
   final String readState;
   final String? lastMessagePreview;
   final bool canClaim;
+  final String? userAvatarUrl;
+  final String? agentAvatarUrl;
 
   String get title {
     final name = displayName?.trim();
@@ -51,6 +55,8 @@ class TakeoverListItem {
       readState: json['read_state']?.toString() ?? 'read',
       lastMessagePreview: json['last_message_preview']?.toString(),
       canClaim: json['can_claim'] == true,
+      userAvatarUrl: json['user_avatar_url']?.toString(),
+      agentAvatarUrl: json['agent_avatar_url']?.toString(),
     );
   }
 }
@@ -87,6 +93,16 @@ class TakeoverReview {
   String get agentName => agent?['name']?.toString().trim().isNotEmpty == true
       ? agent!['name'].toString()
       : 'Companion';
+
+  String? get userAvatarUrl => _portraitUrl(user['avatar_url']);
+
+  String? get agentAvatarUrl => _portraitUrl(agent?['avatar_url']);
+
+  static String? _portraitUrl(Object? value) {
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty) return null;
+    return text;
+  }
 
   factory TakeoverReview.fromJson(Map<String, dynamic> json) {
     final agent = json['agent'];
