@@ -166,7 +166,7 @@ class _ChatInputChromeLayerState extends State<_ChatInputChromeLayer> {
                   bottom: 0,
                   child: RepaintBoundary(
                     child: _Composer(
-                      textOnly: _host._isTakeover,
+                      textOnly: false,
                       controller: _host._inputController,
                       focusNode: _host._inputFocus,
                       height: composerHeight,

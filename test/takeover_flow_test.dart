@@ -125,6 +125,7 @@ Future<void> chat(WidgetTester tester, FakeTakeoverApi api) async {
         takeover: const TakeoverChatTarget(
           takeoverId: 'case',
           conversationId: 'conv',
+          userName: '我的用户',
           agentName: '目标角色',
         ),
       ),
@@ -185,16 +186,18 @@ void main() {
   });
 
   testWidgets(
-    'text-only standalone chat has no flame, media panel or navigation gap',
+    'takeover chat shows the user name, trailing status, and composer icons',
     (tester) async {
       final api = FakeTakeoverApi();
       await chat(tester, api);
-      expect(find.text('目标角色'), findsOneWidget);
+      expect(find.text('我的用户'), findsOneWidget);
+      expect(find.text('目标角色'), findsNothing);
+      expect(find.text('空闲'), findsOneWidget);
       expect(find.text('退出'), findsOneWidget);
       expect(find.byTooltip('连续互动 12 天'), findsNothing);
-      expect(find.byTooltip('更多'), findsNothing);
-      expect(find.byTooltip('表情'), findsNothing);
-      expect(find.byIcon(CupertinoIcons.mic), findsNothing);
+      expect(find.byTooltip('表情'), findsOneWidget);
+      expect(find.byIcon(CupertinoIcons.mic), findsOneWidget);
+      expect(find.byTooltip('更多'), findsOneWidget);
       expect(find.text('回复由AI生成'), findsNothing);
       tester
               .widget<ExtendedTextField>(find.byType(ExtendedTextField))

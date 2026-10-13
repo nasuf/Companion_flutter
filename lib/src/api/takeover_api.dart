@@ -75,6 +75,15 @@ class TakeoverReview {
   final Map<String, dynamic>? agent;
 
   String? get conversationId => agent?['conversation_id']?.toString();
+
+  String get userName {
+    final display = user['display_name']?.toString().trim();
+    if (display != null && display.isNotEmpty) return display;
+    final username = user['username']?.toString().trim();
+    if (username != null && username.isNotEmpty) return username;
+    return '用户';
+  }
+
   String get agentName => agent?['name']?.toString().trim().isNotEmpty == true
       ? agent!['name'].toString()
       : 'Companion';

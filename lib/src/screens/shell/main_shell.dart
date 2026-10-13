@@ -425,6 +425,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
           takeover: TakeoverChatTarget(
             takeoverId: review.id,
             conversationId: conversationId,
+            userName: review.userName,
             agentName: review.agentName,
           ),
         ),

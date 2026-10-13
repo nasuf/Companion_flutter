@@ -30,6 +30,7 @@ class _ChatHeader extends StatelessWidget {
     this.aiStatus,
     this.aiStatusLabel,
     this.avatarUrl,
+    this.avatarLabel = '伴',
     this.isMusicListening = false,
     this.isMusicPlaying = false,
     this.onMusicTap,
@@ -48,6 +49,7 @@ class _ChatHeader extends StatelessWidget {
   final String? aiStatus;
   final String? aiStatusLabel;
   final String? avatarUrl;
+  final String avatarLabel;
   final bool isMusicListening;
   final bool isMusicPlaying;
   final VoidCallback? onMusicTap;
@@ -90,7 +92,7 @@ class _ChatHeader extends StatelessWidget {
               children: [
                 _Avatar(
                   size: 40,
-                  label: '伴',
+                  label: avatarLabel,
                   imageUrl: avatarUrl,
                   gradient: const [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
                 ),
@@ -125,24 +127,13 @@ class _ChatHeader extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (statusLabel != null) ...[
+                if (onExit == null && statusLabel != null) ...[
                   const SizedBox(width: 6),
-                  if (onStatusTap == null)
-                    _HeaderPill(
-                      foreground: statusColor.foreground,
-                      background: statusColor.background,
-                      label: statusLabel,
-                    )
-                  else
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: onStatusTap,
-                      child: _HeaderPill(
-                        foreground: statusColor.foreground,
-                        background: statusColor.background,
-                        label: statusLabel,
-                      ),
-                    ),
+                  _HeaderPill(
+                    foreground: statusColor.foreground,
+                    background: statusColor.background,
+                    label: statusLabel,
+                  ),
                 ],
               ],
             ),
@@ -163,6 +154,18 @@ class _ChatHeader extends StatelessWidget {
               ),
             ),
           if (showInteraction) const SizedBox(width: 12),
+          if (onExit != null && statusLabel != null) ...[
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onStatusTap,
+              child: _HeaderPill(
+                foreground: statusColor.foreground,
+                background: statusColor.background,
+                label: statusLabel,
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
           if (onExit != null)
             TextButton(
               onPressed: onExit,

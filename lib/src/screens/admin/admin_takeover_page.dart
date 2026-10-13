@@ -62,7 +62,8 @@ class AdminTakeoverListPage extends StatefulWidget {
 }
 
 class _AdminTakeoverListPageState extends State<AdminTakeoverListPage>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+  late final AnimationController _motionController;
   var _scope = 'mine';
   int _loadGeneration = 0;
   StreamSubscription<WsEnvelope>? _inboxEvents;
@@ -73,6 +74,10 @@ class _AdminTakeoverListPageState extends State<AdminTakeoverListPage>
   @override
   void initState() {
     super.initState();
+    _motionController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 14),
+    )..repeat();
     widget.api.authToken = widget.session.token;
     WidgetsBinding.instance.addObserver(this);
     _inboxEvents = TakeoverInbox.instance.events.listen((event) {
@@ -85,6 +90,7 @@ class _AdminTakeoverListPageState extends State<AdminTakeoverListPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _inboxEvents?.cancel();
+    _motionController.dispose();
     super.dispose();
   }
 
@@ -142,9 +148,8 @@ class _AdminTakeoverListPageState extends State<AdminTakeoverListPage>
           takeover: TakeoverChatTarget(
             takeoverId: item.id,
             conversationId: conversationId,
-            agentName: item.agentName?.trim().isNotEmpty == true
-                ? item.agentName!
-                : 'Companion',
+            userName: item.title,
+            agentName: item.agentName ?? '',
           ),
         ),
       ),
@@ -154,133 +159,268 @@ class _AdminTakeoverListPageState extends State<AdminTakeoverListPage>
 
   @override
   Widget build(BuildContext context) {
-    final dark = AppColors.isDark(context);
-    return Scaffold(
-      backgroundColor: AppColors.of(context).page,
-      body: Column(
-        children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              18,
-              MediaQuery.viewPaddingOf(context).top + 12,
-              18,
-              18,
-            ),
-            child: SizedBox(
-              height: 48,
-              child: Stack(
-                alignment: Alignment.center,
+    final media = MediaQuery.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return _adminPageHost(
+      body: Material(
+        type: MaterialType.transparency,
+        child: AnimatedBuilder(
+          animation: _motionController,
+          builder: (context, _) {
+            return _buildAdminKeyboardAwareStack(
+              context: context,
+              motionProgress: _motionController.value,
+              child: Column(
                 children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: _AppNavCircleButton(
-                      icon: CupertinoIcons.chevron_left,
-                      onPressed: () => Navigator.of(context).pop(),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      18,
+                      media.padding.top + 12,
+                      18,
+                      0,
+                    ),
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          height: 48,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: _AppNavCircleButton(
+                                  icon: CupertinoIcons.chevron_left,
+                                  onPressed: () => Navigator.of(context).pop(),
+                                ),
+                              ),
+                              Text(
+                                '用户聊天接管',
+                                style: TextStyle(
+                                  color: isDark
+                                      ? AppColors.text
+                                      : const Color(0xFF12171B),
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0,
+                                  decoration: TextDecoration.none,
+                                ),
+                              ),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: _loading
+                                    ? const CupertinoActivityIndicator(
+                                        radius: 10,
+                                      )
+                                    : _AppNavCircleButton(
+                                        icon: CupertinoIcons.refresh,
+                                        onPressed: () => _load(),
+                                      ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _AdminFilterRow(
+                          label: '范围',
+                          options: const [
+                            MapEntry('mine', '我接管的'),
+                            MapEntry('pending', '待处理'),
+                          ],
+                          value: _scope,
+                          onChanged: (value) {
+                            if (value == null || value == _scope) return;
+                            setState(() => _scope = value);
+                            _load();
+                          },
+                        ),
+                      ],
                     ),
                   ),
-                  Text(
-                    '用户聊天接管',
-                    style: TextStyle(
-                      color: dark ? AppColors.text : const Color(0xFF12171B),
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: _AppNavCircleButton(
-                      icon: CupertinoIcons.refresh,
-                      onPressed: () => _load(),
+                  Expanded(
+                    child: ListView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(18, 10, 18, 42),
+                      children: [
+                        _ProfileSectionV6(
+                          title: '会话列表',
+                          trailing: _loading && _items.isEmpty
+                              ? '加载中'
+                              : '共 ${_items.length} 人',
+                          child: _buildListBody(),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: CupertinoSlidingSegmentedControl<String>(
-              groupValue: _scope,
-              children: const {
-                'mine': Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Text('我接管的'),
-                ),
-                'pending': Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Text('待处理'),
-                ),
-              },
-              onValueChanged: (value) {
-                if (value == null || value == _scope) return;
-                setState(() => _scope = value);
-                _load();
-              },
-            ),
-          ),
-          Expanded(child: _buildBody()),
-        ],
+            );
+          },
+        ),
       ),
     );
   }
 
-  Widget _buildBody() {
-    if (_loading) {
-      return const Center(child: CupertinoActivityIndicator());
-    }
-    if (_error != null) {
-      return Center(child: Text(_error!));
-    }
-    if (_items.isEmpty) {
-      return Center(
-        child: Text(_scope == 'pending' ? '没有待处理的新用户' : '还没有接管中的用户'),
+  Widget _buildListBody() {
+    if (_loading && _items.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 30),
+        child: CupertinoActivityIndicator(radius: 12),
       );
     }
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView.separated(
-        itemCount: _items.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
-        itemBuilder: (context, index) {
-          final item = _items[index];
-          final unread = item.unreadCount > 0;
-          return ListTile(
+    if (_error != null && _items.isEmpty) {
+      return _AdminStatePanel(
+        title: '加载失败',
+        message: _error!,
+        actionText: '重试',
+        onTap: _load,
+      );
+    }
+    if (_items.isEmpty) {
+      return _AdminStatePanel(
+        title: _scope == 'pending' ? '没有待处理用户' : '还没有接管中的用户',
+        message: _scope == 'pending'
+            ? '新注册用户会出现在这里。'
+            : '接管成功后，会话会列在这里。',
+      );
+    }
+    return Column(
+      children: [
+        for (final item in _items)
+          _TakeoverUserRow(
+            item: item,
+            pending: _scope == 'pending',
             onTap: () => _openItem(item),
-            title: Text(item.title),
-            subtitle: Text(
-              _scope == 'pending'
-                  ? (item.agentName?.trim().isNotEmpty == true
-                        ? 'Agent：${item.agentName}'
-                        : 'Agent 尚未创建')
-                  : (item.lastMessagePreview?.trim().isNotEmpty == true
-                        ? item.lastMessagePreview!
-                        : '暂无新消息'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+          ),
+      ],
+    );
+  }
+}
+
+class _TakeoverUserRow extends StatelessWidget {
+  const _TakeoverUserRow({
+    required this.item,
+    required this.pending,
+    required this.onTap,
+  });
+
+  final TakeoverListItem item;
+  final bool pending;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final unread = !pending && item.unreadCount > 0;
+    final subtitle = pending
+        ? (item.agentName?.trim().isNotEmpty == true
+              ? 'Agent：${item.agentName}'
+              : 'Agent 尚未创建')
+        : (item.lastMessagePreview?.trim().isNotEmpty == true
+              ? item.lastMessagePreview!
+              : '暂无新消息');
+    final initial = item.title.trim().isEmpty
+        ? '?'
+        : String.fromCharCode(item.title.trim().runes.first);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.10)
+                  : const Color(0x14181F2A),
             ),
-            trailing: _scope == 'mine'
-                ? Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        unread ? '未读 ${item.unreadCount}' : '已读',
-                        style: TextStyle(
-                          color: unread
-                              ? const Color(0xFFE24B4B)
-                              : const Color(0xFF7B8794),
-                          fontWeight: unread
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                        ),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  color: const Color(0xFF1FA97A).withValues(alpha: 0.14),
+                  alignment: Alignment.center,
+                  child: Text(
+                    initial,
+                    style: const TextStyle(
+                      color: Color(0xFF1FA97A),
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isDark ? AppColors.text : const Color(0xFF12171B),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0,
+                        decoration: TextDecoration.none,
                       ),
-                    ],
-                  )
-                : const Icon(CupertinoIcons.chevron_right, size: 16),
-          );
-        },
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isDark
+                            ? const Color(0x9EEBF2EE)
+                            : AppColors.muted,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (!pending)
+                Text(
+                  unread ? '未读 ${item.unreadCount}' : '已读',
+                  style: TextStyle(
+                    color: unread
+                        ? const Color(0xFFE24B4B)
+                        : (isDark
+                              ? const Color(0x9EEBF2EE)
+                              : const Color(0xFF7B8794)),
+                    fontSize: 12,
+                    fontWeight: unread ? FontWeight.w800 : FontWeight.w600,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              const SizedBox(width: 6),
+              Text(
+                '›',
+                style: TextStyle(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.32)
+                      : const Color(0x52182026),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -365,6 +505,7 @@ class _AdminTakeoverReviewPageState extends State<AdminTakeoverReviewPage> {
             takeover: TakeoverChatTarget(
               takeoverId: review.id,
               conversationId: conversationId,
+              userName: review.userName,
               agentName: review.agentName,
             ),
           ),

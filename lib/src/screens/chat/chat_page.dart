@@ -20,11 +20,13 @@ class TakeoverChatTarget {
   const TakeoverChatTarget({
     required this.takeoverId,
     required this.conversationId,
-    required this.agentName,
+    required this.userName,
+    this.agentName = '',
   });
 
   final String takeoverId;
   final String conversationId;
+  final String userName;
   final String agentName;
 }
 
@@ -377,6 +379,12 @@ class _ChatPageState extends State<ChatPage>
   final Set<String> _busyMusicFavoriteIds = {};
 
   bool get _isTakeover => widget.takeover != null;
+
+  String _takeoverAvatarLabel(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return '用';
+    return String.fromCharCode(trimmed.runes.first);
+  }
   bool _takeoverSyncing = false;
   bool _takeoverSyncAgain = false;
   String? _lastTakeoverReadId;
@@ -774,7 +782,7 @@ class _ChatPageState extends State<ChatPage>
     if (!mounted) return 1;
     final inputWidth = math.max(
       96.0,
-      MediaQuery.sizeOf(context).width - (_isTakeover ? 100.0 : 220.0),
+      MediaQuery.sizeOf(context).width - 220.0,
     );
     final sample = text.isEmpty ? ' ' : text;
     final painter = TextPainter(
@@ -3311,7 +3319,6 @@ class _ChatPageState extends State<ChatPage>
   bool _sendingLocation = false;
 
   Future<void> _onSendRedPacket() async {
-    if (_isTakeover) return;
     if (_sendingRedPacket) return;
     _sendingRedPacket = true;
     _dismissInputSurfaces();
@@ -3357,7 +3364,6 @@ class _ChatPageState extends State<ChatPage>
   }
 
   Future<void> _onSendGift() async {
-    if (_isTakeover) return;
     if (_sendingGift) return;
     _sendingGift = true;
     _dismissInputSurfaces();
@@ -4083,9 +4089,6 @@ class _ChatPageState extends State<ChatPage>
     bool clearComposer = true,
     bool paidConfirmed = false,
   }) {
-    if (_isTakeover && (componentCard != null || attachments.isNotEmpty)) {
-      return;
-    }
     if (text.isEmpty && componentCard == null && attachments.isEmpty) return;
     final clientId =
         'draft-${DateTime.now().microsecondsSinceEpoch}-${(text.isEmpty ? (componentCard?.title ?? attachments.map((item) => item.id).join(',')) : text).hashCode}';
@@ -4620,8 +4623,11 @@ class _ChatPageState extends State<ChatPage>
               RepaintBoundary(
                 child: _ChatHeader(
                   agentName: _isTakeover
-                      ? widget.takeover!.agentName
+                      ? widget.takeover!.userName
                       : (widget.session.agentName ?? 'Companion'),
+                  avatarLabel: _isTakeover
+                      ? _takeoverAvatarLabel(widget.takeover!.userName)
+                      : '伴',
                   topInset: safeTop,
                   showInteraction: !_isTakeover,
                   interactionDays: _conversationMeta?.interactionDays,
