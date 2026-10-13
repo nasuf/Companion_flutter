@@ -4,12 +4,10 @@ class _TakeoverActivitySheet extends StatefulWidget {
   const _TakeoverActivitySheet({
     required this.api,
     required this.takeoverId,
-    required this.onPushed,
   });
 
   final CompanionApi api;
   final String takeoverId;
-  final VoidCallback onPushed;
 
   @override
   State<_TakeoverActivitySheet> createState() => _TakeoverActivitySheetState();
@@ -57,8 +55,7 @@ class _TakeoverActivitySheetState extends State<_TakeoverActivitySheet> {
     try {
       await widget.api.publishTakeoverActivity(widget.takeoverId, item.previewId);
       if (!mounted) return;
-      widget.onPushed();
-      Navigator.of(context).pop();
+      Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
       setState(() {

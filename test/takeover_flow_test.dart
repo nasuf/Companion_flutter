@@ -204,6 +204,7 @@ void main() {
       await tester.tap(find.byTooltip('更多'));
       await drain(tester);
       expect(find.text('活动'), findsOneWidget);
+      expect(tester.getCenter(find.text('活动')).dx, lessThan(160));
       expect(find.text('红包'), findsNothing);
       expect(find.text('图片'), findsNothing);
       await tester.tap(find.byTooltip('更多'));

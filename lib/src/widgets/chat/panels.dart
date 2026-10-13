@@ -416,23 +416,25 @@ class _ToolRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        for (final tool in tools)
+        for (var index = 0; index < 3; index++)
           Expanded(
-            child: Center(
-              child: _ToolButton(
-                tool: tool,
-                onTap: switch (tool.action) {
-                  _ToolAction.photo => onPickPhoto,
-                  _ToolAction.camera => onTakePhoto,
-                  _ToolAction.redPacket => onSendRedPacket,
-                  _ToolAction.gift => onSendGift,
-                  _ToolAction.location => onSendLocation,
-                  _ToolAction.search => onSearch,
-                  _ToolAction.activity => onOpenActivity,
-                  _ToolAction.none => null,
-                },
-              ),
-            ),
+            child: index < tools.length
+                ? Center(
+                    child: _ToolButton(
+                      tool: tools[index],
+                      onTap: switch (tools[index].action) {
+                        _ToolAction.photo => onPickPhoto,
+                        _ToolAction.camera => onTakePhoto,
+                        _ToolAction.redPacket => onSendRedPacket,
+                        _ToolAction.gift => onSendGift,
+                        _ToolAction.location => onSendLocation,
+                        _ToolAction.search => onSearch,
+                        _ToolAction.activity => onOpenActivity,
+                        _ToolAction.none => null,
+                      },
+                    ),
+                  )
+                : const SizedBox.shrink(),
           ),
       ],
     );

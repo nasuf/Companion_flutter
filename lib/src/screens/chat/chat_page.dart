@@ -969,7 +969,8 @@ class _ChatPageState extends State<ChatPage>
     }
     if (envelope.data['takeover_id']?.toString() != target.takeoverId) return;
     if (envelope.type == 'takeover_user_message' ||
-        envelope.type == 'takeover_admin_message') {
+        envelope.type == 'takeover_admin_message' ||
+        envelope.type == 'takeover_transcript') {
       // SQL history is canonical and carries complete text + media metadata.
       // Reconcile bounded pages instead of rendering an unverified preview.
       unawaited(_syncTakeoverHistory());
@@ -4248,16 +4249,18 @@ class _ChatPageState extends State<ChatPage>
     _setPanel(ComposerPanel.none);
     final target = widget.takeover;
     if (target == null) return;
-    unawaited(showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _TakeoverActivitySheet(
-        api: widget.api,
-        takeoverId: target.takeoverId,
-        onPushed: () => unawaited(_syncTakeoverHistory()),
-      ),
-    ));
+    unawaited(() async {
+      final pushed = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _TakeoverActivitySheet(
+          api: widget.api,
+          takeoverId: target.takeoverId,
+        ),
+      );
+      if (pushed == true && mounted) await _syncTakeoverHistory();
+    }());
   }
 
   void _syncTakeoverTyping() {
