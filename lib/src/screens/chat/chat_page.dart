@@ -4253,22 +4253,31 @@ class _ChatPageState extends State<ChatPage>
     return null;
   }
 
+  bool _takeoverActivityOpen = false;
+
   void _openTakeoverActivities() {
-    if (!_isTakeover) return;
+    if (!_isTakeover || _takeoverActivityOpen) return;
     _setPanel(ComposerPanel.none);
     final target = widget.takeover;
     if (target == null) return;
+    _takeoverActivityOpen = true;
     unawaited(() async {
-      final pushed = await showModalBottomSheet<bool>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (_) => _TakeoverActivitySheet(
-          api: widget.api,
-          takeoverId: target.takeoverId,
-        ),
-      );
-      if (pushed == true && mounted) await _syncTakeoverHistory();
+      try {
+        final pushed = await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          isDismissible: false,
+          enableDrag: false,
+          builder: (_) => _TakeoverActivitySheet(
+            api: widget.api,
+            takeoverId: target.takeoverId,
+          ),
+        );
+        if (pushed == true && mounted) await _syncTakeoverHistory();
+      } finally {
+        _takeoverActivityOpen = false;
+      }
     }());
   }
 

@@ -168,6 +168,18 @@ class TakeoverUnreadSummary {
 }
 
 mixin _CompanionApiTakeover on _CompanionApiCore {
+  Future<OfflineActivity> createTakeoverActivityRecommendation(
+    String takeoverId,
+  ) async {
+    final json =
+        await _request(
+              'POST',
+              '/admin-api/takeovers/${Uri.encodeComponent(takeoverId)}/activities/recommend',
+            )
+            as Map<String, dynamic>;
+    return _normalizeOfflineActivity(OfflineActivity.fromJson(json));
+  }
+
   Future<OfflineActivity> fetchTakeoverActivity(
     String takeoverId,
     String activityId,

@@ -6,6 +6,50 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
+    'takeover generation POST retains full detail and targets only the case',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final subscription = server.listen((request) async {
+        expect(request.method, 'POST');
+        expect(
+          request.uri.path,
+          '/admin-api/takeovers/case/activities/recommend',
+        );
+        expect(
+          request.headers.value('authorization'),
+          'Bearer synthetic-admin',
+        );
+        expect(await utf8.decoder.bind(request).join(), isEmpty);
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(
+          jsonEncode({
+            'id': 'generated',
+            'status': 'pending',
+            'title': '完整活动',
+            'description': '完整地点详情',
+            'recommendation_message': '给用户的推荐寄语',
+            'image_urls': ['/offline/media/1.jpg', '/offline/media/2.jpg'],
+          }),
+        );
+        await request.response.close();
+      });
+      addTearDown(() async {
+        await subscription.cancel();
+        await server.close(force: true);
+      });
+      final base = 'http://127.0.0.1:${server.port}';
+      final api = CompanionApi(baseUrl: base)..authToken = 'synthetic-admin';
+      final activity = await api.createTakeoverActivityRecommendation('case');
+      expect(activity.description, '完整地点详情');
+      expect(activity.recommendationMessage, '给用户的推荐寄语');
+      expect(activity.imageUrls, [
+        '$base/offline/media/1.jpg',
+        '$base/offline/media/2.jpg',
+      ]);
+    },
+  );
+
+  test(
     'activity reads use scoped GET endpoints and normalize media URLs',
     () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
