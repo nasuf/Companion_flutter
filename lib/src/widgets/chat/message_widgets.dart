@@ -143,7 +143,14 @@ class _MessageList extends StatelessWidget {
               return Padding(
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
                 child: RepaintBoundary(
-                  child: _TypingIndicatorRow(agentAvatarUrl: agentAvatarUrl),
+                  child: Semantics(
+                    key: const ValueKey('chat-peer-typing'),
+                    label: '对方正在输入',
+                    child: _TypingIndicatorRow(
+                      agentAvatarUrl: incomingAvatarUrl ?? agentAvatarUrl,
+                      avatarLabel: incomingAvatarLabel,
+                    ),
+                  ),
                 ),
               );
             },
@@ -954,9 +961,10 @@ class _SendStatusIndicator extends StatelessWidget {
 /// "Agent is typing" row — an AI-styled bubble with three animated dots.
 /// Mirrors the H5 typing indicator (ChatView `.m-typing`), refined for native.
 class _TypingIndicatorRow extends StatelessWidget {
-  const _TypingIndicatorRow({this.agentAvatarUrl});
+  const _TypingIndicatorRow({this.agentAvatarUrl, this.avatarLabel = '伴'});
 
   final String? agentAvatarUrl;
+  final String avatarLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -967,7 +975,7 @@ class _TypingIndicatorRow extends StatelessWidget {
         children: [
           _Avatar(
             size: 40,
-            label: '伴',
+            label: avatarLabel,
             imageUrl: agentAvatarUrl,
             gradient: const [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
           ),

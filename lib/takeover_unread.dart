@@ -30,7 +30,13 @@ class TakeoverUnreadController extends ChangeNotifier
     _adminId = adminId;
     WidgetsBinding.instance.addObserver(this);
     _events = TakeoverInbox.instance.events.listen((event) {
-      if (event.type != 'pong') unawaited(refresh());
+      if (!{
+        'pong',
+        'takeover_user_typing',
+        'inbox_disconnected',
+      }.contains(event.type)) {
+        unawaited(refresh());
+      }
     });
     _timer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {

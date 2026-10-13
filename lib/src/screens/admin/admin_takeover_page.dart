@@ -81,7 +81,13 @@ class _AdminTakeoverListPageState extends State<AdminTakeoverListPage>
     widget.api.authToken = widget.session.token;
     WidgetsBinding.instance.addObserver(this);
     _inboxEvents = TakeoverInbox.instance.events.listen((event) {
-      if (event.type != 'pong') unawaited(_load());
+      if (!{
+        'pong',
+        'takeover_user_typing',
+        'inbox_disconnected',
+      }.contains(event.type)) {
+        unawaited(_load());
+      }
     });
     _load();
   }

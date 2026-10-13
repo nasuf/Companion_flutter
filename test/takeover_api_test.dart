@@ -6,6 +6,53 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
+    'typing endpoints send only scoped presence with authentication',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final paths = <String>[];
+      final bodies = <Map<String, dynamic>>[];
+      final subscription = server.listen((request) async {
+        expect(request.method, 'POST');
+        expect(request.headers.value('authorization'), 'Bearer synthetic');
+        paths.add(request.uri.path);
+        bodies.add(
+          jsonDecode(await utf8.decoder.bind(request).join())
+              as Map<String, dynamic>,
+        );
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(jsonEncode({'ok': true}));
+        await request.response.close();
+      });
+      addTearDown(() async {
+        await subscription.cancel();
+        await server.close(force: true);
+      });
+      final api = CompanionApi(baseUrl: 'http://127.0.0.1:${server.port}')
+        ..authToken = 'synthetic';
+      await api.setUserTyping(
+        'conv',
+        active: true,
+        revision: 1,
+        sessionId: 'user-session',
+      );
+      await api.setTakeoverTyping(
+        'case',
+        active: false,
+        revision: 2,
+        sessionId: 'admin-session',
+      );
+      expect(paths, [
+        '/conversations/conv/typing',
+        '/admin-api/takeovers/case/typing',
+      ]);
+      expect(bodies, [
+        {'active': true, 'revision': 1, 'session_id': 'user-session'},
+        {'active': false, 'revision': 2, 'session_id': 'admin-session'},
+      ]);
+    },
+  );
+
+  test(
     'takeover generation POST retains full detail and targets only the case',
     () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);

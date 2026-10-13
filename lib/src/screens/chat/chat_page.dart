@@ -175,7 +175,6 @@ class _ChatPageState extends State<ChatPage>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_isTakeover) return;
     final route = ModalRoute.of(context);
     if (route is PageRoute<dynamic> && route != _takeoverRoute) {
       appRouteObserver.unsubscribe(this);
@@ -186,7 +185,14 @@ class _ChatPageState extends State<ChatPage>
 
   @override
   void didPopNext() {
+    _localTyping?.setVisible(_takeoverVisible);
     if (_isTakeover) unawaited(_syncTakeoverHistory());
+  }
+
+  @override
+  void didPushNext() {
+    _localTyping?.setVisible(false);
+    _remoteTyping.clear();
   }
 
   static const _animationDuration = Duration(milliseconds: 260);
@@ -408,11 +414,14 @@ class _ChatPageState extends State<ChatPage>
   bool _takeoverSyncing = false;
   bool _takeoverSyncAgain = false;
   String? _lastTakeoverReadId;
-  Timer? _takeoverTypingTimer;
-  bool _takeoverTypingActive = false;
-  int _takeoverTypingRevision = 0;
-  Timer? _remoteTypingTimer;
-  int _remoteTypingRevision = 0;
+  LocalChatTyping? _localTyping;
+  // Human presence must not overwrite ordinary agent processing feedback.
+  bool _peerTyping = false;
+  late final RemoteChatTyping _remoteTyping = RemoteChatTyping(
+    onChanged: (active) {
+      if (mounted) _notifyTranscript(() => _peerTyping = active);
+    },
+  );
 
   bool get _takeoverVisible =>
       mounted &&
@@ -445,8 +454,9 @@ class _ChatPageState extends State<ChatPage>
       if (_typingVisible.value) _typingVisible.value = false;
       return;
     }
-    if (_typingVisible.value != _agentTyping) {
-      _typingVisible.value = _agentTyping;
+    final typing = _agentTyping || _peerTyping;
+    if (_typingVisible.value != typing) {
+      _typingVisible.value = typing;
     }
   }
 
@@ -494,6 +504,8 @@ class _ChatPageState extends State<ChatPage>
   }
 
   void _syncChatVisibility() {
+    _localTyping?.setVisible(_takeoverVisible);
+    if (!widget.isActive) _remoteTyping.clear();
     if (widget.isActive) {
       if (!_playbackSubscribed) {
         _playback.addListener(_handleStationPlaybackChanged);
@@ -709,7 +721,8 @@ class _ChatPageState extends State<ChatPage>
 
   @override
   void dispose() {
-    _stopTakeoverTyping();
+    _localTyping?.dispose();
+    _remoteTyping.dispose();
     WidgetsBinding.instance.removeObserver(this);
     appRouteObserver.unsubscribe(this);
     // Release the shell's hidden tab bar if we die while a panel is docked
@@ -760,6 +773,10 @@ class _ChatPageState extends State<ChatPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _localTyping?.setVisible(
+      state == AppLifecycleState.resumed && _takeoverVisible,
+    );
+    if (state != AppLifecycleState.resumed) _remoteTyping.clear();
     if (_isTakeover) {
       if (state == AppLifecycleState.resumed) unawaited(_syncTakeoverHistory());
       return;
@@ -791,6 +808,7 @@ class _ChatPageState extends State<ChatPage>
     _syncTakeoverTyping();
     final previousText = _lastInputText;
     final currentText = _inputController.text;
+    if (currentText != previousText) _localTyping?.textChanged(currentText);
     _lastInputText = currentText;
     if (_composerLineCountEstimate(previousText) !=
         _composerLineCountEstimate(currentText)) {
@@ -825,6 +843,9 @@ class _ChatPageState extends State<ChatPage>
   }
 
   Future<void> _bootstrapChat() async {
+    _localTyping?.dispose();
+    _localTyping = null;
+    _remoteTyping.clear(resetRevision: true);
     if (_agentTasks.isNotEmpty) {
       setState(_agentTasks.clear);
     }
@@ -872,6 +893,34 @@ class _ChatPageState extends State<ChatPage>
       _favoriteMusicTrackIds.clear();
       _busyMusicFavoriteIds.clear();
     });
+    final typingApi = widget.api;
+    final typingConversation = _conversationId;
+    final typingTarget = widget.takeover;
+    _localTyping = LocalChatTyping(
+      onSend: (active, revision, sessionId) {
+        unawaited(() async {
+          try {
+            if (typingTarget != null) {
+              await typingApi.setTakeoverTyping(
+                typingTarget.takeoverId,
+                active: active,
+                revision: revision,
+                sessionId: sessionId,
+              );
+            } else {
+              await typingApi.setUserTyping(
+                typingConversation,
+                active: active,
+                revision: revision,
+                sessionId: sessionId,
+              );
+            }
+          } catch (_) {
+            // Presence is best-effort and never blocks message delivery.
+          }
+        }());
+      },
+    )..setVisible(_takeoverVisible);
     _typingVisible.value = false;
     _transcript.publish();
     _syncVoiceRecordingOverlay();
@@ -963,11 +1012,22 @@ class _ChatPageState extends State<ChatPage>
   void _handleTakeoverInbox(WsEnvelope envelope) {
     final target = widget.takeover;
     if (target == null || !mounted) return;
-    if (envelope.type == 'inbox_connected') {
+    if (envelope.type == 'inbox_connected' ||
+        envelope.type == 'inbox_disconnected') {
+      _remoteTyping.clear();
+      if (envelope.type == 'inbox_disconnected') return;
       unawaited(_syncTakeoverHistory());
       return;
     }
     if (envelope.data['takeover_id']?.toString() != target.takeoverId) return;
+    if (envelope.type == 'takeover_user_typing') {
+      if (envelope.data['conversation_id'] == target.conversationId &&
+          _takeoverVisible) {
+        _remoteTyping.apply(envelope.data);
+      }
+      return;
+    }
+    if (envelope.type == 'takeover_user_message') _remoteTyping.clear();
     if (envelope.type == 'takeover_user_message' ||
         envelope.type == 'takeover_admin_message' ||
         envelope.type == 'takeover_transcript') {
@@ -1067,6 +1127,7 @@ class _ChatPageState extends State<ChatPage>
         case ChatSocketStatus.connecting:
           break;
         case ChatSocketStatus.open:
+          _remoteTyping.clear();
           final pending = _pendingSend;
           if (pending != null) {
             socket.sendMessage(
@@ -1083,6 +1144,8 @@ class _ChatPageState extends State<ChatPage>
           if (_agentTyping) _notifyTranscript(() => _agentTyping = false);
           _loadLatestMessages(showLoading: false);
         case ChatSocketStatus.error:
+          _localTyping?.stop();
+          _remoteTyping.clear();
           if (state.code == 401 || state.code == 403) {
             ScaffoldMessenger.of(
               context,
@@ -1090,6 +1153,8 @@ class _ChatPageState extends State<ChatPage>
           }
           break;
         case ChatSocketStatus.closed:
+          _localTyping?.stop();
+          _remoteTyping.clear();
           if (state.code == 4403 && _agentTasks.isNotEmpty) {
             setState(_agentTasks.clear);
           }
@@ -2618,6 +2683,7 @@ class _ChatPageState extends State<ChatPage>
               ]
             : const <ChatAttachment>[];
         if (text.isEmpty && attachments.isEmpty) return;
+        _remoteTyping.clear();
         // offline 活动类消息（到达卡/拍照引导/思绪碎片/未命中暗示）可能刚翻转
         // 活动状态，据此刷新顶部任务条（尤其"确认到达"→ reached=true）。
         _maybeRefreshTaskBarFromEvent(payload);
@@ -2985,6 +3051,7 @@ class _ChatPageState extends State<ChatPage>
           ]
         : const <ChatAttachment>[];
     if (text.isEmpty && componentCard == null && attachments.isEmpty) return;
+    if (role == 'assistant') _remoteTyping.clear();
 
     final messageId = payload['message_id']?.toString() ?? '';
     final clientId = payload['client_id']?.toString() ?? '';
@@ -4282,76 +4349,18 @@ class _ChatPageState extends State<ChatPage>
   }
 
   void _syncTakeoverTyping() {
-    if (!_isTakeover || !mounted) return;
-    final target = widget.takeover;
-    if (target == null) return;
-    final composing =
-        _inputController.text.trim().isNotEmpty ||
-        _recordingVoice ||
-        _transcribingVoice;
-    if (!composing) {
-      _takeoverTypingTimer?.cancel();
-      _takeoverTypingTimer = null;
-      if (_takeoverTypingActive) _publishTakeoverTyping(false);
-      return;
-    }
-    if (!_takeoverTypingActive) _publishTakeoverTyping(true);
-    _takeoverTypingTimer?.cancel();
-    _takeoverTypingTimer = Timer(const Duration(seconds: 3), () {
-      if (!mounted) return;
-      _takeoverTypingActive = false;
-      _syncTakeoverTyping();
-    });
-  }
-
-  void _publishTakeoverTyping(bool active) {
-    final target = widget.takeover;
-    if (target == null) return;
-    _takeoverTypingActive = active;
-    final revision = ++_takeoverTypingRevision;
-    unawaited(() async {
-      try {
-        await widget.api.setTakeoverTyping(
-          target.takeoverId,
-          active: active,
-          revision: revision,
-        );
-      } catch (_) {
-        // The next composer change publishes a newer revision.
-      }
-    }());
-  }
-
-  void _stopTakeoverTyping() {
-    _takeoverTypingTimer?.cancel();
-    _takeoverTypingTimer = null;
-    _remoteTypingTimer?.cancel();
-    _remoteTypingTimer = null;
-    if (_isTakeover && _takeoverTypingActive) {
-      _publishTakeoverTyping(false);
-    }
-    _takeoverTypingActive = false;
+    _localTyping?.setVisible(_takeoverVisible);
+    _localTyping?.voiceChanged(_recordingVoice || _transcribingVoice);
   }
 
   void _clearRemoteTyping() {
-    _remoteTypingTimer?.cancel();
-    _remoteTypingTimer = null;
+    _remoteTyping.clear();
     _agentTyping = false;
   }
 
   void _applyTakeoverTyping(Map<String, dynamic> payload) {
-    if (_isTakeover) return;
-    final revision = (payload['revision'] as num?)?.toInt() ?? 0;
-    if (revision < _remoteTypingRevision) return;
-    _remoteTypingRevision = revision;
-    final active = payload['active'] == true;
-    _remoteTypingTimer?.cancel();
-    _notifyTranscript(() => _agentTyping = active);
-    if (!active) return;
-    _remoteTypingTimer = Timer(const Duration(seconds: 8), () {
-      if (!mounted) return;
-      _notifyTranscript(() => _agentTyping = false);
-    });
+    if (_isTakeover || !_takeoverVisible) return;
+    _remoteTyping.apply(payload);
   }
 
   void _applyTakeoverReadReceipt(Object? rawSequence) {

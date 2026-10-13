@@ -303,11 +303,16 @@ mixin _CompanionApiTakeover on _CompanionApiCore {
     String takeoverId, {
     required bool active,
     required int revision,
+    String? sessionId,
   }) async {
     await _request(
       'POST',
       '/admin-api/takeovers/${Uri.encodeComponent(takeoverId)}/typing',
-      body: {'active': active, 'revision': revision},
+      body: {
+        'active': active,
+        'revision': revision,
+        if (sessionId != null) 'session_id': sessionId,
+      },
     );
   }
 

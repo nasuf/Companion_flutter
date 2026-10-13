@@ -12,7 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class FakeTakeoverApi extends CompanionApi {
-  FakeTakeoverApi() : super(baseUrl: 'http://127.0.0.1:1');
+  FakeTakeoverApi({super.baseUrl = 'http://127.0.0.1:1'});
   final scopes = <String>[];
   final reads = <String>[];
   final sends = <String>[];

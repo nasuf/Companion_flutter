@@ -1,6 +1,19 @@
 part of 'package:companion_flutter/companion_api.dart';
 
 mixin _CompanionApiChat on _CompanionApiCore {
+  Future<void> setUserTyping(
+    String conversationId, {
+    required bool active,
+    required int revision,
+    required String sessionId,
+  }) async {
+    await _request(
+      'POST',
+      '/conversations/${Uri.encodeComponent(conversationId)}/typing',
+      body: {'active': active, 'revision': revision, 'session_id': sessionId},
+    );
+  }
+
   Future<String> getWebSocketTicket(String conversationId) async {
     try {
       final json =

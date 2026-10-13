@@ -120,10 +120,26 @@ class TakeoverInbox {
           }
         },
         onDone: () {
-          if (_socket == socket) _scheduleReconnect();
+          if (_socket == socket) {
+            _events.add(
+              WsEnvelope.fromJson({
+                'type': 'inbox_disconnected',
+                'data': <String, dynamic>{},
+              }),
+            );
+            _scheduleReconnect();
+          }
         },
         onError: (_) {
-          if (_socket == socket) _scheduleReconnect();
+          if (_socket == socket) {
+            _events.add(
+              WsEnvelope.fromJson({
+                'type': 'inbox_disconnected',
+                'data': <String, dynamic>{},
+              }),
+            );
+            _scheduleReconnect();
+          }
         },
         cancelOnError: false,
       );

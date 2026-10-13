@@ -34,6 +34,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'chat_socket.dart';
+import 'src/chat/typing_presence.dart';
 import 'takeover_inbox.dart';
 import 'takeover_unread.dart';
 import 'task_waiting.dart';
