@@ -168,6 +168,37 @@ class TakeoverUnreadSummary {
 }
 
 mixin _CompanionApiTakeover on _CompanionApiCore {
+  Future<OfflineActivity> fetchTakeoverActivity(
+    String takeoverId,
+    String activityId,
+  ) async {
+    final json =
+        await _request(
+              'GET',
+              '/admin-api/takeovers/${Uri.encodeComponent(takeoverId)}/activities/${Uri.encodeComponent(activityId)}',
+            )
+            as Map<String, dynamic>;
+    return _normalizeOfflineActivity(OfflineActivity.fromJson(json));
+  }
+
+  Future<OfflineActivityReview> fetchTakeoverActivityReview(
+    String takeoverId,
+    String activityId,
+  ) async {
+    final json =
+        await _request(
+              'GET',
+              '/admin-api/takeovers/${Uri.encodeComponent(takeoverId)}/activities/${Uri.encodeComponent(activityId)}/review',
+            )
+            as Map<String, dynamic>;
+    final review = OfflineActivityReview.fromJson(json);
+    return review.copyWith(
+      coverUrl: review.coverUrl == null ? null : _absoluteUrl(review.coverUrl!),
+      imageUrls: review.imageUrls.map(_absoluteUrl).toList(),
+      gallery: review.gallery.map(_absoluteUrl).toList(),
+    );
+  }
+
   Future<TakeoverUnreadSummary> getTakeoverUnreadSummary() async {
     final json =
         await _request('GET', '/admin-api/takeovers/unread-summary')

@@ -1550,7 +1550,10 @@ class _ChatPageState extends State<ChatPage>
       _dismissInputSurfaces();
       // 直达该活动对应详情（打卡页/回顾页/详情 sheet），不再先跳活动列表主页。
       try {
-        final activity = await widget.api.fetchOfflineActivity(activityId);
+        final takeoverId = widget.takeover?.takeoverId;
+        final activity = takeoverId == null
+            ? await widget.api.fetchOfflineActivity(activityId)
+            : await widget.api.fetchTakeoverActivity(takeoverId, activityId);
         if (!mounted) return;
         // 回顾页点「查看原始聊天」时返回到达卡消息 id → 回跳并滚动定位到「我到了」。
         final jumpMessageId = await openOfflineActivityDetail(
@@ -1558,14 +1561,20 @@ class _ChatPageState extends State<ChatPage>
           api: widget.api,
           session: widget.session,
           activity: activity,
+          takeoverId: takeoverId,
           onChanged: _refreshTaskBar,
           onNavigateToChat: _returnToChatAfterOfflineArrive,
         );
         if (mounted && jumpMessageId != null && jumpMessageId.isNotEmpty) {
           await _jumpToActivityMessage(jumpMessageId);
         }
+      } on ApiException catch (error) {
+        if (_isTakeover && mounted) _showActivityToast(context, error.message);
       } catch (_) {
-        // 拉取失败（已删除/网络）：静默，不打断聊天。
+        if (_isTakeover && mounted) {
+          _showActivityToast(context, '暂时无法加载活动，请稍后重试');
+        }
+        // 普通聊天保持静默；接管入口展示失败原因。
       }
       return;
     }

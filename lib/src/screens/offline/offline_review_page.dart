@@ -8,11 +8,13 @@ class OfflineReviewPage extends StatefulWidget {
     required this.api,
     required this.session,
     required this.activityId,
+    this.takeoverId,
   });
 
   final CompanionApi api;
   final AuthSession session;
   final String activityId;
+  final String? takeoverId;
 
   @override
   State<OfflineReviewPage> createState() => _OfflineReviewPageState();
@@ -39,9 +41,13 @@ class _OfflineReviewPageState extends State<OfflineReviewPage> {
 
   Future<void> _load() async {
     try {
-      final review = await widget.api.fetchOfflineActivityReview(
-        widget.activityId,
-      );
+      final takeoverId = widget.takeoverId;
+      final review = takeoverId == null
+          ? await widget.api.fetchOfflineActivityReview(widget.activityId)
+          : await widget.api.fetchTakeoverActivityReview(
+              takeoverId,
+              widget.activityId,
+            );
       if (!mounted) return;
       setState(() {
         _review = review;
@@ -58,7 +64,7 @@ class _OfflineReviewPageState extends State<OfflineReviewPage> {
   }
 
   Future<void> _openMemoryNote() async {
-    if (_generatingNote) return;
+    if (widget.takeoverId != null || _generatingNote) return;
     setState(() => _generatingNote = true);
     try {
       final note = await widget.api.generateOfflineMemoryNote(
@@ -198,26 +204,27 @@ class _OfflineReviewPageState extends State<OfflineReviewPage> {
             ),
           ),
         ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
-            child: SizedBox(
-              width: double.infinity,
-              child: _PrimaryActivityPillButton(
-                label: _generatingNote
-                    ? '正在生成…'
-                    : review.hasMemoryNote
-                    ? '查看记忆手札'
-                    : review.canGenerateMemoryNote
-                    ? '生成记忆手札'
-                    : '暂无可整理的旅途内容',
-                icon: '✨',
-                enabled: !_generatingNote && review.canGenerateMemoryNote,
-                onPressed: _openMemoryNote,
+        if (widget.takeoverId == null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
+              child: SizedBox(
+                width: double.infinity,
+                child: _PrimaryActivityPillButton(
+                  label: _generatingNote
+                      ? '正在生成…'
+                      : review.hasMemoryNote
+                      ? '查看记忆手札'
+                      : review.canGenerateMemoryNote
+                      ? '生成记忆手札'
+                      : '暂无可整理的旅途内容',
+                  icon: '✨',
+                  enabled: !_generatingNote && review.canGenerateMemoryNote,
+                  onPressed: _openMemoryNote,
+                ),
               ),
             ),
           ),
-        ),
         SliverToBoxAdapter(
           child: Center(
             child: CupertinoButton(

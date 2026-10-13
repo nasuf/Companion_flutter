@@ -14,11 +14,15 @@ class OfflineCheckinPage extends StatefulWidget {
     this.onChanged,
     this.onNavigateToChat,
     this.locationLoader,
+    this.takeoverId,
   });
 
   final CompanionApi api;
   final AuthSession session;
   final String activityId;
+
+  /// Non-null only for a scoped, read-only administrator visit.
+  final String? takeoverId;
   final OfflineActivity? initialActivity;
   final VoidCallback? onChanged;
 
@@ -52,7 +56,13 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
 
   Future<void> _load() async {
     try {
-      final activity = await widget.api.fetchOfflineActivity(widget.activityId);
+      final takeoverId = widget.takeoverId;
+      final activity = takeoverId == null
+          ? await widget.api.fetchOfflineActivity(widget.activityId)
+          : await widget.api.fetchTakeoverActivity(
+              takeoverId,
+              widget.activityId,
+            );
       if (!mounted) return;
       setState(() {
         _activity = activity;
@@ -69,7 +79,7 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
   }
 
   Future<void> _onArrive() async {
-    if (_arriving) return;
+    if (widget.takeoverId != null || _arriving) return;
     setState(() => _arriving = true);
     try {
       var confirmed = !(_activity?.arrivalVerificationAvailable ?? false);
@@ -152,7 +162,7 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
   }
 
   Future<void> _onProphecyAction() async {
-    if (_drawing) return;
+    if (widget.takeoverId != null || _drawing) return;
     final existing = (_activity?.prophecyText ?? '').trim();
     if (existing.isNotEmpty) {
       await showOfflineProphecyDialog(context, existing);
@@ -177,7 +187,7 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
   }
 
   Future<void> _onArchive() async {
-    if (_archiving) return;
+    if (widget.takeoverId != null || _archiving) return;
     final confirmed = await showOfflineArchiveConfirm(context);
     if (!confirmed || !mounted) return;
     setState(() => _archiving = true);
@@ -214,7 +224,7 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
                     child: _OfflineSubpageTopBar(
-                      title: '打卡任务',
+                      title: widget.takeoverId == null ? '打卡任务' : '活动详情',
                       onBack: () => Navigator.of(context).maybePop(),
                     ),
                   ),
@@ -225,7 +235,10 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
                         ? _buildError()
                         : _buildBody(activity),
                   ),
-                  if (!_loading && activity != null) _buildDock(activity),
+                  if (!_loading &&
+                      activity != null &&
+                      widget.takeoverId == null)
+                    _buildDock(activity),
                 ],
               ),
             ),

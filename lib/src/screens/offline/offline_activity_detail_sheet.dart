@@ -10,11 +10,14 @@ Future<String?> openOfflineActivityDetail(
   required CompanionApi api,
   required AuthSession session,
   required OfflineActivity activity,
+  String? takeoverId,
   VoidCallback? onChanged,
   VoidCallback? onNavigateToChat,
 }) async {
   try {
-    activity = await api.fetchOfflineActivity(activity.id);
+    activity = takeoverId == null
+        ? await api.fetchOfflineActivity(activity.id)
+        : await api.fetchTakeoverActivity(takeoverId, activity.id);
   } on ApiException catch (error) {
     if (context.mounted) _showActivityToast(context, error.message);
     return null;
@@ -35,6 +38,7 @@ Future<String?> openOfflineActivityDetail(
           session: session,
           activityId: activity.id,
           initialActivity: activity,
+          takeoverId: takeoverId,
           onChanged: onChanged,
           onNavigateToChat: onNavigateToChat,
         ),
@@ -49,6 +53,7 @@ Future<String?> openOfflineActivityDetail(
           api: api,
           session: session,
           activityId: activity.id,
+          takeoverId: takeoverId,
         ),
       ),
     );
@@ -70,8 +75,10 @@ Future<String?> openOfflineActivityDetail(
       builder: (_, scrollController) => _ActivityDetailSheetShell(
         api: api,
         activity: activity,
+        readOnly: takeoverId != null,
         scrollController: scrollController,
         onAccept: () async {
+          if (takeoverId != null) return null;
           try {
             return await api.acceptOfflineActivity(activity.id);
           } on ApiException catch (error) {
@@ -82,6 +89,7 @@ Future<String?> openOfflineActivityDetail(
           }
         },
         onIgnore: () async {
+          if (takeoverId != null) return false;
           try {
             await api.ignoreOfflineActivity(activity.id);
             return true;
@@ -127,9 +135,11 @@ class _ActivityDetailSheetShell extends StatelessWidget {
     required this.onAccept,
     required this.onIgnore,
     required this.onAccepted,
+    this.readOnly = false,
   });
 
   final CompanionApi api;
+  final bool readOnly;
   final OfflineActivity activity;
   final ScrollController scrollController;
   final Future<OfflineActivity?> Function() onAccept;
@@ -147,6 +157,7 @@ class _ActivityDetailSheetShell extends StatelessWidget {
       onAccept: onAccept,
       onIgnore: onIgnore,
       onAccepted: onAccepted,
+      readOnly: readOnly,
     );
   }
 }
@@ -159,9 +170,11 @@ class _ActivityDetailSheet extends StatefulWidget {
     required this.onAccept,
     required this.onIgnore,
     required this.onAccepted,
+    this.readOnly = false,
   });
 
   final CompanionApi api;
+  final bool readOnly;
   final OfflineActivity activity;
   final ScrollController scrollController;
   final Future<OfflineActivity?> Function() onAccept;
@@ -176,7 +189,7 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
   bool _responding = false;
 
   Future<void> _accept() async {
-    if (_responding) return;
+    if (widget.readOnly || _responding) return;
     setState(() => _responding = true);
     final updated = await widget.onAccept();
     if (!mounted) return;
@@ -189,7 +202,7 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
   }
 
   Future<void> _ignore() async {
-    if (_responding) return;
+    if (widget.readOnly || _responding) return;
     setState(() => _responding = true);
     final success = await widget.onIgnore();
     if (!mounted) return;
@@ -200,8 +213,8 @@ class _ActivityDetailSheetState extends State<_ActivityDetailSheet> {
   @override
   Widget build(BuildContext context) {
     final activity = widget.activity;
-    final canRespond = activity.status == 'pending';
-    final canReaccept = activity.status == 'ignored';
+    final canRespond = !widget.readOnly && activity.status == 'pending';
+    final canReaccept = !widget.readOnly && activity.status == 'ignored';
     final isCompleted = activity.status == 'completed';
     return _OfflineDetailSheetFrame(
       title: '活动详情',
