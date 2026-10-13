@@ -68,6 +68,7 @@ class _Composer extends StatelessWidget {
     required this.onPasteText,
     this.freeMessagesRemaining,
     this.textOnly = false,
+    this.showMore = true,
   });
 
   final TextEditingController controller;
@@ -104,6 +105,7 @@ class _Composer extends StatelessWidget {
   /// null 表示不在免费额度阶段 (VIP 月度 5200 太大, 不值得展示, 见调用侧)。
   final int? freeMessagesRemaining;
   final bool textOnly;
+  final bool showMore;
 
   @override
   Widget build(BuildContext context) {
@@ -327,7 +329,7 @@ class _Composer extends StatelessWidget {
                                     ),
                             ),
                           )
-                        : textOnly
+                        : textOnly || !showMore
                         ? const SizedBox.shrink()
                         : _RoundIconButton(
                             tooltip: '更多',

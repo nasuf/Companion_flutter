@@ -197,7 +197,7 @@ void main() {
       expect(find.byTooltip('连续互动 12 天'), findsNothing);
       expect(find.byTooltip('表情'), findsOneWidget);
       expect(find.byIcon(CupertinoIcons.mic), findsOneWidget);
-      expect(find.byTooltip('更多'), findsOneWidget);
+      expect(find.byTooltip('更多'), findsNothing);
       expect(find.text('回复由AI生成'), findsNothing);
       tester
               .widget<ExtendedTextField>(find.byType(ExtendedTextField))
