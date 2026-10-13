@@ -44,5 +44,29 @@ void main() {
 
     expect(message.failed, isFalse);
     expect(message.pending, isFalse);
+    expect(message.read, isTrue);
+  });
+
+  test('explicit takeover read state survives history reload', () {
+    final unread = ChatMessage.fromJson({
+      'id': 'msg-2',
+      'conversation_id': 'conversation-1',
+      'role': 'user',
+      'content': '还没看',
+      'created_at': DateTime.now().toIso8601String(),
+      'read': false,
+      'metadata': {'human_takeover': true, 'takeover_sequence': 4},
+    });
+    final read = ChatMessage.fromJson({
+      'id': 'msg-3',
+      'conversation_id': 'conversation-1',
+      'role': 'user',
+      'content': '看过了',
+      'created_at': DateTime.now().toIso8601String(),
+      'read': true,
+    });
+
+    expect(unread.read, isFalse);
+    expect(read.read, isTrue);
   });
 }

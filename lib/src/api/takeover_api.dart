@@ -120,6 +120,47 @@ class TakeoverReview {
   }
 }
 
+class TakeoverActivityPreview {
+  const TakeoverActivityPreview({
+    required this.previewId,
+    required this.title,
+    this.summary = '',
+    this.description = '',
+    this.locationName = '',
+    this.address = '',
+    this.city = '',
+    this.suitable = '',
+    this.category = '',
+    this.imageUrl,
+  });
+
+  final String previewId;
+  final String title;
+  final String summary;
+  final String description;
+  final String locationName;
+  final String address;
+  final String city;
+  final String suitable;
+  final String category;
+  final String? imageUrl;
+
+  factory TakeoverActivityPreview.fromJson(Map<String, dynamic> json) {
+    return TakeoverActivityPreview(
+      previewId: json['preview_id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      summary: json['summary']?.toString() ?? '',
+      description: json['description']?.toString() ?? '',
+      locationName: json['location_name']?.toString() ?? '',
+      address: json['address']?.toString() ?? '',
+      city: json['city']?.toString() ?? '',
+      suitable: json['suitable']?.toString() ?? '',
+      category: json['category']?.toString() ?? '',
+      imageUrl: json['image_url']?.toString(),
+    );
+  }
+}
+
 class TakeoverUnreadSummary {
   const TakeoverUnreadSummary(this.count, this.sampledAt);
   final int count;
@@ -184,6 +225,46 @@ mixin _CompanionApiTakeover on _CompanionApiCore {
       'POST',
       '/admin-api/takeovers/${Uri.encodeComponent(takeoverId)}/read',
       body: {'message_id': messageId},
+    );
+  }
+
+  Future<List<TakeoverActivityPreview>> previewTakeoverActivities(
+    String takeoverId,
+  ) async {
+    final json =
+        await _request(
+              'POST',
+              '/admin-api/takeovers/${Uri.encodeComponent(takeoverId)}/activity-previews',
+            )
+            as Map<String, dynamic>;
+    final items = json['items'];
+    if (items is! List) return const [];
+    return [
+      for (final item in items)
+        if (item is Map)
+          TakeoverActivityPreview.fromJson(Map<String, dynamic>.from(item)),
+    ];
+  }
+
+  Future<void> publishTakeoverActivity(
+    String takeoverId,
+    String previewId,
+  ) async {
+    await _request(
+      'POST',
+      '/admin-api/takeovers/${Uri.encodeComponent(takeoverId)}/activity-previews/${Uri.encodeComponent(previewId)}/publish',
+    );
+  }
+
+  Future<void> setTakeoverTyping(
+    String takeoverId, {
+    required bool active,
+    required int revision,
+  }) async {
+    await _request(
+      'POST',
+      '/admin-api/takeovers/${Uri.encodeComponent(takeoverId)}/typing',
+      body: {'active': active, 'revision': revision},
     );
   }
 

@@ -167,7 +167,7 @@ class _ChatInputChromeLayerState extends State<_ChatInputChromeLayer> {
                   child: RepaintBoundary(
                     child: _Composer(
                       textOnly: false,
-                      showMore: !_host._isTakeover,
+                      showMore: true,
                       controller: _host._inputController,
                       focusNode: _host._inputFocus,
                       height: composerHeight,
@@ -251,6 +251,8 @@ class _ChatInputChromeLayerState extends State<_ChatInputChromeLayer> {
               onSendGift: () => unawaited(_host._onSendGift()),
               onSendLocation: () => unawaited(_host._onSendLocation()),
               onSearch: () => unawaited(_host._openChatSearch()),
+              onOpenActivity: _host._openTakeoverActivities,
+              activityOnly: _host._isTakeover,
             ),
           ),
         ),

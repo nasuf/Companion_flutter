@@ -10,6 +10,8 @@ class _ChatPanel extends StatefulWidget {
     required this.onSendGift,
     required this.onSendLocation,
     required this.onSearch,
+    this.onOpenActivity,
+    this.activityOnly = false,
     this.bottomInset = 0,
   });
 
@@ -21,6 +23,8 @@ class _ChatPanel extends StatefulWidget {
   final VoidCallback onSendGift;
   final VoidCallback onSendLocation;
   final VoidCallback onSearch;
+  final VoidCallback? onOpenActivity;
+  final bool activityOnly;
 
   /// Bottom safe-area height. The panel docks to the screen bottom (like the
   /// keyboard), so it owns the home-indicator strip and keeps content above it.
@@ -88,6 +92,8 @@ class _ChatPanelState extends State<_ChatPanel> {
           child: switch (widget.panel) {
             ComposerPanel.emoji => _EmojiPanel(onEmojiTap: widget.onEmojiTap),
             ComposerPanel.more => _MorePanel(
+              activityOnly: widget.activityOnly,
+              onOpenActivity: widget.onOpenActivity,
               onPickPhoto: widget.onPickPhoto,
               onTakePhoto: widget.onTakePhoto,
               onSendRedPacket: widget.onSendRedPacket,
@@ -260,8 +266,12 @@ class _MorePanel extends StatelessWidget {
     required this.onSendGift,
     required this.onSendLocation,
     required this.onSearch,
+    this.onOpenActivity,
+    this.activityOnly = false,
   });
 
+  final VoidCallback? onOpenActivity;
+  final bool activityOnly;
   final VoidCallback onPickPhoto;
   final VoidCallback onTakePhoto;
   final VoidCallback onSendRedPacket;
@@ -298,6 +308,15 @@ class _MorePanel extends StatelessWidget {
     _ToolSpec('礼物', CupertinoIcons.gift, Color(0xFFFF8A3D), _ToolAction.gift),
   ];
 
+  static const _activityTool = _ToolSpec(
+    '活动',
+    CupertinoIcons.location_circle,
+    Color(0xFF06C893),
+    _ToolAction.activity,
+  );
+
+  List<_ToolSpec> get _visibleTools => activityOnly ? const [_activityTool] : _tools;
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -307,10 +326,10 @@ class _MorePanel extends StatelessWidget {
           return ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             scrollDirection: Axis.horizontal,
-            itemCount: _tools.length,
+            itemCount: _visibleTools.length,
             separatorBuilder: (_, __) => const SizedBox(width: 6),
             itemBuilder: (context, index) {
-              final tool = _tools[index];
+              final tool = _visibleTools[index];
               return SizedBox(
                 width: 62,
                 child: Center(
@@ -324,6 +343,7 @@ class _MorePanel extends StatelessWidget {
                       _ToolAction.gift => onSendGift,
                       _ToolAction.location => onSendLocation,
                       _ToolAction.search => onSearch,
+                      _ToolAction.activity => onOpenActivity,
                       _ToolAction.none => null,
                     },
                   ),
@@ -340,7 +360,8 @@ class _MorePanel extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _ToolRow(
-                  tools: _tools.take(3).toList(),
+                  tools: _visibleTools.take(3).toList(),
+                  onOpenActivity: onOpenActivity,
                   onPickPhoto: onPickPhoto,
                   onTakePhoto: onTakePhoto,
                   onSendRedPacket: onSendRedPacket,
@@ -348,9 +369,11 @@ class _MorePanel extends StatelessWidget {
                   onSendLocation: onSendLocation,
                   onSearch: onSearch,
                 ),
+                if (_visibleTools.length > 3) ...[
                 const SizedBox(height: 26),
                 _ToolRow(
-                  tools: _tools.skip(3).take(3).toList(),
+                  tools: _visibleTools.skip(3).take(3).toList(),
+                  onOpenActivity: onOpenActivity,
                   onPickPhoto: onPickPhoto,
                   onTakePhoto: onTakePhoto,
                   onSendRedPacket: onSendRedPacket,
@@ -358,6 +381,7 @@ class _MorePanel extends StatelessWidget {
                   onSendLocation: onSendLocation,
                   onSearch: onSearch,
                 ),
+                ],
               ],
             ),
           ),
@@ -370,6 +394,7 @@ class _MorePanel extends StatelessWidget {
 class _ToolRow extends StatelessWidget {
   const _ToolRow({
     required this.tools,
+    this.onOpenActivity,
     required this.onPickPhoto,
     required this.onTakePhoto,
     required this.onSendRedPacket,
@@ -379,6 +404,7 @@ class _ToolRow extends StatelessWidget {
   });
 
   final List<_ToolSpec> tools;
+  final VoidCallback? onOpenActivity;
   final VoidCallback onPickPhoto;
   final VoidCallback onTakePhoto;
   final VoidCallback onSendRedPacket;
@@ -402,6 +428,7 @@ class _ToolRow extends StatelessWidget {
                   _ToolAction.gift => onSendGift,
                   _ToolAction.location => onSendLocation,
                   _ToolAction.search => onSearch,
+                  _ToolAction.activity => onOpenActivity,
                   _ToolAction.none => null,
                 },
               ),
@@ -467,4 +494,4 @@ class _ToolSpec {
   final _ToolAction action;
 }
 
-enum _ToolAction { photo, camera, redPacket, gift, location, search, none }
+enum _ToolAction { photo, camera, redPacket, gift, location, search, activity, none }

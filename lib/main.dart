@@ -82,6 +82,7 @@ part 'src/screens/admin/admin_takeover_page.dart';
 part 'src/screens/admin/admin_users_page.dart';
 part 'src/screens/admin/admin_agent_tts_page.dart';
 part 'src/screens/admin/admin_offline_test_page.dart';
+part 'src/screens/admin/takeover_activity_sheet.dart';
 part 'src/screens/admin/admin_gift_test_page.dart';
 part 'src/screens/admin/admin_dashboard_page.dart';
 part 'src/screens/admin/admin_chrome.dart';

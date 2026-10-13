@@ -408,6 +408,11 @@ class _ChatPageState extends State<ChatPage>
   bool _takeoverSyncing = false;
   bool _takeoverSyncAgain = false;
   String? _lastTakeoverReadId;
+  Timer? _takeoverTypingTimer;
+  bool _takeoverTypingActive = false;
+  int _takeoverTypingRevision = 0;
+  Timer? _remoteTypingTimer;
+  int _remoteTypingRevision = 0;
 
   bool get _takeoverVisible =>
       mounted &&
@@ -704,6 +709,7 @@ class _ChatPageState extends State<ChatPage>
 
   @override
   void dispose() {
+    _stopTakeoverTyping();
     WidgetsBinding.instance.removeObserver(this);
     appRouteObserver.unsubscribe(this);
     // Release the shell's hidden tab bar if we die while a panel is docked
@@ -782,6 +788,7 @@ class _ChatPageState extends State<ChatPage>
 
   void _handleInputChanged() {
     if (!mounted) return;
+    _syncTakeoverTyping();
     final previousText = _lastInputText;
     final currentText = _inputController.text;
     _lastInputText = currentText;
@@ -2496,6 +2503,8 @@ class _ChatPageState extends State<ChatPage>
         if (clientId.isEmpty) return;
         final uiDelaySeconds = replyUiDelaySeconds(payload['ui_delay_seconds']);
         final deferUi = replyUiDefer(payload['defer_ui']);
+        final humanReceipt = payload['human_takeover'] == true;
+        final takeoverSequence = payload['takeover_sequence'];
         // 服务端已经确认收到并落库了这条消息 (哪怕 AI 回复还没生成完),
         // 不再需要"发出去杳无音讯"的超时兜底。
         if (clientId == _inFlightClientId) _clearSendTimeout();
@@ -2507,9 +2516,17 @@ class _ChatPageState extends State<ChatPage>
               if (message.id == clientId || message.clientId == clientId) {
                 _messages[i] = message.copyWith(
                   id: messageId.isEmpty ? message.id : messageId,
-                  read: deferUi || uiDelaySeconds > 0 ? message.read : true,
+                  read: humanReceipt
+                      ? false
+                      : (deferUi || uiDelaySeconds > 0 ? message.read : true),
                   pending: false,
-                  metadata: {...?message.metadata, 'client_id': clientId},
+                  metadata: {
+                    ...?message.metadata,
+                    'client_id': clientId,
+                    if (humanReceipt) 'human_takeover': true,
+                    if (humanReceipt && takeoverSequence is num)
+                      'takeover_sequence': takeoverSequence.toInt(),
+                  },
                 );
                 if (messageId.isNotEmpty) {
                   _musicStation.acknowledgeMessageId(clientId, messageId);
@@ -2519,7 +2536,8 @@ class _ChatPageState extends State<ChatPage>
             }
           },
         );
-        if (deferUi) {
+        if (humanReceipt || deferUi) {
+          // Human takeover waits for the admin's real read and typing events.
           // Aggregation windows defer read/typing until a later processing event.
         } else if (uiDelaySeconds > 0) {
           _replyUiDelay.schedule(
@@ -2882,8 +2900,15 @@ class _ChatPageState extends State<ChatPage>
           _scheduleStationDockCheck();
         });
         break;
+      case 'takeover_read':
+        _applyTakeoverReadReceipt(payload['read_through_sequence']);
+        break;
+      case 'takeover_typing':
+        _applyTakeoverTyping(payload);
+        break;
       case 'done':
         _replyUiDelay.cancel();
+        _clearRemoteTyping();
         _patchShellAndTranscript(
           shell: () => _sending = false,
           transcript: () => _agentTyping = false,
@@ -3028,7 +3053,7 @@ class _ChatPageState extends State<ChatPage>
         ),
       );
       if (role == 'assistant') {
-        _agentTyping = false;
+        _clearRemoteTyping();
       }
       if (!shouldAutoScroll && role == 'assistant') {
         _newMessageCount += 1;
@@ -3703,6 +3728,7 @@ class _ChatPageState extends State<ChatPage>
   }
 
   void _syncVoiceRecordingOverlay() {
+    _syncTakeoverTyping();
     final callback = widget.onVoiceRecordingOverlayChanged;
     if (callback == null) return;
     final visible = _voiceGestureActive && (_preparingVoice || _recordingVoice);
@@ -3747,6 +3773,7 @@ class _ChatPageState extends State<ChatPage>
 
   void _handleInputFocusChanged() {
     if (!mounted) return;
+    _syncTakeoverTyping();
     if (_inputFocus.hasFocus) {
       _setImeDockActive(true);
     }
@@ -4214,6 +4241,118 @@ class _ChatPageState extends State<ChatPage>
       }
     }
     return null;
+  }
+
+  void _openTakeoverActivities() {
+    if (!_isTakeover) return;
+    _setPanel(ComposerPanel.none);
+    final target = widget.takeover;
+    if (target == null) return;
+    unawaited(showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _TakeoverActivitySheet(
+        api: widget.api,
+        takeoverId: target.takeoverId,
+        onPushed: () => unawaited(_syncTakeoverHistory()),
+      ),
+    ));
+  }
+
+  void _syncTakeoverTyping() {
+    if (!_isTakeover || !mounted) return;
+    final target = widget.takeover;
+    if (target == null) return;
+    final composing =
+        _inputController.text.trim().isNotEmpty ||
+        _recordingVoice ||
+        _transcribingVoice;
+    if (!composing) {
+      _takeoverTypingTimer?.cancel();
+      _takeoverTypingTimer = null;
+      if (_takeoverTypingActive) _publishTakeoverTyping(false);
+      return;
+    }
+    if (!_takeoverTypingActive) _publishTakeoverTyping(true);
+    _takeoverTypingTimer?.cancel();
+    _takeoverTypingTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _takeoverTypingActive = false;
+      _syncTakeoverTyping();
+    });
+  }
+
+  void _publishTakeoverTyping(bool active) {
+    final target = widget.takeover;
+    if (target == null) return;
+    _takeoverTypingActive = active;
+    final revision = ++_takeoverTypingRevision;
+    unawaited(() async {
+      try {
+        await widget.api.setTakeoverTyping(
+          target.takeoverId,
+          active: active,
+          revision: revision,
+        );
+      } catch (_) {
+        // The next composer change publishes a newer revision.
+      }
+    }());
+  }
+
+  void _stopTakeoverTyping() {
+    _takeoverTypingTimer?.cancel();
+    _takeoverTypingTimer = null;
+    _remoteTypingTimer?.cancel();
+    _remoteTypingTimer = null;
+    if (_isTakeover && _takeoverTypingActive) {
+      _publishTakeoverTyping(false);
+    }
+    _takeoverTypingActive = false;
+  }
+
+  void _clearRemoteTyping() {
+    _remoteTypingTimer?.cancel();
+    _remoteTypingTimer = null;
+    _agentTyping = false;
+  }
+
+  void _applyTakeoverTyping(Map<String, dynamic> payload) {
+    if (_isTakeover) return;
+    final revision = (payload['revision'] as num?)?.toInt() ?? 0;
+    if (revision < _remoteTypingRevision) return;
+    _remoteTypingRevision = revision;
+    final active = payload['active'] == true;
+    _remoteTypingTimer?.cancel();
+    _notifyTranscript(() => _agentTyping = active);
+    if (!active) return;
+    _remoteTypingTimer = Timer(const Duration(seconds: 8), () {
+      if (!mounted) return;
+      _notifyTranscript(() => _agentTyping = false);
+    });
+  }
+
+  void _applyTakeoverReadReceipt(Object? rawSequence) {
+    if (_isTakeover) return;
+    final through = rawSequence is num
+        ? rawSequence.toInt()
+        : int.tryParse(rawSequence?.toString() ?? '');
+    if (through == null || through < 1) return;
+    _notifyTranscript(() {
+      for (var i = 0; i < _messages.length; i += 1) {
+        final message = _messages[i];
+        if (!message.isMine || message.read) continue;
+        if (message.metadata?['human_takeover'] != true) continue;
+        final sequence = message.metadata?['takeover_sequence'];
+        final value = sequence is num
+            ? sequence.toInt()
+            : int.tryParse(sequence?.toString() ?? '');
+        if (value != null && value <= through) {
+          _messages[i] = message.copyWith(read: true);
+        }
+      }
+    });
   }
 
   void _applyDelayedReplyUiFeedback({
