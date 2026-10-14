@@ -89,6 +89,7 @@ class FakeTakeoverApi extends CompanionApi {
     String takeoverId, {
     required String text,
     String? clientId,
+    List<ChatAttachment> attachments = const [],
   }) async {
     sends.add(clientId!);
     if (failFirstSend && sends.length == 1) {

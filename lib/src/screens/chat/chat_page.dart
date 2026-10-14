@@ -181,11 +181,14 @@ class _ChatPageState extends State<ChatPage>
       _takeoverRoute = route;
       appRouteObserver.subscribe(this, route);
     }
+    _localTyping?.setVisible(_takeoverVisible);
+    _scheduleUserRead();
   }
 
   @override
   void didPopNext() {
     _localTyping?.setVisible(_takeoverVisible);
+    _scheduleUserRead();
     if (_isTakeover) unawaited(_syncTakeoverHistory());
   }
 
@@ -215,7 +218,12 @@ class _ChatPageState extends State<ChatPage>
   final _inputController = TextEditingController();
   final _inputFocus = FocusNode();
   final _imagePicker = ImagePicker();
-  late final _voiceRecorder = AudioRecorder();
+  AudioRecorder? _voiceRecorderInstance;
+  AudioRecorder get _voiceRecorder =>
+      _voiceRecorderInstance ??= AudioRecorder();
+  final _takeoverVoiceOverlay = ValueNotifier<VoiceRecordingOverlaySnapshot?>(
+    null,
+  );
   final ValueNotifier<double> _voiceAmplitude = ValueNotifier(0.12);
   final _playback = MusicPlaybackController.instance;
   final _stationCardKey = GlobalKey(debugLabel: 'chat-station-card');
@@ -414,6 +422,11 @@ class _ChatPageState extends State<ChatPage>
   bool _takeoverSyncing = false;
   bool _takeoverSyncAgain = false;
   String? _lastTakeoverReadId;
+  final _reportedUserReadIds = <String>{};
+  final _confirmedPeerReadIds = <String>{};
+  bool _userReadScheduled = false;
+  bool _userReadSending = false;
+  int _userReadEpoch = 0;
   LocalChatTyping? _localTyping;
   // Human presence must not overwrite ordinary agent processing feedback.
   bool _peerTyping = false;
@@ -436,7 +449,24 @@ class _ChatPageState extends State<ChatPage>
   ChatMessage _seatMessage(ChatMessage message) {
     if (!_isTakeover) return message;
     if (message.role == 'user') return message.copyWith(role: 'assistant');
-    if (message.role == 'assistant') return message.copyWith(role: 'user');
+    if (message.role == 'assistant') {
+      final receipt =
+          message.metadata?['human_takeover'] == true ||
+          message.metadata?['takeover_receipt_required'] == true ||
+          (message.metadata?['real_world_type'] == 'activity' &&
+              (message.metadata?['trigger_type']?.toString() ?? '').startsWith(
+                'offline_activity_recommendation',
+              ));
+      return message.copyWith(
+        role: 'user',
+        read:
+            _confirmedPeerReadIds.contains(message.id) ||
+            _confirmedPeerReadIds.contains(message.clientId) ||
+            (receipt
+                ? (message.metadata?['takeover_user_read_at'] != null)
+                : message.read),
+      );
+    }
     return message;
   }
 
@@ -467,6 +497,7 @@ class _ChatPageState extends State<ChatPage>
     }
     _transcript.publish();
     _transcriptDirty = false;
+    _scheduleUserRead();
   }
 
   void _notifyTranscript([void Function()? patch]) {
@@ -507,6 +538,7 @@ class _ChatPageState extends State<ChatPage>
     _localTyping?.setVisible(_takeoverVisible);
     if (!widget.isActive) _remoteTyping.clear();
     if (widget.isActive) {
+      _scheduleUserRead();
       if (!_playbackSubscribed) {
         _playback.addListener(_handleStationPlaybackChanged);
         _playbackSubscribed = true;
@@ -763,7 +795,8 @@ class _ChatPageState extends State<ChatPage>
     _musicCompleteSub?.cancel();
     _musicQuotaSub?.cancel();
     _shareIntentSub?.cancel();
-    if (!_isTakeover) unawaited(_voiceRecorder.dispose());
+    unawaited(_voiceRecorderInstance?.dispose());
+    _takeoverVoiceOverlay.dispose();
     _typingVisible.dispose();
     _composerShell.dispose();
     _viewportShell.dispose();
@@ -777,6 +810,7 @@ class _ChatPageState extends State<ChatPage>
       state == AppLifecycleState.resumed && _takeoverVisible,
     );
     if (state != AppLifecycleState.resumed) _remoteTyping.clear();
+    if (state == AppLifecycleState.resumed) _scheduleUserRead();
     if (_isTakeover) {
       if (state == AppLifecycleState.resumed) unawaited(_syncTakeoverHistory());
       return;
@@ -843,6 +877,10 @@ class _ChatPageState extends State<ChatPage>
   }
 
   Future<void> _bootstrapChat() async {
+    _userReadEpoch++;
+    _reportedUserReadIds.clear();
+    _confirmedPeerReadIds.clear();
+    _userReadSending = false;
     _localTyping?.dispose();
     _localTyping = null;
     _remoteTyping.clear(resetRevision: true);
@@ -977,6 +1015,72 @@ class _ChatPageState extends State<ChatPage>
     }
   }
 
+  void _scheduleUserRead() {
+    if (_isTakeover ||
+        _userReadScheduled ||
+        _userReadSending ||
+        !mounted ||
+        !_takeoverVisible) {
+      return;
+    }
+    if (!_messages.reversed
+        .take(100)
+        .any(
+          (m) =>
+              !m.isMine &&
+              !m.pending &&
+              (m.metadata?['human_takeover'] == true ||
+                  m.metadata?['takeover_receipt_required'] == true) &&
+              !_reportedUserReadIds.contains(m.id),
+        )) {
+      return;
+    }
+    _userReadScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _userReadScheduled = false;
+      if (!mounted || !_takeoverVisible || !_isNearBottomNow()) return;
+      unawaited(_reportUserRead());
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
+  Future<void> _reportUserRead() async {
+    if (_userReadSending) return;
+    final ids = _messages.reversed
+        .take(100)
+        .where(
+          (m) =>
+              !m.isMine &&
+              !m.pending &&
+              (m.metadata?['human_takeover'] == true ||
+                  m.metadata?['takeover_receipt_required'] == true) &&
+              !_reportedUserReadIds.contains(m.id),
+        )
+        .take(100)
+        .map((m) => m.id)
+        .toList();
+    if (ids.isEmpty) return;
+    final epoch = _userReadEpoch;
+    final api = widget.api;
+    final conversationId = _conversationId;
+    _userReadSending = true;
+    try {
+      await api.markTakeoverMessagesRead(conversationId, ids);
+      if (!mounted || epoch != _userReadEpoch) return;
+      _reportedUserReadIds.addAll(ids);
+      while (_reportedUserReadIds.length > 500) {
+        _reportedUserReadIds.remove(_reportedUserReadIds.first);
+      }
+    } catch (_) {
+      // A failed receipt remains unacknowledged and retries on visibility/scroll.
+    } finally {
+      if (epoch == _userReadEpoch) {
+        _userReadSending = false;
+        if (_reportedUserReadIds.containsAll(ids)) _scheduleUserRead();
+      }
+    }
+  }
+
   Future<void> _markTakeoverSnapshotRead(List<ChatMessage> newestFirst) async {
     if (!_takeoverVisible || widget.takeover == null || !_isNearBottomNow()) {
       return;
@@ -1020,6 +1124,29 @@ class _ChatPageState extends State<ChatPage>
       return;
     }
     if (envelope.data['takeover_id']?.toString() != target.takeoverId) return;
+    if (envelope.type == 'takeover_user_read') {
+      if (envelope.data['conversation_id'] != target.conversationId) return;
+      final ids = <String>{
+        for (final key in ['message_ids', 'client_ids'])
+          if (envelope.data[key] is List)
+            for (final value in envelope.data[key] as List)
+              if (value is String) value,
+      };
+      _confirmedPeerReadIds.addAll(ids);
+      while (_confirmedPeerReadIds.length > 500) {
+        _confirmedPeerReadIds.remove(_confirmedPeerReadIds.first);
+      }
+      _notifyTranscript(() {
+        for (var i = 0; i < _messages.length; i++) {
+          final message = _messages[i];
+          if (message.isMine &&
+              (ids.contains(message.id) || ids.contains(message.clientId))) {
+            _messages[i] = message.copyWith(read: true);
+          }
+        }
+      });
+      return;
+    }
     if (envelope.type == 'takeover_user_typing') {
       if (envelope.data['conversation_id'] == target.conversationId &&
           _takeoverVisible) {
@@ -2511,6 +2638,7 @@ class _ChatPageState extends State<ChatPage>
     if (!_hasLaidOutScroll()) return;
     final position = _scrollController.position;
     _cachedNearBottom = ChatScrollPolicy.isNearNewest(position);
+    if (_cachedNearBottom) _scheduleUserRead();
     if (_isTakeover && _cachedNearBottom) {
       unawaited(
         _markTakeoverSnapshotRead(_messages.map(_seatMessage).toList()),
@@ -2706,6 +2834,7 @@ class _ChatPageState extends State<ChatPage>
         final metadata = <String, dynamic>{
           if (payload['event_sequence'] is int)
             'event_sequence': payload['event_sequence'],
+          if (payload['human_takeover'] == true) 'human_takeover': true,
           if (componentCard != null) 'component_card': componentCard.toJson(),
           if (attachments.isNotEmpty)
             'attachments': attachments.map((item) => item.toJson()).toList(),
@@ -3807,18 +3936,17 @@ class _ChatPageState extends State<ChatPage>
   void _syncVoiceRecordingOverlay() {
     _syncTakeoverTyping();
     final callback = widget.onVoiceRecordingOverlayChanged;
-    if (callback == null) return;
     final visible = _voiceGestureActive && (_preparingVoice || _recordingVoice);
-    callback(
-      visible
-          ? VoiceRecordingOverlaySnapshot(
-              action: _voiceReleaseAction,
-              seconds: _voiceSeconds,
-              preparing: _preparingVoice,
-              amplitude: _voiceAmplitude,
-            )
-          : null,
-    );
+    final snapshot = visible
+        ? VoiceRecordingOverlaySnapshot(
+            action: _voiceReleaseAction,
+            seconds: _voiceSeconds,
+            preparing: _preparingVoice,
+            amplitude: _voiceAmplitude,
+          )
+        : null;
+    if (_isTakeover && mounted) _takeoverVoiceOverlay.value = snapshot;
+    callback?.call(snapshot);
   }
 
   /// Mirrors docked chrome (emoji/more panel or IME) to the shell so the
@@ -4159,6 +4287,7 @@ class _ChatPageState extends State<ChatPage>
   Future<void> _deliverTakeoverMessage({
     required String text,
     required String clientId,
+    List<ChatAttachment> attachments = const [],
   }) async {
     final target = widget.takeover;
     if (target == null) return;
@@ -4167,6 +4296,7 @@ class _ChatPageState extends State<ChatPage>
         target.takeoverId,
         text: text,
         clientId: clientId,
+        attachments: attachments,
       );
       if (!mounted) return;
       _clearSendTimeout();
@@ -4180,7 +4310,8 @@ class _ChatPageState extends State<ChatPage>
                 id: messageId.isEmpty ? message.id : messageId,
                 pending: false,
                 failed: false,
-                read: true,
+                // A real receipt can arrive before this delivery acknowledgement.
+                read: message.read,
               );
             }
           }
@@ -4257,7 +4388,13 @@ class _ChatPageState extends State<ChatPage>
       _inputFocus.requestFocus();
     }
     if (_isTakeover) {
-      unawaited(_deliverTakeoverMessage(text: text, clientId: clientId));
+      unawaited(
+        _deliverTakeoverMessage(
+          text: text,
+          clientId: clientId,
+          attachments: attachments,
+        ),
+      );
       return;
     }
 
@@ -4461,7 +4598,11 @@ class _ChatPageState extends State<ChatPage>
         },
       );
       unawaited(
-        _deliverTakeoverMessage(text: message.content, clientId: clientId),
+        _deliverTakeoverMessage(
+          text: message.content,
+          clientId: clientId,
+          attachments: message.attachments,
+        ),
       );
       return;
     }
@@ -4947,7 +5088,34 @@ class _ChatPageState extends State<ChatPage>
       ),
     );
     return _isTakeover
-        ? Scaffold(resizeToAvoidBottomInset: false, body: body)
+        ? Scaffold(
+            resizeToAvoidBottomInset: false,
+            body: Stack(
+              children: [
+                body,
+                Positioned.fill(
+                  child: ValueListenableBuilder<VoiceRecordingOverlaySnapshot?>(
+                    valueListenable: _takeoverVoiceOverlay,
+                    builder: (context, overlay, _) => IgnorePointer(
+                      ignoring: overlay == null,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 150),
+                        child: overlay == null
+                            ? const SizedBox.shrink()
+                            : VoiceRecordingOverlay(
+                                key: const ValueKey('voice-recording-overlay'),
+                                action: overlay.action,
+                                seconds: overlay.seconds,
+                                preparing: overlay.preparing,
+                                amplitude: overlay.amplitude,
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
         : body;
   }
 }

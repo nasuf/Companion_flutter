@@ -1,6 +1,17 @@
 part of 'package:companion_flutter/companion_api.dart';
 
 mixin _CompanionApiChat on _CompanionApiCore {
+  Future<void> markTakeoverMessagesRead(
+    String conversationId,
+    List<String> messageIds,
+  ) async {
+    await _request(
+      'POST',
+      '/conversations/${Uri.encodeComponent(conversationId)}/read',
+      body: {'message_ids': messageIds},
+    );
+  }
+
   Future<void> setUserTyping(
     String conversationId, {
     required bool active,

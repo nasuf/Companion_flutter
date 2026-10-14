@@ -23,6 +23,35 @@ class TypingApi extends flow.FakeTakeoverApi {
   bool connectInbox = false;
   bool connectChat = false;
   bool failPresence = false;
+  Completer<String>? messageResponse;
+  final readReceipts = <List<String>>[];
+  @override
+  Future<void> markTakeoverMessagesRead(
+    String id,
+    List<String> messageIds,
+  ) async {
+    readReceipts.add(List.of(messageIds));
+  }
+
+  @override
+  Future<String> sendTakeoverMessage(
+    String id, {
+    required String text,
+    String? clientId,
+    List<ChatAttachment> attachments = const [],
+  }) {
+    if (messageResponse != null) {
+      sends.add(clientId!);
+      return messageResponse!.future;
+    }
+    return super.sendTakeoverMessage(
+      id,
+      text: text,
+      clientId: clientId,
+      attachments: attachments,
+    );
+  }
+
   @override
   Future<String> getTakeoverInboxTicket() async =>
       connectInbox ? 'a' * 43 : throw const ApiException(403, 'synthetic');
@@ -81,6 +110,33 @@ Future<void> network(
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() {
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    for (final channel in [
+      'xyz.luan/audioplayers.global',
+      'xyz.luan/audioplayers.global/events',
+    ]) {
+      messenger.setMockMethodCallHandler(
+        MethodChannel(channel),
+        (_) async => null,
+      );
+    }
+    messenger.setMockMethodCallHandler(
+      const MethodChannel('xyz.luan/audioplayers'),
+      (call) async {
+        final id = (call.arguments as Map?)?['playerId'];
+        if (id != null) {
+          messenger.setMockMethodCallHandler(
+            MethodChannel('xyz.luan/audioplayers/events/$id'),
+            (_) async => null,
+          );
+        }
+        return null;
+      },
+    );
+  });
   tearDown(() async {
     TakeoverUnreadController.instance.clear();
     await TakeoverInbox.instance.stop();
@@ -279,12 +335,162 @@ void main() {
                     'message_id': 'peer-message',
                     'assistant_message_id': 'peer-message',
                     'reply_index': 0,
+                    'human_takeover': true,
                   },
                 }),
               ),
             );
             await flow.drain(tester);
             expect(indicator, findsNothing);
+            if (admin) {
+              api.messageResponse = Completer<String>();
+              tester
+                      .widget<ExtendedTextField>(find.byType(ExtendedTextField))
+                      .controller!
+                      .text =
+                  '真实已读测试';
+              await flow.drain(tester);
+              await tester.tap(find.text('发送'));
+              await flow.drain(tester);
+              expect(
+                find.byWidgetPredicate(
+                  (w) => w is Semantics && w.properties.label == '未读',
+                ),
+                findsOneWidget,
+              );
+              final draftId = api.sends.single;
+              Future<void> receipt(String conv) => network(
+                tester,
+                () async => peers.single.add(
+                  jsonEncode({
+                    'type': 'takeover_user_read',
+                    'data': {
+                      'takeover_id': 'case',
+                      'conversation_id': conv,
+                      'message_ids': ['read-ack'],
+                      'client_ids': [draftId],
+                    },
+                  }),
+                ),
+              );
+              await receipt('foreign');
+              expect(
+                find.byWidgetPredicate(
+                  (w) => w is Semantics && w.properties.label == '未读',
+                ),
+                findsOneWidget,
+              );
+              await receipt('conv');
+              expect(
+                find.byWidgetPredicate(
+                  (w) => w is Semantics && w.properties.label == '已读',
+                ),
+                findsOneWidget,
+              );
+              api.messageResponse!.complete('read-ack');
+              await flow.drain(tester);
+              expect(
+                find.byWidgetPredicate(
+                  (w) => w is Semantics && w.properties.label == '已读',
+                ),
+                findsOneWidget,
+              );
+              api.scriptedHistory = [
+                ChatMessage(
+                  id: 'read-ack',
+                  conversationId: 'conv',
+                  role: 'assistant',
+                  content: '真实已读测试',
+                  createdAt: DateTime.utc(2026, 10, 14),
+                  read: false,
+                  metadata: {'human_takeover': true, 'client_id': draftId},
+                ),
+              ];
+              await network(
+                tester,
+                () async => peers.single.add(
+                  jsonEncode({
+                    'type': 'inbox_connected',
+                    'data': <String, dynamic>{},
+                  }),
+                ),
+              );
+              await flow.drain(tester);
+              expect(
+                find.byWidgetPredicate(
+                  (w) => w is Semantics && w.properties.label == '已读',
+                ),
+                findsOneWidget,
+              );
+            } else {
+              expect(
+                api.readReceipts.expand((x) => x),
+                contains('peer-message'),
+              );
+              tester.binding.handleAppLifecycleStateChanged(
+                AppLifecycleState.paused,
+              );
+              await network(
+                tester,
+                () async => peers.single.add(
+                  jsonEncode({
+                    'type': 'reply',
+                    'data': {
+                      'text': '后台消息',
+                      'message_id': 'hidden-message',
+                      'assistant_message_id': 'hidden-message',
+                      'human_takeover': true,
+                    },
+                  }),
+                ),
+              );
+              await flow.drain(tester);
+              expect(
+                api.readReceipts.expand((x) => x),
+                isNot(contains('hidden-message')),
+              );
+              tester.binding.handleAppLifecycleStateChanged(
+                AppLifecycleState.resumed,
+              );
+              await flow.drain(tester);
+              expect(
+                api.readReceipts.expand((x) => x),
+                contains('hidden-message'),
+              );
+              unawaited(
+                showModalBottomSheet<void>(
+                  context: tester.element(find.byType(ChatPage)),
+                  builder: (_) =>
+                      const SizedBox(height: 100, child: Text('覆盖层')),
+                ),
+              );
+              await flow.drain(tester);
+              await network(
+                tester,
+                () async => peers.single.add(
+                  jsonEncode({
+                    'type': 'reply',
+                    'data': {
+                      'text': '弹层遮挡期间消息',
+                      'message_id': 'covered-message',
+                      'assistant_message_id': 'covered-message',
+                      'human_takeover': true,
+                    },
+                  }),
+                ),
+              );
+              await flow.drain(tester);
+              expect(
+                api.readReceipts.expand((x) => x),
+                isNot(contains('covered-message')),
+              );
+              Navigator.of(tester.element(find.text('覆盖层'))).pop();
+              await flow.drain(tester);
+              expect(
+                api.readReceipts.expand((x) => x),
+                contains('covered-message'),
+              );
+            }
             await network(tester, () async => emit(true, 6));
             expect(indicator, findsOneWidget);
             if (!admin) {
@@ -320,11 +526,15 @@ void main() {
             await tester.pumpWidget(const SizedBox());
             if (!admin) MusicPlaybackController.instance.dispose();
             TakeoverUnreadController.instance.clear();
-            await network(tester, TakeoverInbox.instance.stop);
             await tester.runAsync(() async {
               for (final peer in peers) {
                 unawaited(peer.close());
               }
+            });
+            unawaited(TakeoverInbox.instance.stop());
+            await network(tester, () async {});
+            await network(tester, () async {});
+            await tester.runAsync(() async {
               await requests!.cancel();
               await server.close(force: true);
             });

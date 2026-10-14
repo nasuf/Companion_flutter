@@ -132,8 +132,10 @@ class TakeoverActivityPreview {
     this.suitable = '',
     this.category = '',
     this.imageUrl,
+    this.activity,
   });
 
+  final OfflineActivity? activity;
   final String previewId;
   final String title;
   final String summary;
@@ -157,6 +159,9 @@ class TakeoverActivityPreview {
       suitable: json['suitable']?.toString() ?? '',
       category: json['category']?.toString() ?? '',
       imageUrl: json['image_url']?.toString(),
+      activity: json['image_urls'] is List
+          ? OfflineActivity.fromJson(json)
+          : null,
     );
   }
 }
@@ -285,7 +290,16 @@ mixin _CompanionApiTakeover on _CompanionApiCore {
     return [
       for (final item in items)
         if (item is Map)
-          TakeoverActivityPreview.fromJson(Map<String, dynamic>.from(item)),
+          TakeoverActivityPreview.fromJson({
+            ...Map<String, dynamic>.from(item),
+            if (item['image_url'] is String)
+              'image_url': _absoluteUrl(item['image_url'] as String),
+            if (item['image_urls'] is List)
+              'image_urls': [
+                for (final url in item['image_urls'] as List)
+                  if (url is String) _absoluteUrl(url),
+              ],
+          }),
     ];
   }
 
@@ -331,6 +345,7 @@ mixin _CompanionApiTakeover on _CompanionApiCore {
     String takeoverId, {
     required String text,
     String? clientId,
+    List<ChatAttachment> attachments = const [],
   }) async {
     final json =
         await _request(
@@ -339,6 +354,10 @@ mixin _CompanionApiTakeover on _CompanionApiCore {
               body: {
                 'text': text,
                 if (clientId != null) 'client_id': clientId,
+                if (attachments.isNotEmpty)
+                  'attachments': attachments
+                      .map((item) => {'id': item.id})
+                      .toList(),
               },
             )
             as Map<String, dynamic>;

@@ -33,6 +33,7 @@ class TakeoverUnreadController extends ChangeNotifier
       if (!{
         'pong',
         'takeover_user_typing',
+        'takeover_user_read',
         'inbox_disconnected',
       }.contains(event.type)) {
         unawaited(refresh());
