@@ -287,6 +287,14 @@ class _MainShellState extends State<MainShell> with RouteAware {
         _seenTakeoverNotifications.remove(_seenTakeoverNotifications.first);
       }
       unawaited(TakeoverUnreadController.instance.refresh());
+      if (event.isTakeoverChat &&
+          (WidgetsBinding.instance.lifecycleState !=
+                  AppLifecycleState.resumed ||
+              (event.takeoverId != null &&
+                  event.takeoverId ==
+                      TakeoverInbox.instance.activeTakeoverId))) {
+        return;
+      }
       _showInAppNotification(event);
       return;
     }

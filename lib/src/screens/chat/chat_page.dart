@@ -181,12 +181,14 @@ class _ChatPageState extends State<ChatPage>
       _takeoverRoute = route;
       appRouteObserver.subscribe(this, route);
     }
+    _syncActiveTakeoverPage();
     _localTyping?.setVisible(_takeoverVisible);
     _scheduleUserRead();
   }
 
   @override
   void didPopNext() {
+    _syncActiveTakeoverPage();
     _localTyping?.setVisible(_takeoverVisible);
     _scheduleUserRead();
     if (_isTakeover) unawaited(_syncTakeoverHistory());
@@ -194,6 +196,7 @@ class _ChatPageState extends State<ChatPage>
 
   @override
   void didPushNext() {
+    _syncActiveTakeoverPage(visible: false);
     _localTyping?.setVisible(false);
     _remoteTyping.clear();
   }
@@ -443,6 +446,17 @@ class _ChatPageState extends State<ChatPage>
       (WidgetsBinding.instance.lifecycleState == null ||
           WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed);
 
+  void _syncActiveTakeoverPage({bool visible = true}) {
+    final takeoverId = widget.takeover?.takeoverId;
+    if (takeoverId == null) return;
+    final inbox = TakeoverInbox.instance;
+    if (visible && _takeoverVisible) {
+      inbox.activeTakeoverId = takeoverId;
+    } else if (inbox.activeTakeoverId == takeoverId) {
+      inbox.activeTakeoverId = null;
+    }
+  }
+
   String get _conversationId =>
       widget.takeover?.conversationId ?? widget.session.conversationId!;
 
@@ -535,6 +549,7 @@ class _ChatPageState extends State<ChatPage>
   }
 
   void _syncChatVisibility() {
+    _syncActiveTakeoverPage();
     _localTyping?.setVisible(_takeoverVisible);
     if (!widget.isActive) _remoteTyping.clear();
     if (widget.isActive) {
@@ -806,6 +821,7 @@ class _ChatPageState extends State<ChatPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _syncActiveTakeoverPage(visible: state == AppLifecycleState.resumed);
     _localTyping?.setVisible(
       state == AppLifecycleState.resumed && _takeoverVisible,
     );
@@ -983,7 +999,7 @@ class _ChatPageState extends State<ChatPage>
   Future<void> _bootstrapTakeoverChat() async {
     final target = widget.takeover;
     if (target == null) return;
-    TakeoverInbox.instance.activeTakeoverId = target.takeoverId;
+    _syncActiveTakeoverPage();
     TakeoverInbox.instance.start(
       baseUrl: widget.api.baseUrl,
       adminId: widget.session.userId,

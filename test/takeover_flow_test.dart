@@ -296,6 +296,147 @@ void main() {
     },
   );
 
+  testWidgets('only another visible takeover chat receives a message banner', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    tester.view.viewPadding = const FakeViewPadding(top: 47, bottom: 34);
+    addTearDown(tester.view.reset);
+    final api = FakeTakeoverApi();
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigator,
+        navigatorObservers: [appRouteObserver],
+        home: MainShell(
+          api: api,
+          session: adminSession(),
+          onSessionChanged: (_) {},
+          onLogout: () {},
+        ),
+      ),
+    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    unawaited(
+      navigator.currentState!.push(
+        MaterialPageRoute<void>(
+          builder: (_) => ChatPage(
+            api: api,
+            session: adminSession(),
+            isActive: true,
+            onOpenSidebar: () {},
+            takeover: const TakeoverChatTarget(
+              takeoverId: 'case',
+              conversationId: 'conv',
+              userName: '我的用户',
+              agentName: '目标角色',
+            ),
+          ),
+        ),
+      ),
+    );
+    await drain(tester);
+    expect(TakeoverInbox.instance.activeTakeoverId, 'case');
+
+    void receive(String id, String caseId, String body) {
+      AppNotificationService.instance.emit(
+        AppNotificationEvent(
+          id: id,
+          type: 'admin_takeover_message',
+          title: '用户昵称',
+          body: body,
+          route: 'admin_takeover_chat',
+          source: AppNotificationSource.inApp,
+          payload: {'takeover_id': caseId},
+        ),
+      );
+    }
+
+    api.unread = 7;
+    receive('same-message', 'case', '当前聊天的新消息');
+    await drain(tester);
+    expect(find.text('当前聊天的新消息'), findsNothing);
+    expect(TakeoverUnreadController.instance.count, 7);
+
+    receive('other-message', 'another-case', '其他聊天的新消息');
+    await drain(tester);
+    expect(find.text('其他聊天的新消息'), findsOneWidget);
+
+    unawaited(
+      navigator.currentState!.push(
+        MaterialPageRoute<void>(
+          builder: (_) => const Scaffold(body: Text('活动详情')),
+        ),
+      ),
+    );
+    await drain(tester);
+    expect(TakeoverInbox.instance.activeTakeoverId, isNull);
+    receive('covered-message', 'case', '查看详情时的新消息');
+    await drain(tester);
+    expect(find.text('查看详情时的新消息'), findsOneWidget);
+    navigator.currentState!.pop();
+    await drain(tester);
+    expect(TakeoverInbox.instance.activeTakeoverId, 'case');
+    receive('returned-message', 'case', '返回聊天后的消息');
+    await drain(tester);
+    expect(find.text('返回聊天后的消息'), findsNothing);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    expect(TakeoverInbox.instance.activeTakeoverId, isNull);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    expect(TakeoverInbox.instance.activeTakeoverId, 'case');
+    await tester.pumpWidget(const SizedBox());
+    await drain(tester);
+  });
+
+  testWidgets('background takeover messages do not open an in-app banner', (
+    tester,
+  ) async {
+    final api = FakeTakeoverApi();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MainShell(
+          api: api,
+          session: adminSession(),
+          onSessionChanged: (_) {},
+          onLogout: () {},
+        ),
+      ),
+    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await drain(tester);
+    AppNotificationService.instance.emit(
+      const AppNotificationEvent(
+        id: 'background-message',
+        type: 'admin_takeover_message',
+        title: '用户昵称',
+        body: '后台收到的消息',
+        route: 'admin_takeover_chat',
+        source: AppNotificationSource.inApp,
+        payload: {'takeover_id': 'case'},
+      ),
+    );
+    await drain(tester);
+    expect(find.text('后台收到的消息'), findsNothing);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    AppNotificationService.instance.emit(
+      const AppNotificationEvent(
+        id: 'foreground-message',
+        type: 'admin_takeover_message',
+        title: '用户昵称',
+        body: '前台收到的消息',
+        route: 'admin_takeover_chat',
+        source: AppNotificationSource.inApp,
+        payload: {'takeover_id': 'case'},
+      ),
+    );
+    await drain(tester);
+    expect(find.text('前台收到的消息'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await drain(tester);
+  });
+
   testWidgets(
     'failed human reply retries the same client ID without duplicate bubbles',
     (tester) async {
@@ -362,6 +503,7 @@ void main() {
           ),
         ),
       );
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await drain(tester);
       AppNotificationService.instance.emit(
         const AppNotificationEvent(

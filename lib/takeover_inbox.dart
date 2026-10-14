@@ -21,6 +21,7 @@ class TakeoverInbox {
   Future<String> Function()? _ticketProvider;
   int _generation = 0;
   bool _disposed = false;
+  // Set only while that administrator conversation is visible in the foreground.
   String? activeTakeoverId;
 
   Stream<WsEnvelope> get events => _events.stream;
