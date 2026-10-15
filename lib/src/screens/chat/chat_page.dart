@@ -4634,9 +4634,8 @@ class _ChatPageState extends State<ChatPage>
     _clearSendTimeout();
   }
 
-  /// 点击失败消息后的重试入口: 拿回原文本 (还原到输入框, 而不是自动静默
-  /// 重发) 并移除这条失败草稿——跟额度弹框取消发送时的体验一致, 用户可以
-  /// 直接改口或原样再发一次。
+  /// Location retries preserve their full card and request identity so a lost
+  /// ACK cannot create a second message. Plain text keeps the editable retry UX.
   void _retryFailedMessage(ChatMessage message) {
     if (_isTakeover) {
       if (_sending) return;
@@ -4657,6 +4656,39 @@ class _ChatPageState extends State<ChatPage>
           attachments: message.attachments,
         ),
       );
+      return;
+    }
+    if (message.componentCard?.type == 'location') {
+      if (_sending) return;
+      final clientId = message.clientId ?? message.id;
+      _patchShellAndTranscript(
+        shell: () => _sending = true,
+        transcript: () {
+          final index = _messages.indexWhere((m) => m.id == message.id);
+          if (index >= 0) {
+            _messages[index] = message.copyWith(pending: true, failed: false);
+          }
+        },
+      );
+      _armSendTimeout(clientId);
+      final sent =
+          _socket?.sendMessage(
+            message.content,
+            clientId,
+            componentCard: message.componentCard,
+            attachments: message.attachments,
+          ) ??
+          false;
+      if (!sent) {
+        _pendingSend = (
+          text: message.content,
+          clientId: clientId,
+          componentCard: message.componentCard,
+          attachments: message.attachments,
+          paidConfirmed: false,
+        );
+        unawaited(_socket?.connect());
+      }
       return;
     }
     _notifyTranscript(() {

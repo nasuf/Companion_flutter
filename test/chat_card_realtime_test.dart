@@ -225,6 +225,52 @@ void main() {
     );
   });
 
+  testWidgets('failed location retry preserves full card and client identity', (
+    tester,
+  ) async {
+    await _withChat(tester, (api, peers) async {
+      final frames = <Map<String, dynamic>>[];
+      final subscription = peers.last.listen((raw) {
+        final frame = jsonDecode(raw as String) as Map<String, dynamic>;
+        if (frame['type'] == 'message') frames.add(frame);
+      });
+      final card = ChatComponentCard.fromJson({
+        'type': 'location',
+        'title': '重试位置',
+        'subtitle': '合成街道',
+        'payload': {'latitude': 32.2, 'longitude': 119.4, 'address': '合成街道'},
+      });
+      final dynamic state = tester.state(find.byType(ChatPage));
+      state.sendComponentMessage('', card);
+      await typing.network(tester, () async {});
+      await flow.drain(tester);
+      expect(frames, hasLength(1));
+      final original = frames.single['data'] as Map<String, dynamic>;
+      await _emit(tester, peers.last, 'error', {
+        'client_id': original['client_id'],
+        'message': '合成发送失败',
+      });
+      await flow.drain(tester);
+      final retry = find.bySemanticsLabel('发送失败，点击重试');
+      expect(retry, findsOneWidget);
+      await tester.tap(retry);
+      await typing.network(tester, () async {});
+      await flow.drain(tester);
+      expect(frames, hasLength(2));
+      final retried = frames.last['data'] as Map<String, dynamic>;
+      expect(retried['client_id'], original['client_id']);
+      expect(retried['component_card'], original['component_card']);
+      expect(retried['message'], '');
+      expect(find.byKey(const Key('location-card')), findsOneWidget);
+      await _emit(tester, peers.last, 'ack', {
+        'client_id': original['client_id'],
+        'message_id': 'location-accepted',
+      });
+      expect(find.bySemanticsLabel('发送失败，点击重试'), findsNothing);
+      await tester.runAsync(subscription.cancel);
+    });
+  });
+
   for (final type in ['reply', 'proactive']) {
     testWidgets('$type card-only reply survives dedup and history reconnect', (
       tester,
