@@ -1674,7 +1674,15 @@ class _ChatPageState extends State<ChatPage>
     return serverMessages.any((serverMessage) {
       if (!serverMessage.isChatMessage ||
           serverMessage.isMine ||
-          serverMessage.content != localReply.content) {
+          serverMessage.content != localReply.content ||
+          !_sameReplyJson(
+            serverMessage.componentCard?.toJson(),
+            localReply.componentCard?.toJson(),
+          ) ||
+          !_sameReplyJson(
+            serverMessage.attachments.map(_replyAttachmentIdentity).toList(),
+            localReply.attachments.map(_replyAttachmentIdentity).toList(),
+          )) {
         return false;
       }
       final delta = serverMessage.createdAt
@@ -1682,6 +1690,33 @@ class _ChatPageState extends State<ChatPage>
           .abs();
       return delta <= const Duration(minutes: 5);
     });
+  }
+
+  Object _replyAttachmentIdentity(ChatAttachment attachment) {
+    // History expands media URLs and may enrich processing metadata. The same
+    // stored attachment remains the same content across those representations.
+    if (attachment.id.isNotEmpty) return [attachment.kind, attachment.id];
+    return attachment.toJson();
+  }
+
+  // Legacy replies without a persisted ID need matching card/media content.
+  // Empty text alone must not collapse different cards or attachments.
+  bool _sameReplyJson(Object? left, Object? right) {
+    if (left is Map && right is Map) {
+      return left.length == right.length &&
+          left.keys.every(
+            (key) =>
+                right.containsKey(key) && _sameReplyJson(left[key], right[key]),
+          );
+    }
+    if (left is List && right is List) {
+      if (left.length != right.length) return false;
+      for (var index = 0; index < left.length; index++) {
+        if (!_sameReplyJson(left[index], right[index])) return false;
+      }
+      return true;
+    }
+    return left == right;
   }
 
   Future<void> _loadOlderMessages() async {
@@ -2818,6 +2853,11 @@ class _ChatPageState extends State<ChatPage>
       case 'proactive':
         _replyUiDelay.cancel();
         final text = payload['text']?.toString() ?? '';
+        final rawComponentCard =
+            payload['component_card'] ?? payload['componentCard'];
+        final componentCard = rawComponentCard is Map
+            ? ChatComponentCard.fromJson(rawComponentCard)
+            : null;
         final rawAttachments = payload['attachments'];
         final attachments = rawAttachments is List
             ? [
@@ -2826,7 +2866,9 @@ class _ChatPageState extends State<ChatPage>
                     ChatAttachment.fromJson(Map<String, dynamic>.from(item)),
               ]
             : const <ChatAttachment>[];
-        if (text.isEmpty && attachments.isEmpty) return;
+        if (text.isEmpty && componentCard == null && attachments.isEmpty) {
+          return;
+        }
         _remoteTyping.clear();
         // offline 活动类消息（到达卡/拍照引导/思绪碎片/未命中暗示）可能刚翻转
         // 活动状态，据此刷新顶部任务条（尤其"确认到达"→ reached=true）。
@@ -2838,11 +2880,6 @@ class _ChatPageState extends State<ChatPage>
         final replyIndex = _payloadReplyIndex(payload);
         final shouldEmitInAppNotification =
             !widget.isActive && (replyIndex == null || replyIndex == 0);
-        final rawComponentCard =
-            payload['component_card'] ?? payload['componentCard'];
-        final componentCard = rawComponentCard is Map
-            ? ChatComponentCard.fromJson(rawComponentCard)
-            : null;
         final rawOfflineFragment = payload['offline_fragment'];
         final offlineFragment = rawOfflineFragment is Map
             ? Map<String, dynamic>.from(rawOfflineFragment)
