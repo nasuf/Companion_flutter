@@ -18,7 +18,13 @@ class _AdminGiftTestPageState extends State<AdminGiftTestPage> {
   bool _clearing = false;
   String? _error;
 
-  Future<void> _injectMockGift({required bool delivered}) async {
+  static const _stageTitles = {
+    'shipping': '运输中',
+    'out_for_delivery': '派送中',
+    'delivered': '已签收',
+  };
+
+  Future<void> _injectMockGift(String stage) async {
     if (_busy) return;
     setState(() => _busy = true);
 
@@ -28,7 +34,7 @@ class _AdminGiftTestPageState extends State<AdminGiftTestPage> {
         context: context,
         barrierDismissible: false,
         builder: (_) => _AdminProgressDialog(
-          title: delivered ? '正在注入已送达礼物' : '正在注入运输中礼物',
+          title: '正在注入${_stageTitles[stage]}礼物',
           message: '正在走 mock 链路下单并生成物流轨迹...',
         ),
       ).whenComplete(() {
@@ -40,16 +46,18 @@ class _AdminGiftTestPageState extends State<AdminGiftTestPage> {
       widget.api.authToken = widget.session.token;
       final gift = await widget.api.createMockGift(
         workspaceId: widget.session.workspaceId,
-        delivered: delivered,
+        stage: stage,
       );
       if (!mounted) return;
       if (progressOpen) Navigator.of(context, rootNavigator: true).pop();
       setState(() => _busy = false);
       await _showGiftResult(
         title: '测试礼物已注入',
-        message: delivered
-            ? '已生成「${gift.giftName}」并标记为已送达，可去赠礼页查看历史礼物分组与感谢交互。'
-            : '已生成「${gift.giftName}」（运输中），可去赠礼页查看礼物卡与物流时间线。',
+        message: switch (stage) {
+          'delivered' => '已生成并签收「${gift.giftName}」，可去赠礼页查看揭晓后的礼物与感谢交互。',
+          'out_for_delivery' => '已生成一份派送中的神秘礼物，可去赠礼页测试「确认签收」与揭晓。',
+          _ => '已生成一份运输中的神秘礼物，可去赠礼页查看礼物卡与物流时间线。',
+        },
       );
     } catch (error) {
       if (!mounted) return;
@@ -201,13 +209,18 @@ class _AdminGiftTestPageState extends State<AdminGiftTestPage> {
               children: [
                 _action(
                   '注入运输中礼物',
-                  '生成一份测试礼物，附 mock 物流轨迹。',
-                  () => _injectMockGift(delivered: false),
+                  '生成一份神秘礼物，附 mock 物流轨迹；签收前看不到名称和图片。',
+                  () => _injectMockGift('shipping'),
                 ),
                 _action(
-                  '注入已送达礼物',
-                  '生成已送达礼物并推送送达消息，验证感谢交互。',
-                  () => _injectMockGift(delivered: true),
+                  '注入派送中礼物',
+                  '生成已到派送环节的礼物并推送签收提醒，验证「确认签收」与揭晓。',
+                  () => _injectMockGift('out_for_delivery'),
+                ),
+                _action(
+                  '注入已签收礼物',
+                  '生成礼物并走一遍签收揭晓流程，验证感谢交互。',
+                  () => _injectMockGift('delivered'),
                 ),
                 _action(
                   '清空所有礼物信息',

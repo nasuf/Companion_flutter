@@ -584,11 +584,23 @@ class GiftAddress {
 }
 
 class GiftsHome {
-  const GiftsHome({this.address, this.shippingGift, required this.groups});
+  const GiftsHome({
+    this.address,
+    this.shippingGift,
+    this.shippingGifts = const [],
+    required this.groups,
+  });
 
   final GiftAddress? address;
   final RealWorldGift? shippingGift;
+
+  /// 全部在途礼物（最新在前）。旧版服务端只返回 [shippingGift]。
+  final List<RealWorldGift> shippingGifts;
   final List<GiftYearGroup> groups;
+
+  List<RealWorldGift> get inTransit => shippingGifts.isNotEmpty
+      ? shippingGifts
+      : [if (shippingGift != null) shippingGift!];
 
   factory GiftsHome.fromJson(Map<String, dynamic> json) => GiftsHome(
     address: json['address'] is Map
@@ -601,6 +613,11 @@ class GiftsHome {
             Map<String, dynamic>.from(json['shipping_gift'] as Map),
           )
         : null,
+    shippingGifts: [
+      for (final item in (json['shipping_gifts'] as List? ?? const []))
+        if (item is Map)
+          RealWorldGift.fromJson(Map<String, dynamic>.from(item)),
+    ],
     groups: [
       for (final item in (json['groups'] as List? ?? const []))
         if (item is Map)
@@ -630,6 +647,8 @@ class RealWorldGift {
     required this.id,
     required this.status,
     required this.triggerType,
+    this.revealed = false,
+    this.canConfirmReceipt = false,
     required this.giftName,
     this.giftReason,
     this.giftNote,
@@ -653,6 +672,12 @@ class RealWorldGift {
   final String id;
   final String status;
   final String triggerType;
+
+  /// 签收后才揭晓。在途时服务端已把名称、图片、寄语替换成神秘礼物。
+  final bool revealed;
+
+  /// 物流到了派送中，用户可以确认签收。
+  final bool canConfirmReceipt;
   final String giftName;
   final String? giftReason;
   final String? giftNote;
@@ -672,29 +697,54 @@ class RealWorldGift {
   final String createdAt;
   final String updatedAt;
 
-  factory RealWorldGift.fromJson(Map<String, dynamic> json) => RealWorldGift(
-    id: json['id']?.toString() ?? '',
-    status: json['status']?.toString() ?? 'pending_address',
-    triggerType: json['trigger_type']?.toString() ?? 'daily_probability',
-    giftName: json['gift_name']?.toString() ?? '',
-    giftReason: _asString(json['gift_reason']),
-    giftNote: _asString(json['gift_note']),
-    productImageUrl: _asString(json['product_image_url']),
-    provider: json['provider']?.toString() ?? 'mock',
-    providerProductId: _asString(json['provider_product_id']),
-    providerOrderId: _asString(json['provider_order_id']),
-    productUrl: _asString(json['product_url']),
-    logisticsProvider: _asString(json['logistics_provider']),
-    lastTrackingSyncedAt: _asString(json['last_tracking_synced_at']),
-    paidAmountCents: _asInt(json['paid_amount_cents']),
-    trackingNumber: _asString(json['tracking_number']),
-    thanksSentAt: _asString(json['thanks_sent_at']),
-    orderedAt: _asString(json['ordered_at']),
-    shippedAt: _asString(json['shipped_at']),
-    deliveredAt: _asString(json['delivered_at']),
-    createdAt: json['created_at']?.toString() ?? '',
-    updatedAt: json['updated_at']?.toString() ?? '',
-  );
+  bool get isInTransit =>
+      const {'ordered', 'shipping', 'out_for_delivery'}.contains(status);
+
+  factory RealWorldGift.fromJson(Map<String, dynamic> json) {
+    final status = json['status']?.toString() ?? 'pending_address';
+    return RealWorldGift(
+      id: json['id']?.toString() ?? '',
+      status: status,
+      triggerType: json['trigger_type']?.toString() ?? 'daily_probability',
+      // 旧版服务端没有这两个字段：签收（delivered）即揭晓。
+      revealed: json['revealed'] is bool
+          ? json['revealed'] as bool
+          : status == 'delivered',
+      canConfirmReceipt: json['can_confirm_receipt'] is bool
+          ? json['can_confirm_receipt'] as bool
+          : status == 'out_for_delivery',
+      giftName: json['gift_name']?.toString() ?? '',
+      giftReason: _asString(json['gift_reason']),
+      giftNote: _asString(json['gift_note']),
+      productImageUrl: _asString(json['product_image_url']),
+      provider: json['provider']?.toString() ?? 'mock',
+      providerProductId: _asString(json['provider_product_id']),
+      providerOrderId: _asString(json['provider_order_id']),
+      productUrl: _asString(json['product_url']),
+      logisticsProvider: _asString(json['logistics_provider']),
+      lastTrackingSyncedAt: _asString(json['last_tracking_synced_at']),
+      paidAmountCents: _asInt(json['paid_amount_cents']),
+      trackingNumber: _asString(json['tracking_number']),
+      thanksSentAt: _asString(json['thanks_sent_at']),
+      orderedAt: _asString(json['ordered_at']),
+      shippedAt: _asString(json['shipped_at']),
+      deliveredAt: _asString(json['delivered_at']),
+      createdAt: json['created_at']?.toString() ?? '',
+      updatedAt: json['updated_at']?.toString() ?? '',
+    );
+  }
+}
+
+class GiftReceiptResult {
+  const GiftReceiptResult({
+    required this.gift,
+    this.assistantMessage,
+    this.alreadyConfirmed = false,
+  });
+
+  final RealWorldGift gift;
+  final String? assistantMessage;
+  final bool alreadyConfirmed;
 }
 
 class GiftTracking {

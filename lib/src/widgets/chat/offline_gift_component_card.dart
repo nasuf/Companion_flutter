@@ -19,7 +19,11 @@ class _OfflineGiftComponentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     final isDark = AppColors.isDark(context);
-    final imageUrl = _absoluteUrl(card.payload['image_url']?.toString());
+    // 签收前的卡片不带礼物名称和图片（服务端已脱敏），展示神秘礼物封面。
+    final mystery = card.payload['revealed'] == false;
+    final imageUrl = mystery
+        ? null
+        : _absoluteUrl(card.payload['image_url']?.toString());
     final status = card.payload['status_label']?.toString().trim();
     final radius = BorderRadius.only(
       topLeft: Radius.circular(isMine ? 20 : 5),
@@ -72,7 +76,7 @@ class _OfflineGiftComponentCard extends StatelessWidget {
                           errorBuilder: (_, __, ___) => _giftFallback(),
                         )
                       else
-                        _giftFallback(),
+                        _giftFallback(mystery: mystery),
                       DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
@@ -176,7 +180,7 @@ class _OfflineGiftComponentCard extends StatelessWidget {
     );
   }
 
-  Widget _giftFallback() {
+  Widget _giftFallback({bool mystery = false}) {
     return DecoratedBox(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -185,11 +189,28 @@ class _OfflineGiftComponentCard extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
       ),
-      child: const Center(
-        child: Icon(
-          CupertinoIcons.gift_fill,
-          size: 34,
-          color: Color(0xFFF08A47),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              CupertinoIcons.gift_fill,
+              size: 34,
+              color: Color(0xFFF08A47),
+            ),
+            if (mystery) ...[
+              const SizedBox(height: 6),
+              const Text(
+                '签收后揭晓',
+                style: TextStyle(
+                  color: Color(0xFFA36519),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
