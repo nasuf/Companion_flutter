@@ -107,4 +107,49 @@ void main() {
       }
     },
   );
+  test('confirm receipt posts to owner endpoint and parses reveal', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final requests = <String>[];
+    final subscription = server.listen((request) async {
+      requests.add('${request.method} ${request.uri.path}');
+      expect(
+        request.headers.value(HttpHeaders.authorizationHeader),
+        'Bearer synthetic',
+      );
+      await request.drain<void>();
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(
+        jsonEncode({
+          'ok': true,
+          'already_confirmed': false,
+          'assistant_message': '是桂花乌龙茶！',
+          'gift': {
+            'id': 'gift',
+            'status': 'delivered',
+            'revealed': true,
+            'gift_name': '桂花乌龙茶',
+            'product_image_url': '/offline/media/user_image_a.jpg',
+          },
+        }),
+      );
+      await request.response.close();
+    });
+    try {
+      final api = CompanionApi(baseUrl: 'http://127.0.0.1:${server.port}')
+        ..authToken = 'synthetic';
+      final result = await api.confirmGiftReceipt('gift');
+      expect(requests, ['POST /offline/gifts/gift/confirm-receipt']);
+      expect(result.gift.revealed, isTrue);
+      expect(result.gift.giftName, '桂花乌龙茶');
+      expect(
+        result.gift.productImageUrl,
+        'http://127.0.0.1:${server.port}/offline/media/user_image_a.jpg',
+      );
+      expect(result.assistantMessage, '是桂花乌龙茶！');
+      expect(result.alreadyConfirmed, isFalse);
+    } finally {
+      await subscription.cancel();
+      await server.close(force: true);
+    }
+  });
 }

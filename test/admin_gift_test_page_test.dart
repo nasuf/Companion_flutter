@@ -21,15 +21,15 @@ class Api extends CompanionApi {
   int clears = 0;
   bool fail = false;
   Completer<AdminGiftClearResult>? pending;
-  final injections = <bool>[];
+  final injections = <String>[];
   @override
   Future<RealWorldGift> createMockGift({
     String? workspaceId,
-    bool delivered = false,
+    String stage = 'shipping',
   }) async {
     expect(authToken, 'admin-token');
     expect(workspaceId, 'space');
-    injections.add(delivered);
+    injections.add(stage);
     return RealWorldGift.fromJson({'id': 'gift', 'gift_name': '测试礼物'});
   }
 
@@ -73,12 +73,13 @@ Future<void> clear(WidgetTester t) async {
 }
 
 void main() {
-  testWidgets('injection options retain owner, workspace and delivery mode', (
+  testWidgets('injection options retain owner, workspace and delivery stage', (
     t,
   ) async {
     final api = Api();
     await open(t, api);
-    for (final name in ['注入运输中礼物', '注入已送达礼物']) {
+    for (final name in ['注入运输中礼物', '注入派送中礼物', '注入已签收礼物']) {
+      await t.ensureVisible(button(name));
       await t.tap(button(name));
       await t.pump();
       await t.pump(const Duration(seconds: 1));
@@ -87,7 +88,7 @@ void main() {
       await t.pump();
       await t.pump(const Duration(seconds: 1));
     }
-    expect(api.injections, [false, true]);
+    expect(api.injections, ['shipping', 'out_for_delivery', 'delivered']);
     expect(api.clears, 0);
   });
   testWidgets('cancel never deletes; confirmed reset displays actual counts', (
@@ -131,7 +132,7 @@ void main() {
       find.byType(CupertinoButton),
     )) {
       if (b.child is Text &&
-          ['注入运输中礼物', '注入已送达礼物'].contains((b.child as Text).data)) {
+          ['注入运输中礼物', '注入派送中礼物', '注入已签收礼物'].contains((b.child as Text).data)) {
         expect(b.onPressed, isNull);
       }
     }
@@ -180,7 +181,7 @@ void main() {
     await t.pump(const Duration(milliseconds: 500));
     await t.scrollUntilVisible(find.text('测试礼物赠送'), 400, maxScrolls: 20);
     expect(find.text('注入运输中礼物'), findsNothing);
-    expect(find.text('注入已送达礼物'), findsNothing);
+    expect(find.text('注入已签收礼物'), findsNothing);
     await t.tap(find.text('测试礼物赠送'));
     await t.pump();
     await t.pump(const Duration(seconds: 1));

@@ -38,13 +38,12 @@ mixin _CompanionApiOffline on _CompanionApiCore {
   }
 
   Future<AdminGiftClearResult> clearOfflineGiftsForCurrentUser() async {
-    final json = await _request('DELETE', '/offline/admin/gifts')
-        as Map<String, dynamic>;
+    final json =
+        await _request('DELETE', '/offline/admin/gifts')
+            as Map<String, dynamic>;
     return AdminGiftClearResult.fromJson(json);
   }
 
-  /// 管理员测试：为当前用户注入一份走 mock 链路的礼物（含物流轨迹）。
-  /// [delivered] 为 true 时直接注入「已送达」礼物并推送送达消息。
   /// Admin QA: manually fire one proactive chat message for the current user.
   Future<AdminProactiveTriggerResult> triggerAdminProactiveChat({
     String? workspaceId,
@@ -72,11 +71,14 @@ mixin _CompanionApiOffline on _CompanionApiCore {
     return AdminProactiveTriggerResult.fromJson(json);
   }
 
+  /// 管理员测试：为当前用户注入一份走 mock 链路的礼物（含物流轨迹）。
+  /// [stage]：shipping 运输中 / out_for_delivery 派送中（待签收）/
+  /// delivered 已签收（服务端会走一遍真实签收流程）。
   Future<RealWorldGift> createMockGift({
     String? workspaceId,
-    bool delivered = false,
+    String stage = 'shipping',
   }) async {
-    final params = <String, String>{'delivered': delivered.toString()};
+    final params = <String, String>{'stage': stage};
     if (workspaceId != null && workspaceId.isNotEmpty) {
       params['workspace_id'] = workspaceId;
     }
@@ -315,6 +317,11 @@ mixin _CompanionApiOffline on _CompanionApiCore {
               Map<String, dynamic>.from(json['shipping_gift'] as Map),
             )
           : null,
+      shippingGifts: [
+        for (final gift in (json['shipping_gifts'] as List? ?? const []))
+          if (gift is Map)
+            _offlineGiftFromJson(Map<String, dynamic>.from(gift)),
+      ],
       groups: [
         for (final raw in (json['groups'] as List? ?? const []))
           if (raw is Map)
@@ -396,6 +403,20 @@ mixin _CompanionApiOffline on _CompanionApiCore {
             as Map<String, dynamic>;
     final gift = json['gift'];
     return _offlineGiftFromJson(Map<String, dynamic>.from(gift as Map));
+  }
+
+  /// 派送中的礼物由用户确认签收；成功后返回已揭晓的礼物。重复签收是幂等的。
+  Future<GiftReceiptResult> confirmGiftReceipt(String giftId) async {
+    final json =
+        await _request('POST', '/offline/gifts/$giftId/confirm-receipt')
+            as Map<String, dynamic>;
+    return GiftReceiptResult(
+      gift: _offlineGiftFromJson(
+        Map<String, dynamic>.from(json['gift'] as Map),
+      ),
+      assistantMessage: json['assistant_message']?.toString(),
+      alreadyConfirmed: json['already_confirmed'] == true,
+    );
   }
 
   RealWorldGift _offlineGiftFromJson(Map<String, dynamic> json) {
