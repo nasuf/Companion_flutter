@@ -659,6 +659,53 @@ class _ConfirmReceiptButton extends StatelessWidget {
   }
 }
 
+/// 道谢前让用户写几句话；取消返回 null。
+Future<String?> _askThanksMessage(BuildContext context) async {
+  final controller = TextEditingController();
+  try {
+    return await showCupertinoDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          final text = controller.text.trim();
+          return CupertinoAlertDialog(
+            title: const Text('想对 TA 说点什么？'),
+            content: Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: CupertinoTextField(
+                key: const ValueKey('gift-thanks-input'),
+                controller: controller,
+                autofocus: true,
+                minLines: 3,
+                maxLines: 5,
+                maxLength: 300,
+                placeholder: '比如：收到啦，好喜欢，谢谢你～',
+                onChanged: (_) => setDialogState(() {}),
+              ),
+            ),
+            actions: [
+              CupertinoDialogAction(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('取消'),
+              ),
+              CupertinoDialogAction(
+                key: const ValueKey('gift-thanks-send'),
+                isDefaultAction: true,
+                onPressed: text.isEmpty
+                    ? null
+                    : () => Navigator.of(dialogContext).pop(text),
+                child: const Text('发送'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  } finally {
+    controller.dispose();
+  }
+}
+
 /// 确认签收：先二次确认（防误触提前揭晓），再调接口。成功返回已揭晓的礼物；
 /// 用户取消或失败返回 null（失败会弹出原因）。
 Future<GiftReceiptResult?> _confirmGiftReceipt(
@@ -1000,7 +1047,8 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
 
   Future<void> _sendThanks() async {
     if (_sending) return;
-    final message = '我收到礼物啦，谢谢你';
+    final message = await _askThanksMessage(context);
+    if (message == null || !mounted) return;
     final clientId = _thanksClientId;
     setState(() {
       _sending = true;
@@ -1137,7 +1185,7 @@ class _GiftDetailSheetState extends State<_GiftDetailSheet> {
         ),
         const SizedBox(height: 6),
         Text(
-          _shortDate(gift.createdAt),
+          _giftLocalDate(gift.createdAt),
           style: _mutedStyle(context, 12).copyWith(fontWeight: FontWeight.w400),
         ),
         const SizedBox(height: 14),
@@ -1733,7 +1781,7 @@ class _TrackingTimelineRow extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 [
-                  _shortDate(event.occurredAt),
+                  _giftLocalDate(event.occurredAt),
                   if ((event.location ?? '').isNotEmpty) event.location!,
                 ].join(' · '),
                 style: _mutedStyle(context, 12).copyWith(
@@ -1936,6 +1984,15 @@ String _shippingStatusText(String status) {
 String _visibleGiftCarrier(RealWorldGift gift) {
   final carrier = gift.logisticsProvider?.trim() ?? '';
   return carrier.toLowerCase() == 'mock' ? '' : carrier;
+}
+
+/// 服务端时间是 UTC（带时区），展示要换成手机本地时间。
+String _giftLocalDate(String raw) {
+  final value = DateTime.tryParse(raw)?.toLocal();
+  if (value == null) return raw;
+  final hour = value.hour.toString().padLeft(2, '0');
+  final minute = value.minute.toString().padLeft(2, '0');
+  return '${value.year}年${value.month}月${value.day}日 $hour:$minute';
 }
 
 String _giftCollectionDate(String value) {

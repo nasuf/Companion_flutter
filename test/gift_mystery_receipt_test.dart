@@ -64,7 +64,7 @@ class _Api extends CompanionApi {
         id: 'e1',
         status: 'out_for_delivery',
         title: '快递员正在派送',
-        occurredAt: '2026-10-15T09:00:00+08:00',
+        occurredAt: '2026-10-15T01:00:00Z',
       ),
     ],
   );
@@ -152,6 +152,14 @@ void main() {
     await t.tap(find.text('查看配送详情'));
     await t.pumpAndSettle();
     expect(find.text('快递进入派送后，就可以在这里确认签收'), findsOneWidget);
+    // 服务端给的是 UTC，详情里按手机本地时间显示。
+    final local = DateTime.parse('2026-10-15T01:00:00Z').toLocal();
+    final hm =
+        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    expect(
+      find.text('${local.year}年${local.month}月${local.day}日 $hm'),
+      findsOneWidget,
+    );
     expect(find.text('向 TA 说声谢谢'), findsNothing);
     expect(t.takeException(), isNull);
   });

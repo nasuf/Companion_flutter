@@ -875,10 +875,7 @@ class _ChatPageState extends State<ChatPage>
 
   int _composerLineCountEstimate(String text) {
     if (!mounted) return 1;
-    final inputWidth = math.max(
-      96.0,
-      MediaQuery.sizeOf(context).width - 220.0,
-    );
+    final inputWidth = math.max(96.0, MediaQuery.sizeOf(context).width - 220.0);
     final sample = text.isEmpty ? ' ' : text;
     final painter = TextPainter(
       text: TextSpan(
@@ -3345,6 +3342,26 @@ class _ChatPageState extends State<ChatPage>
         'real_world_type': 'gift',
         'source_id': gift.id,
         'trigger_type': 'gift_thanks',
+        // 和服务端落库的道谢卡片同构：发出时就渲染成卡片，而不是普通文字气泡。
+        'component_card': {
+          'version': 1,
+          'type': 'offline_gift',
+          'title': gift.giftName,
+          'subtitle': '谢谢你',
+          'body': message,
+          'footer': '点击查看礼物详情',
+          'accent': '#F6A64B',
+          'payload': {
+            'gift_id': gift.id,
+            'status': gift.status,
+            'status_label': '谢谢你',
+            'gift_name': gift.giftName,
+            'image_url': gift.productImageUrl,
+            'revealed': true,
+            'kind': 'thanks',
+            'real_world_type': 'gift',
+          },
+        },
       },
     );
     _patchShellAndTranscript(

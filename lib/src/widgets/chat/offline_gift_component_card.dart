@@ -25,6 +25,12 @@ class _OfflineGiftComponentCard extends StatelessWidget {
         ? null
         : _absoluteUrl(card.payload['image_url']?.toString());
     final status = card.payload['status_label']?.toString().trim();
+    // 旧卡片的正文里可能残留模型的 || 分句符，展示时合成一段。
+    final body = card.body
+        .split('||')
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .join(' ');
     final radius = BorderRadius.only(
       topLeft: Radius.circular(isMine ? 20 : 5),
       topRight: Radius.circular(isMine ? 5 : 20),
@@ -134,10 +140,10 @@ class _OfflineGiftComponentCard extends StatelessWidget {
                           ),
                         ],
                       ),
-                      if (card.body.isNotEmpty) ...[
+                      if (body.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         Text(
-                          card.body,
+                          body,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
