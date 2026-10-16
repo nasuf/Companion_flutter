@@ -91,6 +91,7 @@ class _Api extends CompanionApi {
   int homeCalls = 0;
   int trackingCalls = 0;
   List<String?> thanksIds = [];
+  List<String> thanksMessages = [];
   Completer<GiftTracking>? trackingGate;
   List<GiftTrackingEvent> events = [for (var i = 1; i <= 12; i++) _event(i)];
   @override
@@ -123,6 +124,7 @@ class _Api extends CompanionApi {
     String? clientId,
   }) async {
     thanksIds.add(clientId);
+    thanksMessages.add(message);
     if (thanksFails) throw const ApiException(503, 'unavailable');
     return gift;
   }
@@ -168,6 +170,18 @@ Future<void> _bottom(WidgetTester tester) async {
     await tester.drag(_scroll, const Offset(0, -400));
     await tester.pumpAndSettle();
   }
+}
+
+Future<void> _thank(WidgetTester tester, String words) async {
+  await tester.tap(find.text('向 TA 说声谢谢'));
+  await tester.pumpAndSettle();
+  await tester.enterText(
+    find.byKey(const ValueKey('gift-thanks-input')),
+    words,
+  );
+  await tester.pump();
+  await tester.tap(find.byKey(const ValueKey('gift-thanks-send')));
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -412,17 +426,36 @@ void main() {
       ..events = [];
     await _show(tester, api);
     await _bottom(tester);
-    await tester.tap(find.text('向 TA 说声谢谢'));
-    await tester.pumpAndSettle();
+    await _thank(tester, '好暖和，谢谢你');
     expect(find.text('感谢暂时没有传达成功，请重试'), findsOneWidget);
     expect(find.text('礼物详情'), findsOneWidget);
     api.thanksFails = false;
     await tester.ensureVisible(find.text('向 TA 说声谢谢'));
-    await tester.tap(find.text('向 TA 说声谢谢'));
-    await tester.pumpAndSettle();
+    await _thank(tester, '好暖和，谢谢你');
     expect(api.thanksIds.length, 2);
     expect(api.thanksIds.toSet().length, 1);
+    expect(api.thanksMessages, ['好暖和，谢谢你', '好暖和，谢谢你']);
     expect(find.text('礼物详情'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('thanks asks for words first and can be cancelled', (
+    tester,
+  ) async {
+    final api = _Api()..events = [];
+    await _show(tester, api);
+    await _bottom(tester);
+    await tester.tap(find.text('向 TA 说声谢谢'));
+    await tester.pumpAndSettle();
+    expect(find.text('想对 TA 说点什么？'), findsOneWidget);
+    // 没写内容时不能发送。
+    final send = tester.widget<CupertinoDialogAction>(
+      find.byKey(const ValueKey('gift-thanks-send')),
+    );
+    expect(send.onPressed, isNull);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(api.thanksIds, isEmpty);
+    expect(find.text('礼物详情'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
   testWidgets(
