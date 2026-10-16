@@ -28,6 +28,7 @@ class AuthSession {
     this.userAvatarUrl,
     this.agentId,
     this.agentName,
+    this.agentNickname,
     this.agentAvatarKey,
     this.agentAvatarUrl,
     this.agentCity,
@@ -46,11 +47,22 @@ class AuthSession {
   final bool hasAgent;
   final String? agentId;
   final String? agentName;
+
+  /// 姓名库里与 [agentName] 配对的昵称（如「陈砚」→「阿砚」）。手填/文档导入的
+  /// 名字没有昵称，为 null。
+  final String? agentNickname;
   final String? agentAvatarKey;
   final String? agentAvatarUrl;
   final String? agentCity;
   final String? workspaceId;
   final String? conversationId;
+
+  /// 聊天页标题等称呼 agent 的地方用的名字：优先昵称，没有昵称回落到全名。
+  String? get agentDisplayName {
+    final nickname = agentNickname?.trim();
+    if (nickname != null && nickname.isNotEmpty) return nickname;
+    return agentName;
+  }
 
   /// 已绑定的手机号，服务端已脱敏成 `138****5678`。未绑定为 null。
   final String? phone;
@@ -103,6 +115,7 @@ class AuthSession {
       hasAgent: json['has_agent'] as bool? ?? false,
       agentId: json['agent_id'] as String?,
       agentName: json['agent_name'] as String?,
+      agentNickname: json['agent_nickname'] as String?,
       agentAvatarKey: json['agent_avatar_key'] as String?,
       agentAvatarUrl: json['agent_avatar_url'] as String?,
       agentCity: json['agent_city'] as String?,
@@ -117,6 +130,7 @@ class AuthSession {
     String? userDisplayName,
     String? userAvatarUrl,
     String? agentName,
+    String? agentNickname,
     String? agentAvatarKey,
     String? agentAvatarUrl,
     String? agentCity,
@@ -133,6 +147,7 @@ class AuthSession {
       hasAgent: hasAgent,
       agentId: agentId,
       agentName: agentName ?? this.agentName,
+      agentNickname: agentNickname ?? this.agentNickname,
       agentAvatarKey: agentAvatarKey ?? this.agentAvatarKey,
       agentAvatarUrl: agentAvatarUrl ?? this.agentAvatarUrl,
       agentCity: agentCity ?? this.agentCity,
@@ -183,6 +198,7 @@ class AgentProfile {
     required this.id,
     required this.name,
     required this.userId,
+    this.nickname,
     this.workspaceId,
     this.gender,
     this.city,
@@ -192,6 +208,9 @@ class AgentProfile {
 
   final String id;
   final String name;
+
+  /// 姓名库配对的昵称；没有为 null（见 [AuthSession.agentNickname]）。
+  final String? nickname;
   final String userId;
   final String? workspaceId;
   final String? gender;
@@ -203,6 +222,7 @@ class AgentProfile {
     return AgentProfile(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
+      nickname: json['nickname'] as String?,
       userId: json['user_id'] as String? ?? '',
       workspaceId: json['workspace_id'] as String?,
       gender: json['gender'] as String?,

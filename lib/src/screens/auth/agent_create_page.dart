@@ -343,6 +343,7 @@ class _AgentCreatePageState extends State<AgentCreatePage>
         hasAgent: true,
         agentId: latestAgent.id,
         agentName: latestAgent.name,
+        agentNickname: latestAgent.nickname,
         agentAvatarKey: latestAgent.avatarKey,
         agentAvatarUrl: latestAgent.avatarUrl,
         agentCity: latestAgent.city,

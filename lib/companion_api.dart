@@ -109,6 +109,7 @@ abstract class _CompanionApiCore {
       hasAgent: session.hasAgent,
       agentId: session.agentId,
       agentName: session.agentName,
+      agentNickname: session.agentNickname,
       agentAvatarKey: session.agentAvatarKey,
       agentAvatarUrl: _agentAvatarUrl(
         url: session.agentAvatarUrl,
@@ -133,6 +134,7 @@ abstract class _CompanionApiCore {
     return AgentProfile(
       id: profile.id,
       name: profile.name,
+      nickname: profile.nickname,
       userId: profile.userId,
       workspaceId: profile.workspaceId,
       gender: profile.gender,
