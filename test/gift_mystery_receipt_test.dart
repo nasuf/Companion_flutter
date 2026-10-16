@@ -143,6 +143,11 @@ void main() {
     expect(find.text('礼物还在路上，签收后揭晓'), findsOneWidget);
     expect(find.text('已收到快递，确认签收'), findsNothing);
     expect(find.byType(Image), findsNothing);
+    // 物流只展示四个节点：下单 → 运输 → 派送 → 签收。
+    for (final label in ['下单', '运输', '派送', '签收']) {
+      expect(find.byKey(ValueKey('gift-progress-$label')), findsOneWidget);
+    }
+    expect(find.byKey(const ValueKey('gift-progress-打包')), findsNothing);
 
     await t.tap(find.text('查看配送详情'));
     await t.pumpAndSettle();
