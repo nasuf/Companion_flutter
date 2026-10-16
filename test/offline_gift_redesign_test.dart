@@ -162,13 +162,13 @@ void main() {
       await t.pumpAndSettle();
       expect(find.text('运输中'), findsNothing);
       expect(find.text('包裹已到达上海转运中心'), findsNothing);
-      final sizes = ['下单', '打包', '运输', '派送', '签收']
+      final sizes = ['下单', '运输', '派送', '签收']
           .map(
             (label) => t.getSize(find.byKey(ValueKey('gift-progress-$label'))),
           )
           .toSet();
       expect(sizes.length, 1);
-      final labelSizes = ['下单', '打包', '运输', '派送', '签收']
+      final labelSizes = ['下单', '运输', '派送', '签收']
           .map((label) => t.widget<Text>(find.text(label)).style!.fontSize)
           .toSet();
       expect(labelSizes.length, 1);

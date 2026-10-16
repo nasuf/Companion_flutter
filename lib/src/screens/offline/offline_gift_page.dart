@@ -1231,9 +1231,9 @@ class _GiftProgressBar extends StatelessWidget {
 
   final int currentStep;
 
+  // 用户只看到四个节点：下单 → 运输 → 派送 → 签收（揽收/打包都算运输）。
   static const _steps = [
     (label: '下单', icon: CupertinoIcons.doc_text_fill),
-    (label: '打包', icon: CupertinoIcons.cube_box_fill),
     (label: '运输', icon: CupertinoIcons.car_detailed),
     (label: '派送', icon: CupertinoIcons.location_fill),
     (label: '签收', icon: CupertinoIcons.check_mark_circled_solid),
@@ -1899,18 +1899,17 @@ int _trackingStepIndex(String giftStatus, List<GiftTrackingEvent> events) {
   if (statuses.any(
     (status) => status.contains('delivered') || status == 'signed',
   )) {
-    return 4;
-  }
-  if (statuses.any((status) => status.contains('deliver'))) {
     return 3;
   }
-  if (statuses.any(
-    (status) => status.contains('shipping') || status.contains('transit'),
-  )) {
+  if (statuses.any((status) => status.contains('deliver'))) {
     return 2;
   }
   if (statuses.any(
-    (status) => status.contains('packed') || status.contains('picked'),
+    (status) =>
+        status.contains('shipping') ||
+        status.contains('transit') ||
+        status.contains('packed') ||
+        status.contains('picked'),
   )) {
     return 1;
   }
@@ -1921,15 +1920,15 @@ String _shippingStatusText(String status) {
   final normalized = status.toLowerCase();
   if (normalized.contains('delivered') || normalized == 'signed') return '已签收';
   if (normalized.contains('deliver')) return '派送中';
-  if (normalized.contains('shipping') || normalized.contains('transit')) {
+  if (normalized.contains('shipping') ||
+      normalized.contains('transit') ||
+      normalized.contains('packed') ||
+      normalized.contains('picked')) {
     return '运输中';
   }
   if (normalized == 'pending_address') return '待填写地址';
   if (normalized == 'cancelled') return '已取消';
   if (normalized == 'failed' || normalized == 'skipped') return '未能寄出';
-  if (normalized.contains('packed') || normalized.contains('picked')) {
-    return '已打包';
-  }
   if (normalized.contains('ordered')) return '已下单';
   return '处理中';
 }
