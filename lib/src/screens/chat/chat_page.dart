@@ -5054,9 +5054,10 @@ class _ChatPageState extends State<ChatPage>
             children: [
               RepaintBoundary(
                 child: _ChatHeader(
+                  // 左上角称呼用昵称（姓名库配对），没有昵称回落到全名。
                   agentName: _isTakeover
                       ? widget.takeover!.userName
-                      : (widget.session.agentName ?? 'Companion'),
+                      : (widget.session.agentDisplayName ?? 'Companion'),
                   avatarLabel: _isTakeover
                       ? _takeoverAvatarLabel(widget.takeover!.userName)
                       : '伴',
