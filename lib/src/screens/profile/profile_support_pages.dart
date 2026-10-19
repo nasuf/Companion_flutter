@@ -59,25 +59,23 @@ class _AppearanceSettingsPage extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 22),
-          Padding(
-            padding: const EdgeInsets.only(left: 14, bottom: 8),
-            child: Text(
-              '手动选择',
-              style: TextStyle(color: _SettingsColors.tertiary, fontSize: 13),
+          if (!followingSystem) ...[
+            const SizedBox(height: 22),
+            Padding(
+              padding: const EdgeInsets.only(left: 14, bottom: 8),
+              child: Text(
+                '手动选择',
+                style: TextStyle(color: _SettingsColors.tertiary, fontSize: 13),
+              ),
             ),
-          ),
-          _SubCard(
-            children: [
-              for (final entry in const {
-                ThemeMode.light: '普通模式',
-                ThemeMode.dark: '深色模式',
-              }.entries)
-                Semantics(
-                  selected: controller.mode == entry.key,
-                  enabled: !followingSystem,
-                  child: Opacity(
-                    opacity: followingSystem ? .45 : 1,
+            _SubCard(
+              children: [
+                for (final entry in const {
+                  ThemeMode.light: '普通模式',
+                  ThemeMode.dark: '深色模式',
+                }.entries)
+                  Semantics(
+                    selected: controller.mode == entry.key,
                     child: _SubCardRow(
                       label: entry.value,
                       showDivider: entry.key == ThemeMode.light,
@@ -91,14 +89,12 @@ class _AppearanceSettingsPage extends StatelessWidget {
                               )
                             : null,
                       ),
-                      onTap: followingSystem
-                          ? null
-                          : () => unawaited(controller.setMode(entry.key)),
+                      onTap: () => unawaited(controller.setMode(entry.key)),
                     ),
                   ),
-                ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
       ),
     );
