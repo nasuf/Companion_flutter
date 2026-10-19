@@ -168,11 +168,9 @@ void main() {
           const ValueKey('profile-theme-follow-system'),
         );
         expect(tester.widget<CupertinoSwitch>(follow).value, isTrue);
-        expect(find.text('手动选择'), findsOneWidget);
-        expect(find.text('普通模式'), findsOneWidget);
-        await tester.tap(find.text('普通模式'));
-        await tester.pump();
-        expect(controller.mode, ThemeMode.system);
+        expect(find.text('手动选择'), findsNothing);
+        expect(find.text('普通模式'), findsNothing);
+        expect(find.text('深色模式'), findsNothing);
         await tester.tap(follow);
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));
@@ -212,6 +210,9 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));
         expect(controller.mode, ThemeMode.system);
+        expect(find.text('手动选择'), findsNothing);
+        expect(find.text('普通模式'), findsNothing);
+        expect(find.text('深色模式'), findsNothing);
         final restored = AppThemeController();
         await restored.restore();
         expect(restored.mode, ThemeMode.system);
