@@ -29,6 +29,7 @@ class _ProfilePageState extends State<ProfilePage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _motionController;
   bool _deleting = false;
+  bool _reduceMotion = false;
   ProfileStats? _profileStats;
   bool _profileStatsLoading = false;
   String? _profileStatsError;
@@ -52,12 +53,22 @@ class _ProfilePageState extends State<ProfilePage>
 
   void _syncTabMotion() {
     if (!mounted) return;
-    if (widget.active) {
+    if (widget.active && !_reduceMotion) {
       if (!_motionController.isAnimating) {
         _motionController.repeat();
       }
     } else {
       _motionController.stop();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    if (_reduceMotion != reduceMotion) {
+      _reduceMotion = reduceMotion;
+      _syncTabMotion();
     }
   }
 
@@ -347,7 +358,6 @@ class _ProfilePageState extends State<ProfilePage>
     final viewPadding = MediaQuery.viewPaddingOf(context);
     final userName = widget.session.displayNameOr('小星辰');
     final agentName = _displayName(widget.session.agentName, fallback: '小明');
-    final topPadding = viewPadding.top + 14;
     final mode = AppThemeScope.of(context).mode;
     return Stack(
       fit: StackFit.expand,
@@ -360,194 +370,186 @@ class _ProfilePageState extends State<ProfilePage>
           // 让内容视口在浮动导航栏上方截止，滚动内容不再显示在导航栏后面。
           bottom: math.max(10, viewPadding.bottom - 2) + 74,
           child: ClipRect(
-            child: SingleChildScrollView(
+            child: CustomScrollView(
+              key: const PageStorageKey('profile-scroll'),
               physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      RepaintBoundary(
-                        child: AnimatedBuilder(
-                          animation: _motionController,
-                          builder: (context, _) {
-                            return _SettingsRelationHeader(
-                              progress: _motionController.value,
-                              topPadding: topPadding,
-                              userName: userName,
-                              agentName: agentName,
-                              userAvatarUrl: widget.session.userAvatarUrl,
-                              agentAvatarUrl: widget.session.agentAvatarUrl,
-                              memberActive: _membership?.vip.isVip ?? false,
-                              showAdminEntry:
-                                  widget.session.role == UserRole.admin,
-                              onUserTap: () => _pushPage(
-                                _ProfileInfoPage(
-                                  api: widget.api,
-                                  session: widget.session,
-                                  onSessionChanged: widget.onSessionChanged,
-                                ),
-                              ),
-                              onAgentTap: () => _pushPage(
-                                _AiAppearancePage(
-                                  agentName: agentName,
-                                  agentAvatarUrl: widget.session.agentAvatarUrl,
-                                ),
-                              ),
-                              onAdminTap: _openAdminPanel,
-                            );
-                          },
+              slivers: [
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _SettingsRelationHeaderDelegate(
+                    topInset: viewPadding.top,
+                    textScale: MediaQuery.textScalerOf(context).scale(13) / 13,
+                    motion: _motionController,
+                    builder: (motion, collapse) => _SettingsRelationHeader(
+                      progress: motion,
+                      collapse: collapse,
+                      topPadding: viewPadding.top,
+                      userName: userName,
+                      agentName: agentName,
+                      userAvatarUrl: widget.session.userAvatarUrl,
+                      agentAvatarUrl: widget.session.agentAvatarUrl,
+                      memberActive: _membership?.vip.isVip ?? false,
+                      showAdminEntry: widget.session.role == UserRole.admin,
+                      onUserTap: () => _pushPage(
+                        _ProfileInfoPage(
+                          api: widget.api,
+                          session: widget.session,
+                          onSessionChanged: widget.onSessionChanged,
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _SettingsDashboardGrid(
-                              stats: _profileStats,
-                              loading: _profileStatsLoading,
-                              error: _profileStatsError,
+                      onAgentTap: () => _pushPage(
+                        _AiAppearancePage(
+                          agentName: agentName,
+                          agentAvatarUrl: widget.session.agentAvatarUrl,
+                        ),
+                      ),
+                      onAdminTap: _openAdminPanel,
+                    ),
+                  ),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
+                  sliver: SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _SettingsDashboardGrid(
+                          stats: _profileStats,
+                          loading: _profileStatsLoading,
+                          error: _profileStatsError,
+                        ),
+                        const SizedBox(height: 14),
+                        _SettingsMemberCard(
+                          membership: _membership,
+                          onTap: _showMemberInfo,
+                        ),
+                        const SizedBox(height: 12),
+                        _SettingsBackpackCard(
+                          count:
+                              _backpackItemCount ??
+                              _profileStats?.backpackCount ??
+                              0,
+                          onTap: () => _pushPage(
+                            _BackpackPage(
+                              api: widget.api,
+                              session: widget.session,
                             ),
-                            const SizedBox(height: 14),
-                            _SettingsMemberCard(
-                              membership: _membership,
-                              onTap: _showMemberInfo,
-                            ),
-                            const SizedBox(height: 12),
-                            _SettingsBackpackCard(
-                              count:
-                                  _backpackItemCount ??
-                                  _profileStats?.backpackCount ??
-                                  0,
+                            refreshStatsOnReturn: true,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        _SettingsSectionCard(
+                          label: '消息与互动',
+                          rows: [
+                            _SettingsRowData(
+                              glyph: _SettingsGlyph.bell,
+                              iconAccent: _SettingsColors.blue,
+                              title: '通知设置',
                               onTap: () => _pushPage(
-                                _BackpackPage(
+                                _NotificationSettingsPage(
                                   api: widget.api,
                                   session: widget.session,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        _SettingsSectionCard(
+                          label: '个性化与显示',
+                          rows: [
+                            _SettingsRowData(
+                              glyph: _SettingsGlyph.moon,
+                              iconAccent: const Color(0xFF5856D6),
+                              title: '显示模式',
+                              value: _themeModeLabel(mode),
+                              trailing: CupertinoSwitch(
+                                value: mode == ThemeMode.dark,
+                                activeTrackColor: _SettingsColors.blueDark,
+                                onChanged: (value) =>
+                                    AppThemeScope.of(context).setMode(
+                                      value ? ThemeMode.dark : ThemeMode.light,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        _SettingsSectionCard(
+                          label: '隐私与安全',
+                          rows: [
+                            _SettingsRowData(
+                              glyph: _SettingsGlyph.lock,
+                              iconAccent: const Color(0xFF34C759),
+                              title: '隐私与安全中心',
+                              onTap: () => _pushPage(
+                                _PrivacySecurityPage(
+                                  api: widget.api,
+                                  session: widget.session,
+                                  initialStats: _profileStats,
+                                  onDeleteFriend: () => _confirmDeleteAgent(
+                                    popOverlayRoute: true,
+                                  ),
                                 ),
                                 refreshStatsOnReturn: true,
                               ),
                             ),
-                            const SizedBox(height: 18),
-                            _SettingsSectionCard(
-                              label: '消息与互动',
-                              rows: [
-                                _SettingsRowData(
-                                  glyph: _SettingsGlyph.bell,
-                                  iconAccent: _SettingsColors.blue,
-                                  title: '通知设置',
-                                  onTap: () => _pushPage(
-                                    _NotificationSettingsPage(
-                                      api: widget.api,
-                                      session: widget.session,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            _SettingsSectionCard(
-                              label: '个性化与显示',
-                              rows: [
-                                _SettingsRowData(
-                                  glyph: _SettingsGlyph.moon,
-                                  iconAccent: const Color(0xFF5856D6),
-                                  title: '显示模式',
-                                  value: _themeModeLabel(mode),
-                                  trailing: CupertinoSwitch(
-                                    value: mode == ThemeMode.dark,
-                                    activeTrackColor: _SettingsColors.blueDark,
-                                    onChanged: (value) =>
-                                        AppThemeScope.of(context).setMode(
-                                          value
-                                              ? ThemeMode.dark
-                                              : ThemeMode.light,
-                                        ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            _SettingsSectionCard(
-                              label: '隐私与安全',
-                              rows: [
-                                _SettingsRowData(
-                                  glyph: _SettingsGlyph.lock,
-                                  iconAccent: const Color(0xFF34C759),
-                                  title: '隐私与安全中心',
-                                  onTap: () => _pushPage(
-                                    _PrivacySecurityPage(
-                                      api: widget.api,
-                                      session: widget.session,
-                                      initialStats: _profileStats,
-                                      onDeleteFriend: () => _confirmDeleteAgent(
-                                        popOverlayRoute: true,
-                                      ),
-                                    ),
-                                    refreshStatsOnReturn: true,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            _SettingsSectionCard(
-                              label: '其他与信息',
-                              rows: [
-                                _SettingsRowData(
-                                  glyph: _SettingsGlyph.tray,
-                                  iconAccent: const Color(0xFF64B5F6),
-                                  title: '缓存清理',
-                                  onTap: () =>
-                                      _pushPage(const _CacheCleanupPage()),
-                                ),
-                                _SettingsRowData(
-                                  glyph: _SettingsGlyph.info,
-                                  iconAccent: _SettingsColors.blue,
-                                  title: '关于我们',
-                                  onTap: () => _pushPage(
-                                    _AboutCompanionPage(
-                                      onContact: () => _pushPage(
-                                        _ContactFeedbackPage(
-                                          api: widget.api,
-                                          session: widget.session,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                _SettingsRowData(
-                                  glyph: _SettingsGlyph.cube,
-                                  iconAccent: const Color(0xFF90A4AE),
-                                  title: '版本信息',
-                                  value: _appVersionLabel,
-                                  secondaryAction: '检查更新',
-                                  onTap: _showVersionDialog,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 18),
-                            _SettingsAccountActions(onLogout: _confirmLogout),
-                            if (_error != null) ...[
-                              const SizedBox(height: 14),
-                              Text(
-                                _error!,
-                                style: TextStyle(
-                                  color: _SettingsColors.red,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0,
-                                ),
-                              ),
-                            ],
                           ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 14),
+                        _SettingsSectionCard(
+                          label: '其他与信息',
+                          rows: [
+                            _SettingsRowData(
+                              glyph: _SettingsGlyph.tray,
+                              iconAccent: const Color(0xFF64B5F6),
+                              title: '缓存清理',
+                              onTap: () => _pushPage(const _CacheCleanupPage()),
+                            ),
+                            _SettingsRowData(
+                              glyph: _SettingsGlyph.info,
+                              iconAccent: _SettingsColors.blue,
+                              title: '关于我们',
+                              onTap: () => _pushPage(
+                                _AboutCompanionPage(
+                                  onContact: () => _pushPage(
+                                    _ContactFeedbackPage(
+                                      api: widget.api,
+                                      session: widget.session,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            _SettingsRowData(
+                              glyph: _SettingsGlyph.cube,
+                              iconAccent: const Color(0xFF90A4AE),
+                              title: '版本信息',
+                              value: _appVersionLabel,
+                              secondaryAction: '检查更新',
+                              onTap: _showVersionDialog,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        _SettingsAccountActions(onLogout: _confirmLogout),
+                        if (_error != null) ...[
+                          const SizedBox(height: 14),
+                          Text(
+                            _error!,
+                            style: TextStyle(
+                              color: _SettingsColors.red,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
