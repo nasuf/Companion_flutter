@@ -1,6 +1,30 @@
 part of 'package:companion_flutter/companion_api.dart';
 
 mixin _CompanionApiStore on _CompanionApiCore {
+  /// The same administrator-only singleton used by Web system settings.
+  Future<bool> fetchAdminRealMoneyPaymentsEnabled() async {
+    return _parseAdminPaymentSetting(
+      await _request('GET', '/admin-api/payment-settings'),
+    );
+  }
+
+  Future<bool> updateAdminRealMoneyPaymentsEnabled(bool enabled) async {
+    return _parseAdminPaymentSetting(
+      await _request(
+        'PUT',
+        '/admin-api/payment-settings',
+        body: {'real_money_payments_enabled': enabled},
+      ),
+    );
+  }
+
+  bool _parseAdminPaymentSetting(dynamic json) {
+    if (json is Map && json['real_money_payments_enabled'] is bool) {
+      return json['real_money_payments_enabled'] as bool;
+    }
+    throw const FormatException('支付开关返回格式异常');
+  }
+
   Future<bool> getRealMoneyPaymentsEnabled() async {
     final json =
         await _request('GET', '/iap/apple/availability')

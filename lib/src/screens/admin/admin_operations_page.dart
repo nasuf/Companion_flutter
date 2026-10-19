@@ -509,11 +509,14 @@ class _AdminHealthBlock extends StatelessWidget {
 }
 
 // ===========================================================================
-// 全局模块开关 (offline modules / web search / TTS / achievement)
+// 全局模块开关 (payments / offline modules / web search / TTS / achievement)
 // ===========================================================================
 
 class _AdminGlobalModuleSettingsPage extends StatefulWidget {
-  const _AdminGlobalModuleSettingsPage({required this.api, required this.session});
+  const _AdminGlobalModuleSettingsPage({
+    required this.api,
+    required this.session,
+  });
 
   final CompanionApi api;
   final AuthSession session;
@@ -744,22 +747,18 @@ class _AdminGlobalModuleSettingsPageState
   Widget build(BuildContext context) {
     return _AdminScaffold(
       title: '全局模块开关',
-      subtitle: '线下 / 联网 / 语音 / 成就 · 切换即保存',
       child: _buildBody(),
     );
   }
 
   Widget _buildBody() {
-    if (_loading && _offline == null && _achievement == null) {
-      return const Center(child: CupertinoActivityIndicator(radius: 14));
-    }
     return ListView(
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 40),
       children: [
         _AdminCard(
           child: Text(
-            '控制线下模块主动推送、联网搜索、语音输出与成就系统运行模式，切换后即时保存。'
+            '控制真实付费购买、线下模块主动推送、联网搜索、语音输出与成就系统运行模式，切换后即时保存。'
             '已产生的条目及其查看 / 操作不受影响。',
             style: TextStyle(
               color: AppColors.isDark(context)
@@ -774,64 +773,71 @@ class _AdminGlobalModuleSettingsPageState
           ),
         ),
         const SizedBox(height: 12),
-        _AdminFlagCard(
-          marker: '活',
-          title: '线下活动推荐',
-          badge: '主动推送',
-          description: '定时向用户推送线下活动邀约与活动卡片。关闭后不再主动生成推荐，手动触发接口也会拒绝创建。',
-          scope: '定时任务 · 邀约消息 · 活动卡片',
-          enabled: _offline?.activityEnabled ?? false,
-          saving: _savingKey == 'activity',
-          disabled:
-              _offline == null ||
-              (_savingKey != null && _savingKey != 'activity'),
-          onChanged: (next) => _toggleOffline(isActivity: true, next: next),
-        ),
+        _AdminRealMoneyPaymentCard(api: widget.api, session: widget.session),
         const SizedBox(height: 12),
-        _AdminFlagCard(
-          marker: '礼',
-          title: '礼物推荐',
-          badge: '主动推送',
-          description: '定时触发礼物赠送并推进物流卡片。关闭后不再生成新礼物、暂停到货刷新，管理端 mock 接口也会被拒绝。',
-          scope: '定时任务 · 礼物生成 · 物流卡片',
-          enabled: _offline?.giftEnabled ?? false,
-          saving: _savingKey == 'gift',
-          disabled:
-              _offline == null || (_savingKey != null && _savingKey != 'gift'),
-          onChanged: (next) => _toggleOffline(isActivity: false, next: next),
-        ),
-        const SizedBox(height: 12),
-        _AdminFlagCard(
-          marker: '网',
-          title: '联网搜索',
-          badge: '豆包主回复',
-          description:
-              '开启后豆包主回复自动联网获取时效信息（天气、新闻等），模型按需触发、按次计费；闲聊不触发搜索。搜索失败自动回退普通回复。仅当大模型路由为火山方舟/豆包时生效。',
-          scope: '主回复生成 · 方舟 Responses API · 实时信息',
-          enabled: _webSearchEnabled,
-          saving: _savingKey == 'websearch',
-          disabled:
-              _runtime == null ||
-              (_savingKey != null && _savingKey != 'websearch'),
-          onChanged: _toggleWebSearch,
-        ),
-        const SizedBox(height: 12),
-        _AdminTtsProbabilityCard(
-          value: _ttsOutputProbability,
-          saving: _savingKey == 'tts',
-          disabled:
-              _runtime == null || (_savingKey != null && _savingKey != 'tts'),
-          onChanged: _changeTtsProbability,
-        ),
-        const SizedBox(height: 12),
-        _AdminAchievementCard(
-          settings: _achievement,
-          saving: _savingKey == 'achievement',
-          disabled:
-              _achievement == null ||
-              (_savingKey != null && _savingKey != 'achievement'),
-          onChanged: _changeAchievement,
-        ),
+        if (_loading && _offline == null && _achievement == null)
+          const Center(child: CupertinoActivityIndicator(radius: 14))
+        else ...[
+          _AdminFlagCard(
+            marker: '活',
+            title: '线下活动推荐',
+            badge: '主动推送',
+            description: '定时向用户推送线下活动邀约与活动卡片。关闭后不再主动生成推荐，手动触发接口也会拒绝创建。',
+            scope: '定时任务 · 邀约消息 · 活动卡片',
+            enabled: _offline?.activityEnabled ?? false,
+            saving: _savingKey == 'activity',
+            disabled:
+                _offline == null ||
+                (_savingKey != null && _savingKey != 'activity'),
+            onChanged: (next) => _toggleOffline(isActivity: true, next: next),
+          ),
+          const SizedBox(height: 12),
+          _AdminFlagCard(
+            marker: '礼',
+            title: '礼物推荐',
+            badge: '主动推送',
+            description: '定时触发礼物赠送并推进物流卡片。关闭后不再生成新礼物、暂停到货刷新，管理端 mock 接口也会被拒绝。',
+            scope: '定时任务 · 礼物生成 · 物流卡片',
+            enabled: _offline?.giftEnabled ?? false,
+            saving: _savingKey == 'gift',
+            disabled:
+                _offline == null ||
+                (_savingKey != null && _savingKey != 'gift'),
+            onChanged: (next) => _toggleOffline(isActivity: false, next: next),
+          ),
+          const SizedBox(height: 12),
+          _AdminFlagCard(
+            marker: '网',
+            title: '联网搜索',
+            badge: '豆包主回复',
+            description:
+                '开启后豆包主回复自动联网获取时效信息（天气、新闻等），模型按需触发、按次计费；闲聊不触发搜索。搜索失败自动回退普通回复。仅当大模型路由为火山方舟/豆包时生效。',
+            scope: '主回复生成 · 方舟 Responses API · 实时信息',
+            enabled: _webSearchEnabled,
+            saving: _savingKey == 'websearch',
+            disabled:
+                _runtime == null ||
+                (_savingKey != null && _savingKey != 'websearch'),
+            onChanged: _toggleWebSearch,
+          ),
+          const SizedBox(height: 12),
+          _AdminTtsProbabilityCard(
+            value: _ttsOutputProbability,
+            saving: _savingKey == 'tts',
+            disabled:
+                _runtime == null || (_savingKey != null && _savingKey != 'tts'),
+            onChanged: _changeTtsProbability,
+          ),
+          const SizedBox(height: 12),
+          _AdminAchievementCard(
+            settings: _achievement,
+            saving: _savingKey == 'achievement',
+            disabled:
+                _achievement == null ||
+                (_savingKey != null && _savingKey != 'achievement'),
+            onChanged: _changeAchievement,
+          ),
+        ],
         if (_error != null) ...[
           const SizedBox(height: 14),
           Text(
@@ -846,6 +852,185 @@ class _AdminGlobalModuleSettingsPageState
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Kept independent so unrelated module queries cannot delay the payment gate.
+class _AdminRealMoneyPaymentCard extends StatefulWidget {
+  const _AdminRealMoneyPaymentCard({required this.api, required this.session});
+
+  final CompanionApi api;
+  final AuthSession session;
+
+  @override
+  State<_AdminRealMoneyPaymentCard> createState() =>
+      _AdminRealMoneyPaymentCardState();
+}
+
+class _AdminRealMoneyPaymentCardState extends State<_AdminRealMoneyPaymentCard>
+    with WidgetsBindingObserver {
+  bool? _enabled;
+  bool _loading = false;
+  bool _saving = false;
+  String? _error;
+  Timer? _timer;
+  int _generation = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_read());
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted && (ModalRoute.of(context)?.isCurrent ?? true)) {
+        unawaited(_read());
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _AdminRealMoneyPaymentCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.api != widget.api ||
+        oldWidget.session.token != widget.session.token ||
+        oldWidget.session.role != widget.session.role) {
+      _generation++;
+      _enabled = null;
+      _error = null;
+      _loading = false;
+      _saving = false;
+      unawaited(_read());
+      _startTimer();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_read());
+      _startTimer();
+    } else {
+      _timer?.cancel();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _timer?.cancel();
+    _generation++;
+    super.dispose();
+  }
+
+  Future<void> _read() async {
+    if (_loading || _saving || widget.session.role != UserRole.admin) return;
+    final generation = ++_generation;
+    setState(() => _loading = true);
+    try {
+      widget.api.authToken = widget.session.token;
+      final enabled = await widget.api
+          .fetchAdminRealMoneyPaymentsEnabled()
+          .timeout(const Duration(seconds: 5));
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _enabled = enabled;
+        _error = null;
+      });
+    } catch (_) {
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _enabled = null;
+        _error = '无法读取支付开关，请刷新重试';
+      });
+    } finally {
+      if (mounted && generation == _generation) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  Future<void> _save(bool enabled) async {
+    if (_loading ||
+        _saving ||
+        _enabled == null ||
+        widget.session.role != UserRole.admin) {
+      return;
+    }
+    final generation = ++_generation;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      widget.api.authToken = widget.session.token;
+      final confirmed = await widget.api
+          .updateAdminRealMoneyPaymentsEnabled(enabled)
+          .timeout(const Duration(seconds: 10));
+      if (!mounted || generation != _generation) return;
+      setState(() => _enabled = confirmed);
+    } catch (_) {
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _enabled = null;
+        _error = '保存结果未确认，请刷新查看';
+      });
+    } finally {
+      if (mounted && generation == _generation) {
+        setState(() => _saving = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.session.role != UserRole.admin) return const SizedBox.shrink();
+    return _AdminFlagCard(
+      marker: '付',
+      title: '真实付费购买',
+      badge: '全局',
+      description:
+          '控制订阅、钞票充值和现金体验购买。关闭后相关购买按钮不可点击；'
+          '激活码兑换 VIP、后台赠送钞票和内部余额购买不受影响。',
+      scope:
+          '与 Web 后台共用配置 · 商城 10 秒内同步，支付前实时检查。'
+          '恢复购买、已付款到账继续处理；不会取消已有 Apple 自动续费。',
+      enabled: _enabled == true,
+      saving: _saving,
+      disabled: _enabled == null || _loading || _saving,
+      statusLabel: _loading
+          ? '读取中…'
+          : _enabled == null
+          ? '读取失败'
+          : null,
+      onChanged: _save,
+      footer: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_error != null)
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                _error!,
+                style: TextStyle(
+                  color: AppColors.of(context).danger,
+                  fontSize: 12,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+          CupertinoButton(
+            padding: const EdgeInsets.only(top: 8),
+            onPressed: _loading || _saving ? null : _read,
+            child: const Text('刷新支付开关', style: TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -962,6 +1147,8 @@ class _AdminFlagCard extends StatelessWidget {
     required this.saving,
     required this.disabled,
     required this.onChanged,
+    this.statusLabel,
+    this.footer,
   });
 
   final String marker;
@@ -973,6 +1160,8 @@ class _AdminFlagCard extends StatelessWidget {
   final bool saving;
   final bool disabled;
   final ValueChanged<bool> onChanged;
+  final String? statusLabel;
+  final Widget? footer;
 
   @override
   Widget build(BuildContext context) {
@@ -1033,7 +1222,9 @@ class _AdminFlagCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      saving ? '保存中…' : (enabled ? '已开启' : '已关闭'),
+                      saving
+                          ? '保存中…'
+                          : (statusLabel ?? (enabled ? '已开启' : '已关闭')),
                       style: TextStyle(
                         color: saving
                             ? colors.accent
@@ -1082,6 +1273,7 @@ class _AdminFlagCard extends StatelessWidget {
               decoration: TextDecoration.none,
             ),
           ),
+          if (footer != null) footer!,
         ],
       ),
     );
