@@ -2,6 +2,8 @@ part of 'package:companion_flutter/main.dart';
 
 class _RechargeStoreView extends StatelessWidget {
   const _RechargeStoreView({
+    required this.paymentsEnabled,
+    this.paymentStatusMessage,
     required this.currency,
     required this.ticketBalance,
     required this.pointBalance,
@@ -16,6 +18,8 @@ class _RechargeStoreView extends StatelessWidget {
     this.submitting = false,
   });
 
+  final bool paymentsEnabled;
+  final String? paymentStatusMessage;
   final _StoreCurrency currency;
   final num ticketBalance;
   final int pointBalance;
@@ -117,9 +121,24 @@ class _RechargeStoreView extends StatelessWidget {
             },
           ),
           const SizedBox(height: 18),
+          if (currency == _StoreCurrency.ticket &&
+              paymentStatusMessage != null) ...[
+            Text(
+              paymentStatusMessage!,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: _W2b.resolve(context).inkSoft,
+                decoration: TextDecoration.none,
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
           _StorePrimaryButton(
             label: currency == _StoreCurrency.ticket ? '立即充值' : '立即兑换',
-            onPressed: onSubmit,
+            onPressed: currency == _StoreCurrency.ticket && !paymentsEnabled
+                ? null
+                : onSubmit,
             loading: submitting,
             loadingLabel: submitting ? kIapCreditingLabel : null,
           ),
