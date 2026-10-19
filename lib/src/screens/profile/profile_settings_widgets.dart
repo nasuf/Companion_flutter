@@ -78,9 +78,55 @@ BoxDecoration _settingsCardDecoration({double radius = 16}) {
   );
 }
 
+typedef _RelationHeaderBuilder =
+    Widget Function(double motion, double collapse);
+
+/// Geometry is driven directly by scroll position, including reverse drags.
+/// No second avatar tree or time-based collapse animation is needed.
+class _SettingsRelationHeaderDelegate extends SliverPersistentHeaderDelegate {
+  _SettingsRelationHeaderDelegate({
+    required this.topInset,
+    required this.textScale,
+    required this.motion,
+    required this.builder,
+  });
+  final double topInset;
+  final double textScale;
+  final Animation<double> motion;
+  final _RelationHeaderBuilder builder;
+  @override
+  double get minExtent => topInset + 64;
+  @override
+  double get maxExtent =>
+      topInset + 254 + 2 * math.max(0, 13 * (textScale - 1));
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    final collapse = (shrinkOffset / (maxExtent - minExtent)).clamp(0.0, 1.0);
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: collapse == 1 ? const AlwaysStoppedAnimation(0.0) : motion,
+        builder: (context, _) =>
+            builder(collapse == 1 ? 0 : motion.value, collapse),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _SettingsRelationHeaderDelegate oldDelegate) =>
+      oldDelegate.topInset != topInset ||
+      oldDelegate.textScale != textScale ||
+      oldDelegate.motion != motion ||
+      oldDelegate.builder != builder;
+}
+
 class _SettingsRelationHeader extends StatelessWidget {
   const _SettingsRelationHeader({
     required this.progress,
+    required this.collapse,
     required this.topPadding,
     required this.userName,
     required this.agentName,
@@ -92,8 +138,8 @@ class _SettingsRelationHeader extends StatelessWidget {
     this.showAdminEntry = false,
     this.onAdminTap,
   });
-
   final double progress;
+  final double collapse;
   final double topPadding;
   final String userName;
   final String agentName;
@@ -105,204 +151,205 @@ class _SettingsRelationHeader extends StatelessWidget {
   final VoidCallback onAgentTap;
   final VoidCallback? onAdminTap;
 
-  /// 头像直径。原为 64，2026-08-12 放大 —— 这是「我的」页的主视觉，64 在手机上偏小。
-  ///
-  /// 上限受横向空间约束：一行是 16 边距 + 头像列 + 58 连接区 + 头像列 + 16 边距，
-  /// 即每列 `(宽 - 90) / 2`，320pt 屏上是 115pt，所以 88 仍有余量。
-  /// 再往上调要重新算这个式子，并跑 test/profile_header_test.dart 的多尺寸用例。
-  static const _headerAvatarSize = 88.0;
-
   @override
   Widget build(BuildContext context) {
-    return Container(
-      // 高度跟着头像走: 内容区 = 高度 - 30(上) - 20(下), 需容纳
-      // 头像 + 间距 + 名字(约18) + 14 + 标语(约18)。240 让 Spacer 仍留约 42,
-      // 与放大前的留白一致。
-      height: topPadding + 240,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            _SettingsColors.headerA,
-            _SettingsColors.headerB,
-            _SettingsColors.headerC,
-            _SettingsColors.headerB,
-            _SettingsColors.headerA,
-          ],
-          stops: [0, 0.25, 0.5, 0.75, 1],
-        ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
-        boxShadow: [
-          BoxShadow(
-            color: _SettingsColors.isDark
-                ? Colors.black.withValues(alpha: 0.34)
-                : const Color(0x1A7AB8E0),
-            blurRadius: _SettingsColors.isDark ? 18 : 12,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(16, topPadding + 30, 16, 20),
-            child: Column(
-              children: [
-                const Spacer(),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: _SettingsAvatarColumn(
-                        progress: progress,
-                        phase: 0,
-                        name: agentName,
-                        assetPath: 'assets/prototype/agent-avatar.png',
-                        imageUrl: agentAvatarUrl,
-                        accent: _SettingsColors.orangeDark,
-                        avatarSize: _headerAvatarSize,
-                        onTap: onAgentTap,
-                      ),
-                    ),
-                    SizedBox(
-                      width: 58,
-                      height: _headerAvatarSize,
-                      child: _SettingsConnectionBridge(progress: progress),
-                    ),
-                    Expanded(
-                      child: _SettingsAvatarColumn(
-                        progress: progress,
-                        phase: 0.28,
-                        name: userName,
-                        assetPath: 'assets/prototype/user-avatar-shanmu.jpg',
-                        imageUrl: userAvatarUrl,
-                        accent: memberActive
-                            ? _SettingsColors.gold
-                            : _SettingsColors.blueDark,
-                        showCrown: memberActive,
-                        showEditDot: true,
-                        avatarSize: _headerAvatarSize,
-                        onTap: onUserTap,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  '✦ 故事从这里开始 ✦',
-                  style: TextStyle(
-                    color: _SettingsColors.isDark
-                        ? _SettingsColors.orangeDark
-                        : const Color(0xFF9A8C82),
-                    fontSize: 14,
-                    fontStyle: FontStyle.italic,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.6,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (showAdminEntry && onAdminTap != null)
-            Positioned(
-              top: topPadding,
-              right: 18,
-              child: _ProfileAdminButton(onTap: onAdminTap!),
-            ),
-        ],
+    final t = Curves.easeInOutCubic.transform(collapse);
+    final fade = (1 - collapse / .65).clamp(0.0, 1.0);
+    final size = lerpDouble(88, 36, t)!;
+    final nameHeight = MediaQuery.textScalerOf(context).scale(13);
+    Widget fading(Widget child) => IgnorePointer(
+      ignoring: fade < .05,
+      child: ExcludeSemantics(
+        excluding: fade < .05,
+        child: Opacity(opacity: fade, child: child),
       ),
     );
-  }
-}
-
-class _SettingsAvatarColumn extends StatelessWidget {
-  const _SettingsAvatarColumn({
-    required this.progress,
-    required this.phase,
-    required this.name,
-    required this.assetPath,
-    required this.accent,
-    required this.onTap,
-    this.imageUrl,
-    this.showCrown = false,
-    this.showEditDot = false,
-    this.avatarSize = 64,
-  });
-
-  final double progress;
-  final double phase;
-  final String name;
-  final String assetPath;
-  final String? imageUrl;
-  final Color accent;
-  final bool showCrown;
-
-  /// 头像直径。角标与皇冠都按它等比摆放，见 build 里的说明。
-  final double avatarSize;
-
-  /// 只有用户头像可编辑 — AI 头像由后台素材决定, 不给用户改的入口.
-  final bool showEditDot;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final lift = math.sin((progress + phase) * math.pi * 2) * 4;
-    final breath = (math.sin((progress + phase) * math.pi * 4) + 1) / 2;
-    final dotSize = avatarSize * 23 / 64;
-    // 角标圆心落在头像圆周的右下 45° 上。直接沿用固定的 right/bottom 偏移在放大后
-    // 会离圆边越来越远 —— 圆的右下角比外接方框的角内缩 r(1-1/√2), 那个量随 r 增长。
-    final dotEdge = avatarSize / 2 * (1 - 1 / math.sqrt2) - dotSize / 2;
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      onPressed: onTap,
-      child: Transform.translate(
-        offset: Offset(0, lift),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Transform.scale(
-              scale: 1 + breath * 0.018,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  _SettingsAvatarImage(
-                    assetPath: assetPath,
-                    imageUrl: imageUrl,
-                    accent: accent,
-                    size: avatarSize,
-                  ),
-                  if (showEditDot)
-                    Positioned(
-                      right: dotEdge,
-                      bottom: dotEdge,
-                      child: _AvatarEditDot(size: dotSize),
-                    ),
-                  if (showCrown)
-                    Positioned(
-                      right: avatarSize * -5 / 64,
-                      top: avatarSize * -12 / 64,
-                      child: Text(
-                        '👑',
-                        style: TextStyle(fontSize: avatarSize * 18 / 64),
+    return ClipRRect(
+      borderRadius: BorderRadius.vertical(
+        bottom: Radius.circular(lerpDouble(32, 20, t)!),
+      ),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14 * t, sigmaY: 14 * t),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors:
+                  [
+                        _SettingsColors.headerA,
+                        _SettingsColors.headerB,
+                        _SettingsColors.headerC,
+                        _SettingsColors.headerB,
+                        _SettingsColors.headerA,
+                      ]
+                      .map(
+                        (color) => Color.lerp(
+                          color,
+                          _SettingsColors.card.withValues(alpha: .88),
+                          t,
+                        )!,
+                      )
+                      .toList(),
+            ),
+            border: Border(
+              bottom: BorderSide(
+                color: _SettingsColors.separator.withValues(alpha: .5 * t),
+                width: .5,
+              ),
+            ),
+          ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final expandedTop = topPadding + 68;
+              Widget avatar({required bool user}) {
+                final phase = user ? .28 : 0.0;
+                final lift =
+                    math.sin((progress + phase) * math.pi * 2) * 3 * (1 - t);
+                final x = lerpDouble(
+                  width * (user ? .76 : .24) - 44,
+                  user ? 46 : 20,
+                  t,
+                )!;
+                final y = lerpDouble(expandedTop, topPadding + 14, t)! + lift;
+                final hitSize = math.max(44.0, size);
+                final name = user ? userName : agentName;
+                final onTap = user ? onUserTap : onAgentTap;
+                return Positioned(
+                  left: x - (hitSize - size) / 2,
+                  top: y - (hitSize - size) / 2,
+                  width: hitSize,
+                  height: hitSize,
+                  child: Semantics(
+                    button: true,
+                    label: user ? '查看我的资料：$name' : '查看伙伴形象：$name',
+                    child: CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.zero,
+                      onPressed: onTap,
+                      child: SizedBox(
+                        key: ValueKey(
+                          user ? 'profile-user-avatar' : 'profile-agent-avatar',
+                        ),
+                        width: size,
+                        height: size,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            _SettingsAvatarImage(
+                              assetPath: user
+                                  ? 'assets/prototype/user-avatar-shanmu.jpg'
+                                  : 'assets/prototype/agent-avatar.png',
+                              imageUrl: user ? userAvatarUrl : agentAvatarUrl,
+                              accent: user
+                                  ? (memberActive
+                                        ? _SettingsColors.gold
+                                        : _SettingsColors.blueDark)
+                                  : _SettingsColors.orangeDark,
+                              size: size,
+                            ),
+                            if (user)
+                              Positioned(
+                                right: -2,
+                                bottom: -2,
+                                child: fading(const _AvatarEditDot(size: 25)),
+                              ),
+                            if (user && memberActive)
+                              Positioned(
+                                right: size * -5 / 64,
+                                top: size * -12 / 64,
+                                child: Semantics(
+                                  label: 'VIP 会员',
+                                  child: Text(
+                                    '👑',
+                                    key: const ValueKey('profile-vip-badge'),
+                                    style: TextStyle(fontSize: size * 18 / 64),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
+                  ),
+                );
+              }
+
+              Widget name({required bool user}) => Positioned(
+                left:
+                    lerpDouble(width * (user ? .76 : .24), user ? 64 : 38, t)! -
+                    width * .24,
+                top: lerpDouble(expandedTop + 99, topPadding + 14, t)!,
+                width: width * .48,
+                height: nameHeight + 16,
+                child: fading(
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    onPressed: user ? onUserTap : onAgentTap,
+                    child: Text(
+                      user ? userName : agentName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _SettingsColors.text,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+              return Stack(
+                clipBehavior: Clip.hardEdge,
+                children: [
+                  Positioned(
+                    left: width / 2 - 29,
+                    top: lerpDouble(expandedTop + 12, topPadding + 14, t)!,
+                    width: 58,
+                    height: 64,
+                    child: fading(
+                      _SettingsConnectionBridge(progress: progress),
+                    ),
+                  ),
+                  name(user: false),
+                  name(user: true),
+                  Positioned(
+                    left: 20,
+                    right: 20,
+                    top: lerpDouble(
+                      expandedTop + 146 + math.max(0, nameHeight - 13),
+                      topPadding + 24,
+                      t,
+                    )!,
+                    child: fading(
+                      Text(
+                        '故事从这里开始',
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: _SettingsColors.tertiary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                          letterSpacing: .5,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (showAdminEntry && onAdminTap != null)
+                    Positioned(
+                      top: topPadding + 10,
+                      right: 18,
+                      child: fading(_ProfileAdminButton(onTap: onAdminTap!)),
+                    ),
+                  avatar(user: false),
+                  avatar(user: true),
                 ],
-              ),
-            ),
-            SizedBox(height: avatarSize * 7 / 64),
-            Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: _SettingsColors.text,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0,
-              ),
-            ),
-          ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -439,7 +486,11 @@ class _SettingsConnectionBridge extends StatelessWidget {
             width: 30,
             height: 30,
             alignment: Alignment.center,
-            child: const Text('💫', style: TextStyle(fontSize: 20)),
+            child: Icon(
+              CupertinoIcons.sparkles,
+              color: _SettingsColors.orangeDark,
+              size: 24,
+            ),
           ),
         ),
       ],
@@ -497,7 +548,6 @@ class _SettingsDashboardGrid extends StatelessWidget {
         glyph: _SettingsGlyph.heart,
         iconAccent: _SettingsColors.orange,
         label: '亲密度',
-        accent: _SettingsColors.orange,
         value: stats == null
             ? (loading ? '...' : '--')
             : stats!.topicIntimacy.round().toString(),
@@ -507,7 +557,6 @@ class _SettingsDashboardGrid extends StatelessWidget {
         glyph: _SettingsGlyph.calendar,
         iconAccent: _SettingsColors.blue,
         label: '相识时间',
-        accent: _SettingsColors.blue,
         value: stats == null
             ? (loading ? '...' : '--')
             : stats!.companionDays.toString(),
@@ -519,7 +568,6 @@ class _SettingsDashboardGrid extends StatelessWidget {
         glyph: _SettingsGlyph.stopwatch,
         iconAccent: const Color(0xFFA0C8E8),
         label: '相处时光',
-        accent: const Color(0xFFA0C8E8),
         value: stats == null
             ? (loading ? '...' : '--')
             : stats!.chatDurationLabel,
@@ -529,7 +577,6 @@ class _SettingsDashboardGrid extends StatelessWidget {
         glyph: _SettingsGlyph.chat,
         iconAccent: const Color(0xFFD4B89C),
         label: '讯息总数',
-        accent: const Color(0xFFD4B89C),
         value: stats == null
             ? (loading ? '...' : '--')
             : stats!.messageCount.toString(),
@@ -539,18 +586,38 @@ class _SettingsDashboardGrid extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        GridView.builder(
-          padding: EdgeInsets.zero,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: cards.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            childAspectRatio: 1.72,
-          ),
-          itemBuilder: (context, index) => _SettingsDashboardCard(cards[index]),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final oneColumn =
+                constraints.maxWidth < 290 ||
+                MediaQuery.textScalerOf(context).scale(14) > 20;
+            final cardWidth = oneColumn
+                ? constraints.maxWidth
+                : (constraints.maxWidth - 12) / 2;
+            return Column(
+              children: [
+                for (var i = 0; i < cards.length; i += oneColumn ? 1 : 2) ...[
+                  if (i > 0) const SizedBox(height: 12),
+                  if (oneColumn)
+                    SizedBox(
+                      width: cardWidth,
+                      child: _SettingsDashboardCard(cards[i]),
+                    )
+                  else
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(child: _SettingsDashboardCard(cards[i])),
+                          const SizedBox(width: 12),
+                          Expanded(child: _SettingsDashboardCard(cards[i + 1])),
+                        ],
+                      ),
+                    ),
+                ],
+              ],
+            );
+          },
         ),
         if (error != null) ...[
           const SizedBox(height: 8),
@@ -574,7 +641,6 @@ class _DashboardCardData {
     required this.glyph,
     required this.iconAccent,
     required this.label,
-    required this.accent,
     required this.value,
     required this.subtext,
   });
@@ -582,168 +648,176 @@ class _DashboardCardData {
   final _SettingsGlyph glyph;
   final Color iconAccent;
   final String label;
-  final Color accent;
   final String value;
   final String subtext;
 }
 
 class _SettingsDashboardCard extends StatelessWidget {
   const _SettingsDashboardCard(this.data);
-
   final _DashboardCardData data;
-
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 78),
-      decoration: _settingsCardDecoration(),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: CustomPaint(
-              painter: _SettingsDashboardLeftBorderPainter(color: data.accent),
+    final dark = _SettingsColors.isDark;
+    final icon = switch (data.glyph) {
+      _SettingsGlyph.heart => CupertinoIcons.heart,
+      _SettingsGlyph.calendar => CupertinoIcons.calendar,
+      _SettingsGlyph.stopwatch => CupertinoIcons.time,
+      _ => CupertinoIcons.chat_bubble_2,
+    };
+    return Semantics(
+      container: true,
+      label: '${data.label}，${data.value}，${data.subtext}',
+      excludeSemantics: true,
+      child: CustomPaint(
+        foregroundPainter: _SettingsDashboardEdgePainter(
+          color: data.iconAccent,
+          dark: dark,
+        ),
+        child: Container(
+          key: ValueKey('profile-stat-${data.label}'),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _SettingsColors.card.withValues(alpha: dark ? .82 : .88),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: dark ? .08 : .72),
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: dark ? .12 : .025),
+                blurRadius: 16,
+                offset: const Offset(0, 5),
+              ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 13, 11),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    _SettingsFlatIcon(
-                      glyph: data.glyph,
-                      accent: data.iconAccent,
-                      size: 28,
-                    ),
-                    const SizedBox(width: 6),
-                    // Expanded + 右对齐, 而不是 Spacer + 裸 Text: 裸 Text 会按自然
-                    // 宽度铺开, 它上面的 maxLines/ellipsis 只在宽度被约束时才生效,
-                    // 所以长数值 (如 "48h32m") 在 375pt 宽的机型上是直接溢出而不是
-                    // 省略号。视觉不变 —— 放得下时仍然贴右。
-                    Expanded(
-                      child: Text(
-                        data.value,
-                        maxLines: 1,
-                        textAlign: TextAlign.right,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: _SettingsColors.isDark
-                              ? _SettingsColors.text
-                              : const Color(0xFF2A2A2C),
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      data.label,
+                      style: TextStyle(
+                        color: _SettingsColors.tertiary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  data.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: _SettingsColors.tertiary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w400,
-                    height: 1.2,
-                    letterSpacing: 0,
                   ),
+                  const SizedBox(width: 8),
+                  Icon(icon, size: 16, color: data.iconAccent),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                data.value,
+                style: TextStyle(
+                  color: _SettingsColors.text,
+                  fontSize: 26,
+                  height: 1.15,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -.5,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  data.subtext,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: _SettingsColors.orangeDark,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    height: 1.2,
-                    letterSpacing: 0,
-                  ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                data.subtext,
+                style: TextStyle(
+                  color: _SettingsColors.tertiary,
+                  fontSize: 12,
+                  height: 1.5,
+                  fontWeight: FontWeight.w400,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _SettingsDashboardLeftBorderPainter extends CustomPainter {
-  const _SettingsDashboardLeftBorderPainter({required this.color});
-
+/// Keep the outside flush with the tile; taper the inside to zero at both tips.
+class _SettingsDashboardEdgePainter extends CustomPainter {
+  const _SettingsDashboardEdgePainter({
+    required this.color,
+    required this.dark,
+  });
   final Color color;
-
-  // 与卡片圆角一致，让彩色沿着卡片左侧圆角边缘走。
-  static const double _radius = 16;
-  // 描边宽度（对齐 HTML `border-left: 3px`）。
-  static const double _strokeWidth = 3;
-
+  final bool dark;
   @override
   void paint(Canvas canvas, Size size) {
-    if (size.height <= 0 || size.width <= 0) return;
-    final r = math.min(_radius, size.height / 2);
-    const half = _strokeWidth / 2;
-    final effectiveRadius = r - half;
-    final topCenter = Offset(r, r);
-    final bottomCenter = Offset(r, size.height - r);
-
-    // 完整包住左上/左下圆角：从上切点绕左侧到下切点，
-    // 对齐 CSS 单边圆角 border 的走向（沿边缘、在两端绕角）。
+    if (size.isEmpty) return;
+    final radius = math.min(22.0, math.min(size.width, size.height) / 2);
+    final width = math.min(3.0, radius);
+    final outline = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(radius),
+    );
     final path = Path()
-      ..moveTo(r, half)
-      ..arcTo(
-        Rect.fromCircle(center: topCenter, radius: effectiveRadius),
-        -math.pi / 2,
-        -math.pi / 2,
-        false,
+      ..moveTo(radius, 0)
+      ..arcToPoint(
+        Offset(0, radius),
+        radius: Radius.circular(radius),
+        clockwise: false,
       )
-      ..lineTo(half, size.height - r)
-      ..arcTo(
-        Rect.fromCircle(center: bottomCenter, radius: effectiveRadius),
-        math.pi,
-        -math.pi / 2,
-        false,
+      ..lineTo(0, size.height - radius)
+      ..arcToPoint(
+        Offset(radius, size.height),
+        radius: Radius.circular(radius),
+        clockwise: false,
       );
 
-    // 竖直渐变：中段实色最粗，越靠近上下两端（绕角处）越淡直至透明，
-    // 还原 HTML 的"由粗到细直至消失"。
-    final shader = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [
-        color.withValues(alpha: 0),
-        color,
-        color,
-        color.withValues(alpha: 0),
-      ],
-      stops: const [0.0, 0.10, 0.90, 1.0],
-    ).createShader(Offset.zero & size);
-
+    // A filled ribbon changes its real width; opacity alone leaves blunt caps.
+    // Keep the outer circular arcs exact and sample only the inner contour.
+    const steps = 32;
+    for (var i = steps; i >= 0; i--) {
+      final t = i / steps;
+      final progress = 1 - t;
+      final taper = progress * progress * (3 - 2 * progress);
+      final innerRadius = radius - width * taper;
+      final angle = math.pi - t * math.pi / 2;
+      path.lineTo(
+        radius + innerRadius * math.cos(angle),
+        size.height - radius + innerRadius * math.sin(angle),
+      );
+    }
+    path.lineTo(width, radius);
+    for (var i = steps; i >= 0; i--) {
+      final t = i / steps;
+      final taper = t * t * (3 - 2 * t);
+      final innerRadius = radius - width * taper;
+      final angle = -math.pi / 2 - t * math.pi / 2;
+      path.lineTo(
+        radius + innerRadius * math.cos(angle),
+        radius + innerRadius * math.sin(angle),
+      );
+    }
+    path.close();
     final paint = Paint()
-      ..shader = shader
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _strokeWidth
-      ..strokeCap = StrokeCap.round
-      ..isAntiAlias = true;
+      ..style = PaintingStyle.fill
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          color.withValues(alpha: .25),
+          color,
+          color,
+          color.withValues(alpha: .25),
+        ],
+        stops: const [0, .24, .76, 1],
+      ).createShader(Offset.zero & size);
+    canvas.save();
+    canvas.clipRRect(outline);
     canvas.drawPath(path, paint);
+    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(
-    covariant _SettingsDashboardLeftBorderPainter oldDelegate,
-  ) {
-    return oldDelegate.color != color;
-  }
+  bool shouldRepaint(covariant _SettingsDashboardEdgePainter oldDelegate) =>
+      color != oldDelegate.color || dark != oldDelegate.dark;
 }
 
 class _SettingsBackpackCard extends StatelessWidget {

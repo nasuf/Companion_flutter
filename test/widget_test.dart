@@ -327,6 +327,7 @@ void main() {
         .last;
 
     await tester.ensureVisible(logoutEntry());
+    await tester.pump();
     await tester.tap(logoutEntry());
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
@@ -338,6 +339,7 @@ void main() {
     expect(logoutCount, 0);
 
     await tester.ensureVisible(logoutEntry());
+    await tester.pump();
     await tester.tap(logoutEntry());
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
