@@ -4,6 +4,8 @@ import 'package:companion_flutter/companion_api.dart';
 import 'package:companion_flutter/main.dart';
 import 'package:companion_flutter/models.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Header geometry, scroll reversibility and profile actions use the real page.
@@ -112,16 +114,91 @@ Future<void> _pumpProfile(
 }
 
 void main() {
+  for (final width in [390.0, 320.0]) {
+    testWidgets(
+      'three-part theme control persists each choice at width $width',
+      (tester) async {
+        FlutterSecureStorage.setMockInitialValues({});
+        tester.view.physicalSize = Size(width, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await _pumpProfile(tester);
+        final page = tester.widget<ProfilePage>(find.byType(ProfilePage));
+        final controller = AppThemeController();
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(
+          AnimatedBuilder(
+            animation: controller,
+            builder: (context, _) {
+              AppColors.use(controller.resolveBrightness(Brightness.light));
+              return AppThemeScope(
+                controller: controller,
+                child: MaterialApp(
+                  theme: AppTheme.materialTheme(Brightness.light),
+                  darkTheme: AppTheme.materialTheme(Brightness.dark),
+                  themeMode: controller.mode,
+                  builder: (context, child) => MediaQuery(
+                    data: MediaQuery.of(context).copyWith(
+                      textScaler: TextScaler.linear(width == 320 ? 1.8 : 1),
+                    ),
+                    child: child!,
+                  ),
+                  home: Scaffold(body: page),
+                ),
+              );
+            },
+          ),
+        );
+        await tester.pump();
+        final control = find.byKey(const ValueKey('profile-theme-mode'));
+        await tester.ensureVisible(control);
+        await tester.pump();
+        expect(
+          tester
+              .widget<CupertinoSlidingSegmentedControl<ThemeMode>>(control)
+              .groupValue,
+          ThemeMode.system,
+        );
+        for (final entry in {
+          '深色': ThemeMode.dark,
+          '浅色': ThemeMode.light,
+          '自动': ThemeMode.system,
+        }.entries) {
+          await tester.tap(
+            find.descendant(of: control, matching: find.text(entry.key)),
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          expect(controller.mode, entry.value);
+          expect(
+            tester
+                .widget<CupertinoSlidingSegmentedControl<ThemeMode>>(control)
+                .groupValue,
+            entry.value,
+          );
+          final restored = AppThemeController();
+          await restored.restore();
+          expect(restored.mode, entry.value);
+          restored.dispose();
+          expect(tester.takeException(), isNull);
+        }
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
   for (final brightness in Brightness.values) {
     testWidgets('tile edge narrows geometrically to both tips ($brightness)', (
       tester,
     ) async {
       await _pumpProfile(tester, brightness: brightness);
       final tile = tester.widget<CustomPaint>(
-        find.ancestor(
-          of: find.byKey(const ValueKey('profile-stat-亲密度')),
-          matching: find.byType(CustomPaint),
-        ).first,
+        find
+            .ancestor(
+              of: find.byKey(const ValueKey('profile-stat-亲密度')),
+              matching: find.byType(CustomPaint),
+            )
+            .first,
       );
       const size = Size(172, 118);
       const scale = 8;
@@ -133,7 +210,9 @@ void main() {
       final picture = recorder.endRecording();
       final bytes = await tester.runAsync(() async {
         final image = await picture.toImage(pixelWidth, pixelHeight);
-        final result = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+        final result = await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
         image.dispose();
         picture.dispose();
         return result;
