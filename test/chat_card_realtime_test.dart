@@ -225,6 +225,54 @@ void main() {
     );
   });
 
+  for (final summary in ['爱探店的话，可以了解这家常发广场里的花艺小店。', '']) {
+    testWidgets(
+      'activity chat card renders its verified summary: ${summary.isEmpty ? "legacy empty" : "present"}',
+      (tester) async {
+        final component = <String, dynamic>{
+          'type': 'offline_activity',
+          'title': '春树·花艺(常发广场店)',
+          'subtitle': '待确定 · 春树·花艺(常发广场店)',
+          'body': summary,
+          'footer': '点击查看活动详情',
+          'payload': {
+            'activity_id': 'spring',
+            'status': 'pending',
+            'status_label': '待确定',
+          },
+        };
+        await _withChat(
+          tester,
+          (api, peers) async {
+            if (summary.isEmpty) {
+              expect(
+                find.byKey(const ValueKey('offline-activity-card-summary')),
+                findsNothing,
+              );
+            } else {
+              expect(find.text(summary), findsOneWidget);
+              final text = tester.widget<Text>(
+                find.byKey(const ValueKey('offline-activity-card-summary')),
+              );
+              expect(text.data, summary);
+              expect(text.maxLines, 3);
+              tester.view.physicalSize = const Size(320, 844);
+              tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+              addTearDown(
+                tester.platformDispatcher.clearTextScaleFactorTestValue,
+              );
+              await tester.pump();
+              expect(tester.takeException(), isNull);
+            }
+          },
+          initialHistory: [
+            _history('activity', component, DateTime.utc(2026, 10, 19)),
+          ],
+        );
+      },
+    );
+  }
+
   testWidgets('failed location retry preserves full card and client identity', (
     tester,
   ) async {
