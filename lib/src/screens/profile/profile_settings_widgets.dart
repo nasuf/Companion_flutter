@@ -919,15 +919,10 @@ class _SettingsMemberCard extends StatelessWidget {
 }
 
 class _SettingsSectionCard extends StatelessWidget {
-  const _SettingsSectionCard({
-    required this.label,
-    required this.rows,
-    this.footer,
-  });
+  const _SettingsSectionCard({required this.label, required this.rows});
 
   final String label;
   final List<_SettingsRowData> rows;
-  final Widget? footer;
 
   @override
   Widget build(BuildContext context) {
@@ -953,11 +948,6 @@ class _SettingsSectionCard extends StatelessWidget {
           ),
           for (var i = 0; i < rows.length; i += 1)
             _SettingsRow(data: rows[i], showDivider: i < rows.length - 1),
-          if (footer != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-              child: footer!,
-            ),
         ],
       ),
     );
@@ -971,7 +961,6 @@ class _SettingsRowData {
     required this.title,
     this.value,
     this.secondaryAction,
-    this.trailing,
     this.onTap,
   });
 
@@ -980,7 +969,6 @@ class _SettingsRowData {
   final String title;
   final String? value;
   final String? secondaryAction;
-  final Widget? trailing;
   final VoidCallback? onTap;
 }
 
@@ -1027,8 +1015,6 @@ class _SettingsRow extends StatelessWidget {
                 letterSpacing: 0,
               ),
             )
-          else if (data.trailing != null)
-            data.trailing!
           else
             const _SettingsArrow(),
         ],

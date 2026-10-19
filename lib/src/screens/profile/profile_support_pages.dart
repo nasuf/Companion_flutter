@@ -1,5 +1,110 @@
 part of 'package:companion_flutter/main.dart';
 
+class _AppearanceSettingsPage extends StatelessWidget {
+  const _AppearanceSettingsPage();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = AppThemeScope.of(context);
+    final followingSystem = controller.mode == ThemeMode.system;
+    return _SettingsSubScaffold(
+      title: '显示模式',
+      child: _SubPageContent(
+        children: [
+          _SubCard(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('跟随系统', style: _settingsRowTitleStyle()),
+                        const SizedBox(height: 6),
+                        Text(
+                          '开启后，将跟随系统自动切换浅色与深色外观',
+                          style: TextStyle(
+                            color: _SettingsColors.tertiary,
+                            fontSize: 12,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Semantics(
+                    label: '跟随系统',
+                    child: CupertinoSwitch(
+                      key: const ValueKey('profile-theme-follow-system'),
+                      value: followingSystem,
+                      activeTrackColor: _SettingsColors.blueDark,
+                      onChanged: (enabled) {
+                        final currentBrightness = controller.resolveBrightness(
+                          MediaQuery.platformBrightnessOf(context),
+                        );
+                        unawaited(
+                          controller.setMode(
+                            enabled
+                                ? ThemeMode.system
+                                : currentBrightness == Brightness.dark
+                                ? ThemeMode.dark
+                                : ThemeMode.light,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 22),
+          Padding(
+            padding: const EdgeInsets.only(left: 14, bottom: 8),
+            child: Text(
+              '手动选择',
+              style: TextStyle(color: _SettingsColors.tertiary, fontSize: 13),
+            ),
+          ),
+          _SubCard(
+            children: [
+              for (final entry in const {
+                ThemeMode.light: '普通模式',
+                ThemeMode.dark: '深色模式',
+              }.entries)
+                Semantics(
+                  selected: controller.mode == entry.key,
+                  enabled: !followingSystem,
+                  child: Opacity(
+                    opacity: followingSystem ? .45 : 1,
+                    child: _SubCardRow(
+                      label: entry.value,
+                      showDivider: entry.key == ThemeMode.light,
+                      trailing: SizedBox(
+                        width: 24,
+                        child: controller.mode == entry.key
+                            ? Icon(
+                                CupertinoIcons.check_mark,
+                                color: _SettingsColors.blueDark,
+                                size: 22,
+                              )
+                            : null,
+                      ),
+                      onTap: followingSystem
+                          ? null
+                          : () => unawaited(controller.setMode(entry.key)),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AboutCompanionPage extends StatelessWidget {
   const _AboutCompanionPage({required this.onContact});
 

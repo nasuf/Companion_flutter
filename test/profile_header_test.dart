@@ -116,9 +116,17 @@ Future<void> _pumpProfile(
 void main() {
   for (final width in [390.0, 320.0]) {
     testWidgets(
-      'three-part theme control persists each choice at width $width',
+      'appearance subpage preserves system and manual choices at width $width',
       (tester) async {
         FlutterSecureStorage.setMockInitialValues({});
+        final systemBrightness = width == 320
+            ? Brightness.dark
+            : Brightness.light;
+        tester.binding.platformDispatcher.platformBrightnessTestValue =
+            systemBrightness;
+        addTearDown(
+          tester.binding.platformDispatcher.clearPlatformBrightnessTestValue,
+        );
         tester.view.physicalSize = Size(width, 844);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
@@ -130,7 +138,7 @@ void main() {
           AnimatedBuilder(
             animation: controller,
             builder: (context, _) {
-              AppColors.use(controller.resolveBrightness(Brightness.light));
+              AppColors.use(controller.resolveBrightness(systemBrightness));
               return AppThemeScope(
                 controller: controller,
                 child: MaterialApp(
@@ -150,38 +158,72 @@ void main() {
           ),
         );
         await tester.pump();
-        final control = find.byKey(const ValueKey('profile-theme-mode'));
-        await tester.ensureVisible(control);
+        expect(find.byKey(const ValueKey('profile-theme-mode')), findsNothing);
+        await tester.ensureVisible(find.text('显示模式'));
         await tester.pump();
+        await tester.tap(find.text('显示模式'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        final follow = find.byKey(
+          const ValueKey('profile-theme-follow-system'),
+        );
+        expect(tester.widget<CupertinoSwitch>(follow).value, isTrue);
+        expect(find.text('手动选择'), findsOneWidget);
+        expect(find.text('普通模式'), findsOneWidget);
+        await tester.tap(find.text('普通模式'));
+        await tester.pump();
+        expect(controller.mode, ThemeMode.system);
+        await tester.tap(follow);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
         expect(
-          tester
-              .widget<CupertinoSlidingSegmentedControl<ThemeMode>>(control)
-              .groupValue,
-          ThemeMode.system,
+          controller.mode,
+          systemBrightness == Brightness.dark
+              ? ThemeMode.dark
+              : ThemeMode.light,
         );
         for (final entry in {
-          '深色': ThemeMode.dark,
-          '浅色': ThemeMode.light,
-          '自动': ThemeMode.system,
+          '深色模式': ThemeMode.dark,
+          '普通模式': ThemeMode.light,
         }.entries) {
-          await tester.tap(
-            find.descendant(of: control, matching: find.text(entry.key)),
-          );
+          await tester.ensureVisible(find.text(entry.key));
+          await tester.pump();
+          await tester.tap(find.text(entry.key));
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 300));
           expect(controller.mode, entry.value);
-          expect(
-            tester
-                .widget<CupertinoSlidingSegmentedControl<ThemeMode>>(control)
-                .groupValue,
-            entry.value,
-          );
           final restored = AppThemeController();
           await restored.restore();
           expect(restored.mode, entry.value);
           restored.dispose();
+          expect(find.byIcon(CupertinoIcons.check_mark), findsOneWidget);
           expect(tester.takeException(), isNull);
         }
+        Navigator.of(tester.element(follow)).pop();
+        await tester.pumpAndSettle();
+        expect(find.text('浅色'), findsOneWidget);
+        await tester.tap(find.text('显示模式'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(tester.widget<CupertinoSwitch>(follow).value, isFalse);
+        await tester.ensureVisible(follow);
+        await tester.pump();
+        await tester.tap(follow);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(controller.mode, ThemeMode.system);
+        final restored = AppThemeController();
+        await restored.restore();
+        expect(restored.mode, ThemeMode.system);
+        restored.dispose();
+        Navigator.of(tester.element(follow)).pop();
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('profile-theme-follow-system')),
+          findsNothing,
+        );
+        expect(find.text('跟随系统'), findsOneWidget);
+        expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
       },
     );
