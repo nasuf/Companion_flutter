@@ -463,46 +463,10 @@ class _ProfilePageState extends State<ProfilePage>
                               iconAccent: const Color(0xFF5856D6),
                               title: '显示模式',
                               value: _themeModeLabel(mode),
-                              trailing: const SizedBox.shrink(),
+                              onTap: () =>
+                                  _pushPage(const _AppearanceSettingsPage()),
                             ),
                           ],
-                          footer: SizedBox(
-                            width: double.infinity,
-                            child: CupertinoSlidingSegmentedControl<ThemeMode>(
-                              key: const ValueKey('profile-theme-mode'),
-                              groupValue: mode,
-                              backgroundColor: _SettingsColors.separator
-                                  .withValues(alpha: .55),
-                              thumbColor: _SettingsColors.card,
-                              children: {
-                                for (final entry in const {
-                                  ThemeMode.system: '自动',
-                                  ThemeMode.light: '浅色',
-                                  ThemeMode.dark: '深色',
-                                }.entries)
-                                  entry.key: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 9,
-                                    ),
-                                    child: Text(
-                                      entry.value,
-                                      style: TextStyle(
-                                        color: _SettingsColors.text,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                              },
-                              onValueChanged: (next) {
-                                if (next != null) {
-                                  unawaited(
-                                    AppThemeScope.of(context).setMode(next),
-                                  );
-                                }
-                              },
-                            ),
-                          ),
                         ),
                         const SizedBox(height: 14),
                         _SettingsSectionCard(
