@@ -919,10 +919,15 @@ class _SettingsMemberCard extends StatelessWidget {
 }
 
 class _SettingsSectionCard extends StatelessWidget {
-  const _SettingsSectionCard({required this.label, required this.rows});
+  const _SettingsSectionCard({
+    required this.label,
+    required this.rows,
+    this.footer,
+  });
 
   final String label;
   final List<_SettingsRowData> rows;
+  final Widget? footer;
 
   @override
   Widget build(BuildContext context) {
@@ -948,6 +953,11 @@ class _SettingsSectionCard extends StatelessWidget {
           ),
           for (var i = 0; i < rows.length; i += 1)
             _SettingsRow(data: rows[i], showDivider: i < rows.length - 1),
+          if (footer != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+              child: footer!,
+            ),
         ],
       ),
     );
