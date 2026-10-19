@@ -22,7 +22,7 @@ class StorePage extends StatefulWidget {
   State<StorePage> createState() => _StorePageState();
 }
 
-class _StorePageState extends State<StorePage> {
+class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
   _StoreSection _section = _StoreSection.subscription;
   _ExchangeCategory _exchangeCategory = _ExchangeCategory.gift;
   _GiftSubcategory _giftSubcategory = _GiftSubcategory.drink;
@@ -44,6 +44,13 @@ class _StorePageState extends State<StorePage> {
   // Apple IAP：真实内购（订阅 + 充值消耗型）。价格从 StoreKit 拉本地化值。
   late final IapService _iap;
   StreamSubscription<IapEvent>? _iapSub;
+  Timer? _paymentSettingsTimer;
+  bool _realMoneyPaymentsEnabled = false;
+  bool _paymentSettingsLoaded = false;
+  bool _paymentSettingsFailed = false;
+  bool _paymentRefreshRunning = false;
+  bool _paymentAuthorizationRunning = false;
+  int _paymentGeneration = 0;
   bool _iapReady = false; // 商品价格已拉到，可用本地化价渲染
   bool _subscribing = false; // 订阅购买+校验进行中
   bool _rechargeSubmitting = false; // 充值购买+校验进行中
@@ -65,18 +72,114 @@ class _StorePageState extends State<StorePage> {
     _loadMembership();
     _iap = IapService(
       onVerify: _verifyPurchase,
+      beforePurchase: _authorizeRealMoneyPurchase,
       applicationUserName: widget.session.userId,
     );
     _iapSub = _iap.events.listen(_onIapEvent);
     _initIap();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_refreshPaymentSettings());
+    _startPaymentSettingsTimer();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _paymentSettingsTimer?.cancel();
+    _paymentGeneration++;
     _sectionController.dispose();
     _iapSub?.cancel();
     _iap.dispose();
     super.dispose();
+  }
+
+  String? get _paymentStatusMessage {
+    if (!_paymentSettingsLoaded) return '正在确认购买服务…';
+    if (_paymentSettingsFailed) return '购买服务暂不可用，请稍后重试';
+    return _realMoneyPaymentsEnabled ? null : '付费购买暂未开放，激活码兑换仍可使用';
+  }
+
+  void _startPaymentSettingsTimer() {
+    _paymentSettingsTimer?.cancel();
+    _paymentSettingsTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted && (ModalRoute.of(context)?.isCurrent ?? true)) {
+        unawaited(_refreshPaymentSettings());
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      setState(() {
+        _realMoneyPaymentsEnabled = false;
+        _paymentSettingsLoaded = false;
+      });
+      unawaited(_refreshPaymentSettings());
+      _startPaymentSettingsTimer();
+    } else {
+      _paymentSettingsTimer?.cancel();
+    }
+  }
+
+  Future<void> _refreshPaymentSettings() async {
+    if (_paymentRefreshRunning || _paymentAuthorizationRunning) return;
+    _paymentRefreshRunning = true;
+    final generation = ++_paymentGeneration;
+    try {
+      final enabled = await widget.api.getRealMoneyPaymentsEnabled().timeout(
+        const Duration(seconds: 5),
+      );
+      if (!mounted || generation != _paymentGeneration) return;
+      setState(() {
+        _realMoneyPaymentsEnabled = enabled;
+        _paymentSettingsLoaded = true;
+        _paymentSettingsFailed = false;
+      });
+    } catch (_) {
+      if (!mounted || generation != _paymentGeneration) return;
+      setState(() {
+        _realMoneyPaymentsEnabled = false;
+        _paymentSettingsLoaded = true;
+        _paymentSettingsFailed = true;
+      });
+    } finally {
+      _paymentRefreshRunning = false;
+    }
+  }
+
+  Future<void> _authorizeRealMoneyPurchase() async {
+    _paymentAuthorizationRunning = true;
+    final generation = ++_paymentGeneration;
+    try {
+      await widget.api.authorizeRealMoneyPurchase().timeout(
+        const Duration(seconds: 5),
+      );
+      if (!mounted) throw const IapPurchaseUnavailable('购买页面已关闭');
+      if (generation != _paymentGeneration) {
+        throw const IapPurchaseUnavailable('请重试购买');
+      }
+      setState(() {
+        _realMoneyPaymentsEnabled = true;
+        _paymentSettingsLoaded = true;
+        _paymentSettingsFailed = false;
+      });
+    } catch (error) {
+      final disabled =
+          error is ApiException &&
+          error.statusCode == 403 &&
+          error.message == 'real_money_payments_disabled';
+      if (mounted && generation == _paymentGeneration) {
+        setState(() {
+          _realMoneyPaymentsEnabled = false;
+          _paymentSettingsLoaded = true;
+          _paymentSettingsFailed = !disabled;
+        });
+      }
+      throw IapPurchaseUnavailable(disabled ? '付费购买暂未开放' : '购买服务暂不可用，请稍后重试');
+    } finally {
+      _paymentAuthorizationRunning = false;
+    }
   }
 
   Future<void> _initIap() async {
@@ -900,6 +1003,8 @@ class _StorePageState extends State<StorePage> {
         onRestore: _handleRestore,
         onRedeemCode: _handleRedeemCode,
         subscribing: _subscribing,
+        paymentsEnabled: _realMoneyPaymentsEnabled,
+        paymentStatusMessage: _paymentStatusMessage,
         isVip: _isVip,
         vipUntil: _vipUntil,
         subscribeUi: _subscribeUi,
@@ -916,6 +1021,7 @@ class _StorePageState extends State<StorePage> {
         bottomSpace: bottomSpace,
       ),
       _StoreSection.bundle => _BundleStoreView(
+        paymentsEnabled: _realMoneyPaymentsEnabled,
         ticketBalance: wallet.ticketBalance,
         vipTrialAvailable: _vipTrialAvailable,
         onBuy: _handleBuyBundle,
@@ -953,6 +1059,8 @@ class _StorePageState extends State<StorePage> {
         onSubmit: _handleRecharge,
         onConvertGamePoints: _openGamePointConvert,
         submitting: _rechargeSubmitting,
+        paymentsEnabled: _realMoneyPaymentsEnabled,
+        paymentStatusMessage: _paymentStatusMessage,
         priceLabelFor: (pack) => pack.currency == _StoreCurrency.ticket
             ? _iap.priceLabel(IapProducts.ticket(pack.amount))
             : null,

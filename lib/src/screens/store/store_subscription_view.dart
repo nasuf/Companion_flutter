@@ -2,6 +2,8 @@ part of 'package:companion_flutter/main.dart';
 
 class _SubscriptionStoreView extends StatefulWidget {
   const _SubscriptionStoreView({
+    required this.paymentsEnabled,
+    this.paymentStatusMessage,
     required this.selectedPlan,
     required this.onSelectPlan,
     required this.onSubscribe,
@@ -19,6 +21,8 @@ class _SubscriptionStoreView extends StatefulWidget {
     this.vipUntil,
   });
 
+  final bool paymentsEnabled;
+  final String? paymentStatusMessage;
   final int selectedPlan;
   final ValueChanged<int> onSelectPlan;
   final VoidCallback onSubscribe;
@@ -124,7 +128,7 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
       vipUntil: widget.vipUntil,
     );
     return ListView(
-      physics: const NeverScrollableScrollPhysics(),
+      physics: const BouncingScrollPhysics(),
       padding: EdgeInsets.fromLTRB(8, 8, 8, widget.bottomSpace),
       children: [
         const SizedBox(height: 4),
@@ -170,12 +174,31 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
           child: _StorePrimaryButton(
             label: widget.subscribeUi.buttonLabel,
             // 未勾选会员协议则置灰不可点（合规要求用户明示同意续费条款）。
-            onPressed: _agreementChecked ? widget.onSubscribe : null,
+            onPressed:
+                widget.subscribeUi.action ==
+                    StoreSubscribeAction.manageSubscription
+                ? widget.onSubscribe
+                : _agreementChecked && widget.paymentsEnabled
+                ? widget.onSubscribe
+                : null,
             loading: widget.subscribing,
             loadingLabel: widget.subscribing ? kIapCreditingLabel : null,
             height: 56,
           ),
         ),
+        if (widget.paymentStatusMessage != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            child: Text(
+              widget.paymentStatusMessage!,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: _W2b.resolve(context).inkSoft,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ),
         const SizedBox(height: 8),
         GestureDetector(
           behavior: HitTestBehavior.opaque,

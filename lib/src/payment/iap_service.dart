@@ -69,17 +69,36 @@ typedef IapVerifyCallback = Future<IapVerifyResponse> Function({
   required String signedTransaction,
 });
 
+/// A new purchase was denied before StoreKit was invoked.
+class IapPurchaseUnavailable implements Exception {
+  const IapPurchaseUnavailable(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
 /// Apple 内购封装（官方 in_app_purchase / StoreKit 2 默认开启）。构造注入
 /// [InAppPurchase] 以便测试替身。**安全核心：verify 成功前绝不 completePurchase。**
 class IapService {
   IapService({
     InAppPurchase? iap,
     required this.onVerify,
+    this.beforePurchase,
     this.applicationUserName,
   }) : _iap = iap ?? InAppPurchase.instance;
 
   final InAppPurchase _iap;
   final IapVerifyCallback onVerify;
+
+  /// Only new purchases use this gate. Restoration and settlement must not.
+  /// An unconfigured initiator fails closed instead of bypassing the policy.
+  final Future<void> Function()? beforePurchase;
+  Future<void> _authorizePurchase() async {
+    final authorize = beforePurchase;
+    if (authorize == null) throw const IapPurchaseUnavailable('购买服务未就绪');
+    await authorize();
+  }
+
   /// Apple appAccountToken — set to logged-in user UUID so webhook can grant first.
   final String? applicationUserName;
 
@@ -119,9 +138,12 @@ class IapService {
   bool get hasProducts => _products.isNotEmpty;
 
   Future<void> buyConsumable(String productId) async {
+    await _authorizePurchase();
     final p = _products[productId];
     if (p == null) {
-      _emit(IapEvent(IapEventType.error, productId: productId, message: '商品未就绪'));
+      _emit(
+        IapEvent(IapEventType.error, productId: productId, message: '商品未就绪'),
+      );
       return;
     }
     await _iap.buyConsumable(
@@ -133,9 +155,12 @@ class IapService {
   }
 
   Future<void> buySubscription(String productId) async {
+    await _authorizePurchase();
     final p = _products[productId];
     if (p == null) {
-      _emit(IapEvent(IapEventType.error, productId: productId, message: '商品未就绪'));
+      _emit(
+        IapEvent(IapEventType.error, productId: productId, message: '商品未就绪'),
+      );
       return;
     }
     // 订阅在 in_app_purchase 里走 buyNonConsumable。

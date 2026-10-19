@@ -1,6 +1,22 @@
 part of 'package:companion_flutter/companion_api.dart';
 
 mixin _CompanionApiStore on _CompanionApiCore {
+  Future<bool> getRealMoneyPaymentsEnabled() async {
+    final json =
+        await _request('GET', '/iap/apple/availability')
+            as Map<String, dynamic>;
+    return json['real_money_payments_enabled'] == true;
+  }
+
+  Future<void> authorizeRealMoneyPurchase() async {
+    final json =
+        await _request('POST', '/iap/apple/purchase-permission')
+            as Map<String, dynamic>;
+    if (json['real_money_payments_enabled'] != true) {
+      throw const ApiException(403, 'real_money_payments_disabled');
+    }
+  }
+
   Future<WalletBalance> getWallet({String? agentId}) async {
     final params = <String, String>{};
     if (agentId != null && agentId.isNotEmpty) {

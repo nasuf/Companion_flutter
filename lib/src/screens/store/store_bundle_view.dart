@@ -2,6 +2,7 @@ part of 'package:companion_flutter/main.dart';
 
 class _BundleStoreView extends StatefulWidget {
   const _BundleStoreView({
+    required this.paymentsEnabled,
     required this.ticketBalance,
     required this.vipTrialAvailable,
     required this.onBuy,
@@ -10,6 +11,7 @@ class _BundleStoreView extends StatefulWidget {
     required this.bottomSpace,
   });
 
+  final bool paymentsEnabled;
   final num ticketBalance;
   final bool vipTrialAvailable;
   final void Function(_BundleOffer offer, _BundleTier? tier) onBuy;
@@ -60,6 +62,7 @@ class _BundleStoreViewState extends State<_BundleStoreView> {
           onBuy: () => widget.onBuy(offer, tier),
           onInsufficientTickets: widget.onInsufficientTickets,
           busy: widget.isBuying(offer),
+          paymentsEnabled: widget.paymentsEnabled,
         );
       },
     );
@@ -68,6 +71,7 @@ class _BundleStoreViewState extends State<_BundleStoreView> {
 
 class _BundleCard extends StatelessWidget {
   const _BundleCard({
+    required this.paymentsEnabled,
     required this.offer,
     required this.selectedTier,
     required this.ticketBalance,
@@ -77,6 +81,7 @@ class _BundleCard extends StatelessWidget {
     required this.busy,
   });
 
+  final bool paymentsEnabled;
   final _BundleOffer offer;
   final _BundleTier? selectedTier;
   final num ticketBalance;
@@ -150,7 +155,11 @@ class _BundleCard extends StatelessWidget {
             tier: selectedTier,
             busy: busy,
             // 按钮始终可点；钞票不足在点击后弹「去充值」确认框，而不是禁用。
-            onPressed: affordable ? onBuy : onInsufficientTickets,
+            onPressed: offer.isVipTrial && !paymentsEnabled
+                ? null
+                : affordable
+                ? onBuy
+                : onInsufficientTickets,
           ),
         ],
       ),
@@ -228,67 +237,46 @@ class _BundleBuyButton extends StatelessWidget {
   final _BundleOffer offer;
   final _BundleTier? tier;
   final bool busy;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
     final tier = this.tier;
     // 无论钞票是否足够，按钮都保持「购买」的高亮样式且可点击；钞票不足在点击后
     // 由上层弹窗提示去充值。
-    return CupertinoButton(
-      minimumSize: Size.zero,
-      padding: EdgeInsets.zero,
-      onPressed: busy ? null : onPressed,
-      child: Container(
-        height: 44,
-        decoration: _storeAccentButtonDecoration(radius: 16),
-        child: Center(
-          child: busy
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CupertinoActivityIndicator(color: Colors.white),
-                )
-              : offer.isVipTrial
-              ? Text(
-                  '¥${offer.yuanPrice} 立即体验',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
-                    decoration: TextDecoration.none,
-                  ),
-                )
-              : Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      '购买',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0,
-                        decoration: TextDecoration.none,
-                      ),
+    return Opacity(
+      opacity: onPressed == null ? .5 : 1,
+      child: CupertinoButton(
+        minimumSize: Size.zero,
+        padding: EdgeInsets.zero,
+        onPressed: busy ? null : onPressed,
+        child: Container(
+          height: 44,
+          decoration: _storeAccentButtonDecoration(radius: 16),
+          child: Center(
+            child: busy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CupertinoActivityIndicator(color: Colors.white),
+                  )
+                : offer.isVipTrial
+                ? Text(
+                    '¥${offer.yuanPrice} 立即体验',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
                     ),
-                    if (tier != null) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        width: 1,
-                        height: 12,
-                        color: Colors.white.withValues(alpha: 0.35),
-                      ),
-                      const SizedBox(width: 8),
-                      const _CurrencyIcon(
-                        currency: _StoreCurrency.ticket,
-                        size: 14,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${tier.ticketPrice}',
-                        style: const TextStyle(
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        '购买',
+                        style: TextStyle(
                           color: Colors.white,
                           fontSize: 15,
                           fontWeight: FontWeight.w900,
@@ -296,9 +284,33 @@ class _BundleBuyButton extends StatelessWidget {
                           decoration: TextDecoration.none,
                         ),
                       ),
+                      if (tier != null) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 1,
+                          height: 12,
+                          color: Colors.white.withValues(alpha: 0.35),
+                        ),
+                        const SizedBox(width: 8),
+                        const _CurrencyIcon(
+                          currency: _StoreCurrency.ticket,
+                          size: 14,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${tier.ticketPrice}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
-                ),
+                  ),
+          ),
         ),
       ),
     );
