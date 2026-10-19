@@ -84,6 +84,43 @@ CupertinoButton _button(WidgetTester t, String label) =>
     );
 void main() {
   testWidgets(
+    'subscription remains fixed vertically while payment availability changes silently',
+    (t) async {
+      final api = _Api()..gate = Completer<bool>();
+      await _show(t, api);
+      final vertical = find
+          .byWidgetPredicate(
+            (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+          )
+          .first;
+      final scroll = t.state<ScrollableState>(vertical);
+      expect(scroll.position.physics.allowUserScrolling, false);
+      expect(find.text('正在确认购买服务…'), findsNothing);
+      final initialButton = t.getRect(find.text('立即开通'));
+      expect(initialButton.top, greaterThan(0));
+      expect(t.getRect(find.text('兑换激活码')).bottom, lessThan(844));
+      await t.drag(vertical, const Offset(0, -220));
+      await t.pump(const Duration(milliseconds: 300));
+      expect(scroll.position.pixels, 0);
+      expect(t.getRect(find.text('立即开通')), initialButton);
+      api.gate!.complete(false);
+      await t.pump();
+      await t.pump();
+      expect(find.text('付费购买暂未开放，激活码兑换仍可使用'), findsNothing);
+      expect(t.getRect(find.text('立即开通')), initialButton);
+      api.gate = null;
+      api.enabled = true;
+      await t.pump(const Duration(seconds: 10));
+      await t.pump();
+      expect(t.getRect(find.text('立即开通')), initialButton);
+      await t.drag(vertical, const Offset(0, 220));
+      await t.pump(const Duration(milliseconds: 300));
+      expect(scroll.position.pixels, 0);
+      expect(t.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'subscription disabled after consent while redemption stays available; remote toggle updates live',
     (t) async {
       final api = _Api();
@@ -94,6 +131,7 @@ void main() {
       await t.pump();
       expect(_button(t, '立即开通').onPressed, isNull);
       expect(_button(t, '兑换激活码').onPressed, isNotNull);
+      expect(find.text('付费购买暂未开放，激活码兑换仍可使用'), findsNothing);
       api.enabled = true;
       await t.pump(const Duration(seconds: 10));
       await t.pump();
@@ -111,16 +149,22 @@ void main() {
     final api = _Api()..gate = Completer<bool>();
     await _show(t, api, recharge: true);
     expect(_button(t, '立即充值').onPressed, isNull);
+    final rechargeButton = t.getRect(find.text('立即充值'));
+    await t.dragFrom(const Offset(195, 320), const Offset(0, -180));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(t.getRect(find.text('立即充值')), rechargeButton);
     api.gate!.completeError(const ApiException(503, 'unavailable'));
     await t.pump();
     await t.pump();
     expect(_button(t, '立即充值').onPressed, isNull);
-    expect(find.text('购买服务暂不可用，请稍后重试'), findsOneWidget);
+    expect(find.text('购买服务暂不可用，请稍后重试'), findsNothing);
+    expect(t.getRect(find.text('立即充值')), rechargeButton);
     api.gate = null;
     api.enabled = true;
     await t.pump(const Duration(seconds: 10));
     await t.pump();
     expect(_button(t, '立即充值').onPressed, isNotNull);
+    expect(t.getRect(find.text('立即充值')), rechargeButton);
     api.fails = true;
     await t.pump(const Duration(seconds: 10));
     await t.pump();

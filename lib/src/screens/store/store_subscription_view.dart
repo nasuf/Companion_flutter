@@ -3,7 +3,6 @@ part of 'package:companion_flutter/main.dart';
 class _SubscriptionStoreView extends StatefulWidget {
   const _SubscriptionStoreView({
     required this.paymentsEnabled,
-    this.paymentStatusMessage,
     required this.selectedPlan,
     required this.onSelectPlan,
     required this.onSubscribe,
@@ -22,7 +21,6 @@ class _SubscriptionStoreView extends StatefulWidget {
   });
 
   final bool paymentsEnabled;
-  final String? paymentStatusMessage;
   final int selectedPlan;
   final ValueChanged<int> onSelectPlan;
   final VoidCallback onSubscribe;
@@ -128,7 +126,7 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
       vipUntil: widget.vipUntil,
     );
     return ListView(
-      physics: const BouncingScrollPhysics(),
+      physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(8, 8, 8, widget.bottomSpace),
       children: [
         const SizedBox(height: 4),
@@ -186,19 +184,6 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
             height: 56,
           ),
         ),
-        if (widget.paymentStatusMessage != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-            child: Text(
-              widget.paymentStatusMessage!,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                color: _W2b.resolve(context).inkSoft,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ),
         const SizedBox(height: 8),
         GestureDetector(
           behavior: HitTestBehavior.opaque,
