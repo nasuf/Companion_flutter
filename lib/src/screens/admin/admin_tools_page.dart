@@ -1177,7 +1177,7 @@ class _AdminToolsPageState extends State<AdminToolsPage>
                             _ProfileSettingRowV6(
                               icon: CupertinoIcons.slider_horizontal_3,
                               title: '全局模块开关',
-                              subtitle: '线下活动 / 礼物 / 联网搜索 / 语音 / 成就',
+                              subtitle: '真实付费 / 线下活动 / 礼物 / 联网搜索 / 语音 / 成就',
                               accent: const Color(0xFFD4A843),
                               onTap: _openGlobalModuleSettings,
                             ),
