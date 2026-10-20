@@ -28,10 +28,36 @@ class ChatTranscriptController extends ChangeNotifier {
   bool highlightVisible = false;
   String? highlightQuery;
 
-  void publish() => notifyListeners();
+  Set<String> _publishedKeys = {};
+  final Set<String> _enteringKeys = {};
+
+  /// Client identity survives the draft -> server acknowledgement replacement.
+  static String rowIdentity(ChatMessage message) {
+    final clientId = message.clientId;
+    return clientId != null && clientId.isNotEmpty ? clientId : message.id;
+  }
+
+  /// Explicit live-insertion intent keeps history/replay/refresh silent.
+  void publish({bool animateInsertions = false}) {
+    final keys = messages.map(rowIdentity).toSet();
+    _enteringKeys.retainAll(keys);
+    if (animateInsertions && !loadingInitial) {
+      _enteringKeys.addAll(keys.difference(_publishedKeys));
+    }
+    _publishedKeys = keys;
+    notifyListeners();
+  }
+
+  Set<String> takeEnteringKeys() {
+    final keys = Set<String>.of(_enteringKeys);
+    _enteringKeys.clear();
+    return keys;
+  }
 
   void resetForConversationSwitch() {
     messages.clear();
+    _publishedKeys.clear();
+    _enteringKeys.clear();
     loadingInitial = true;
     loadingOlder = false;
     hasOlderMessages = false;

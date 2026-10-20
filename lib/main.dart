@@ -63,6 +63,7 @@ import 'src/games/reversi_engine.dart';
 import 'src/games/tetris_duel_engine.dart';
 import 'src/widgets/chat/voice_recording_overlay.dart';
 import 'src/widgets/agent_avatar_image.dart';
+import 'src/widgets/chat/message_entrance.dart';
 import 'src/screens/chat/chat_transcript_controller.dart';
 import 'src/services/display_refresh_rate.dart';
 import 'src/emoji/emoji_catalog.dart';

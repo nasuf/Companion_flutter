@@ -504,12 +504,15 @@ class _ChatPageState extends State<ChatPage>
     }
   }
 
-  void _publishTranscriptIfVisible() {
+  void _publishTranscriptIfVisible({bool animateInsertions = false}) {
     if (!widget.isActive) {
       _transcriptDirty = true;
       return;
     }
-    _transcript.publish();
+    final userScrolling =
+        _scrollController.hasClients &&
+        ChatScrollPolicy.isUserScrolling(_scrollController.position);
+    _transcript.publish(animateInsertions: animateInsertions && !userScrolling);
     _transcriptDirty = false;
     _scheduleUserRead();
   }
@@ -518,6 +521,13 @@ class _ChatPageState extends State<ChatPage>
     patch?.call();
     _syncTypingVisible();
     _publishTranscriptIfVisible();
+    _syncCoListeningFromMessagesIfNeeded();
+  }
+
+  void _notifyLiveTranscript(void Function() patch, {required bool animate}) {
+    patch();
+    _syncTypingVisible();
+    _publishTranscriptIfVisible(animateInsertions: animate);
     _syncCoListeningFromMessagesIfNeeded();
   }
 
@@ -537,11 +547,12 @@ class _ChatPageState extends State<ChatPage>
   void _patchShellAndTranscript({
     required void Function() shell,
     required void Function() transcript,
+    bool animateInsertions = false,
   }) {
     shell();
     transcript();
     _syncTypingVisible();
-    _publishTranscriptIfVisible();
+    _publishTranscriptIfVisible(animateInsertions: animateInsertions);
     if (widget.isActive) {
       _bumpComposerShell();
     }
@@ -2897,14 +2908,29 @@ class _ChatPageState extends State<ChatPage>
           // 思绪碎片气泡：携带 tier/lead_in/source_message_id，_MessageRow 据此渲染。
           if (offlineFragment != null) 'offline_fragment': offlineFragment,
         };
+        final persistedReplyId = (assistantMessageId?.isNotEmpty ?? false)
+            ? assistantMessageId
+            : messageId;
+        final previousReply = _messages
+            .where((m) => m.id == persistedReplyId)
+            .firstOrNull;
+        // Legacy duplicate/replay events may omit created_at. Reusing their
+        // first timestamp keeps a completed row from jumping below later replies.
         final draft = ChatMessage.fromReply(
           conversationId: _conversationId,
           content: text,
-          payload: payload,
+          payload: {
+            ...payload,
+            if (previousReply != null &&
+                DateTime.tryParse(payload['created_at']?.toString() ?? '') ==
+                    null)
+              'created_at': previousReply.createdAt.toIso8601String(),
+          },
           metadata: metadata.isEmpty ? null : metadata,
         );
         final duplicate = _messages.any((message) => message.id == draft.id);
         _patchShellAndTranscript(
+          animateInsertions: shouldAutoScroll && payload['replayed'] != true,
           shell: () {
             _sending = false;
             if (_isMusicStationCard(componentCard)) {
@@ -3294,7 +3320,7 @@ class _ChatPageState extends State<ChatPage>
     final resolvedMessageId = messageId.isEmpty
         ? 'ws-${DateTime.now().microsecondsSinceEpoch}-${text.hashCode}'
         : messageId;
-    _notifyTranscript(() {
+    _notifyLiveTranscript(() {
       _messages.add(
         ChatMessage(
           id: resolvedMessageId,
@@ -3314,7 +3340,7 @@ class _ChatPageState extends State<ChatPage>
       if (!shouldAutoScroll && role == 'assistant') {
         _newMessageCount += 1;
       }
-    });
+    }, animate: shouldAutoScroll && payload['replayed'] != true);
     if (_isMusicStationCard(componentCard)) {
       _adoptMusicStation(componentCard!, resolvedMessageId);
       _bumpViewportShell();
@@ -3365,6 +3391,7 @@ class _ChatPageState extends State<ChatPage>
       },
     );
     _patchShellAndTranscript(
+      animateInsertions: widget.isActive && _isNearBottomNow(),
       shell: () {
         _panel = ComposerPanel.none;
         _sending = false;
@@ -3512,7 +3539,7 @@ class _ChatPageState extends State<ChatPage>
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _scrollToBottom(animated: animated);
+      _scrollToBottom(animated: animated, userInitiated: true);
     });
   }
 
@@ -3575,7 +3602,7 @@ class _ChatPageState extends State<ChatPage>
         DateTime.now();
     final offeringId = notice['offering_id']?.toString() ?? '';
     final shouldAutoScroll = widget.isActive && _isNearBottomNow();
-    _notifyTranscript(() {
+    _notifyLiveTranscript(() {
       final alreadyShown =
           offeringId.isNotEmpty &&
           _messages.any(
@@ -3602,7 +3629,7 @@ class _ChatPageState extends State<ChatPage>
           read: true,
         ),
       );
-    });
+    }, animate: shouldAutoScroll && payload['replayed'] != true);
     if (shouldAutoScroll) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _scrollToBottom(animated: true);
@@ -4432,6 +4459,7 @@ class _ChatPageState extends State<ChatPage>
     // send happened from the keyboard, so the user can keep picking emoji.
     final panelOpen = _panel != ComposerPanel.none;
     _patchShellAndTranscript(
+      animateInsertions: widget.isActive && _isNearBottomNow(),
       shell: () {
         if (_isMusicStationCard(componentCard)) {
           _musicStation.activate(componentCard!, draft.id);
@@ -4452,6 +4480,14 @@ class _ChatPageState extends State<ChatPage>
       },
     );
     _armSendTimeout(clientId);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (clearComposer && attachments.isEmpty && !panelOpen) {
+        _inputFocus.requestFocus();
+      }
+      _scrollToBottom(animated: true, userInitiated: true);
+      _scheduleStationDockCheck();
+    });
     if (clearComposer && attachments.isEmpty && !panelOpen) {
       _inputFocus.requestFocus();
     }
@@ -4485,16 +4521,6 @@ class _ChatPageState extends State<ChatPage>
       );
       unawaited(_socket?.connect());
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (clearComposer && attachments.isEmpty && !panelOpen) {
-        _inputFocus.requestFocus();
-      }
-      if (_cachedNearBottom) {
-        _scrollToBottom();
-      }
-      _scheduleStationDockCheck();
-    });
   }
 
   void _armSendTimeout(String clientId) {
@@ -4846,9 +4872,10 @@ class _ChatPageState extends State<ChatPage>
         ChatScrollPolicy.hasLaidOut(_scrollController.position);
   }
 
-  void _scrollToBottom({bool animated = false}) {
+  void _scrollToBottom({bool animated = false, bool userInitiated = false}) {
     if (!_hasLaidOutScroll()) return;
     final position = _scrollController.position;
+    if (!userInitiated && ChatScrollPolicy.isUserScrolling(position)) return;
     final target = position.minScrollExtent;
     final distance = (position.pixels - target).abs();
     if (distance < 1) return;
@@ -4963,7 +4990,8 @@ class _ChatPageState extends State<ChatPage>
 
   bool _isNearBottomNow() {
     if (!_hasLaidOutScroll()) return true;
-    return ChatScrollPolicy.isNearNewest(_scrollController.position);
+    return !ChatScrollPolicy.isUserScrolling(_scrollController.position) &&
+        ChatScrollPolicy.isNearNewest(_scrollController.position);
   }
 
   double _composerHeightForWidth() {

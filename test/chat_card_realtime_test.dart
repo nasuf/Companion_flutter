@@ -6,6 +6,7 @@ import 'package:companion_flutter/companion_api.dart';
 import 'package:companion_flutter/main.dart';
 import 'package:companion_flutter/models.dart';
 import 'package:flutter/material.dart';
+import 'package:extended_text_field/extended_text_field.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -70,6 +71,8 @@ Future<void> _withChat(
   WidgetTester tester,
   Future<void> Function(_CardApi api, List<WebSocket> peers) body, {
   List<ChatMessage> initialHistory = const [],
+  Brightness? brightness,
+  double textScale = 1,
 }) async {
   await HttpOverrides.runZoned(() async {
     final server = await tester.runAsync(
@@ -103,10 +106,13 @@ Future<void> _withChat(
     });
     tester.view.physicalSize = const Size(390, 1200);
     tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = textScale;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     addTearDown(tester.view.reset);
     try {
       await tester.pumpWidget(
         MaterialApp(
+          theme: brightness == null ? null : AppTheme.materialTheme(brightness),
           navigatorObservers: [appRouteObserver],
           home: Scaffold(
             body: ChatPage(
@@ -130,6 +136,13 @@ Future<void> _withChat(
         await typing.network(tester, () async {});
       }
       expect(peers, hasLength(1));
+      // Accepting the server socket precedes the client's on-open/replay
+      // callback. Wait for that readiness signal, not only the socket accept,
+      // so cold/parallel test runs cannot race the fixture's final assertion.
+      for (var i = 0; api.replayRequests == 0 && i < 100; i++) {
+        await typing.network(tester, () async {});
+      }
+      expect(api.replayRequests, 1);
       await flow.drain(tester);
       await body(api, peers);
       expect(api.replayRequests, 1);
@@ -223,6 +236,379 @@ void main() {
         return true;
       },
     );
+  });
+
+  ChatMessage plain(String id, int minute) => ChatMessage(
+    id: id,
+    conversationId: 'conv',
+    role: 'assistant',
+    content: id,
+    createdAt: DateTime.utc(2026, 10, 19, 12, minute),
+  );
+
+  testWidgets(
+    'live reply and local send push existing rows over multiple frames',
+    (tester) async {
+      await _withChat(tester, (api, peers) async {
+        final old = find.byKey(const ValueKey('chat-message-motion-history'));
+        final before = tester.getTopLeft(old).dy;
+        await typing.network(
+          tester,
+          () async => peers.last.add(
+            jsonEncode({
+              'type': 'reply',
+              'data': {
+                'text': '平滑的新回复',
+                'message_id': 'motion-reply',
+                'reply_index': 0,
+              },
+            }),
+          ),
+        );
+        final initial = tester.getTopLeft(old).dy;
+        expect(initial, closeTo(before, 0.1));
+        await tester.pump(const Duration(milliseconds: 64));
+        final midway = tester.getTopLeft(old).dy;
+        expect(midway, lessThan(initial));
+        await flow.drain(tester);
+        final after = tester.getTopLeft(old).dy;
+        expect(after, lessThan(midway));
+        // Replaying the same reply must not replay its animation.
+        await _emit(tester, peers.last, 'reply', {
+          'text': '平滑的新回复',
+          'message_id': 'motion-reply',
+          'reply_index': 0,
+        });
+        expect(tester.getTopLeft(old).dy, closeTo(after, 0.1));
+
+        final sentFrames = <Map<String, dynamic>>[];
+        final sentSub = peers.last.listen((raw) {
+          final frame = jsonDecode(raw as String) as Map<String, dynamic>;
+          if (frame['type'] == 'message') sentFrames.add(frame);
+        });
+        final input = tester.widget<ExtendedTextField>(
+          find.byType(ExtendedTextField),
+        );
+        input.controller!.text = '用户发送也平滑';
+        await flow.drain(tester);
+        final beforeSend = tester.getTopLeft(old).dy;
+        await tester.tap(find.text('发送'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 64));
+        final duringSend = tester.getTopLeft(old).dy;
+        expect(duringSend, lessThan(beforeSend));
+        await typing.network(tester, () async {});
+        expect(sentFrames, hasLength(1));
+        final clientId =
+            (sentFrames.single['data'] as Map)['client_id'] as String;
+        final localRow = find.byKey(ValueKey('chat-message-$clientId'));
+        final element = tester.element(localRow);
+        await _emit(tester, peers.last, 'ack', {
+          'client_id': clientId,
+          'message_id': 'server-ack',
+          'defer_ui': true,
+        });
+        expect(identical(tester.element(localRow), element), isTrue);
+        expect(find.text('用户发送也平滑'), findsOneWidget);
+        expect(tester.getTopLeft(old).dy, lessThan(duringSend));
+        await tester.runAsync(sentSub.cancel);
+      }, initialHistory: [plain('motion-history', 0)]);
+    },
+  );
+
+  testWidgets(
+    'rapid live replies stay continuous and replay batches do not animate',
+    (tester) async {
+      await _withChat(tester, (api, peers) async {
+        final old = find.byKey(const ValueKey('chat-message-burst-history'));
+        final before = tester.getTopLeft(old).dy;
+        for (var index = 0; index < 3; index++) {
+          await typing.network(
+            tester,
+            () async => peers.last.add(
+              jsonEncode({
+                'type': 'reply',
+                'data': {
+                  'text': '连续回复$index',
+                  'message_id': 'burst-$index',
+                  'reply_index': index,
+                },
+              }),
+            ),
+          );
+          final atInsert = tester.getTopLeft(old).dy;
+          await tester.pump(const Duration(milliseconds: 48));
+          expect(tester.getTopLeft(old).dy, lessThan(atInsert));
+        }
+        await flow.drain(tester);
+        final settled = tester.getTopLeft(old).dy;
+        expect(settled, lessThan(before));
+        await typing.network(
+          tester,
+          () async => peers.last.add(
+            jsonEncode({
+              'type': 'reply',
+              'data': {
+                'text': '断线补发',
+                'message_id': 'replayed-batch',
+                'replayed': true,
+              },
+            }),
+          ),
+        );
+        final replayed = tester.getTopLeft(old).dy;
+        expect(replayed, lessThan(settled));
+        await tester.pump(const Duration(milliseconds: 64));
+        expect(tester.getTopLeft(old).dy, closeTo(replayed, 0.1));
+      }, initialHistory: [plain('burst-history', 0)]);
+    },
+  );
+
+  testWidgets(
+    'new remote messages preserve a stationary history reading anchor',
+    (tester) async {
+      await _withChat(tester, (api, peers) async {
+        final scrollable = find
+            .descendant(
+              of: find.byType(ChatPage),
+              matching: find.byType(Scrollable),
+            )
+            .first;
+        final position = tester.state<ScrollableState>(scrollable).position;
+        position.jumpTo(600);
+        await flow.drain(tester);
+        final visible = <Finder>[];
+        for (var i = 0; i < 60; i++) {
+          final row = find.byKey(ValueKey('chat-message-history-$i'));
+          if (row.evaluate().isNotEmpty) {
+            final y = tester.getTopLeft(row).dy;
+            if (y > 150 && y < 900) visible.add(row);
+          }
+        }
+        expect(visible, isNotEmpty);
+        final anchor = visible.first;
+        final before = tester.getTopLeft(anchor).dy;
+        await _emit(tester, peers.last, 'reply', {
+          'text': '阅读旧记录时收到的一条新消息',
+          'message_id': 'while-reading',
+          'reply_index': 0,
+        });
+        expect(position.pixels, closeTo(600, 0.1));
+        expect(tester.getTopLeft(anchor).dy, closeTo(before, 0.5));
+        await _emit(tester, peers.last, 'reply', {
+          'text': List.filled(150, '一条很长的新回复，查看历史时应保持阅读位置。').join('\n'),
+          'message_id': 'long-while-reading',
+          'reply_index': 1,
+        });
+        expect(tester.getTopLeft(anchor).dy, closeTo(before, 0.5));
+        final drag = await tester.startGesture(const Offset(220, 400));
+        await drag.moveBy(const Offset(0, 40));
+        await tester.pump();
+        final duringDrag = tester.getTopLeft(anchor).dy;
+        await _emit(tester, peers.last, 'reply', {
+          'text': '手指滑动时也不能抢走位置',
+          'message_id': 'during-drag',
+          'reply_index': 2,
+        });
+        expect(tester.getTopLeft(anchor).dy, closeTo(duringDrag, 0.5));
+        await drag.up();
+        await flow.drain(tester);
+        // Returning to the min edge reveals buffered messages without a
+        // delayed entrance; the actual transcript has contained them all along.
+        position.jumpTo(0);
+        await flow.drain(tester);
+        expect(
+          find.byKey(const ValueKey('chat-message-during-drag')),
+          findsOneWidget,
+        );
+        expect(position.pixels, closeTo(position.minScrollExtent, 0.1));
+      }, initialHistory: [for (var i = 59; i >= 0; i--) plain('history-$i', i)]);
+    },
+  );
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 1.8]) {
+      testWidgets(
+        'typing becomes the reply in the same row: $brightness / $scale',
+        (tester) async {
+          AppColors.use(brightness);
+          addTearDown(() => AppColors.use(Brightness.light));
+          await _withChat(
+            tester,
+            (api, peers) async {
+              await _emit(tester, peers.last, 'takeover_typing', {
+                'takeover_id': 'case',
+                'conversation_id': 'conv',
+                'active': true,
+                'revision': 1,
+              });
+              final typingIndicator = find.byKey(
+                const ValueKey('chat-peer-typing'),
+              );
+              expect(typingIndicator, findsOneWidget);
+              final slot = find.byWidgetPredicate(
+                (widget) =>
+                    widget is RepaintBoundary &&
+                    widget.key is ValueKey<String> &&
+                    (widget.key as ValueKey<String>).value.startsWith(
+                      'chat-message-peer-typing-slot-',
+                    ),
+              );
+              final element = tester.element(slot);
+              final avatar = find.descendant(
+                of: slot,
+                matching: find.byWidgetPredicate(
+                  (w) => w.runtimeType.toString() == '_Avatar',
+                ),
+              );
+              final avatarElement = tester.element(avatar);
+              final before = tester.getTopLeft(avatar);
+              Finder surface() => find.descendant(
+                of: slot,
+                matching: find.byWidgetPredicate(
+                  (w) => w.runtimeType.toString() == '_MessageBubbleSurface',
+                ),
+              );
+              BoxDecoration decoration() =>
+                  tester
+                          .widget<DecoratedBox>(
+                            find
+                                .descendant(
+                                  of: surface(),
+                                  matching: find.byType(DecoratedBox),
+                                )
+                                .first,
+                          )
+                          .decoration
+                      as BoxDecoration;
+              final style = decoration();
+              final bubbleBefore = tester.getRect(surface());
+              await typing.network(
+                tester,
+                () async => peers.last.add(
+                  jsonEncode({
+                    'type': 'reply',
+                    'data': {
+                      'text': '你好',
+                      'message_id': 'replaces-typing',
+                      'reply_index': 0,
+                    },
+                  }),
+                ),
+              );
+              expect(
+                find.byKey(const ValueKey('chat-peer-typing')),
+                findsNothing,
+              );
+              expect(find.text('你好'), findsOneWidget);
+              expect(identical(tester.element(slot), element), isTrue);
+              expect(identical(tester.element(avatar), avatarElement), isTrue);
+              expect(decoration(), style);
+              expect(tester.getTopLeft(avatar), before);
+              expect(tester.getRect(surface()).topLeft, bubbleBefore.topLeft);
+              expect(
+                tester.getRect(surface()).height,
+                closeTo(bubbleBefore.height, 0.1),
+              );
+              for (var frame = 0; frame < 16; frame++) {
+                await tester.pump(const Duration(milliseconds: 16));
+                expect(tester.getTopLeft(avatar), before);
+                expect(tester.getRect(surface()).topLeft, bubbleBefore.topLeft);
+              }
+              // A new typing cycle that ends without a reply removes its slot
+              // immediately, with no collapsing bubble or stale dots left behind.
+              await _emit(tester, peers.last, 'takeover_typing', {
+                'takeover_id': 'case',
+                'conversation_id': 'conv',
+                'active': true,
+                'revision': 2,
+              });
+              expect(
+                find.byKey(const ValueKey('chat-peer-typing')),
+                findsOneWidget,
+              );
+              await typing.network(
+                tester,
+                () async => peers.last.add(
+                  jsonEncode({
+                    'type': 'takeover_typing',
+                    'data': {
+                      'takeover_id': 'case',
+                      'conversation_id': 'conv',
+                      'active': false,
+                      'revision': 3,
+                    },
+                  }),
+                ),
+              );
+              expect(
+                find.byKey(const ValueKey('chat-peer-typing')),
+                findsNothing,
+              );
+            },
+            brightness: brightness,
+            textScale: scale,
+          );
+        },
+      );
+    }
+  }
+
+  testWidgets('typing is replaced once by the first of several long replies', (
+    tester,
+  ) async {
+    await _withChat(tester, (api, peers) async {
+      await _emit(tester, peers.last, 'takeover_typing', {
+        'takeover_id': 'case',
+        'conversation_id': 'conv',
+        'active': true,
+        'revision': 1,
+      });
+      final slot = find.byWidgetPredicate(
+        (w) =>
+            w is RepaintBoundary &&
+            w.key is ValueKey<String> &&
+            (w.key as ValueKey<String>).value.startsWith(
+              'chat-message-peer-typing-slot-',
+            ),
+      );
+      final slotElement = tester.element(slot);
+      final before = tester.getTopLeft(slot).dy;
+      final first = List.filled(5, '长回复也应该直接替换输入内容').join('，');
+      await typing.network(tester, () async {
+        for (var i = 0; i < 2; i++) {
+          peers.last.add(
+            jsonEncode({
+              'type': 'reply',
+              'data': {
+                'text': i == 0 ? first : '紧接着的第二条',
+                'message_id': 'replace-batch-$i',
+                'reply_index': i,
+              },
+            }),
+          );
+        }
+      });
+      expect(find.byKey(const ValueKey('chat-peer-typing')), findsNothing);
+      expect(identical(tester.element(slot), slotElement), isTrue);
+      expect(tester.getTopLeft(slot).dy, closeTo(before, 0.1));
+      expect(find.text(first), findsOneWidget);
+      final firstFrame = tester.getTopLeft(slot).dy;
+      await tester.pump(const Duration(milliseconds: 64));
+      expect(tester.getTopLeft(slot).dy, lessThan(firstFrame));
+      await flow.drain(tester);
+      expect(find.text('紧接着的第二条'), findsOneWidget);
+      final settled = tester.getRect(slot);
+      // The id alias stays on the same slot across a later duplicate/replay.
+      await _emit(tester, peers.last, 'reply', {
+        'text': first,
+        'message_id': 'replace-batch-0',
+        'reply_index': 0,
+        'replayed': true,
+      });
+      expect(identical(tester.element(slot), slotElement), isTrue);
+      expect(tester.getRect(slot), settled);
+    }, initialHistory: [plain('before-typing', 0)]);
   });
 
   for (final summary in ['爱探店的话，可以了解这家常发广场里的花艺小店。', '']) {

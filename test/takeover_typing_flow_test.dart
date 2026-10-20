@@ -292,6 +292,7 @@ void main() {
                 );
             final indicator = find.byKey(const ValueKey('chat-peer-typing'));
             await network(tester, () async => emit(true, 1));
+            await flow.drain(tester);
             expect(indicator, findsOneWidget);
             if (admin) {
               await network(
@@ -303,12 +304,15 @@ void main() {
               expect(api.summaries, summaryBefore);
             }
             await network(tester, () async => emit(false, 3));
+            await flow.drain(tester);
             expect(indicator, findsNothing);
             await network(tester, () async => emit(true, 2));
             expect(indicator, findsNothing);
             await network(tester, () async => emit(true, 4));
+            await flow.drain(tester);
             expect(indicator, findsOneWidget);
             await tester.pump(const Duration(seconds: 8));
+            await flow.drain(tester);
             expect(indicator, findsNothing);
             if (!admin) {
               final input = tester
@@ -322,6 +326,7 @@ void main() {
               expect(api.userPresence.last, false);
             }
             await network(tester, () async => emit(true, 5));
+            await flow.drain(tester);
             expect(indicator, findsOneWidget);
             await network(
               tester,
@@ -492,6 +497,7 @@ void main() {
               );
             }
             await network(tester, () async => emit(true, 6));
+            await flow.drain(tester);
             expect(indicator, findsOneWidget);
             if (!admin) {
               // Ending human presence must not cancel ordinary agent feedback.
@@ -513,13 +519,16 @@ void main() {
                   jsonEncode({'type': 'done', 'data': <String, dynamic>{}}),
                 ),
               );
+              await flow.drain(tester);
               expect(indicator, findsNothing);
               await network(tester, () async => emit(true, 8));
+              await flow.drain(tester);
               expect(indicator, findsOneWidget);
             }
             await network(tester, () async {
               await peers.single.close(1001, 'synthetic disconnect');
             });
+            await flow.drain(tester);
             expect(indicator, findsNothing);
             expect(tester.takeException(), isNull);
           } finally {
