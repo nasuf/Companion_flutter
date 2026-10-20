@@ -139,9 +139,7 @@ class _ChatInputChromeLayerState extends State<_ChatInputChromeLayer> {
       tabBarLift: tabBarLift,
       panelLift: panelSurfaceHeight,
     );
-    _host._syncComposerDockVisibility(
-      panelVisible: panelVisible || _host._heldPanel != ComposerPanel.none,
-    );
+    _host._syncComposerDockVisibility(panelVisible: panelVisible);
 
     return Stack(
       children: [
@@ -231,12 +229,18 @@ class _ChatInputChromeLayerState extends State<_ChatInputChromeLayer> {
               : Duration.zero,
           curve: _ChatPageState._animationCurve,
           onEnd: () {
-            if (!panelVisible &&
-                mounted &&
-                _host._lastDisplayedPanel != ComposerPanel.none) {
+            if (panelVisible) return;
+            // A zero-duration IME handoff completes during build. Defer the
+            // shell notification, and ignore it if a panel has reopened.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted ||
+                  _host._panel != ComposerPanel.none ||
+                  _host._lastDisplayedPanel == ComposerPanel.none) {
+                return;
+              }
               _host._lastDisplayedPanel = ComposerPanel.none;
               _host._bumpComposerShell();
-            }
+            });
           },
           child: ClipRect(
             child: _ChatPanel(

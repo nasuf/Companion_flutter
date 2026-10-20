@@ -42,19 +42,9 @@ void main() {
     expect(ChatScrollPolicy.restLift(tabBarLift: 98, panelLift: 0), 98);
   });
 
-  test('floating tab bar hides for both panel and cold keyboard', () {
-    expect(
-      ChatScrollPolicy.hideFloatingTabBar(panelDocked: true, imeDocked: false),
-      isTrue,
-    );
-    expect(
-      ChatScrollPolicy.hideFloatingTabBar(panelDocked: false, imeDocked: true),
-      isTrue,
-    );
-    expect(
-      ChatScrollPolicy.hideFloatingTabBar(panelDocked: false, imeDocked: false),
-      isFalse,
-    );
+  test('only a painted composer panel hides the floating tab bar', () {
+    expect(ChatScrollPolicy.hideFloatingTabBar(panelDocked: true), isTrue);
+    expect(ChatScrollPolicy.hideFloatingTabBar(panelDocked: false), isFalse);
   });
 
   test(

@@ -41,13 +41,9 @@ class ChatScrollPolicy {
     required bool holdingOccupancy,
   }) => panelOpen || holdingOccupancy;
 
-  /// Hide the floating tab bar while a composer panel is docked or the IME
-  /// is covering the same bottom strip. Cold-keyboard and panel-keyboard
-  /// then share one motion source instead of the tab bar fighting the IME.
-  static bool hideFloatingTabBar({
-    required bool panelDocked,
-    required bool imeDocked,
-  }) => panelDocked || imeDocked;
+  /// Only painted composer panels hide the floating tab bar. The OS keyboard
+  /// covers the bar at its fixed position without triggering a return animation.
+  static bool hideFloatingTabBar({required bool panelDocked}) => panelDocked;
 
   /// Extra translation so the transcript tracks the IME. Rest padding stays
   /// on the composer/tab-bar occupancy; the keyboard delta is composited.
