@@ -105,6 +105,7 @@ class _MessageList extends StatefulWidget {
 
 class _MessageListState extends State<_MessageList> {
   final _settle = ValueNotifier<int>(0);
+  late final ChatCalendarClock _calendarClock;
   List<ChatMessage> _presented = [];
   bool _presentedTyping = false;
   bool _revealScheduled = false;
@@ -122,6 +123,7 @@ class _MessageListState extends State<_MessageList> {
   @override
   void initState() {
     super.initState();
+    _calendarClock = ChatCalendarClock();
     _presented = List.of(widget.messages);
     _presentedTyping = widget.typingVisible.value;
     _shownKeys = _presented.map(ChatTranscriptController.rowIdentity).toSet();
@@ -181,6 +183,7 @@ class _MessageListState extends State<_MessageList> {
   @override
   void dispose() {
     widget.typingVisible.removeListener(_onTypingChanged);
+    _calendarClock.dispose();
     _settle.dispose();
     super.dispose();
   }
@@ -281,8 +284,18 @@ class _MessageListState extends State<_MessageList> {
                 findChildIndexCallback: (key) =>
                     ChatScrollPolicy.childIndexForKey(key, chronologicalIds),
                 builder: (context, index) {
+                  final chronologicalIndex = visibleMessages.length - 1 - index;
+                  final message = visibleMessages[chronologicalIndex];
+                  final startsGroup = message != _typingMessage &&
+                      ChatTimestampPolicy.startsGroup(
+                        message.createdAt,
+                        previous: chronologicalIndex == 0
+                            ? null
+                            : visibleMessages[chronologicalIndex - 1].createdAt,
+                      );
                   return _buildKeyedMessageRow(
-                    visibleMessages[visibleMessages.length - 1 - index],
+                    message,
+                    timestamp: startsGroup ? message.createdAt : null,
                   );
                 },
               ),
@@ -311,7 +324,7 @@ class _MessageListState extends State<_MessageList> {
     );
   }
 
-  Widget _buildKeyedMessageRow(ChatMessage message) {
+  Widget _buildKeyedMessageRow(ChatMessage message, {DateTime? timestamp}) {
     final identity = ChatTranscriptController.rowIdentity(message);
     final typing = message == _typingMessage;
     final slot = typing ? _typingSlot : _replySlots[identity];
@@ -374,7 +387,23 @@ class _MessageListState extends State<_MessageList> {
       child: MessageEntrance(
         animate: typing ? _atNewest : widget.enteringKeys.remove(identity),
         settle: _settle,
-        child: row,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (timestamp != null)
+              ChatTimelineTimestamp(
+                key: ValueKey('chat-time-$identity'),
+                timestamp: timestamp,
+                clock: _calendarClock,
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 11,
+                  height: 1.3,
+                ),
+              ),
+            row,
+          ],
+        ),
       ),
     );
   }
@@ -485,7 +514,6 @@ class _MessageRow extends StatelessWidget {
   Widget _buildAvatarBubbleRow(
     BuildContext context, {
     required _BubbleSegment segment,
-    required bool showTimestamp,
     bool showSendStatus = true,
   }) {
     final avatar = _buildAvatar(
@@ -508,7 +536,6 @@ class _MessageRow extends StatelessWidget {
             highlighted: highlighted,
             highlightQuery: highlightQuery,
             segment: segment,
-            showTimestamp: showTimestamp,
             showSendStatus: showSendStatus,
             onComponentCardTap: onComponentCardTap,
             onResolveMusicTrack: onResolveMusicTrack,
@@ -569,14 +596,12 @@ class _MessageRow extends StatelessWidget {
           _buildAvatarBubbleRow(
             context,
             segment: _BubbleSegment.textOnly,
-            showTimestamp: false,
             showSendStatus: false,
           ),
           const SizedBox(height: 8),
           _buildAvatarBubbleRow(
             context,
             segment: _BubbleSegment.cardOnly,
-            showTimestamp: true,
             showSendStatus: true,
           ),
         ],
@@ -586,7 +611,6 @@ class _MessageRow extends StatelessWidget {
     return _buildAvatarBubbleRow(
       context,
       segment: _BubbleSegment.all,
-      showTimestamp: true,
     );
   }
 }
@@ -734,12 +758,6 @@ class _ThoughtFragmentRow extends StatelessWidget {
           ),
         ),
       ),
-                // 时间戳：与普通 AI 气泡一致（卡片下方、左对齐、10px muted）。
-                const SizedBox(height: 3),
-                Text(
-                  _formatTime(message.createdAt),
-                  style: TextStyle(color: AppColors.muted, fontSize: 10),
-                ),
               ],
             ),
             ),
@@ -831,7 +849,6 @@ class _Bubble extends StatelessWidget {
     this.highlighted = false,
     this.highlightQuery,
     this.segment = _BubbleSegment.all,
-    this.showTimestamp = true,
     this.showSendStatus = true,
     required this.onComponentCardTap,
     required this.onResolveMusicTrack,
@@ -857,7 +874,6 @@ class _Bubble extends StatelessWidget {
   final bool highlighted;
   final String? highlightQuery;
   final _BubbleSegment segment;
-  final bool showTimestamp;
   final bool showSendStatus;
   final ValueChanged<ChatComponentCard> onComponentCardTap;
   final Future<MusicTrack?> Function(MusicTrack track) onResolveMusicTrack;
@@ -1056,16 +1072,6 @@ class _Bubble extends StatelessWidget {
             bubbleColumn
           else
             bubbleColumn,
-          if (showTimestamp) ...[
-            const SizedBox(height: 3),
-            Opacity(
-              opacity: typing ? 0 : 1,
-              child: Text(
-                _formatTime(message.createdAt),
-                style: TextStyle(color: AppColors.muted, fontSize: 10),
-              ),
-            ),
-          ],
         ],
       ),
     );

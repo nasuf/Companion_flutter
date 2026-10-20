@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:companion_flutter/companion_api.dart';
 import 'package:companion_flutter/main.dart';
 import 'package:companion_flutter/models.dart';
+import 'package:companion_flutter/src/widgets/chat/chat_timeline_timestamp.dart';
 import 'package:flutter/material.dart';
 import 'package:extended_text_field/extended_text_field.dart';
 import 'package:flutter/services.dart';
@@ -20,6 +21,8 @@ class _CardApi extends flow.FakeTakeoverApi {
 
   int historyLoads = 0;
   int replayRequests = 0;
+  List<ChatMessage>? olderHistory;
+  final historyOffsets = <int>[];
 
   @override
   Future<String> getWebSocketTicket(String id) async => 'a' * 43;
@@ -39,6 +42,8 @@ class _CardApi extends flow.FakeTakeoverApi {
     int offset = 0,
   }) async {
     historyLoads++;
+    historyOffsets.add(offset);
+    if (offset > 0 && olderHistory != null) return olderHistory!;
     return super.loadMessages(id, limit: limit, offset: offset);
   }
 }
@@ -245,6 +250,117 @@ void main() {
     content: id,
     createdAt: DateTime.utc(2026, 10, 19, 12, minute),
   );
+
+  for (final brightness in Brightness.values) {
+    testWidgets(
+      'timestamps group adjacent messages and stay centered: $brightness',
+      (tester) async {
+        final base = DateTime(2026, 10, 19, 10, 25);
+        ChatMessage message(String id, int seconds, String role) => ChatMessage(
+          id: id,
+          conversationId: 'conv',
+          role: role,
+          content: id,
+          createdAt: base.add(Duration(seconds: seconds)),
+        );
+        final history = [
+          message('time-a', 0, 'user'),
+          message('time-b', 60, 'assistant'),
+          message('time-c', 120, 'user'),
+        ];
+        await _withChat(
+          tester,
+          (api, peers) async {
+            expect(find.byType(ChatTimelineTimestamp), findsOneWidget);
+            final label = find.byKey(const ValueKey('chat-time-time-a'));
+            final text = find.descendant(
+              of: label,
+              matching: find.byType(Text),
+            );
+            expect(tester.getCenter(text).dx, closeTo(195, 0.1));
+            final body = find.text('time-a');
+            expect(
+              tester.getBottomLeft(text).dy,
+              lessThan(tester.getTopLeft(body).dy),
+            );
+            for (final (id, seconds) in [('time-d', 419), ('time-e', 719)]) {
+              await _emit(tester, peers.last, 'reply', {
+                'message_id': id,
+                'text': id,
+                'created_at': base
+                    .add(Duration(seconds: seconds))
+                    .toUtc()
+                    .toIso8601String(),
+              });
+            }
+            // Four messages over almost seven minutes remain one continuous group;
+            // exactly five minutes of silence introduces the second centered label.
+            expect(find.byType(ChatTimelineTimestamp), findsNWidgets(2));
+            expect(
+              find.byKey(const ValueKey('chat-time-time-d')),
+              findsNothing,
+            );
+            expect(
+              find.byKey(const ValueKey('chat-time-time-e')),
+              findsOneWidget,
+            );
+            for (final id in ['time-b', 'time-c', 'time-d']) {
+              final row = find.byKey(ValueKey('chat-message-$id'));
+              expect(
+                find.descendant(
+                  of: row,
+                  matching: find.byWidgetPredicate(
+                    (w) =>
+                        w is Text &&
+                        RegExp(r'\d{2}:\d{2}').hasMatch(w.data ?? ''),
+                  ),
+                ),
+                findsNothing,
+              );
+            }
+          },
+          initialHistory: history.reversed.toList(),
+          brightness: brightness,
+        );
+      },
+    );
+  }
+
+  testWidgets('older pagination removes the artificial page-edge timestamp', (
+    tester,
+  ) async {
+    final base = DateTime(2026, 10, 19, 10);
+    ChatMessage message(int index) => ChatMessage(
+      id: 'paged-$index',
+      conversationId: 'conv',
+      role: 'assistant',
+      content: 'paged-$index',
+      createdAt: base.add(Duration(seconds: index * 20)),
+    );
+    await _withChat(tester, (api, peers) async {
+      api.olderHistory = [message(-1)];
+      final scrollable = find
+          .descendant(
+            of: find.byType(ChatPage),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      final position = tester.state<ScrollableState>(scrollable).position;
+      position.jumpTo(position.maxScrollExtent);
+      await flow.drain(tester);
+      expect(api.historyOffsets, contains(100));
+      expect(find.byKey(const ValueKey('chat-time-paged-0')), findsNothing);
+      expect(find.byKey(const ValueKey('chat-time-paged--1')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('chat-message-paged-0')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('chat-message-paged--1')),
+        findsOneWidget,
+      );
+    }, initialHistory: [for (var i = 99; i >= 0; i--) message(i)]);
+  });
 
   testWidgets(
     'live reply and local send push existing rows over multiple frames',
@@ -573,7 +689,13 @@ void main() {
             ),
       );
       final slotElement = tester.element(slot);
-      final before = tester.getTopLeft(slot).dy;
+      final avatar = find.descendant(
+        of: slot,
+        matching: find.byWidgetPredicate(
+          (w) => w.runtimeType.toString() == '_Avatar',
+        ),
+      );
+      final before = tester.getTopLeft(avatar).dy;
       final first = List.filled(5, '长回复也应该直接替换输入内容').join('，');
       await typing.network(tester, () async {
         for (var i = 0; i < 2; i++) {
@@ -591,11 +713,13 @@ void main() {
       });
       expect(find.byKey(const ValueKey('chat-peer-typing')), findsNothing);
       expect(identical(tester.element(slot), slotElement), isTrue);
-      expect(tester.getTopLeft(slot).dy, closeTo(before, 0.1));
+      // A timestamp may be inserted above the slot after a long silence. The
+      // bubble/avatar itself must still replace the typing row in place.
+      expect(tester.getTopLeft(avatar).dy, closeTo(before, 0.1));
       expect(find.text(first), findsOneWidget);
-      final firstFrame = tester.getTopLeft(slot).dy;
+      final firstFrame = tester.getTopLeft(avatar).dy;
       await tester.pump(const Duration(milliseconds: 64));
-      expect(tester.getTopLeft(slot).dy, lessThan(firstFrame));
+      expect(tester.getTopLeft(avatar).dy, lessThan(firstFrame));
       await flow.drain(tester);
       expect(find.text('紧接着的第二条'), findsOneWidget);
       final settled = tester.getRect(slot);

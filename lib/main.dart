@@ -64,6 +64,7 @@ import 'src/games/tetris_duel_engine.dart';
 import 'src/widgets/chat/voice_recording_overlay.dart';
 import 'src/widgets/agent_avatar_image.dart';
 import 'src/widgets/chat/message_entrance.dart';
+import 'src/widgets/chat/chat_timeline_timestamp.dart';
 import 'src/screens/chat/chat_transcript_controller.dart';
 import 'src/services/display_refresh_rate.dart';
 import 'src/emoji/emoji_catalog.dart';
@@ -72,6 +73,7 @@ import 'src/emoji/emoji_text_span_builder.dart';
 import 'src/emoji/unified_emoji.dart';
 import 'src/utils/agent_status_label.dart';
 import 'src/utils/chat_scroll_policy.dart';
+import 'src/utils/chat_timestamp_policy.dart';
 import 'src/utils/platform_effects.dart';
 import 'src/utils/tab_visit_policy.dart';
 
