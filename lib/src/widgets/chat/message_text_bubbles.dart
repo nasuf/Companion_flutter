@@ -1,5 +1,31 @@
 part of 'package:companion_flutter/main.dart';
 
+TextStyle _chatMessageTextStyle(bool isMine) => TextStyle(
+  color: isMine ? Colors.white : AppColors.text,
+  fontSize: 14,
+  height: 1.42,
+);
+
+/// Shared surface for pending typing and the actual reply: same fill, border,
+/// corners, shadow, text-line height and insets, in both appearance modes.
+class _MessageBubbleSurface extends StatelessWidget {
+  const _MessageBubbleSurface({required this.isMine, required this.child});
+  final bool isMine;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: const BoxConstraints(maxWidth: 270),
+    child: DecoratedBox(
+      decoration: _chatBubbleDecoration(context, isMine: isMine),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        child: child,
+      ),
+    ),
+  );
+}
+
 class _MessageTextBubble extends StatelessWidget {
   const _MessageTextBubble({
     required this.message,
@@ -20,53 +46,39 @@ class _MessageTextBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseStyle = TextStyle(
-      color: message.isMine ? Colors.white : AppColors.text,
-      fontSize: 14,
-      height: 1.42,
-    );
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 270),
-      child: DecoratedBox(
-        decoration: _bubbleDecoration(context, message.isMine),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          child: TweenAnimationBuilder<double>(
-            tween: Tween<double>(end: highlighted ? 1.0 : 0.0),
-            duration: highlighted
-                ? Duration.zero
-                : const Duration(milliseconds: 500),
-            curve: Curves.easeOut,
-            builder: (context, progress, _) {
-              final highlightStyle = baseStyle.copyWith(
-                backgroundColor: AppColors.accent.withValues(
-                  alpha: 0.35 * progress,
+    final baseStyle = _chatMessageTextStyle(message.isMine);
+    return _MessageBubbleSurface(
+      isMine: message.isMine,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(end: highlighted ? 1.0 : 0.0),
+        duration: highlighted
+            ? Duration.zero
+            : const Duration(milliseconds: 500),
+        curve: Curves.easeOut,
+        builder: (context, progress, _) {
+          final highlightStyle = baseStyle.copyWith(
+            backgroundColor: AppColors.accent.withValues(
+              alpha: 0.35 * progress,
+            ),
+          );
+          return Text.rich(
+            TextSpan(
+              children: emojiAwareSpans(
+                text: message.content,
+                baseStyle: baseStyle,
+                emojiSize: 18,
+                wrapPlainText: (chunk) => highlightedSpans(
+                  text: chunk,
+                  query: highlightQuery ?? '',
+                  baseStyle: baseStyle,
+                  highlightStyle: highlightStyle,
                 ),
-              );
-              return Text.rich(
-                TextSpan(
-                  children: emojiAwareSpans(
-                    text: message.content,
-                    baseStyle: baseStyle,
-                    emojiSize: 18,
-                    wrapPlainText: (chunk) => highlightedSpans(
-                      text: chunk,
-                      query: highlightQuery ?? '',
-                      baseStyle: baseStyle,
-                      highlightStyle: highlightStyle,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
+              ),
+            ),
+          );
+        },
       ),
     );
-  }
-
-  BoxDecoration _bubbleDecoration(BuildContext context, bool isMine) {
-    return _chatBubbleDecoration(context, isMine: isMine);
   }
 }
 

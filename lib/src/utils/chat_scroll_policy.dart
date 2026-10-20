@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 
 /// Reversed chronological chat list: offset 0 is the newest message (composer
 /// edge). Keyboard motion is a compositor slide, not a spacer/jumpTo, so IME
@@ -61,6 +62,10 @@ class ChatScrollPolicy {
     required double composerHeight,
     required double restLift,
   }) => composerHeight + restLift + composerListGap + aiGeneratedHintHeight;
+
+  static bool isUserScrolling(ScrollPosition position) =>
+      position.isScrollingNotifier.value &&
+      position.userScrollDirection != ScrollDirection.idle;
 
   /// True when the viewport is glued to the composer / newest messages.
   ///

@@ -52,7 +52,13 @@ class _ChatMessageViewportState extends State<_ChatMessageViewport> {
     super.dispose();
   }
 
+  final Set<String> _enteringKeys = {};
+
   void _onTranscriptChanged() {
+    _enteringKeys.retainAll(
+      widget.transcript.messages.map(ChatTranscriptController.rowIdentity),
+    );
+    _enteringKeys.addAll(widget.transcript.takeEnteringKeys());
     setState(() {});
   }
 
@@ -82,6 +88,7 @@ class _ChatMessageViewportState extends State<_ChatMessageViewport> {
                   : _MessageList(
                       controller: widget.scrollController,
                       messages: transcript.messages,
+                      enteringKeys: _enteringKeys,
                       isLoadingOlder: transcript.loadingOlder,
                       trackPlaybackUpdates: host.widget.isActive,
                       bottomGap: _ComposerRestGap(host: host),
@@ -244,11 +251,21 @@ class _ComposerRestGap extends StatelessWidget {
               safeBottom,
           panelLift: panelLift,
         );
-        final gap = ChatScrollPolicy.restComposerGap(
-          composerHeight: host._composerHeightForWidth(),
-          restLift: restLift,
+        // Clearing a multiline draft shrinks the composer. Match its height
+        // animation so sending does not drop the transcript before pushing it up.
+        return TweenAnimationBuilder<double>(
+          tween: Tween<double>(end: host._composerHeightForWidth()),
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          builder: (context, height, _) => SizedBox(
+            height: ChatScrollPolicy.restComposerGap(
+              composerHeight: height,
+              restLift: restLift,
+            ),
+          ),
         );
-        return SizedBox(height: gap);
       },
     );
   }

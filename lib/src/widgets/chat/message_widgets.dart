@@ -1,9 +1,10 @@
 part of 'package:companion_flutter/main.dart';
 
-class _MessageList extends StatelessWidget {
+class _MessageList extends StatefulWidget {
   const _MessageList({
     required this.controller,
     required this.messages,
+    required this.enteringKeys,
     required this.isLoadingOlder,
     required this.bottomGap,
     required this.typingVisible,
@@ -42,6 +43,7 @@ class _MessageList extends StatelessWidget {
 
   final ScrollController controller;
   final List<ChatMessage> messages;
+  final Set<String> enteringKeys;
   final bool isLoadingOlder;
   final Widget bottomGap;
   final ValueListenable<bool> typingVisible;
@@ -98,142 +100,282 @@ class _MessageList extends StatelessWidget {
   final ValueChanged<ChatMessage>? onRetryFailed;
 
   @override
-  Widget build(BuildContext context) {
-    if (messages.isEmpty) {
-      return ValueListenableBuilder<bool>(
-        valueListenable: typingVisible,
-        builder: (context, typing, _) {
-          if (!typing) {
-            return Center(
-              child: Text(
-                '还没有聊天记录，发一句话开始吧。',
-                style: TextStyle(color: AppColors.muted),
-              ),
-            );
-          }
-          return _buildConversationList();
-        },
-      );
+  State<_MessageList> createState() => _MessageListState();
+}
+
+class _MessageListState extends State<_MessageList> {
+  final _settle = ValueNotifier<int>(0);
+  List<ChatMessage> _presented = [];
+  bool _presentedTyping = false;
+  bool _revealScheduled = false;
+  int _typingSequence = 0;
+  String? _typingSlot;
+  ChatMessage? _typingMessage;
+  Set<String> _shownKeys = {};
+  final Map<String, String> _replySlots = {};
+
+  bool get _atNewest =>
+      !widget.controller.hasClients ||
+      (!ChatScrollPolicy.isUserScrolling(widget.controller.position) &&
+          ChatScrollPolicy.isNearNewest(widget.controller.position));
+
+  @override
+  void initState() {
+    super.initState();
+    _presented = List.of(widget.messages);
+    _presentedTyping = widget.typingVisible.value;
+    _shownKeys = _presented.map(ChatTranscriptController.rowIdentity).toSet();
+    widget.typingVisible.addListener(_onTypingChanged);
+  }
+
+  void _onTypingChanged() {
+    if (mounted && _atNewest) setState(() {});
+  }
+
+  @override
+  void didUpdateWidget(covariant _MessageList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.typingVisible != widget.typingVisible) {
+      oldWidget.typingVisible.removeListener(_onTypingChanged);
+      widget.typingVisible.addListener(_onTypingChanged);
     }
-    return _buildConversationList();
+    if (_atNewest || _presented.isEmpty) {
+      _presented = List.of(widget.messages);
+      return;
+    }
+    // While reading, keep the newest displayed boundary stable. New tail
+    // messages stay in the transcript/unread count and are revealed when the
+    // reader returns. This also handles very tall cards without estimating
+    // their height or evicting the visible reading anchor from the sliver cache.
+    final boundary = ChatTranscriptController.rowIdentity(_presented.last);
+    final end = widget.messages.indexWhere(
+      (message) => ChatTranscriptController.rowIdentity(message) == boundary,
+    );
+    _presented = end < 0
+        ? List.of(widget.messages) // A history jump/replacement, not an append.
+        : widget.messages.take(end + 1).toList();
+  }
+
+  void _revealNewestAfterScroll() {
+    if (_revealScheduled || !_atNewest) return;
+    _revealScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _revealScheduled = false;
+      if (!mounted || !_atNewest || !widget.controller.hasClients) return;
+      final appended = _presented.length < widget.messages.length;
+      if (!appended && _presentedTyping == widget.typingVisible.value) return;
+      setState(() {
+        _presented = List.of(widget.messages);
+      });
+      if (!appended) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !widget.controller.hasClients) return;
+        final position = widget.controller.position;
+        if (!position.isScrollingNotifier.value) {
+          widget.controller.jumpTo(position.minScrollExtent);
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.typingVisible.removeListener(_onTypingChanged);
+    _settle.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    children: [
+      _buildConversationList(),
+      if (widget.messages.isEmpty && !_presentedTyping)
+        IgnorePointer(
+          child: Center(
+            child: Text(
+              '还没有聊天记录，发一句话开始吧。',
+              style: TextStyle(color: AppColors.muted),
+            ),
+          ),
+        ),
+    ],
+  );
+
+  void _syncTypingSlot(List<ChatMessage> messages) {
+    final keys = messages.map(ChatTranscriptController.rowIdentity).toSet();
+    _replySlots.removeWhere((key, _) => !keys.contains(key));
+    if (_atNewest) {
+      // A reply takes over the existing slot before the typing signal is
+      // removed. Even when several replies arrive in one frame, only the first
+      // incoming message consumes it; subsequent messages enter normally.
+      if (_typingSlot != null) {
+        for (final message in messages) {
+          final identity = ChatTranscriptController.rowIdentity(message);
+          if (message.role == 'assistant' &&
+              message.isChatMessage &&
+              !_shownKeys.contains(identity) &&
+              widget.enteringKeys.contains(identity)) {
+            _replySlots[identity] = _typingSlot!;
+            widget.enteringKeys.remove(identity);
+            _typingSlot = null;
+            _typingMessage = null;
+            break;
+          }
+        }
+      }
+      _presentedTyping = widget.typingVisible.value;
+      if (_presentedTyping && _typingSlot == null) {
+        _typingSlot = 'peer-typing-slot-${_typingSequence++}';
+        _typingMessage = ChatMessage(
+          id: _typingSlot!,
+          conversationId: '',
+          role: 'assistant',
+          content: '',
+          createdAt: DateTime.now(),
+        );
+      } else if (!_presentedTyping) {
+        _typingSlot = null;
+        _typingMessage = null;
+      }
+    }
+    _shownKeys = keys;
   }
 
   Widget _buildConversationList() {
-    final processed = preprocessTimelineActivityMessages(messages);
-    final visibleMessages = processed.$1;
+    final processed = preprocessTimelineActivityMessages(_presented);
+    final visibleMessages = [...processed.$1];
+    _syncTypingSlot(visibleMessages);
+    if (_typingMessage != null) visibleMessages.add(_typingMessage!);
     final chronologicalIds = [
-      for (final message in visibleMessages) message.id,
+      for (final message in visibleMessages)
+        _replySlots[ChatTranscriptController.rowIdentity(message)] ??
+            ChatTranscriptController.rowIdentity(message),
     ];
     // reverse: true pins short transcripts to the composer and keeps offset 0
     // at the newest message. IME height is NOT in these slivers — the page
     // translates the whole view so keyboard frames never relayout bubbles.
-    return CustomScrollView(
-      reverse: true,
-      controller: controller,
-      physics: ChatScrollPolicy.listPhysics,
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      scrollCacheExtent: const ScrollCacheExtent.pixels(800),
-      slivers: [
-        SliverToBoxAdapter(child: bottomGap),
-        SliverToBoxAdapter(
-          child: ValueListenableBuilder<bool>(
-            valueListenable: typingVisible,
-            builder: (context, typing, _) {
-              if (!typing) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                child: RepaintBoundary(
-                  child: Semantics(
-                    key: const ValueKey('chat-peer-typing'),
-                    label: '对方正在输入',
-                    child: _TypingIndicatorRow(
-                      agentAvatarUrl: incomingAvatarUrl ?? agentAvatarUrl,
-                      avatarLabel: incomingAvatarLabel,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        SliverPadding(
-          padding: EdgeInsets.fromLTRB(12, 0, 12, topPadding),
-          sliver: SliverList(
-            delegate: _ChatMessageChildDelegate(
-              childCount: visibleMessages.length,
-              findChildIndexCallback: (key) =>
-                  ChatScrollPolicy.childIndexForKey(key, chronologicalIds),
-              builder: (context, index) {
-                return _buildKeyedMessageRow(
-                  visibleMessages[visibleMessages.length - 1 - index],
-                );
-              },
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification.depth != 0) return false;
+        if (notification is ScrollEndNotification) _revealNewestAfterScroll();
+        if (notification is ScrollStartNotification &&
+            notification.dragDetails != null) {
+          widget.enteringKeys.clear();
+          _settle.value += 1;
+        }
+        return false;
+      },
+      child: CustomScrollView(
+        reverse: true,
+        controller: widget.controller,
+        physics: ChatScrollPolicy.listPhysics,
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        scrollCacheExtent: const ScrollCacheExtent.pixels(800),
+        slivers: [
+          SliverToBoxAdapter(child: widget.bottomGap),
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(12, 0, 12, widget.topPadding),
+            sliver: SliverList(
+              delegate: _ChatMessageChildDelegate(
+                childCount: visibleMessages.length,
+                findChildIndexCallback: (key) =>
+                    ChatScrollPolicy.childIndexForKey(key, chronologicalIds),
+                builder: (context, index) {
+                  return _buildKeyedMessageRow(
+                    visibleMessages[visibleMessages.length - 1 - index],
+                  );
+                },
+              ),
             ),
           ),
-        ),
-        SliverToBoxAdapter(
-          child: AnimatedSwitcher(
-            key: const ValueKey(ChatScrollPolicy.headerKey),
-            duration: const Duration(milliseconds: 180),
-            child: isLoadingOlder
-                ? const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Center(
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+          SliverToBoxAdapter(
+            child: AnimatedSwitcher(
+              key: const ValueKey(ChatScrollPolicy.headerKey),
+              duration: const Duration(milliseconds: 180),
+              child: widget.isLoadingOlder
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Center(
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                       ),
-                    ),
-                  )
-                : const SizedBox(height: 4),
+                    )
+                  : const SizedBox(height: 4),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildKeyedMessageRow(ChatMessage message) {
+    final identity = ChatTranscriptController.rowIdentity(message);
+    final typing = message == _typingMessage;
+    final slot = typing ? _typingSlot : _replySlots[identity];
     final isHighlightTarget =
-        highlightMessageId != null && message.id == highlightMessageId;
-    final highlighted = isHighlightTarget && highlightVisible;
+        widget.highlightMessageId != null &&
+        message.id == widget.highlightMessageId;
+    final highlighted = isHighlightTarget && widget.highlightVisible;
     Widget row = _MessageRow(
       message: message,
+      typing: typing,
       highlighted: highlighted,
-      highlightQuery: highlightQuery,
-      agentAvatarUrl: agentAvatarUrl,
-      userAvatarUrl: userAvatarUrl,
-      incomingAvatarUrl: incomingAvatarUrl,
-      outgoingAvatarUrl: outgoingAvatarUrl,
-      incomingAvatarLabel: incomingAvatarLabel,
-      outgoingAvatarLabel: outgoingAvatarLabel,
-      onComponentCardTap: onComponentCardTap,
-      onAchievementTap: onAchievementTap,
-      onResolveMusicTrack: onResolveMusicTrack,
-      onMusicCardActivated: onMusicCardActivated,
-      onMusicPrevious: onMusicPrevious,
-      onMusicNext: onMusicNext,
-      onMusicFavorite: onMusicFavorite,
-      onAttachmentTap: onAttachmentTap,
-      activeMusicMessageId: activeMusicMessageId,
-      musicCardPositions: musicCardPositions,
-      favoriteMusicTrackIds: favoriteMusicTrackIds,
-      busyMusicFavoriteIds: busyMusicFavoriteIds,
-      canGoMusicPrevious: canGoMusicPrevious,
-      isMusicBusy: isMusicBusy,
-      trackPlaybackUpdates: trackPlaybackUpdates,
-      authToken: authToken,
-      apiBaseUrl: apiBaseUrl,
-      onRetryFailed: onRetryFailed,
+      highlightQuery: widget.highlightQuery,
+      agentAvatarUrl: widget.agentAvatarUrl,
+      userAvatarUrl: widget.userAvatarUrl,
+      incomingAvatarUrl: widget.incomingAvatarUrl,
+      outgoingAvatarUrl: widget.outgoingAvatarUrl,
+      incomingAvatarLabel: widget.incomingAvatarLabel,
+      outgoingAvatarLabel: widget.outgoingAvatarLabel,
+      onComponentCardTap: widget.onComponentCardTap,
+      onAchievementTap: widget.onAchievementTap,
+      onResolveMusicTrack: widget.onResolveMusicTrack,
+      onMusicCardActivated: widget.onMusicCardActivated,
+      onMusicPrevious: widget.onMusicPrevious,
+      onMusicNext: widget.onMusicNext,
+      onMusicFavorite: widget.onMusicFavorite,
+      onAttachmentTap: widget.onAttachmentTap,
+      activeMusicMessageId: widget.activeMusicMessageId,
+      musicCardPositions: widget.musicCardPositions,
+      favoriteMusicTrackIds: widget.favoriteMusicTrackIds,
+      busyMusicFavoriteIds: widget.busyMusicFavoriteIds,
+      canGoMusicPrevious: widget.canGoMusicPrevious,
+      isMusicBusy: widget.isMusicBusy,
+      trackPlaybackUpdates: widget.trackPlaybackUpdates,
+      authToken: widget.authToken,
+      apiBaseUrl: widget.apiBaseUrl,
+      onRetryFailed: widget.onRetryFailed,
     );
-    if (isHighlightTarget && highlightMessageKey != null) {
-      row = KeyedSubtree(key: highlightMessageKey, child: row);
-    } else if (message.id == stationMessageId && stationMessageKey != null) {
-      row = KeyedSubtree(key: stationMessageKey, child: row);
+    if (isHighlightTarget && widget.highlightMessageKey != null) {
+      row = KeyedSubtree(key: widget.highlightMessageKey, child: row);
+    } else if (message.id == widget.stationMessageId &&
+        widget.stationMessageKey != null) {
+      row = KeyedSubtree(key: widget.stationMessageKey, child: row);
+    }
+    if (slot != null) {
+      // Keep the row/entrance/size state (and avatar) mounted across replacement.
+      // Content changes immediately; only the extra space for a longer reply
+      // interpolates. Clip.none preserves the full bubble and its shadow.
+      row = AnimatedSize(
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : MessageEntrance.duration,
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        clipBehavior: Clip.none,
+        child: row,
+      );
     }
     return RepaintBoundary(
-      key: ValueKey(ChatScrollPolicy.messageKey(message.id)),
-      child: row,
+      key: ValueKey(ChatScrollPolicy.messageKey(slot ?? identity)),
+      child: MessageEntrance(
+        animate: typing ? _atNewest : widget.enteringKeys.remove(identity),
+        settle: _settle,
+        child: row,
+      ),
     );
   }
 }
@@ -254,6 +396,7 @@ class _ChatMessageChildDelegate extends SliverChildBuilderDelegate {
 class _MessageRow extends StatelessWidget {
   const _MessageRow({
     required this.message,
+    this.typing = false,
     this.highlighted = false,
     this.highlightQuery,
     required this.onComponentCardTap,
@@ -283,6 +426,7 @@ class _MessageRow extends StatelessWidget {
   });
 
   final ChatMessage message;
+  final bool typing;
 
   /// True for exactly the one message a search-result tap just jumped to —
   /// gives its own [highlightQuery] matches a background highlight via
@@ -360,6 +504,7 @@ class _MessageRow extends StatelessWidget {
           if (!message.isMine) ...[avatar, const SizedBox(width: _avatarGap)],
           _Bubble(
             message: message,
+            typing: typing,
             highlighted: highlighted,
             highlightQuery: highlightQuery,
             segment: segment,
@@ -682,6 +827,7 @@ class _OfferingReceivedTimelineRow extends StatelessWidget {
 class _Bubble extends StatelessWidget {
   const _Bubble({
     required this.message,
+    this.typing = false,
     this.highlighted = false,
     this.highlightQuery,
     this.segment = _BubbleSegment.all,
@@ -707,6 +853,7 @@ class _Bubble extends StatelessWidget {
   });
 
   final ChatMessage message;
+  final bool typing;
   final bool highlighted;
   final String? highlightQuery;
   final _BubbleSegment segment;
@@ -775,99 +922,109 @@ class _Bubble extends StatelessWidget {
           ? CrossAxisAlignment.end
           : CrossAxisAlignment.start,
       children: [
-        if (includeText &&
-            showTextWithCard &&
-            segment != _BubbleSegment.all) ...[
-          _MessageTextBubble(
-            message: message,
-            highlighted: highlighted,
-            highlightQuery: highlightQuery,
-          ),
-        ] else if (includeText &&
-            showTextWithCard &&
-            segment == _BubbleSegment.all) ...[
-          _MessageTextBubble(
-            message: message,
-            highlighted: highlighted,
-            highlightQuery: highlightQuery,
-          ),
-          const SizedBox(height: 8),
-        ],
-        if (message.isVoiceTranscriptionPending &&
-            segment != _BubbleSegment.cardOnly)
-          const _VoiceTranscriptionPendingBubble()
-        else if (message.isVoiceUploadPending &&
-            segment != _BubbleSegment.cardOnly)
-          _VoiceUploadPendingBubble(
-            durationSeconds: message.voicePendingDurationSeconds ?? 1,
+        if (typing)
+          Semantics(
+            key: const ValueKey('chat-peer-typing'),
+            label: '对方正在输入',
+            liveRegion: true,
+            child: const _TypingBubble(),
           )
-        else if (includeCard)
-          _ComponentCardBubble(
-            card: componentCard,
-            isMine: message.isMine,
-            onTap: () {
-              if (componentCard.type == 'music_track') {
-                onMusicCardActivated(componentCard, message.id);
-              }
-              onComponentCardTap(componentCard);
-            },
-            onResolveMusicTrack: onResolveMusicTrack,
-            onMusicCardActivated: () =>
-                onMusicCardActivated(componentCard, message.id),
-            onMusicPrevious: () {
-              onMusicCardActivated(componentCard, message.id);
-              onMusicPrevious();
-            },
-            onMusicNext: () {
-              onMusicCardActivated(componentCard, message.id);
-              onMusicNext();
-            },
-            onMusicFavorite: onMusicFavorite,
-            isActiveMusicCard: activeMusicMessageId == message.id,
-            initialMusicPosition:
-                musicCardPositions[message.id] ?? Duration.zero,
-            favoriteMusicTrackIds: favoriteMusicTrackIds,
-            busyMusicFavoriteIds: busyMusicFavoriteIds,
-            canGoMusicPrevious:
-                activeMusicMessageId == message.id && canGoMusicPrevious,
-            isMusicBusy: isMusicBusy,
-            trackPlaybackUpdates: trackPlaybackUpdates,
-            authToken: authToken,
-            apiBaseUrl: apiBaseUrl,
-          )
-        else if (audioAttachment != null && segment != _BubbleSegment.cardOnly)
-          _VoiceMessageBubble(
-            attachment: audioAttachment,
-            isMine: message.isMine,
-            transcript: message.isMine ? null : message.content,
-            authToken: authToken,
-            apiBaseUrl: apiBaseUrl,
-          )
-        else if (imageAttachments.isNotEmpty &&
-            segment != _BubbleSegment.cardOnly) ...[
-          _ImageAttachmentBubble(
-            attachments: imageAttachments,
-            isMine: message.isMine,
-            authToken: authToken,
-            onTap: onAttachmentTap,
-            recognized: message.offlineRecognized,
-          ),
-          if (showTextWithAttachments) ...[
-            const SizedBox(height: 8),
+        else ...[
+          if (includeText &&
+              showTextWithCard &&
+              segment != _BubbleSegment.all) ...[
             _MessageTextBubble(
               message: message,
               highlighted: highlighted,
               highlightQuery: highlightQuery,
             ),
+          ] else if (includeText &&
+              showTextWithCard &&
+              segment == _BubbleSegment.all) ...[
+            _MessageTextBubble(
+              message: message,
+              highlighted: highlighted,
+              highlightQuery: highlightQuery,
+            ),
+            const SizedBox(height: 8),
           ],
-        ] else if (includeText &&
-            segment != _BubbleSegment.cardOnly &&
-            !showTextWithCard)
-          _MessageTextBubble(
-            message: message,
-            highlighted: highlighted,
-            highlightQuery: highlightQuery,
-          ),
+          if (message.isVoiceTranscriptionPending &&
+              segment != _BubbleSegment.cardOnly)
+            const _VoiceTranscriptionPendingBubble()
+          else if (message.isVoiceUploadPending &&
+              segment != _BubbleSegment.cardOnly)
+            _VoiceUploadPendingBubble(
+              durationSeconds: message.voicePendingDurationSeconds ?? 1,
+            )
+          else if (includeCard)
+            _ComponentCardBubble(
+              card: componentCard,
+              isMine: message.isMine,
+              onTap: () {
+                if (componentCard.type == 'music_track') {
+                  onMusicCardActivated(componentCard, message.id);
+                }
+                onComponentCardTap(componentCard);
+              },
+              onResolveMusicTrack: onResolveMusicTrack,
+              onMusicCardActivated: () =>
+                  onMusicCardActivated(componentCard, message.id),
+              onMusicPrevious: () {
+                onMusicCardActivated(componentCard, message.id);
+                onMusicPrevious();
+              },
+              onMusicNext: () {
+                onMusicCardActivated(componentCard, message.id);
+                onMusicNext();
+              },
+              onMusicFavorite: onMusicFavorite,
+              isActiveMusicCard: activeMusicMessageId == message.id,
+              initialMusicPosition:
+                  musicCardPositions[message.id] ?? Duration.zero,
+              favoriteMusicTrackIds: favoriteMusicTrackIds,
+              busyMusicFavoriteIds: busyMusicFavoriteIds,
+              canGoMusicPrevious:
+                  activeMusicMessageId == message.id && canGoMusicPrevious,
+              isMusicBusy: isMusicBusy,
+              trackPlaybackUpdates: trackPlaybackUpdates,
+              authToken: authToken,
+              apiBaseUrl: apiBaseUrl,
+            )
+          else if (audioAttachment != null &&
+              segment != _BubbleSegment.cardOnly)
+            _VoiceMessageBubble(
+              attachment: audioAttachment,
+              isMine: message.isMine,
+              transcript: message.isMine ? null : message.content,
+              authToken: authToken,
+              apiBaseUrl: apiBaseUrl,
+            )
+          else if (imageAttachments.isNotEmpty &&
+              segment != _BubbleSegment.cardOnly) ...[
+            _ImageAttachmentBubble(
+              attachments: imageAttachments,
+              isMine: message.isMine,
+              authToken: authToken,
+              onTap: onAttachmentTap,
+              recognized: message.offlineRecognized,
+            ),
+            if (showTextWithAttachments) ...[
+              const SizedBox(height: 8),
+              _MessageTextBubble(
+                message: message,
+                highlighted: highlighted,
+                highlightQuery: highlightQuery,
+              ),
+            ],
+          ] else if (includeText &&
+              segment != _BubbleSegment.cardOnly &&
+              !showTextWithCard)
+            _MessageTextBubble(
+              message: message,
+              highlighted: highlighted,
+              highlightQuery: highlightQuery,
+            ),
+        ],
       ],
     );
 
@@ -901,9 +1058,12 @@ class _Bubble extends StatelessWidget {
             bubbleColumn,
           if (showTimestamp) ...[
             const SizedBox(height: 3),
-            Text(
-              _formatTime(message.createdAt),
-              style: TextStyle(color: AppColors.muted, fontSize: 10),
+            Opacity(
+              opacity: typing ? 0 : 1,
+              child: Text(
+                _formatTime(message.createdAt),
+                style: TextStyle(color: AppColors.muted, fontSize: 10),
+              ),
             ),
           ],
         ],
@@ -958,35 +1118,6 @@ class _SendStatusIndicator extends StatelessWidget {
   }
 }
 
-/// "Agent is typing" row — an AI-styled bubble with three animated dots.
-/// Mirrors the H5 typing indicator (ChatView `.m-typing`), refined for native.
-class _TypingIndicatorRow extends StatelessWidget {
-  const _TypingIndicatorRow({this.agentAvatarUrl, this.avatarLabel = '伴'});
-
-  final String? agentAvatarUrl;
-  final String avatarLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _Avatar(
-            size: 40,
-            label: avatarLabel,
-            imageUrl: agentAvatarUrl,
-            gradient: const [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
-          ),
-          const SizedBox(width: 10),
-          const _TypingBubble(),
-        ],
-      ),
-    );
-  }
-}
-
 class _TypingBubble extends StatefulWidget {
   const _TypingBubble();
 
@@ -1031,55 +1162,55 @@ class _TypingBubbleState extends State<_TypingBubble>
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      label: '对方正在输入',
-      liveRegion: true,
-      child: DecoratedBox(
-        decoration: _chatBubbleDecoration(context, isMine: false),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: SizedBox(
-            height: 8,
-            child: AnimatedBuilder(
-              animation: _controller,
-              builder: (context, _) {
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: List.generate(3, (i) {
-                    final phase = (_controller.value - i * 0.16) % 1.0;
-                    final wave = _wave(phase);
-                    return Padding(
-                      padding: EdgeInsets.only(right: i == 2 ? 0 : 6),
-                      child: Transform.translate(
-                        offset: Offset(0, -5 * wave),
-                        child: Transform.scale(
-                          scale: 0.7 + 0.3 * wave,
-                          child: Opacity(
-                            opacity: 0.35 + 0.65 * wave,
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                // Brand green gradient (same family as the
-                                // composer accents), not the global blue.
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [Color(0xFF24D7D3), chatVoiceAccent],
-                                ),
-                              ),
+    final measure = TextPainter(
+      text: TextSpan(text: '…', style: _chatMessageTextStyle(false)),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    );
+    final lineHeight = measure.preferredLineHeight;
+    measure.dispose();
+    return _MessageBubbleSurface(
+      isMine: false,
+      child: SizedBox(
+        height: lineHeight,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: List.generate(3, (i) {
+                final phase = (_controller.value - i * 0.16) % 1.0;
+                final wave = _wave(phase);
+                return Padding(
+                  padding: EdgeInsets.only(right: i == 2 ? 0 : 6),
+                  child: Transform.translate(
+                    offset: Offset(0, -5 * wave),
+                    child: Transform.scale(
+                      scale: 0.7 + 0.3 * wave,
+                      child: Opacity(
+                        opacity: 0.35 + 0.65 * wave,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            // Brand green gradient (same family as the
+                            // composer accents), not the global blue.
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [Color(0xFF24D7D3), chatVoiceAccent],
                             ),
                           ),
                         ),
                       ),
-                    );
-                  }),
+                    ),
+                  ),
                 );
-              },
-            ),
-          ),
+              }),
+            );
+          },
         ),
       ),
     );
