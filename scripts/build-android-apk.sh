@@ -2,7 +2,7 @@
 # Release APK counterpart of build-testflight.sh.
 # Version comes from the same pubspec.yaml line both stores ship
 # (`0.5.0+3` → versionName + versionCode). Output is copied to
-#   build/android/bansheng-prod-0.5.0+3.apk
+#   build/android/bansheng-0.5.0+3.apk (prod release)
 #
 # Default flavor is prod: WeChat Android only allows one package name, and
 # that must be com.bansheng.prod (same as the store). Flavor dev still
@@ -261,8 +261,10 @@ if [[ ! "$build_number" =~ ^[0-9]+$ ]]; then
 fi
 
 selected_version="$build_name+$build_number"
-if [[ "$BUILD_MODE" == "release" ]]; then
-  output_name="bansheng-${FLAVOR}-${build_name}+${build_number}.apk"
+if [[ "$BUILD_MODE" == "release" && "$FLAVOR" == "prod" ]]; then
+  output_name="bansheng-${selected_version}.apk"
+elif [[ "$BUILD_MODE" == "release" ]]; then
+  output_name="bansheng-${FLAVOR}-${selected_version}.apk"
 else
   output_name="bansheng-${FLAVOR}-${build_name}+${build_number}-${BUILD_MODE}.apk"
 fi
