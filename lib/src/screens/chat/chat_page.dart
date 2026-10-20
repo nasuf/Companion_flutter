@@ -59,8 +59,8 @@ class ChatPage extends StatefulWidget {
   final ValueChanged<VoiceRecordingOverlaySnapshot?>?
   onVoiceRecordingOverlayChanged;
 
-  /// Reports whether the emoji / more panel or the IME is docking the bottom
-  /// strip, so the shell can hide the floating tab bar.
+  /// Reports whether a painted emoji / more panel occupies the bottom strip.
+  /// The native keyboard covers the floating tab bar without hiding it.
   final ValueChanged<bool>? onComposerPanelChanged;
 
   /// Shell-level navigation after offline check-in arrive (pop routes + chat tab).
@@ -4019,14 +4019,15 @@ class _ChatPageState extends State<ChatPage>
     callback?.call(snapshot);
   }
 
-  /// Mirrors docked chrome (emoji/more panel or IME) to the shell so the
-  /// floating tab bar slides away. Called from build, so the actual
+  /// Only painted composer panels hide the floating tab bar. The native IME
+  /// covers the fixed bar itself; hiding it here would replay its entrance
+  /// after the keyboard closes. Held occupancy is only for transcript layout.
+  /// Called from build, so the actual
   /// notification is deferred to after the frame: flipping parent state
   /// mid-build is not allowed.
   void _syncComposerDockVisibility({required bool panelVisible}) {
     final hideTabBar = ChatScrollPolicy.hideFloatingTabBar(
       panelDocked: panelVisible,
-      imeDocked: _imeDockActive || _inputFocus.hasFocus,
     );
     if (_notifiedComposerPanelVisible == hideTabBar) return;
     _notifiedComposerPanelVisible = hideTabBar;
@@ -4040,10 +4041,7 @@ class _ChatPageState extends State<ChatPage>
   void _setImeDockActive(bool value) {
     if (_imeDockActive == value) return;
     _imeDockActive = value;
-    _syncComposerDockVisibility(
-      panelVisible:
-          _panel != ComposerPanel.none || _heldPanel != ComposerPanel.none,
-    );
+    _syncComposerDockVisibility(panelVisible: _panel != ComposerPanel.none);
   }
 
   void _handleInputFocusChanged() {
@@ -4055,7 +4053,7 @@ class _ChatPageState extends State<ChatPage>
   }
 
   /// IME inset has returned to 0 and the field is unfocused. Drop held-panel
-  /// occupancy (Path B) and bring the tab bar back unless a panel is still up.
+  /// occupancy (Path B). The tab bar stays fixed throughout the IME motion.
   void _onImeFullyClosed() {
     if (!mounted) return;
     if (_inputFocus.hasFocus) return;
@@ -4917,7 +4915,6 @@ class _ChatPageState extends State<ChatPage>
     final panelChanged = _panel != ComposerPanel.none;
     _panel = ComposerPanel.none;
     _heldPanel = panelToHold;
-    // Hide the tab bar on this frame, matching the already-open-panel path.
     // Keep [_heldPanel] occupancy until IME inset is gone so restLift cannot
     // jump while the keyboard is covering that height. Do not paint it —
     // the sheet itself must dismiss before (or as) the IME comes up.

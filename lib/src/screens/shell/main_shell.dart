@@ -517,9 +517,8 @@ class _MainShellState extends State<MainShell> with RouteAware {
       MediaQuery.sizeOf(context).width - 54.0,
     );
     final voiceRecordingActive = _voiceRecordingOverlay != null;
-    // The chat composer panel and the IME both dock to the screen bottom,
-    // so the floating tab bar slides away while either is up and returns
-    // when the dock is gone.
+    // Custom composer panels slide the bar away. The native keyboard covers
+    // the bar in place, so closing it reveals the bar without a second motion.
     final activeAchievement = _activeAchievement;
     final hideTabBar =
         activeAchievement != null ||
