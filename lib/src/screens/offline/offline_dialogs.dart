@@ -178,7 +178,7 @@ Future<bool> showOfflineArchiveConfirm(BuildContext context) async {
   return result ?? false;
 }
 
-/// 查看位置（spec §5.4-9）：底部玻璃 sheet，展示完整地址 + 复制 + 唤起导航。
+/// 查看位置（spec §5.4-9）：底部玻璃 sheet，展示完整地址 + 复制 + 路线规划。
 Future<void> showOfflineLocationSheet(
   BuildContext context, {
   required String name,
@@ -270,6 +270,7 @@ Future<void> showOfflineLocationSheet(
                       await _openOfflineMapQuery(
                         context,
                         display,
+                        destinationName: name,
                         latitude: latitude,
                         longitude: longitude,
                         coordinateSystem: coordinateSystem,
@@ -289,16 +290,17 @@ Future<void> showOfflineLocationSheet(
 Future<void> _openOfflineMapQuery(
   BuildContext context,
   String query, {
+  required String destinationName,
   double? latitude,
   double? longitude,
   String coordinateSystem = 'gcj02',
 }) async {
   final q = Uri.encodeComponent(query);
+  final destination = Uri.encodeComponent(destinationName);
   final src = Uri.encodeComponent('伴生');
   final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
 
-  // 高德 URI 的导航 action 需要目的地坐标（没有坐标时 iosamap://search 之类会被高德判
-  // 「版本不支持该功能」）。用系统地理编码把地址解析成坐标——免费、无需高德 key。国内
+  // 路线规划优先使用活动坐标；旧活动缺少坐标时，尝试系统地理编码，无需高德 key。国内
   // Apple CLGeocoder 返回 GCJ-02，与高德同坐标系，故 dev=0 不再二次偏移。
   double? lat = latitude;
   double? lon = longitude;
@@ -316,17 +318,18 @@ Future<void> _openOfflineMapQuery(
     }
   }
 
-  // 1) 有坐标 → 唤起高德 App 导航（iOS 需 Info.plist 声明 iosamap；
-  //    Android 11+ 需 manifest <queries> androidamap，否则 canLaunchUrl 返回 false）。
+  // 1) 打开路线规划，由用户选择出行方式并开始导航；不要使用直接导航的 navi action。
+  //    省略起点，让高德使用当前位置。t=0 为初始驾车方案，规划页仍可切换出行方式。
+  //    iOS 需声明 iosamap；Android 11+ 需声明 amapuri/package 查询权限。
   if (lat != null && lon != null) {
     final amap = Uri.parse(
       isIOS
-          ? 'iosamap://navi?sourceApplication=$src&poiname=$q&lat=$lat&lon=$lon&dev=${coordinateSystem == 'wgs84' ? 1 : 0}&style=2'
-          : 'androidamap://navi?sourceApplication=$src&poiname=$q&lat=$lat&lon=$lon&dev=${coordinateSystem == 'wgs84' ? 1 : 0}&style=2',
+          ? 'iosamap://path?sourceApplication=$src&dname=$destination&dlat=$lat&dlon=$lon&dev=${coordinateSystem == 'wgs84' ? 1 : 0}&t=0&m=0'
+          : 'amapuri://route/plan/?sourceApplication=$src&dname=$destination&dlat=$lat&dlon=$lon&dev=${coordinateSystem == 'wgs84' ? 1 : 0}&t=0&m=0',
     );
     try {
-      if (await canLaunchUrl(amap)) {
-        await launchUrl(amap, mode: LaunchMode.externalApplication);
+      if (await canLaunchUrl(amap) &&
+          await launchUrl(amap, mode: LaunchMode.externalApplication)) {
         return;
       }
     } catch (_) {
@@ -340,7 +343,13 @@ Future<void> _openOfflineMapQuery(
       ? Uri.parse('http://maps.apple.com/?q=$q')
       : Uri.parse('geo:0,0?q=$q');
   try {
-    await launchUrl(system, mode: LaunchMode.externalApplication);
+    final opened = await launchUrl(
+      system,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && context.mounted) {
+      _showActivityToast(context, '没有可用的地图应用');
+    }
   } catch (_) {
     if (context.mounted) _showActivityToast(context, '没有可用的地图应用');
   }

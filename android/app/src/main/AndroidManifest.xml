@@ -67,10 +67,10 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
-        <!-- 唤起高德地图 App（androidamap://）+ 系统地图兜底（geo:）-->
+        <!-- 高德路线规划（amapuri://）+ 系统地图兜底（geo:）-->
         <intent>
             <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="androidamap" />
+            <data android:scheme="amapuri" />
         </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />
