@@ -180,7 +180,7 @@ prompt_for_flavor
 resolve_flavor
 
 # Release is the sideload default. BUILD_MODE=debug remains an escape hatch
-# for a larger, slower package that matches `flutter run`.
+# for a larger package signed with the debug certificate.
 BUILD_MODE="${BUILD_MODE:-release}"
 case "$BUILD_MODE" in
   debug | release) ;;

@@ -5,10 +5,11 @@ cd "$(dirname "$0")/.."
 
 ANDROID_DEVICE_ID="${ANDROID_DEVICE_ID:-}"
 # WeChat's Android app accepts one package name. Use prod (com.bansheng.prod)
-# so debug `flutter run` matches the store package + backup debug signature.
+# and default to release so the configured release certificate is used.
 FLAVOR="${FLAVOR:-prod}"
 DEV_API_BASE_URL="${DEV_API_BASE_URL:-https://banshengcomp.com/api}"
-FLUTTER_RUN_MODE="${FLUTTER_RUN_MODE:-debug}"
+# Opt into hot reload with FLUTTER_RUN_MODE=debug (uses the debug certificate).
+FLUTTER_RUN_MODE="${FLUTTER_RUN_MODE:-release}"
 
 case "$FLAVOR" in
   dev|prod) ;;
