@@ -522,7 +522,7 @@ class _MessageRow extends StatelessWidget {
       userAvatarUrl: userAvatarUrl,
     );
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: message.isMine
@@ -644,7 +644,7 @@ class _ThoughtFragmentRow extends StatelessWidget {
     // 跟普通 AI 气泡完全同位：外层 SliverList 已给左右各 12 的水平内边距，这里只补
     // 与普通气泡一致的垂直间距，不再额外加水平内边距（否则会比普通消息多缩进一截）。
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
