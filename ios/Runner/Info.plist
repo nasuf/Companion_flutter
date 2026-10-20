@@ -8,6 +8,13 @@
 	<string>$(APS_ENVIRONMENT)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<!-- 声明支持的语言: 系统组件 (相机确认页「重拍/使用照片」、相册、分享面板等)
+	     按这里与用户系统语言取交集; 不声明中文时它们一律显示英文。 -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>zh-Hans</string>
+		<string>en</string>
+	</array>
 	<key>CFBundleDisplayName</key>
 	<string>伴生$(APP_NAME_SUFFIX)</string>
 	<key>CFBundleExecutable</key>
