@@ -1,4 +1,4 @@
-"""Exercise the real Bash publisher with isolated SDK/SSH/SCP/HTTPS tools."""
+"""Exercise the real Bash publisher with isolated SDK/SSH/SCP tools."""
 import hashlib
 from contextlib import redirect_stdout
 import io
@@ -21,7 +21,7 @@ CERT = '9d9845f19d19dd953edcd1ddd08628a9e5374f1dad12c40df86e61c48243a658'
 STAGE = '/mnt/datadisk0/companion/downloads/.android-upload-fixture123'
 
 TOOLS = r'''#!/usr/bin/env python3
-import hashlib, json, os, shlex, shutil, sys
+import hashlib, json, os, shlex, shutil, sys, time
 from pathlib import Path
 root = Path(os.environ['PUBLISH_FIXTURE_ROOT'])
 tool, args = Path(sys.argv[0]).name, sys.argv[1:]
@@ -52,46 +52,32 @@ elif tool == 'ssh':
         assert payload['stage'] == os.environ['STAGE']
         assert hashlib.sha256((root / 'upload.apk').read_bytes()).hexdigest() == payload['sha256']
         if enabled('FAIL_PUBLISH'): sys.exit(28)
-        print(json.dumps({'path': '/mnt/datadisk0/companion/downloads/android/' + payload['name']}))
+        print(json.dumps({'path': '/mnt/datadisk0/companion/downloads/android/' + payload['name'],
+                          'sha256': '0'*64 if enabled('WRONG_SERVER_HASH') else payload['sha256']}))
     elif action == 'activate':
         if enabled('FAIL_ACTIVATE'): sys.exit(31)
         (root / 'activated.json').write_text(json.dumps(payload['release']))
-        print(json.dumps(payload['release']))
+        response = dict(payload['release'])
+        if enabled('WRONG_ACTIVATION'): response['sha256'] = '0'*64
+        print(json.dumps(response))
     elif action == 'cleanup':
         (root / 'cleaned').write_text(payload['stage'])
         if enabled('FAIL_CLEANUP'): sys.exit(32)
         print('{"cleaned":true}')
     else: raise RuntimeError(action)
 elif tool == 'scp':
+    assert os.isatty(2) and os.tcgetpgrp(2) == os.getpgrp(), 'SCP needs a foreground terminal for its native progress meter'
+    print('upload.apk 50% 120MiB 3.0MiB/s 00:40 ETA', file=sys.stderr, flush=True)
     source = Path(args[-2])
     if enabled('FAIL_UPLOAD') or (enabled('FAIL_QR_UPLOAD') and source.name == 'qr.svg'): sys.exit(29)
+    if enabled('SLOW_UPLOAD') and source.name == 'upload.apk': time.sleep(11)
     assert args[-1].split(':', 1)[1].startswith(os.environ['STAGE'] + '/')
     shutil.copyfile(source, root / source.name)
+    if enabled('CORRUPT_UPLOAD') and source.name == 'upload.apk': (root / source.name).write_bytes(b'corrupted transfer')
     if enabled('CHANGE_SOURCE_ON_UPLOAD'):
         (root / 'lib/main.dart').write_text('source changed during upload')
 elif tool == 'curl':
-    url = args[-1]
-    destination = Path(args[args.index('--output') + 1])
-    if enabled('FAIL_DOWNLOAD'): sys.exit(22)
-    if url.endswith('latest.json'):
-        release = json.loads((root / 'activated.json').read_text())
-        if enabled('WRONG_LATEST'): release['sha256'] = '0' * 64
-        destination.write_text(json.dumps(release))
-        mime = 'application/json; charset=utf-8'
-    elif url.endswith('.sha256'):
-        digest = hashlib.sha256((root / 'upload.apk').read_bytes()).hexdigest()
-        destination.write_text(f'{digest}  bansheng-0.6.1+8.apk\n' if not enabled('WRONG_CHECKSUM') else 'wrong checksum')
-        mime = 'text/plain; charset=utf-8'
-    elif url.endswith('.svg'):
-        destination.write_bytes(b'corrupt QR' if enabled('CORRUPT_QR') else (root / 'qr.svg').read_bytes())
-        mime = 'image/svg+xml'
-    else:
-        corrupt = enabled('CORRUPT_APK') or (enabled('CORRUPT_STABLE') and url.endswith('/bansheng-latest.apk'))
-        destination.write_bytes(b'corrupt APK' if corrupt else (root / 'upload.apk').read_bytes())
-        mime = 'text/html' if enabled('WRONG_MIME') else 'application/vnd.android.package-archive'
-        if enabled('CHANGE_SOURCE_ON_DOWNLOAD'):
-            (root / 'lib/main.dart').write_text('source changed before release activation')
-    print(('404' if enabled('WRONG_STATUS') else '200') + '\n' + mime, end='')
+    raise RuntimeError('Publisher must not perform any download verification')
 else: raise RuntimeError(tool)
 '''
 
@@ -139,7 +125,8 @@ class ShellPublisherTests(unittest.TestCase):
                        PUBLISH_FIXTURE_ROOT=str(root), CERT=CERT, STAGE=STAGE,
                        TMPDIR=str(root / 'temporary files'), ANDROID_HOME=str(sdk),
                        APK_SSH_HOST='ubuntu@example.invalid', APK_SSH_KEY=str(key),
-                       APK_PUBLIC_BASE_URL="https://example.invalid/a'b/downloads/android")
+                       APK_PUBLIC_BASE_URL="https://example.invalid/a'b/downloads/android",
+                       APK_PUBLISH_TOOLS_DIR=str(root / 'build/android/.publish-venv'))
             env.update(options)
             result = subprocess.run(['/bin/bash', str(root / 'scripts/publish-android-apk.sh'),
                                      *([] if use_default else [str(apk)]), *extra], cwd=directory, env=env,
@@ -168,6 +155,15 @@ class ShellPublisherTests(unittest.TestCase):
         sdk_calls = [call for call in calls if call[0] in ('aapt', 'apksigner')]
         self.assertEqual(len(sdk_calls), 2)
         self.assertEqual(receipt['certificate_sha256'], CERT)
+        self.assertFalse(receipt['download_verified'])
+        self.assertEqual(receipt['verification_scope'], 'server_files')
+        self.assertFalse(any(call[0] == 'curl' for call in calls))
+        self.assertIn('50%', result.stderr)
+        self.assertIn('MiB/s', result.stderr)
+        self.assertIn('ETA', result.stderr)
+        positions = [result.stderr.index(f'[{n}/7]') for n in range(1, 8)]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn('耗时', result.stdout)
         # Match the legacy encoder byte for byte: existing published QR is immutable.
         import qrcode
         from qrcode.image.svg import SvgPathFillImage
@@ -178,6 +174,15 @@ class ShellPublisherTests(unittest.TestCase):
         stream = io.BytesIO()
         expected.make_image(image_factory=SvgPathFillImage).save(stream)
         self.assertEqual(qr, stream.getvalue())
+
+    def test_slow_upload_reports_elapsed_time_without_downloading(self):
+        result, actions, calls, receipt, _ = self.fixture(SLOW_UPLOAD='1')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('仍在处理，已用 10 秒', result.stderr)
+        self.assertIn('50%', result.stderr)
+        self.assertEqual([a[0] for a in actions], ['prepare', 'publish', 'activate', 'cleanup'])
+        self.assertFalse(any(call[0] == 'curl' for call in calls))
+        self.assertFalse(receipt['download_verified'])
 
     def test_invalid_package_signing_filename_or_provenance_never_contacts_server(self):
         for option, reason in (('FOREIGN_PACKAGE', 'com.bansheng.prod'), ('DEBUG_APK', 'Debuggable'),
@@ -204,9 +209,8 @@ class ShellPublisherTests(unittest.TestCase):
                 self.assertIsNone(receipt)
 
     def test_failures_clean_own_staging_and_never_activate_unverified_release(self):
-        for option in ('FAIL_UPLOAD', 'FAIL_QR_UPLOAD', 'FAIL_PUBLISH', 'FAIL_DOWNLOAD', 'WRONG_STATUS',
-                       'WRONG_MIME', 'WRONG_CHECKSUM', 'CORRUPT_APK', 'CORRUPT_QR',
-                       'CHANGE_SOURCE_ON_UPLOAD', 'CHANGE_SOURCE_ON_DOWNLOAD'):
+        for option in ('FAIL_UPLOAD', 'FAIL_QR_UPLOAD', 'FAIL_PUBLISH', 'CORRUPT_UPLOAD',
+                       'WRONG_SERVER_HASH', 'CHANGE_SOURCE_ON_UPLOAD'):
             with self.subTest(option=option):
                 result, actions, _, receipt, _ = self.fixture(**{option: '1'})
                 self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -216,8 +220,8 @@ class ShellPublisherTests(unittest.TestCase):
                 self.assertNotIn('activate', names)
                 self.assertIsNone(receipt)
 
-    def test_activation_and_post_activation_failures_do_not_write_success_receipt(self):
-        for option in ('FAIL_ACTIVATE', 'WRONG_LATEST', 'CORRUPT_STABLE'):
+    def test_activation_failures_do_not_write_success_receipt(self):
+        for option in ('FAIL_ACTIVATE', 'WRONG_ACTIVATION'):
             with self.subTest(option=option):
                 result, actions, _, receipt, _ = self.fixture(**{option: '1'})
                 self.assertNotEqual(result.returncode, 0)

@@ -77,18 +77,29 @@ python3 scripts/verify_android_aot.py build/app/outputs/flutter-apk/app-prod-rel
 以后发布新版无需替换二维码，已保存或打印的这张固定二维码继续下载最新版本。
 历史版本二维码仍保留其原有含义；迁移前已分发的版本二维码需要换成新的固定二维码一次。
 QR 编码由本地固定版本 `qrcode==8.2` 生成，不使用第三方二维码服务。
-首次运行发布脚本会自动在 `build/android/.publish-venv` 准备小型 Python 工具环境。
+首次运行发布脚本会自动准备小型 Python 工具环境，默认保存在
+`${XDG_CACHE_HOME:-$HOME/.cache}/companion/apk-publish/<仓库路径哈希>`，
+后续发布复用，不再被 `flutter clean` 删除。可通过 `APK_PUBLISH_TOOLS_DIR` 指定缓存目录。
 
-只有公网完整下载的 SHA-256、HTTP 状态、APK MIME、二维码和校验文件都通过，才切换
-`/downloads/android/latest.json` 并打印成功，
-并写入本地 `build/android/bansheng-<version>.apk.publish.json` 验证记录。
+发布分为 7 个阶段，依次显示来源/签名校验、准备工具、上传 APK、上传二维码、服务器校验、
+更新下载入口和保存记录。每个阶段显示累计耗时；上传使用 SCP 的实际进度，显示百分比、
+传输速率和预计剩余时间，长时间等待每 10 秒提示一次已用时间。
+
+服务器校验 APK 大小、APK/二维码 SHA-256，并在发布锁内切换
+`/downloads/android/latest.json`；脚本核对 SSH 返回的激活结果后打印成功，
+并写入本地 `build/android/bansheng-<version>.apk.publish.json` 发布记录。
+脚本不再自动下载公网 APK、二维码或元数据，也不检查公网 HTTP 状态和 MIME，
+避免发布时额外完整下载两次 APK；公网下载由发布者手动测试。
+记录明确包含 `verification_scope: "server_files"` 和 `download_verified: false`，
+其中 `verified_at` 只代表服务器文件校验时间。
 控制台同时打印版本 APK 地址、固定下载地址、二维码图片地址和可直接扫描的字符二维码；本地也保留 SVG。
 Web 首页读取同一份 latest.json，下载按钮显示当前版本，二维码图片和编码内容保持不变。
 版本化 APK 保持不可变；验证通过后，在发布锁内原子替换固定下载入口的相对符号链接，
 再原子替换 latest.json；旧版本不能覆盖最新入口。固定入口直接提供 APK（无需跳转），
 支持 HEAD 和断点续传，使用 no-store、关闭 ETag/修改时间条件缓存及 open_file_cache，
 避免沿用上个版本。日常发布无需 Nginx reload。
-失败时脚本非零退出，删除自身暂存目录；已发布的不可变版本不会因下载验证失败被删除。
+失败时脚本非零退出并尝试删除自身暂存目录；清理失败会显示警告。
+已发布的不可变版本不会因后续步骤失败被删除。
 发布脚本不会自动 commit、push 或修改应用版本。
 
 下载链接：
@@ -116,8 +127,8 @@ https://banshengcomp.com/downloads/android/latest.json
 
 SSH 使用已信任的 known_hosts，保持主机校验；新机器先单独核验服务器公钥。
 日常上传不需要 sudo。发布主流程由 `publish-android-apk.sh` 直接执行，原 Python 发布器已移除。
-构建机需要 Bash、Python 3、jq、SSH/SCP、curl、shasum、Android SDK 的 aapt/apksigner。
-Python 仅用于已有构建指纹校验、二维码编码、命令超时监管和远端原子文件操作；发布编排在 Shell 中。
+构建机需要 Bash、Python 3、jq、SSH/SCP、shasum、Android SDK 的 aapt/apksigner。
+Python 仅用于已有构建指纹校验、二维码编码、命令超时/进度监管和远端原子文件操作；发布编排在 Shell 中。
 
 ## 首次 Nginx 配置 / 新服务器恢复
 
@@ -140,7 +151,7 @@ ssh -i ~/.ssh/companion_tencent -o BatchMode=yes -o StrictHostKeyChecking=yes \
 禁止目录列表和写请求，不经过 API 或 Web 构建目录。现有 Web 发布不会覆盖该配置或文件。
 排障时查看脚本错误、发布验证记录及现有 Nginx access/error log，无需独立后台页面。
 
-发布后的检查示例：
+发布后的手动检查示例（需要 curl）：
 
 ```bash
 curl -I 'https://banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk'
@@ -156,5 +167,7 @@ build/android/.publish-venv/bin/python -m pip install -r scripts/requirements-an
 build/android/.publish-venv/bin/python -m unittest discover -s scripts/tests -v
 ```
 
+上面的 `build/android/.publish-venv` 仅是测试环境，与发布器的持久工具缓存独立。
 单元/脚本测试覆盖命名、错误签名、debug/dev 拒绝、上传校验、同版本冲突、数据盘约束、
-私有暂存清理及公网校验失败；真实上传/HTTPS 下载验证由发布脚本完成。
+私有暂存清理、上传进度、等待提示和激活响应不一致；同时确认不会发起公网下载。
+测试使用隔离的 SSH/SCP 替身，不执行真实发布；生产下载由发布者手动验收。

@@ -14,8 +14,10 @@ REMOTE_SCRIPT="$SCRIPT_DIR/publish_android_apk_remote.py"
 RELEASE_CERT_SHA256="9d9845f19d19dd953edcd1ddd08628a9e5374f1dad12c40df86e61c48243a658"
 
 fail() { echo "Publish failed: $*" >&2; exit 1; }
+started_at=$SECONDS
+step() { printf '[%s +%ss] [%s/7] %s\n' "$(date +%H:%M:%S)" "$((SECONDS - started_at))" "$1" "$2" >&2; }
 [[ "$#" -le 1 ]] || { usage >&2; exit 1; }
-for tool in python3 jq ssh scp curl shasum; do
+for tool in python3 jq ssh scp shasum; do
   command -v "$tool" >/dev/null || fail "Required tool not found: $tool"
 done
 
@@ -23,8 +25,33 @@ done
 # publication decisions and network orchestration remain in this shell script.
 run_bounded() {
   python3 -c '
-import os, signal, subprocess, sys
-process = subprocess.Popen(sys.argv[2:], start_new_session=True)
+import fcntl, os, pty, signal, struct, subprocess, sys, termios, threading, time
+limit = float(sys.argv[1])
+progress = sys.argv[2] == "--progress"
+command = sys.argv[3:] if progress else sys.argv[2:]
+master = None
+reader = None
+if progress:
+    master, slave = pty.openpty()
+    try: columns = os.get_terminal_size(2).columns
+    except OSError: columns = 80
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, columns, 0, 0))
+    def attach_terminal():
+        os.setsid()
+        fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+    process = subprocess.Popen(command, stdin=slave, stdout=slave, stderr=slave, preexec_fn=attach_terminal)
+    os.close(slave)
+    def stream_progress():
+        while True:
+            try: data = os.read(master, 65536)
+            except OSError: break
+            if not data: break
+            sys.stderr.buffer.write(data)
+            sys.stderr.buffer.flush()
+    reader = threading.Thread(target=stream_progress, daemon=True)
+    reader.start()
+else:
+    process = subprocess.Popen(command, start_new_session=True)
 def kill_group():
     try: os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError: pass
@@ -34,13 +61,22 @@ def stop(signum, frame):
     sys.exit(128 + signum)
 signal.signal(signal.SIGTERM, stop)
 signal.signal(signal.SIGINT, stop)
-try:
-    status = process.wait(timeout=float(sys.argv[1]))
-except subprocess.TimeoutExpired:
-    kill_group()
-    process.wait()
-    print("Command timed out after " + sys.argv[1] + " seconds", file=sys.stderr)
-    sys.exit(124)
+begin = time.monotonic()
+while True:
+    remaining = limit - (time.monotonic() - begin)
+    if remaining <= 0:
+        kill_group()
+        process.wait()
+        print("Command timed out after " + sys.argv[1] + " seconds", file=sys.stderr)
+        sys.exit(124)
+    try:
+        status = process.wait(timeout=min(10, remaining))
+        break
+    except subprocess.TimeoutExpired:
+        print("\n  仍在处理，已用 " + str(int(time.monotonic() - begin)) + " 秒…", file=sys.stderr, flush=True)
+if reader is not None:
+    reader.join(timeout=1)
+    os.close(master)
 sys.exit(status if status >= 0 else 128 - status)
 ' "$@"
 }
@@ -90,13 +126,18 @@ remote() {
   command="python3 - $(jq -nr --arg action "$action" --arg payload "$payload" '[$action, $payload] | @sh')"
   run_bounded 90 ssh "${ssh_options[@]}" -p "$port" "$host" "$command" < "$REMOTE_SCRIPT"
 }
+cleanup_stage() {
+  if [[ -n "$stage" ]]; then
+    echo "清理本次上传的暂存文件…" >&2
+    remote cleanup "$(jq -cn --arg stage "$stage" '{stage:$stage}')" >/dev/null \
+      || echo "Warning: remote staging cleanup failed." >&2
+    stage=""
+  fi
+}
 cleanup() {
   local status=$?
   trap - EXIT
-  if [[ -n "$stage" ]]; then
-    remote cleanup "$(jq -cn --arg stage "$stage" '{stage:$stage}')" >/dev/null \
-      || echo "Warning: remote staging cleanup failed." >&2
-  fi
+  cleanup_stage
   rm -rf "$work_dir"
   exit "$status"
 }
@@ -105,6 +146,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 snapshot="$work_dir/upload.apk"
+step 1 "校验 APK 来源、版本与签名"
 cp "$apk" "$snapshot"
 verify_snapshot
 
@@ -130,8 +172,13 @@ download_url="$base_url/bansheng-latest.apk"
 qr_name="bansheng-latest.qr.svg"
 qr_url="$base_url/$qr_name"
 
-TOOLS_DIR="$ROOT_DIR/build/android/.publish-venv"
-if [[ ! -x "$TOOLS_DIR/bin/python" ]]; then python3 -m venv "$TOOLS_DIR"; fi
+step 2 "准备二维码与上传目录"
+cache_key="$(printf '%s' "$ROOT_DIR" | shasum -a 256 | awk '{print $1}')"
+TOOLS_DIR="${APK_PUBLISH_TOOLS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/companion/apk-publish/$cache_key}"
+if [[ ! -x "$TOOLS_DIR/bin/python" ]]; then
+  echo "首次准备二维码工具环境…" >&2
+  python3 -m venv "$TOOLS_DIR"
+fi
 if ! "$TOOLS_DIR/bin/python" -c 'from importlib.metadata import version; assert version("qrcode") == "8.2"' 2>/dev/null; then
   run_bounded 300 "$TOOLS_DIR/bin/python" -m pip install --disable-pip-version-check -r "$SCRIPT_DIR/requirements-android-publish.txt"
 fi
@@ -160,33 +207,20 @@ if [[ ! "$stage" =~ ^/mnt/datadisk0/companion/downloads/\.android-upload-[a-zA-Z
   stage=""
   fail "Invalid remote staging path."
 fi
-echo "Uploading to the Tencent data disk…"
-run_bounded 900 scp "${ssh_options[@]}" -P "$port" "$snapshot" "$host:$stage/upload.apk"
-run_bounded 60 scp "${ssh_options[@]}" -P "$port" "$work_dir/qr.svg" "$host:$stage/qr.svg"
+size_mb="$(awk -v bytes="$size" 'BEGIN {printf "%.1f", bytes / 1048576}')"
+step 3 "上传 APK（$size_mb MiB；下方显示百分比、速率与预计剩余时间）"
+run_bounded 900 --progress scp "${ssh_options[@]}" -P "$port" "$snapshot" "$host:$stage/upload.apk"
+step 4 "APK 上传完成，上传二维码"
+run_bounded 60 --progress scp "${ssh_options[@]}" -P "$port" "$work_dir/qr.svg" "$host:$stage/qr.svg"
+step 5 "服务器校验文件大小与 SHA-256，并发布文件"
 verify_snapshot
 remote publish "$(jq -cn --arg stage "$stage" --arg name "$name" --arg sha256 "$digest" \
   --argjson size "$size" --arg qr_sha256 "$qr_digest" \
   '{stage:$stage,name:$name,sha256:$sha256,size:$size,qr_sha256:$qr_sha256}')" > "$work_dir/publish.json"
 remote_path="$(jq -er '.path | strings' "$work_dir/publish.json")"
 [[ "$remote_path" == "/mnt/datadisk0/companion/downloads/android/$name" ]] || fail "Unexpected published APK path."
-
-fetch_file() {
-  local source_url="$1" destination="$2" mime="$3" timeout="$4" response
-  response="$(curl --fail --silent --show-error --proto '=https' --connect-timeout 15 \
-    --max-time "$timeout" --output "$destination" --write-out '%{http_code}\n%{content_type}' "$source_url")"
-  [[ "${response%%$'\n'*}" == "200" ]] || fail "Public download failed HTTP status verification: $source_url"
-  if [[ -n "$mime" && "$response" != "200"$'\n'"$mime" ]]; then
-    fail "Public download failed MIME verification: $source_url"
-  fi
-}
-echo "Verifying full HTTPS download…"
-fetch_file "$url?sha256=$digest" "$work_dir/download.apk" application/vnd.android.package-archive 900
-[[ "$(sha256 "$work_dir/download.apk")" == "$digest" ]] || fail "Public APK download SHA-256 mismatch."
-fetch_file "$url.sha256" "$work_dir/checksum" "" 30
-printf '%s  %s\n' "$digest" "$name" > "$work_dir/expected-checksum"
-cmp -s "$work_dir/checksum" "$work_dir/expected-checksum" || fail "Public checksum file does not match the APK."
-fetch_file "$qr_url" "$work_dir/download.svg" image/svg+xml 30
-[[ "$(sha256 "$work_dir/download.svg")" == "$qr_digest" ]] || fail "Public QR code SHA-256 mismatch."
+jq -e --arg digest "$digest" '.sha256 == $digest' "$work_dir/publish.json" >/dev/null \
+  || fail "Server APK SHA-256 does not match the local file."
 
 jq -n --arg version "$version" --arg filename "$name" --arg qr_filename "$qr_name" \
   --arg sha256 "$digest" --arg qr_sha256 "$qr_digest" --argjson size_bytes "$size" \
@@ -194,27 +228,30 @@ jq -n --arg version "$version" --arg filename "$name" --arg qr_filename "$qr_nam
   '{schema_version:1,version:$version,filename:$filename,qr_filename:$qr_filename,sha256:$sha256,
     qr_sha256:$qr_sha256,size_bytes:$size_bytes,url:$url,qr_url:$qr_url,download_url:$download_url}' > "$work_dir/release.json"
 verify_snapshot
+step 6 "更新固定下载链接与版本信息"
 remote activate "$(jq -c '{release:.}' "$work_dir/release.json")" > "$work_dir/activated.json"
 latest_url="$base_url/latest.json"
-fetch_file "$latest_url" "$work_dir/latest.json" "" 30
 jq -e --slurpfile expected "$work_dir/release.json" \
   '. as $actual | $expected[0] | to_entries | all(.[]; . as $field | $actual[$field.key] == $field.value)' \
-  "$work_dir/latest.json" >/dev/null || fail "Public latest.json does not match the verified release."
-fetch_file "$download_url" "$work_dir/latest.apk" application/vnd.android.package-archive 900
-[[ "$(sha256 "$work_dir/latest.apk")" == "$digest" ]] || fail "Stable APK download SHA-256 mismatch."
+  "$work_dir/activated.json" >/dev/null || fail "Server activation response does not match the verified release."
 
+step 7 "保存发布记录并清理暂存文件"
 receipt="$apk.publish.json"
 jq --arg package com.bansheng.prod --arg certificate_sha256 "$RELEASE_CERT_SHA256" \
   --arg latest_url "$latest_url" --arg remote_path "$remote_path" \
   '{version,package:$package,url,sha256,size_bytes,certificate_sha256:$certificate_sha256,
-    download_url,qr_url,qr_sha256,latest_url:$latest_url,remote_path:$remote_path,verified_at:(now|todateiso8601)}' \
+    download_url,qr_url,qr_sha256,latest_url:$latest_url,remote_path:$remote_path,verified_at:(now|todateiso8601),
+    verification_scope:"server_files",download_verified:false}' \
   "$work_dir/release.json" > "$work_dir/receipt.json"
 cp "$work_dir/qr.svg" "$(dirname "$apk")/$qr_name"
 cp "$work_dir/receipt.json" "$receipt"
-echo "Published and verified: $url"
+cleanup_stage
+printf '发布完成，耗时 %s 秒（服务器文件校验通过）。\n' "$((SECONDS - started_at))"
+echo "Published: $url"
 echo "Latest download (permanent): $download_url"
 echo "QR code: $qr_url"
 echo "Scan to download:"
 make_qr ""
 echo "Local QR code: $(dirname "$apk")/$qr_name"
 echo "Receipt: $receipt"
+echo "上传与发布已完成，下载链接请手动测试。"
