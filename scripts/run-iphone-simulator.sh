@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "$0")/fresh-build.sh"
+
 cd "$(dirname "$0")/.."
 
 SIMULATOR_DEVICE_ID="${SIMULATOR_DEVICE_ID:-D23C0EE4-3DAD-4CA5-B6E2-A0E574F2AD23}"
@@ -71,7 +73,7 @@ trap 'rm -f "$FLAVOR_OVERRIDE_FILE"' EXIT
 
 echo "Flavor: $FLAVOR  bundle: $FLAVOR_APP_BUNDLE_ID (simulator)"
 
-flutter pub get
+fresh_build_prepare
 
 if [[ "$(uname -s)" == "Darwin" && -d ios ]]; then
   (
@@ -82,8 +84,17 @@ if [[ "$(uname -s)" == "Darwin" && -d ios ]]; then
   xattr -dr com.apple.quarantine ios/Pods 2>/dev/null || true
 fi
 
+source_fingerprint="$(fresh_build_fingerprint)"
+fresh_build_run_options "$@"
+flutter build ios --simulator --debug \
+  --dart-define=API_BASE_URL="$LOCAL_API_BASE_URL" "${build_extra[@]}"
+app_path="$PWD/build/ios/iphonesimulator/Runner.app"
+fresh_build_seal "$app_path" "$source_fingerprint"
+python3 scripts/flutter_build_guard.py ios-identity "$app_path" "$FLAVOR_APP_BUNDLE_ID"
+fresh_build_verify "$app_path"
+
 flutter run \
   -d "$SIMULATOR_DEVICE_ID" \
-  --no-pub \
+  --debug --use-application-binary="$app_path" \
   --dart-define=API_BASE_URL="$LOCAL_API_BASE_URL" \
-  "$@"
+  "${run_extra[@]}"

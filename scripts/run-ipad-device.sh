@@ -6,7 +6,6 @@ cd "$(dirname "$0")/.."
 IPAD_DEVICE_ID="${IPAD_DEVICE_ID:-}"
 DEV_API_BASE_URL="${DEV_API_BASE_URL:-https://banshengcomp.com/api}"
 FLUTTER_RUN_MODE="${FLUTTER_RUN_MODE:-release}"
-IOS_BUNDLE_ID="${IOS_BUNDLE_ID:-com.bansheng.dev}"
 
 case "$FLUTTER_RUN_MODE" in
   debug|profile|release) ;;
@@ -30,25 +29,7 @@ if [[ -z "$IPAD_DEVICE_ID" ]]; then
   exit 1
 fi
 
-if [[ "$FLUTTER_RUN_MODE" != "debug" ]]; then
-  flutter build ios \
-    "--$FLUTTER_RUN_MODE" \
-    --dart-define=API_BASE_URL="$DEV_API_BASE_URL" \
-    "$@"
-
-  xcrun devicectl device install app \
-    --device "$IPAD_DEVICE_ID" \
-    build/ios/iphoneos/Runner.app
-
-  xcrun devicectl device process launch \
-    --device "$IPAD_DEVICE_ID" \
-    "$IOS_BUNDLE_ID"
-
-  exit 0
-fi
-
-flutter run \
-  -d "$IPAD_DEVICE_ID" \
-  --device-connection attached \
-  --dart-define=API_BASE_URL="$DEV_API_BASE_URL" \
-  "$@"
+# Share the iPhone build/identity/freshness checks rather than a second pipeline.
+export PHYSICAL_DEVICE_ID="$IPAD_DEVICE_ID"
+export FLUTTER_RUN_MODE DEV_API_BASE_URL
+exec /bin/bash scripts/run-iphone-device.sh "$@"

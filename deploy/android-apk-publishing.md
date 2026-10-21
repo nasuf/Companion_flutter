@@ -2,6 +2,34 @@
 
 ## 日常使用
 
+所有 Flutter 构建、运行入口现在都强制执行 `flutter clean` 和 `flutter pub get`，
+再编译当前脚本所在仓库的本地代码（包含未提交的 Dart 修改，不会自动拉取远端）。
+不再支持 `CLEAN=0` 跳过清理。首次启动时间会增加，调试启动后的热重载仍然保留。
+
+| 入口 | 构建和交付检查 |
+| --- | --- |
+| `run-android-device.sh` | debug/profile/release 均先构建 APK；AOT 模式逐 ABI 校验后，运行这个确定的 APK |
+| `run-iphone-device.sh` | 先构建 `.app`，校验源码、文件和 bundle id，再安装/启动；debug 保留热重载 |
+| `run-ipad-device.sh` | 选择 iPad 后复用 iPhone 同一条构建链路 |
+| `run-iphone-simulator.sh` | 先构建模拟器 `.app`，校验后运行该文件，保留热重载 |
+| `run-ipad-simulator.sh` | 指定 iPad 模拟器后复用 iPhone 模拟器构建链路 |
+| `build-android-apk.sh` | 仅接受所选 flavor/mode 对应的准确文件名，禁止回退挑选其他 APK |
+| `build-testflight.sh` | 清理后新建 IPA，检查身份、源码与文件指纹后才打开 Transporter |
+| `publish-android-apk.sh` / `publish_android_apk.py` | 检查构建记录与当前源码、上传快照；上传及激活前再次检查 |
+
+入口统一拒绝 `--no-build`、`--build=false`、外部 `--use-application-binary`、
+`--config-only` 和自定义 `--build-dir` 等绕过当前构建的参数。
+运行脚本内部的 `--use-application-binary` 只指向本次刚构建、已验证的固定产物。
+每个仓库同时只允许运行一个脚本，防止另一个脚本清理或覆盖正在交付的构建。
+调试会话结束后再运行其他构建脚本。
+
+成功构建生成相邻的 `<产物>.source.json`，记录当前 Dart、资源、字体及依赖文件的
+内容指纹和产物 SHA-256。构建期间源码改变会失败；构建后再次修改源码或产物，
+安装/发布校验也会拒绝。版本号由构建参数和产物身份检查管理，不参与源码指纹。
+发布 APK 时必须一起保留 `.source.json`；历史包或缺失记录的包须重新构建，不能直接发布。
+这些记录仅保存在本地，不上传源文件或开发者路径。
+Android 安装还会回读目标包的 `base.apk` 比对完整 SHA-256；不一致时拒绝启动。
+
 在 Flutter 仓库根目录执行：
 
 ```bash
@@ -30,7 +58,8 @@ Release 构建结束后，脚本会逐个 ABI 比对 APK 与本次 Flutter 编�
 `.text` / `.rodata`，允许 Android 去掉调试符号，但拒绝旧 Dart 代码、缺失或多余架构。
 此检查发生在复制发布包及安装之前；失败时不要直接发布旧文件。
 Gradle 同时将每个完整 variant 的 Flutter JNI 生成任务接入 Android 打包依赖，
-`run-android-device.sh` 的 release 安装也复用这一修复。
+并强制重建 JNI 文件夹合并输出，防止 AGP 的增量合并保留旧 `libapp.so`。
+后续任务继续根据内容判断是否需要重建；这一修复也覆盖直接运行 Flutter 命令的构建。
 
 手动核对已有产物：
 
@@ -119,7 +148,7 @@ curl -f 'https://banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk.sha25
 ## 自动化验证
 
 ```bash
-bash -n scripts/build-android-apk.sh scripts/publish-android-apk.sh
+for script in scripts/*.sh; do bash -n "$script" || exit; done
 ./scripts/publish-android-apk.sh --help  # 首次准备工具环境
 build/android/.publish-venv/bin/python -m unittest discover -s scripts/tests -v
 ```

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Upload the current prod release APK; validates signing and the public download.
 set -euo pipefail
+source "$(dirname "$0")/fresh-build.sh"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TOOLS_DIR="$SCRIPT_DIR/../build/android/.publish-venv"
 if [[ ! -x "$TOOLS_DIR/bin/python" ]]; then

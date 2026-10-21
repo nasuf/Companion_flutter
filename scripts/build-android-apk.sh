@@ -9,6 +9,8 @@
 # exists for side-by-side installs, but WeChat login will fail on it.
 set -euo pipefail
 
+source "$(dirname "$0")/fresh-build.sh"
+
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
@@ -275,10 +277,8 @@ echo "Building Android APK flavor $FLAVOR, $BUILD_MODE, app version $build_name,
 build_started_marker="$(mktemp -t build-android-apk-start.XXXXXX)"
 trap 'rm -f "$build_started_marker"' EXIT
 
-if [[ "${CLEAN:-0}" == "1" ]]; then
-  flutter clean
-fi
-flutter pub get
+fresh_build_prepare
+source_fingerprint="$(fresh_build_fingerprint)"
 
 flutter build apk "--$BUILD_MODE" \
   --flavor "$FLAVOR" \
@@ -288,22 +288,10 @@ flutter build apk "--$BUILD_MODE" \
   "$@"
 
 expected_apk="$ROOT_DIR/build/app/outputs/flutter-apk/app-$FLAVOR-$BUILD_MODE.apk"
-if [[ -f "$expected_apk" ]]; then
-  apk_path="$expected_apk"
-else
-  shopt -s nullglob
-  apk_files=("$ROOT_DIR"/build/app/outputs/flutter-apk/*.apk)
-  shopt -u nullglob
-  if [[ "${#apk_files[@]}" -eq 0 ]]; then
-    echo "Could not find an APK under $ROOT_DIR/build/app/outputs/flutter-apk" >&2
-    exit 1
-  fi
-  apk_path="${apk_files[0]}"
-  for candidate in "${apk_files[@]}"; do
-    if [[ "$candidate" -nt "$apk_path" ]]; then
-      apk_path="$candidate"
-    fi
-  done
+apk_path="$expected_apk"
+if [[ ! -f "$apk_path" ]]; then
+  echo "This build did not produce the expected APK: $apk_path" >&2
+  exit 1
 fi
 
 if [[ ! "$apk_path" -nt "$build_started_marker" ]]; then
@@ -320,11 +308,13 @@ fi
 
 verify_apk_identity "$apk_path"
 print_wechat_signature "$apk_path"
+fresh_build_seal "$apk_path" "$source_fingerprint"
 
 output_dir="$ROOT_DIR/build/android"
 mkdir -p "$output_dir"
 output_apk="$output_dir/$output_name"
 cp "$apk_path" "$output_apk"
+cp "$apk_path.source.json" "$output_apk.source.json"
 
 # Android sideload is the WeChat test channel, so either flavor may move the
 # shared pubspec line. (iOS TestFlight still keeps prod read-only.)
@@ -362,6 +352,6 @@ if [[ "$INSTALL_ANDROID" != "0" ]]; then
     echo "No connected Android device found. APK was built but not installed."
   else
     echo "Installing APK on Android device: $device_id"
-    adb -s "$device_id" install -r "$output_apk"
+    python3 scripts/flutter_build_guard.py install-android "$output_apk" "$device_id" "$APPLICATION_ID"
   fi
 fi

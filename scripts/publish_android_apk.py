@@ -14,6 +14,8 @@ import sys
 import tempfile
 from urllib.parse import quote, urlsplit
 
+from flutter_build_guard import verify as verify_current_build
+
 
 ROOT = Path(__file__).resolve().parents[1]
 REMOTE_SCRIPT = Path(__file__).with_name("publish_android_apk_remote.py")
@@ -110,6 +112,9 @@ class Publisher:
         with tempfile.TemporaryDirectory(prefix="bansheng-apk-publish-") as directory:
             snapshot = Path(directory) / "upload.apk"
             shutil.copyfile(apk, snapshot)
+            # Check the immutable upload copy, not a path another process can
+            # replace after verification. Old/unverified builds fail before SSH.
+            verify_current_build(apk, snapshot=snapshot)
             version = inspect_apk(snapshot)
             name = f"bansheng-{version}.apk"
             if apk.name != name:
@@ -129,6 +134,7 @@ class Publisher:
                 print("Uploading to the Tencent data disk…", flush=True)
                 run([*self.scp, str(snapshot), f"{self.host}:{stage}/upload.apk"], timeout=900)
                 run([*self.scp, str(qr_path), f"{self.host}:{stage}/qr.svg"], timeout=60)
+                verify_current_build(apk, snapshot=snapshot)
                 result = self.remote("publish", stage=stage, name=name, sha256=digest, size=size,
                                      qr_sha256=qr_digest)
                 print("Verifying full HTTPS download…", flush=True)
@@ -154,6 +160,7 @@ class Publisher:
                 release = {"schema_version": 1, "version": version, "filename": name, "qr_filename": qr_name,
                            "sha256": digest, "qr_sha256": qr_digest, "size_bytes": size,
                            "url": url, "qr_url": qr_url, "download_url": download_url}
+                verify_current_build(apk, snapshot=snapshot)
                 self.remote("activate", release=release)
                 latest_url = f"{self.base_url}/latest.json"
                 latest = json.loads(run(["curl", "--fail", "--silent", "--show-error", "--proto", "=https",

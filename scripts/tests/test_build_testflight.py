@@ -66,6 +66,8 @@ class BuildTestflightTests(unittest.TestCase):
             for folder in ["scripts", "ios/Flutter", "tools", "temporary files"]:
                 (root / folder).mkdir(parents=True)
             shutil.copy2(SCRIPT, root / "scripts/build-testflight.sh")
+            for helper in ("fresh-build.sh", "flutter_build_guard.py"):
+                shutil.copy2(SCRIPT.parent / helper, root / "scripts")
             version = "version: 0.1.0+7\n"
             (root / "pubspec.yaml").write_text(version)
             caller_plist = root / "caller-owned.plist"

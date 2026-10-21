@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "$0")/fresh-build.sh"
+
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
@@ -452,8 +454,8 @@ trap cleanup EXIT
 
 install_ios_distribution_profiles
 
-flutter clean
-flutter pub get
+fresh_build_prepare
+source_fingerprint="$(fresh_build_fingerprint)"
 
 if [[ "$(uname -s)" == "Darwin" && -d ios ]]; then
   (
@@ -507,6 +509,7 @@ if [[ ! "$ipa_path" -nt "$build_started_marker" ]]; then
 fi
 
 verify_ipa_identity "$ipa_path"
+fresh_build_seal "$ipa_path" "$source_fingerprint"
 
 # Only dev maintains the version line. Prod is pinned to what it read, so it has
 # nothing to write back — and keeping it read-only is what guarantees the line
@@ -537,6 +540,7 @@ fi
 
 if [[ "${OPEN_TRANSPORTER:-1}" != "0" ]]; then
   echo "Opening IPA in Transporter: $ipa_path"
+  fresh_build_verify "$ipa_path"
   if ! open -a Transporter "$ipa_path"; then
     echo "Transporter is not installed. Install it from the Mac App Store, then open:" >&2
     echo "$ipa_path" >&2

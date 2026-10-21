@@ -95,6 +95,13 @@ androidComponents {
                 variant.sources.jniLibs?.addGeneratedSourceDirectory(tasks.named<Sync>(taskName)) {
                     objects.directoryProperty().fileValue(it.destinationDir)
                 }
+                // AGP's incremental JNI folder merger can retain its previous
+                // libapp.so even after Flutter's Sync task writes a new one.
+                // Recreate this small merge output; downstream tasks can still
+                // use their normal content-based incremental checks.
+                tasks.named("merge${variant.name.replaceFirstChar { it.uppercaseChar() }}JniLibFolders") {
+                    outputs.upToDateWhen { false }
+                }
             }
         }
     }

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "$0")/fresh-build.sh"
+
 cd "$(dirname "$0")/.."
 
 PHYSICAL_DEVICE_ID="${PHYSICAL_DEVICE_ID:-00008130-0008350A3E11001C}"
@@ -87,16 +89,25 @@ trap 'rm -f "$FLAVOR_OVERRIDE_FILE"' EXIT
 
 echo "Flavor: $FLAVOR  bundle: $FLAVOR_APP_BUNDLE_ID  mode: $FLUTTER_RUN_MODE"
 
-if [[ "$FLUTTER_RUN_MODE" != "debug" ]]; then
-  flutter build ios \
-    "--$FLUTTER_RUN_MODE" \
-    --dart-define=API_BASE_URL="$DEV_API_BASE_URL" \
-    "$@"
+fresh_build_prepare
+source_fingerprint="$(fresh_build_fingerprint)"
+fresh_build_run_options "$@"
 
+flutter build ios \
+  "--$FLUTTER_RUN_MODE" \
+  --dart-define=API_BASE_URL="$DEV_API_BASE_URL" \
+  "${build_extra[@]}"
+
+fresh_build_seal build/ios/iphoneos/Runner.app "$source_fingerprint"
+python3 scripts/flutter_build_guard.py ios-identity build/ios/iphoneos/Runner.app "$IOS_BUNDLE_ID"
+fresh_build_verify build/ios/iphoneos/Runner.app
+
+if [[ "$FLUTTER_RUN_MODE" != "debug" ]]; then
   xcrun devicectl device install app \
     --device "$PHYSICAL_DEVICE_ID" \
     build/ios/iphoneos/Runner.app
 
+  fresh_build_verify build/ios/iphoneos/Runner.app
   xcrun devicectl device process launch \
     --device "$PHYSICAL_DEVICE_ID" \
     "$IOS_BUNDLE_ID"
@@ -107,5 +118,6 @@ fi
 flutter run \
   -d "$PHYSICAL_DEVICE_ID" \
   --device-connection attached \
+  --debug --use-application-binary="$PWD/build/ios/iphoneos/Runner.app" \
   --dart-define=API_BASE_URL="$DEV_API_BASE_URL" \
-  "$@"
+  "${run_extra[@]}"

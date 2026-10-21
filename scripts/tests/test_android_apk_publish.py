@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -16,6 +17,8 @@ from unittest.mock import patch
 
 
 SCRIPTS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(SCRIPTS))
+from flutter_build_guard import seal
 
 
 def load(name, path):
@@ -199,10 +202,30 @@ class RemotePublicationTests(unittest.TestCase):
 
 
 class PublicDownloadTests(unittest.TestCase):
+    def setUp(self):
+        source = patch('flutter_build_guard.source_digest', return_value='fixture-current-source')
+        source.start()
+        self.addCleanup(source.stop)
+
+    def test_unverified_or_replaced_apk_is_rejected_before_any_network_call(self):
+        with tempfile.TemporaryDirectory() as directory:
+            apk = Path(directory) / 'bansheng-0.6.1+8.apk'
+            apk.write_bytes(b'current APK')
+            publisher = object.__new__(client.Publisher)
+            with patch.object(publisher, 'remote') as remote_call:
+                with self.assertRaisesRegex(ValueError, 'receipt'):
+                    publisher.publish(apk)
+                seal(apk, "fixture-current-source")
+                apk.write_bytes(b'replaced APK')
+                with self.assertRaisesRegex(ValueError, 'changed'):
+                    publisher.publish(apk)
+                remote_call.assert_not_called()
+
     def test_failed_upload_cleans_staging_without_publishing(self):
         with tempfile.TemporaryDirectory() as directory:
             apk = Path(directory) / "bansheng-0.6.1+8.apk"
             apk.write_bytes(b"release bytes")
+            seal(apk, "fixture-current-source")
             publisher = object.__new__(client.Publisher)
             publisher.host = "ubuntu@example.invalid"
             publisher.scp = ["scp"]
@@ -223,6 +246,7 @@ class PublicDownloadTests(unittest.TestCase):
             with self.subTest(corrupt=corrupt, content_type=content_type, corrupt_qr=corrupt_qr), tempfile.TemporaryDirectory() as directory:
                 apk = Path(directory) / "bansheng-0.6.1+8.apk"
                 apk.write_bytes(b"release bytes")
+                seal(apk, "fixture-current-source")
                 publisher = object.__new__(client.Publisher)
                 publisher.host = "ubuntu@example.invalid"
                 publisher.scp = ["scp"]
@@ -299,6 +323,8 @@ class BuildNamingTests(unittest.TestCase):
                 (root / "tools").mkdir()
                 shutil.copy2(SCRIPTS / "build-android-apk.sh", root / "scripts")
                 shutil.copy2(SCRIPTS / "verify_android_aot.py", root / "scripts")
+                for helper in ("fresh-build.sh", "flutter_build_guard.py"):
+                    shutil.copy2(SCRIPTS / helper, root / "scripts")
                 (root / "fixture.so").write_bytes(elf_fixture())
                 (root / "pubspec.yaml").write_text("version: 0.6.1+8\n")
                 (root / "tools/git").write_text("#!/bin/sh\nexit 128\n")
