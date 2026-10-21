@@ -15,7 +15,7 @@
 | `run-ipad-simulator.sh` | 指定 iPad 模拟器后复用 iPhone 模拟器构建链路 |
 | `build-android-apk.sh` | 仅接受所选 flavor/mode 对应的准确文件名，禁止回退挑选其他 APK |
 | `build-testflight.sh` | 清理后新建 IPA，检查身份、源码与文件指纹后才打开 Transporter |
-| `publish-android-apk.sh` / `publish_android_apk.py` | 检查构建记录与当前源码、上传快照；上传及激活前再次检查 |
+| `publish-android-apk.sh` | 检查构建记录与当前源码、上传快照；上传及激活前再次检查 |
 
 入口统一拒绝 `--no-build`、`--build=false`、外部 `--use-application-binary`、
 `--config-only` 和自定义 `--build-dir` 等绕过当前构建的参数。
@@ -115,7 +115,9 @@ https://banshengcomp.com/downloads/android/latest.json
   数据目录保持固定，避免误传系统盘。证书轮换须明确更新脚本中的公有指纹。
 
 SSH 使用已信任的 known_hosts，保持主机校验；新机器先单独核验服务器公钥。
-日常上传不需要 sudo。构建机需要 Python 3、SSH/SCP、curl、Android SDK 的 aapt/apksigner。
+日常上传不需要 sudo。发布主流程由 `publish-android-apk.sh` 直接执行，原 Python 发布器已移除。
+构建机需要 Bash、Python 3、jq、SSH/SCP、curl、shasum、Android SDK 的 aapt/apksigner。
+Python 仅用于已有构建指纹校验、二维码编码、命令超时监管和远端原子文件操作；发布编排在 Shell 中。
 
 ## 首次 Nginx 配置 / 新服务器恢复
 
@@ -149,7 +151,8 @@ curl -f 'https://banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk.sha25
 
 ```bash
 for script in scripts/*.sh; do bash -n "$script" || exit; done
-./scripts/publish-android-apk.sh --help  # 首次准备工具环境
+python3 -m venv build/android/.publish-venv
+build/android/.publish-venv/bin/python -m pip install -r scripts/requirements-android-publish.txt
 build/android/.publish-venv/bin/python -m unittest discover -s scripts/tests -v
 ```
 

@@ -116,7 +116,7 @@ def locked(script: str, args: list[str]) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('lock', 'fingerprint', 'assert-clean', 'seal', 'verify', 'ios-identity', 'install-android'))
+    parser.add_argument('action', choices=('lock', 'fingerprint', 'assert-clean', 'seal', 'verify', 'verify-snapshot', 'ios-identity', 'install-android'))
     parser.add_argument('args', nargs=argparse.REMAINDER)
     options = parser.parse_args()
     try:
@@ -132,6 +132,8 @@ def main() -> int:
             seal(Path(options.args[0]), options.args[1])
         elif options.action == 'verify':
             verify(Path(options.args[0]))
+        elif options.action == 'verify-snapshot':
+            verify(Path(options.args[0]), snapshot=Path(options.args[1]))
         elif options.action == 'install-android':
             install_android(Path(options.args[0]), options.args[1], options.args[2])
         elif options.action == 'ios-identity':

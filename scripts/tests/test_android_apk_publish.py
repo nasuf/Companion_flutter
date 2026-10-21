@@ -18,7 +18,6 @@ from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
-from flutter_build_guard import seal
 
 
 def load(name, path):
@@ -28,30 +27,8 @@ def load(name, path):
     return module
 
 
-client = load("apk_client", SCRIPTS / "publish_android_apk.py")
 remote = load("apk_remote", SCRIPTS / "publish_android_apk_remote.py")
 setup = load("apk_setup", SCRIPTS.parent / "deploy/setup_android_downloads.py")
-
-
-class ApkValidationTests(unittest.TestCase):
-    def inspect(self, *, package="com.bansheng.prod", debug=False, cert=None):
-        badging = f"package: name='{package}' versionCode='8' versionName='0.6.1'\n"
-        if debug:
-            badging += "application-debuggable\n"
-        cert = cert or client.RELEASE_CERT_SHA256
-        with patch.object(client, "android_tool", side_effect=lambda name: name), patch.object(
-            client, "run", side_effect=[SimpleNamespace(stdout=badging), SimpleNamespace(
-                stdout=f"Signer #1 certificate SHA-256 digest: {cert}\n")]
-        ):
-            return client.inspect_apk(Path("fixture.apk"))
-
-    def test_signed_prod_release(self):
-        self.assertEqual(self.inspect(), "0.6.1+8")
-
-    def test_debug_and_foreign_package_and_signature_rejected(self):
-        for options in ({"debug": True}, {"package": "com.bansheng.dev"}, {"cert": "0" * 64}):
-            with self.subTest(options=options), self.assertRaises(ValueError):
-                self.inspect(**options)
 
 
 class RemotePublicationTests(unittest.TestCase):
@@ -199,102 +176,6 @@ class RemotePublicationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "QR code"):
             remote.main("publish", payload)
         self.assertEqual(list(self.public.iterdir()), [])
-
-
-class PublicDownloadTests(unittest.TestCase):
-    def setUp(self):
-        source = patch('flutter_build_guard.source_digest', return_value='fixture-current-source')
-        source.start()
-        self.addCleanup(source.stop)
-
-    def test_unverified_or_replaced_apk_is_rejected_before_any_network_call(self):
-        with tempfile.TemporaryDirectory() as directory:
-            apk = Path(directory) / 'bansheng-0.6.1+8.apk'
-            apk.write_bytes(b'current APK')
-            publisher = object.__new__(client.Publisher)
-            with patch.object(publisher, 'remote') as remote_call:
-                with self.assertRaisesRegex(ValueError, 'receipt'):
-                    publisher.publish(apk)
-                seal(apk, "fixture-current-source")
-                apk.write_bytes(b'replaced APK')
-                with self.assertRaisesRegex(ValueError, 'changed'):
-                    publisher.publish(apk)
-                remote_call.assert_not_called()
-
-    def test_failed_upload_cleans_staging_without_publishing(self):
-        with tempfile.TemporaryDirectory() as directory:
-            apk = Path(directory) / "bansheng-0.6.1+8.apk"
-            apk.write_bytes(b"release bytes")
-            seal(apk, "fixture-current-source")
-            publisher = object.__new__(client.Publisher)
-            publisher.host = "ubuntu@example.invalid"
-            publisher.scp = ["scp"]
-            publisher.base_url = "https://example.invalid/downloads/android"
-            with patch.object(client, "inspect_apk", return_value="0.6.1+8"), patch.object(
-                client, "run", side_effect=subprocess.CalledProcessError(1, ["scp"])
-            ), patch.object(publisher, "remote", return_value={"stage": "/private/stage"}) as call:
-                with self.assertRaises(subprocess.CalledProcessError):
-                    publisher.publish(apk)
-            self.assertEqual([c.args[0] for c in call.call_args_list], ["prepare", "cleanup"])
-            self.assertFalse(apk.with_suffix(".apk.publish.json").exists())
-
-    def test_receipt_only_after_correct_full_download_and_cleanup_on_failure(self):
-        for corrupt, content_type, corrupt_qr, corrupt_stable in [(False, "application/vnd.android.package-archive", False, False),
-                                      (True, "application/vnd.android.package-archive", False, False), (False, "text/html", False, False),
-                                      (False, "application/vnd.android.package-archive", True, False),
-                                      (False, "application/vnd.android.package-archive", False, True)]:
-            with self.subTest(corrupt=corrupt, content_type=content_type, corrupt_qr=corrupt_qr), tempfile.TemporaryDirectory() as directory:
-                apk = Path(directory) / "bansheng-0.6.1+8.apk"
-                apk.write_bytes(b"release bytes")
-                seal(apk, "fixture-current-source")
-                publisher = object.__new__(client.Publisher)
-                publisher.host = "ubuntu@example.invalid"
-                publisher.scp = ["scp"]
-                publisher.base_url = "https://example.invalid/downloads/android"
-                calls = []
-                assets = {}
-
-                def remote_call(action, **kwargs):
-                    calls.append(action)
-                    if action == "activate": assets["release"] = kwargs["release"]
-                    return {"stage": "/private/stage", "path": "/data/public.apk"}
-
-                def run(args, **kwargs):
-                    if args[0] == "scp":
-                        if args[-2].endswith("qr.svg"): assets["qr"] = Path(args[-2]).read_bytes()
-                        return SimpleNamespace(stdout="")
-                    if "--output" in args:
-                        is_qr = args[-1].endswith(".svg")
-                        Path(args[args.index("--output") + 1]).write_bytes((b"corrupt QR" if corrupt_qr else assets["qr"]) if is_qr else b"wrong bytes" if corrupt or (corrupt_stable and args[-1].endswith("bansheng-latest.apk")) else apk.read_bytes())
-                        return SimpleNamespace(stdout="200\nimage/svg+xml" if is_qr else f"200\n{content_type}")
-                    if args[-1].endswith("latest.json"): return SimpleNamespace(stdout=json.dumps(assets["release"]))
-                    return SimpleNamespace(stdout=f"{client.sha256(apk)}  {apk.name}\n")
-
-                with patch.object(client, "inspect_apk", return_value="0.6.1+8"), patch.object(
-                    client, "run", side_effect=run
-                ), patch.object(publisher, "remote", side_effect=remote_call):
-                    if corrupt or content_type == "text/html" or corrupt_qr or corrupt_stable:
-                        with self.assertRaisesRegex(ValueError, "download|QR code"):
-                            publisher.publish(apk)
-                    else:
-                        publisher.publish(apk)
-                success = not corrupt and content_type != "text/html" and not corrupt_qr and not corrupt_stable
-                self.assertEqual(calls, ["prepare", "publish", "activate", "cleanup"] if success or corrupt_stable else ["prepare", "publish", "cleanup"])
-                self.assertEqual(apk.with_suffix(".apk.publish.json").exists(), success)
-
-
-class QrCodeTests(unittest.TestCase):
-    def test_qr_artifact_and_terminal_share_exact_download_url(self):
-        import io
-        url = "https://banshengcomp.com/downloads/android/bansheng-latest.apk"
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "qr.svg"
-            qr = client.make_qr(url, path)
-            self.assertEqual(b"".join(part.data for part in qr.data_list).decode(), url)
-            self.assertIn("<svg", path.read_text())
-            output = io.StringIO()
-            qr.print_ascii(out=output, invert=True)
-            self.assertIn("█", output.getvalue())
 
 
 class NginxSetupTests(unittest.TestCase):
