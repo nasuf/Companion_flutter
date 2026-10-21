@@ -164,7 +164,10 @@ class _LocationConfirmPageState extends State<LocationConfirmPage> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    _LocationConfirmPreviewCard(card: card),
+                    _LocationConfirmPreviewCard(
+                      card: card,
+                      accuracyMeters: _snapshot.accuracyMeters,
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       '${_snapshot.latitude.toStringAsFixed(6)}, ${_snapshot.longitude.toStringAsFixed(6)}',
@@ -182,16 +185,6 @@ class _LocationConfirmPageState extends State<LocationConfirmPage> {
                           color: w.inkSoft,
                           fontSize: 12,
                           decoration: TextDecoration.none,
-                        ),
-                      ),
-                    ],
-                    if (_snapshot.accuracyMeters != null) ...[
-                      const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: _LocationConfirmMetaChip(
-                          label:
-                              '定位精度约 ${_snapshot.accuracyMeters!.round()} 米',
                         ),
                       ),
                     ],
@@ -255,15 +248,19 @@ class _LocationConfirmPageState extends State<LocationConfirmPage> {
 }
 
 class _LocationConfirmPreviewCard extends StatelessWidget {
-  const _LocationConfirmPreviewCard({required this.card});
+  const _LocationConfirmPreviewCard({required this.card, this.accuracyMeters});
 
   final ChatComponentCard card;
+  final double? accuracyMeters;
 
   @override
   Widget build(BuildContext context) {
     final w = _W2b.resolve(context);
     final title = card.title.isEmpty ? '我的位置' : card.title;
     final subtitle = card.subtitle.isEmpty ? '当前位置' : card.subtitle;
+    final locationLabel = accuracyMeters == null
+        ? '当前位置'
+        : '当前位置 · 定位精度约${accuracyMeters!.round()}米';
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -342,46 +339,49 @@ class _LocationConfirmPreviewCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _locationConfirmAccent.withValues(
+                            alpha: w.isDark ? 0.16 : 0.12,
                           ),
-                          decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
                             color: _locationConfirmAccent.withValues(
-                              alpha: w.isDark ? 0.16 : 0.12,
-                            ),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: _locationConfirmAccent.withValues(
-                                alpha: 0.28,
-                              ),
+                              alpha: 0.28,
                             ),
                           ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                CupertinoIcons.location,
-                                size: 13,
-                                color: _locationConfirmAccent,
-                              ),
-                              SizedBox(width: 5),
-                              Text(
-                                '当前位置',
-                                style: TextStyle(
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              CupertinoIcons.location,
+                              size: 13,
+                              color: _locationConfirmAccent,
+                            ),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                locationLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
                                   color: _locationConfirmAccent,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
                                   decoration: TextDecoration.none,
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                     const SizedBox(height: 10),
                     Text(
@@ -412,41 +412,6 @@ class _LocationConfirmPreviewCard extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LocationConfirmMetaChip extends StatelessWidget {
-  const _LocationConfirmMetaChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final w = _W2b.resolve(context);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(999),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          decoration: BoxDecoration(
-            color: w.glass,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: w.glassBorder),
-            boxShadow: [w.pillShadow],
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: w.inkSoft,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              decoration: TextDecoration.none,
-            ),
           ),
         ),
       ),
