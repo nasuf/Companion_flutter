@@ -33,6 +33,17 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def make_qr(url, path):
+    import qrcode
+    from qrcode.image.svg import SvgPathFillImage
+
+    qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, border=4)
+    qr.add_data(url)
+    qr.make(fit=True)
+    qr.make_image(image_factory=SvgPathFillImage).save(path)
+    return qr
+
+
 def android_tool(name):
     sdk = Path(os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")
                or Path.home() / "Library/Android/sdk")
@@ -106,12 +117,19 @@ class Publisher:
             digest = sha256(snapshot)
             size = snapshot.stat().st_size
             url = f"{self.base_url}/{quote(name)}"
+            qr_name = f"bansheng-{version}.qr.svg"
+            qr_path = Path(directory) / "qr.svg"
+            qr = make_qr(url, qr_path)
+            qr_digest = sha256(qr_path)
+            qr_url = f"{self.base_url}/{quote(qr_name)}"
             print(f"Verified prod release {version}, {size:,} bytes, SHA-256 {digest}", flush=True)
             try:
                 stage = self.remote("prepare", size=size)["stage"]
                 print("Uploading to the Tencent data disk…", flush=True)
                 run([*self.scp, str(snapshot), f"{self.host}:{stage}/upload.apk"], timeout=900)
-                result = self.remote("publish", stage=stage, name=name, sha256=digest, size=size)
+                run([*self.scp, str(qr_path), f"{self.host}:{stage}/qr.svg"], timeout=60)
+                result = self.remote("publish", stage=stage, name=name, sha256=digest, size=size,
+                                     qr_sha256=qr_digest)
                 print("Verifying full HTTPS download…", flush=True)
                 download = Path(directory) / "download.apk"
                 response = run(["curl", "--fail", "--silent", "--show-error", "--proto", "=https",
@@ -125,12 +143,34 @@ class Publisher:
                                capture_output=True).stdout
                 if checksum != f"{digest}  {name}\n":
                     raise ValueError("Public checksum file does not match the APK.")
+                downloaded_qr = Path(directory) / "download.svg"
+                qr_response = run(["curl", "--fail", "--silent", "--show-error", "--proto", "=https",
+                                   "--connect-timeout", "15", "--max-time", "30", "--output", str(downloaded_qr),
+                                   "--write-out", "%{http_code}\n%{content_type}", qr_url],
+                                  capture_output=True).stdout.splitlines()
+                if qr_response != ["200", "image/svg+xml"] or sha256(downloaded_qr) != qr_digest:
+                    raise ValueError("Public QR code failed status/MIME/SHA-256 verification.")
+                release = {"schema_version": 1, "version": version, "filename": name, "qr_filename": qr_name,
+                           "sha256": digest, "qr_sha256": qr_digest, "size_bytes": size,
+                           "url": url, "qr_url": qr_url}
+                self.remote("activate", release=release)
+                latest_url = f"{self.base_url}/latest.json"
+                latest = json.loads(run(["curl", "--fail", "--silent", "--show-error", "--proto", "=https",
+                                         "--connect-timeout", "15", "--max-time", "30", latest_url],
+                                        capture_output=True).stdout)
+                if any(latest.get(key) != value for key, value in release.items()):
+                    raise ValueError("Public latest.json does not match the verified APK and QR code.")
                 receipt = {"version": version, "package": "com.bansheng.prod", "url": url,
                            "sha256": digest, "size_bytes": size, "certificate_sha256": RELEASE_CERT_SHA256,
+                           "qr_url": qr_url, "qr_sha256": qr_digest, "latest_url": latest_url,
                            "remote_path": result["path"], "verified_at": datetime.now(timezone.utc).isoformat()}
                 receipt_path = apk.with_suffix(".apk.publish.json")
                 receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n")
-                print(f"Published and verified: {url}\nReceipt: {receipt_path}", flush=True)
+                local_qr = apk.with_suffix(".qr.svg")
+                shutil.copyfile(qr_path, local_qr)
+                print(f"Published and verified: {url}\nQR code: {qr_url}\nScan to download:", flush=True)
+                qr.print_ascii(tty=sys.stdout.isatty(), invert=True)
+                print(f"Local QR code: {local_qr}\nReceipt: {receipt_path}", flush=True)
                 return receipt
             finally:
                 if stage:

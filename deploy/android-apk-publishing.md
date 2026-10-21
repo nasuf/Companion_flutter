@@ -30,8 +30,16 @@ INSTALL_ANDROID=0 OPEN_OUTPUT=0 FLAVOR=prod ./scripts/build-android-apk.sh
 上传暂存文件，核对 SHA-256，再原子发布。重复上传相同文件是幂等的；同版本不同内容
 会被拒绝，须先增加 build number，防止已分发链接悄悄变成另一个包。
 
-只有公网完整下载的 SHA-256、HTTP 状态、APK MIME 和校验文件都通过，才打印成功，
+同时生成和上传 `bansheng-<version>.qr.svg`，二维码内容就是该版本 APK 的完整 HTTPS 地址。
+QR 编码由本地固定版本 `qrcode==8.2` 生成，不使用第三方二维码服务。
+首次运行发布脚本会自动在 `build/android/.publish-venv` 准备小型 Python 工具环境。
+
+只有公网完整下载的 SHA-256、HTTP 状态、APK MIME、二维码和校验文件都通过，才切换
+`/downloads/android/latest.json` 并打印成功，
 并写入本地 `build/android/bansheng-<version>.apk.publish.json` 验证记录。
+控制台同时打印 APK 地址、二维码图片地址和可直接扫描的字符二维码；本地也保留 SVG。
+Web 首页读取同一份 latest.json，将下载按钮与二维码一起更新，无需为新版 APK 重新部署 Web。
+版本化 APK 和二维码保持不可变；latest.json 原子替换，旧版本不能覆盖最新入口。
 失败时脚本非零退出，删除自身暂存目录；已发布的不可变版本不会因下载验证失败被删除。
 发布脚本不会自动 commit、push 或修改应用版本。
 
@@ -40,6 +48,8 @@ INSTALL_ANDROID=0 OPEN_OUTPUT=0 FLAVOR=prod ./scripts/build-android-apk.sh
 ```text
 https://banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk
 https://banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk.sha256
+https://banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.qr.svg
+https://banshengcomp.com/downloads/android/latest.json
 ```
 
 可以把链接中的 `%2B` 写成 `+`。微信内置浏览器可能限制 APK 下载，可选择在系统浏览器中打开。
@@ -88,7 +98,8 @@ curl -f 'https://banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk.sha25
 
 ```bash
 bash -n scripts/build-android-apk.sh scripts/publish-android-apk.sh
-python3 -m unittest discover -s scripts/tests -v
+./scripts/publish-android-apk.sh --help  # 首次准备工具环境
+build/android/.publish-venv/bin/python -m unittest discover -s scripts/tests -v
 ```
 
 单元/脚本测试覆盖命名、错误签名、debug/dev 拒绝、上传校验、同版本冲突、数据盘约束、

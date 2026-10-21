@@ -10,7 +10,8 @@ A new Flutter project.
 ```
 
 默认构建 prod/release，生成 `build/android/bansheng-<版本号+build号>.apk`。
-发布脚本上传到腾讯服务器数据盘，验证公网完整下载后输出 HTTPS 下载链接。
+发布脚本上传 APK 和二维码到腾讯服务器数据盘，验证公网下载后更新 Web 首页版本，
+并在控制台输出 HTTPS 下载链接及可扫描的二维码。
 签名校验、服务器配置及排障说明见 [Android APK 发布文档](deploy/android-apk-publishing.md)。
 
 ## Getting Started
