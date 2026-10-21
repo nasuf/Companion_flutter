@@ -312,6 +312,12 @@ if [[ ! "$apk_path" -nt "$build_started_marker" ]]; then
   exit 1
 fi
 
+if [[ "$BUILD_MODE" == "release" ]]; then
+  variant="${FLAVOR}Release"
+  python3 "$ROOT_DIR/scripts/verify_android_aot.py" "$apk_path" \
+    "$ROOT_DIR/build/app/intermediates/flutter/$variant/jniLibs"
+fi
+
 verify_apk_identity "$apk_path"
 print_wechat_signature "$apk_path"
 

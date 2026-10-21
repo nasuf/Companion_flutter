@@ -26,6 +26,19 @@ INSTALL_ANDROID=0 OPEN_OUTPUT=0 FLAVOR=prod ./scripts/build-android-apk.sh
 ./scripts/publish-android-apk.sh build/android/bansheng-0.6.1+8.apk
 ```
 
+Release 构建结束后，脚本会逐个 ABI 比对 APK 与本次 Flutter 编译产物的
+`.text` / `.rodata`，允许 Android 去掉调试符号，但拒绝旧 Dart 代码、缺失或多余架构。
+此检查发生在复制发布包及安装之前；失败时不要直接发布旧文件。
+Gradle 同时将每个完整 variant 的 Flutter JNI 生成任务接入 Android 打包依赖，
+`run-android-device.sh` 的 release 安装也复用这一修复。
+
+手动核对已有产物：
+
+```bash
+python3 scripts/verify_android_aot.py build/app/outputs/flutter-apk/app-prod-release.apk \
+  build/app/intermediates/flutter/prodRelease/jniLibs
+```
+
 脚本校验 `com.bansheng.prod`、非 debuggable、内嵌版本号、文件名和正式签名证书，
 上传暂存文件，核对 SHA-256，再原子发布。重复上传相同文件是幂等的；同版本不同内容
 会被拒绝，须先增加 build number，防止已分发链接悄悄变成另一个包。

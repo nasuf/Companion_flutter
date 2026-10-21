@@ -10,6 +10,8 @@ import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
+import zipfile
+from test_android_aot import elf_fixture
 from unittest.mock import patch
 
 
@@ -289,20 +291,27 @@ class BuildNamingTests(unittest.TestCase):
     def test_actual_script_names_prod_release_and_isolates_other_builds(self):
         for flavor, mode, name in [("prod", "release", "bansheng-0.6.1+8.apk"),
                                    ("dev", "release", "bansheng-dev-0.6.1+8.apk"),
-                                   ("prod", "debug", "bansheng-prod-0.6.1+8-debug.apk")]:
+                                   ("prod", "debug", "bansheng-prod-0.6.1+8-debug.apk"),
+                                   ("prod", "release", None)]:
             with self.subTest(flavor=flavor, mode=mode), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 (root / "scripts").mkdir()
                 (root / "tools").mkdir()
                 shutil.copy2(SCRIPTS / "build-android-apk.sh", root / "scripts")
+                shutil.copy2(SCRIPTS / "verify_android_aot.py", root / "scripts")
+                (root / "fixture.so").write_bytes(elf_fixture())
                 (root / "pubspec.yaml").write_text("version: 0.6.1+8\n")
                 (root / "tools/git").write_text("#!/bin/sh\nexit 128\n")
                 (root / "tools/flutter").write_text('''#!/usr/bin/env python3
-import os,sys,time
+import os,sys,time,zipfile
 from pathlib import Path
 if sys.argv[1:3] == ['build','apk']:
  p=Path('build/app/outputs/flutter-apk') / ('app-'+os.environ['FLAVOR']+'-'+os.environ['BUILD_MODE']+'.apk')
- p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b'fixture APK')
+ p.parent.mkdir(parents=True,exist_ok=True)
+ runtime=Path('fixture.so').read_bytes()
+ with zipfile.ZipFile(p,'w') as z:z.writestr('lib/arm64-v8a/libapp.so',runtime.replace(b'current-code',b'old-old-code') if os.environ.get('STALE_AOT') == '1' else runtime)
+ jni=Path('build/app/intermediates/flutter/'+os.environ['FLAVOR']+'Release/jniLibs/arm64-v8a/libapp.so')
+ jni.parent.mkdir(parents=True,exist_ok=True);jni.write_bytes(runtime)
  os.utime(p,(time.time()+3,time.time()+3))
 ''')
                 for tool in (root / "tools").iterdir():
@@ -311,12 +320,18 @@ if sys.argv[1:3] == ['build','apk']:
                 for key in ["BUILD_VERSION", "BUILD_NAME", "BUILD_NUMBER", "CLEAN"]:
                     env.pop(key, None)
                 env.update(PATH=str(root / "tools") + os.pathsep + env["PATH"],
-                           FLAVOR=flavor, BUILD_MODE=mode, INSTALL_ANDROID="0", OPEN_OUTPUT="0",
+                           FLAVOR=flavor, BUILD_MODE=mode, INSTALL_ANDROID="0", OPEN_OUTPUT="0", STALE_AOT="1" if name is None else "0",
                            ANDROID_HOME=str(root / "missing-sdk"), ANDROID_SDK_ROOT=str(root / "missing-sdk"))
                 result = subprocess.run(["bash", str(root / "scripts/build-android-apk.sh")], env=env,
                                         capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=20)
+                if name is None:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("stale Flutter AOT", result.stderr)
+                    self.assertFalse((root / "build/android").exists())
+                    continue
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertEqual((root / "build/android" / name).read_bytes(), b"fixture APK")
+                with zipfile.ZipFile(root / "build/android" / name) as archive:
+                    self.assertEqual(archive.read("lib/arm64-v8a/libapp.so"), elf_fixture())
 
 
 if __name__ == "__main__":

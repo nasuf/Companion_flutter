@@ -86,6 +86,20 @@ android {
     }
 }
 
+// Bind AGP directly to Flutter's generated JNI output, including its producer.
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        val taskName = "copyJniLibsflutterBuild" + variant.name.replaceFirstChar { it.uppercaseChar() }
+        afterEvaluate {
+            if (taskName in tasks.names) {
+                variant.sources.jniLibs?.addGeneratedSourceDirectory(tasks.named<Sync>(taskName)) {
+                    objects.directoryProperty().fileValue(it.destinationDir)
+                }
+            }
+        }
+    }
+}
+
 dependencies {
     implementation("cn.jiguang.sdk:jpush:6.2.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
