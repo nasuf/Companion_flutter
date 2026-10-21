@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:companion_flutter/companion_api.dart';
 import 'package:companion_flutter/main.dart';
 import 'package:companion_flutter/models.dart';
@@ -13,11 +15,53 @@ const _display = '镇江市 $_address';
 const _urlChannel = MethodChannel('plugins.flutter.io/url_launcher');
 
 class _Api extends CompanionApi {
-  _Api(this.activity) : super(baseUrl: 'https://example.test');
+  _Api(this.activity, {this.takeoverId})
+    : super(baseUrl: 'https://example.test');
   final OfflineActivity activity;
+  final String? takeoverId;
+  final reads = <String>[];
+  bool failLocation = false;
+  Future<void>? locationGate;
 
   @override
-  Future<OfflineActivity> fetchOfflineActivity(String id) async => activity;
+  Future<OfflineActivity> fetchOfflineActivity(String id) async {
+    expect(takeoverId, isNull, reason: 'takeover cannot read own activities');
+    reads.add('own/$id');
+    await locationGate;
+    if (failLocation) throw const ApiException(404, '活动位置暂不可用');
+    return activity;
+  }
+
+  @override
+  Future<OfflineActivity> fetchTakeoverActivity(String scope, String id) async {
+    expect(scope, takeoverId);
+    reads.add('$scope/$id');
+    await locationGate;
+    if (failLocation) throw const ApiException(404, '活动位置暂不可用');
+    return activity;
+  }
+
+  OfflineActivityReview review() => OfflineActivityReview.fromJson({
+    'id': activity.id,
+    'title': '一段旅途回忆，而不是场所名',
+    'address': _address,
+    'story': '这次留下了一段回忆',
+  });
+
+  @override
+  Future<OfflineActivityReview> fetchOfflineActivityReview(String id) async {
+    expect(takeoverId, isNull);
+    return review();
+  }
+
+  @override
+  Future<OfflineActivityReview> fetchTakeoverActivityReview(
+    String scope,
+    String id,
+  ) async {
+    expect(scope, takeoverId);
+    return review();
+  }
 }
 
 class _Geocoder extends geocoding.GeocodingPlatform {
@@ -30,19 +74,25 @@ class _Geocoder extends geocoding.GeocodingPlatform {
   }
 }
 
-Future<void> _openLocation(
+Future<_Api> _openLocation(
   WidgetTester tester,
   TargetPlatform platform, {
   bool hasCoordinates = true,
   String coordinateSystem = 'gcj02',
+  String status = 'accepted',
+  bool reached = false,
+  bool openLocation = true,
+  String? takeoverId,
+  Size viewport = const Size(390, 844),
 }) async {
-  tester.view.physicalSize = const Size(390, 844);
+  tester.view.physicalSize = viewport;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   final activity = OfflineActivity.fromJson({
     'id': 'activity',
-    'status': 'accepted',
+    'status': status,
+    'reached': reached,
     'title': _name,
     'location_name': _name,
     'address': _address,
@@ -52,26 +102,60 @@ Future<void> _openLocation(
     if (hasCoordinates) 'place_lng': 119.451,
     'coordinate_system': coordinateSystem,
   });
+  final api = _Api(activity, takeoverId: takeoverId);
+  const session = AuthSession(
+    token: 'test',
+    userId: 'user',
+    username: 'tester',
+    role: UserRole.user,
+    hasAgent: true,
+  );
   await tester.pumpWidget(
     MaterialApp(
       theme: ThemeData(platform: platform),
-      home: OfflineCheckinPage(
-        api: _Api(activity),
-        session: const AuthSession(
-          token: 'test',
-          userId: 'user',
-          username: 'tester',
-          role: UserRole.user,
-          hasAgent: true,
-        ),
-        activityId: activity.id,
-      ),
+      home: status == 'accepted'
+          ? OfflineCheckinPage(
+              api: api,
+              session: session,
+              activityId: activity.id,
+              takeoverId: takeoverId,
+            )
+          : status == 'completed'
+          ? OfflineReviewPage(
+              api: api,
+              session: session,
+              activityId: activity.id,
+              takeoverId: takeoverId,
+            )
+          : Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () => openOfflineActivityDetail(
+                    context,
+                    api: api,
+                    session: session,
+                    activity: activity,
+                    takeoverId: takeoverId,
+                  ),
+                  child: const Text('打开活动'),
+                ),
+              ),
+            ),
     ),
   );
   await tester.pumpAndSettle();
-  await tester.tap(find.text('查看位置'));
+  if (status != 'accepted' && status != 'completed') {
+    await tester.tap(find.text('打开活动'));
+    await tester.pumpAndSettle();
+  }
+  await tester.ensureVisible(find.text('查看位置'));
   await tester.pumpAndSettle();
-  expect(find.text(_display), findsOneWidget);
+  if (openLocation) {
+    await tester.tap(find.text('查看位置'));
+    await tester.pumpAndSettle();
+    expect(find.text(_display), findsOneWidget);
+  }
+  return api;
 }
 
 void main() {
@@ -81,6 +165,7 @@ void main() {
   var launchResult = true;
   var throwNative = false;
   var systemResult = true;
+  String? clipboard;
 
   setUp(() {
     calls.clear();
@@ -88,6 +173,7 @@ void main() {
     launchResult = true;
     throwNative = false;
     systemResult = true;
+    clipboard = null;
     geocoder = _Geocoder();
     geocoding.GeocodingPlatform.instance = geocoder;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -101,16 +187,25 @@ void main() {
           }
           return systemResult;
         });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') {
+            clipboard = (call.arguments as Map)['text'] as String;
+          }
+          return null;
+        });
   });
 
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_urlChannel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null);
   });
 
-  Future<void> navigate(WidgetTester tester) async {
+  Future<void> navigate(WidgetTester tester, {String label = '导航前往'}) async {
     expect(calls, isEmpty);
-    await tester.tap(find.text('导航前往'));
+    await tester.tap(find.text(label));
     await tester.pumpAndSettle();
     expect(find.text('位置'), findsNothing);
     for (final call in calls.where((call) => call.method == 'launch')) {
@@ -135,6 +230,34 @@ void main() {
   }
 
   for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+    for (final (status, reached) in [
+      ('pending', false),
+      ('ignored', false),
+      ('accepted', false),
+      ('accepted', true),
+      ('completed', true),
+    ]) {
+      testWidgets('$platform $status reached=$reached location actions', (
+        tester,
+      ) async {
+        await _openLocation(tester, platform, status: status, reached: reached);
+        final planned = status == 'accepted' && !reached;
+        expect(find.text('复制地址'), findsOneWidget);
+        expect(find.text(planned ? '查看距离' : '导航前往'), findsNothing);
+        await navigate(tester, label: planned ? '导航前往' : '查看距离');
+        final uri = launches().single;
+        expect(
+          uri.scheme,
+          platform == TargetPlatform.iOS ? 'iosamap' : 'amapuri',
+        );
+        expect(uri.host, platform == TargetPlatform.iOS ? 'path' : 'route');
+        expect(uri.queryParameters['dname'], _name);
+        expect(uri.queryParameters['dlat'], '32.203');
+        expect(uri.queryParameters['dlon'], '119.451');
+        expect(geocoder.queries, isEmpty);
+      });
+    }
+
     for (final coordinates in ['gcj02', 'wgs84']) {
       testWidgets('$platform $coordinates opens route planning from activity', (
         tester,
@@ -194,4 +317,110 @@ void main() {
       expect(find.text('没有可用的地图应用'), findsOneWidget);
     });
   }
+
+  testWidgets('pending location copies the complete address without maps', (
+    tester,
+  ) async {
+    await _openLocation(tester, TargetPlatform.iOS, status: 'pending');
+    await tester.tap(find.text('复制地址'));
+    await tester.pumpAndSettle();
+    expect(clipboard, _display);
+    expect(calls, isEmpty);
+    expect(find.text('地址已复制'), findsOneWidget);
+  });
+
+  for (final status in ['pending', 'completed']) {
+    testWidgets('narrow $status address keeps location button clickable', (
+      tester,
+    ) async {
+      await _openLocation(
+        tester,
+        TargetPlatform.iOS,
+        status: status,
+        viewport: const Size(320, 740),
+      );
+      await navigate(tester, label: '查看距离');
+    });
+  }
+
+  testWidgets('takeover review reads the original owner location', (
+    tester,
+  ) async {
+    final api = await _openLocation(
+      tester,
+      TargetPlatform.android,
+      status: 'completed',
+      takeoverId: 'case',
+    );
+    expect(api.reads, ['case/activity']);
+    await navigate(tester, label: '查看距离');
+    expect(launches().single.queryParameters['dname'], _name);
+  });
+
+  testWidgets('review location failure stays on review and can retry', (
+    tester,
+  ) async {
+    final api = await _openLocation(
+      tester,
+      TargetPlatform.iOS,
+      status: 'completed',
+      openLocation: false,
+    );
+    api.failLocation = true;
+    await tester.tap(find.text('查看位置'));
+    await tester.pumpAndSettle();
+    expect(find.text('活动位置暂不可用'), findsOneWidget);
+    expect(find.text('这次留下了一段回忆'), findsOneWidget);
+    expect(calls, isEmpty);
+    await tester.tap(find.text('知道了'));
+    await tester.pumpAndSettle();
+    api.failLocation = false;
+    await tester.tap(find.text('查看位置'));
+    await tester.pumpAndSettle();
+    await navigate(tester, label: '查看距离');
+  });
+
+  testWidgets('review repeated location taps create one lookup and sheet', (
+    tester,
+  ) async {
+    final api = await _openLocation(
+      tester,
+      TargetPlatform.iOS,
+      status: 'completed',
+      openLocation: false,
+    );
+    final gate = Completer<void>();
+    api.locationGate = gate.future;
+    await tester.tap(find.text('查看位置'));
+    await tester.pump();
+    await tester.tap(find.text('查看位置'));
+    await tester.pump();
+    expect(api.reads, ['own/activity']);
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('位置'), findsOneWidget);
+    await navigate(tester, label: '查看距离');
+  });
+
+  testWidgets('leaving review during lookup does not open a location sheet', (
+    tester,
+  ) async {
+    final api = await _openLocation(
+      tester,
+      TargetPlatform.iOS,
+      status: 'completed',
+      openLocation: false,
+    );
+    final gate = Completer<void>();
+    api.locationGate = gate.future;
+    await tester.tap(find.text('查看位置'));
+    await tester.pump();
+    await tester.pumpWidget(const MaterialApp(home: Text('已离开活动')));
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('位置'), findsNothing);
+    expect(find.text('已离开活动'), findsOneWidget);
+    expect(calls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
 }

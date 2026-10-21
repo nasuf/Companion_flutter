@@ -178,7 +178,21 @@ Future<bool> showOfflineArchiveConfirm(BuildContext context) async {
   return result ?? false;
 }
 
-/// 查看位置（spec §5.4-9）：底部玻璃 sheet，展示完整地址 + 复制 + 路线规划。
+Future<void> showOfflineActivityLocationSheet(
+  BuildContext context, {
+  required OfflineActivity activity,
+}) => showOfflineLocationSheet(
+  context,
+  name: activity.locationName ?? activity.title,
+  address: activity.address,
+  city: activity.city,
+  latitude: activity.placeLat,
+  longitude: activity.placeLng,
+  coordinateSystem: activity.coordinateSystem,
+  isPendingDeparture: activity.status == 'accepted' && !activity.reached,
+);
+
+/// 各状态共用的位置弹层；只有待出行显示「导航前往」，其他状态显示「查看距离」。
 Future<void> showOfflineLocationSheet(
   BuildContext context, {
   required String name,
@@ -187,6 +201,7 @@ Future<void> showOfflineLocationSheet(
   double? latitude,
   double? longitude,
   String coordinateSystem = 'gcj02',
+  bool isPendingDeparture = false,
 }) {
   final street = (address == null || address.trim().isEmpty)
       ? name
@@ -263,7 +278,7 @@ Future<void> showOfflineLocationSheet(
                 const SizedBox(width: 12),
                 Expanded(
                   child: _PrimaryActivityPillButton(
-                    label: '导航前往',
+                    label: isPendingDeparture ? '导航前往' : '查看距离',
                     icon: '🧭',
                     onPressed: () async {
                       Navigator.of(sheetContext).pop();

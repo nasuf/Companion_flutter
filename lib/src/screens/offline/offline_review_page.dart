@@ -31,6 +31,7 @@ class _OfflineReviewPageState extends State<OfflineReviewPage> {
   OfflineActivityReview? _review;
   bool _loading = true;
   bool _generatingNote = false;
+  bool _viewingLocation = false;
   String? _error;
 
   @override
@@ -80,6 +81,32 @@ class _OfflineReviewPageState extends State<OfflineReviewPage> {
       if (mounted) _showActivityToast(context, error.message);
     } finally {
       if (mounted) setState(() => _generatingNote = false);
+    }
+  }
+
+  Future<void> _viewLocation() async {
+    if (_viewingLocation) return;
+    setState(() => _viewingLocation = true);
+    try {
+      // 回忆DTO没有场所坐标；按原活动读取，避免用回忆标题猜测同名地点。
+      final takeoverId = widget.takeoverId;
+      final activity = takeoverId == null
+          ? await widget.api.fetchOfflineActivity(widget.activityId)
+          : await widget.api.fetchTakeoverActivity(
+              takeoverId,
+              widget.activityId,
+            );
+      if (!mounted) return;
+      await showOfflineActivityLocationSheet(context, activity: activity);
+    } catch (error) {
+      if (mounted) {
+        _showActivityToast(
+          context,
+          error is ApiException ? error.message : '暂时无法加载位置，请稍后重试',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _viewingLocation = false);
     }
   }
 
@@ -145,7 +172,11 @@ class _OfflineReviewPageState extends State<OfflineReviewPage> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
-            child: _ReviewHero(review: review, authToken: widget.api.authToken),
+            child: _ReviewHero(
+              review: review,
+              authToken: widget.api.authToken,
+              onViewLocation: _viewingLocation ? null : _viewLocation,
+            ),
           ),
         ),
         SliverToBoxAdapter(
@@ -242,10 +273,15 @@ class _OfflineReviewPageState extends State<OfflineReviewPage> {
 }
 
 class _ReviewHero extends StatelessWidget {
-  const _ReviewHero({required this.review, required this.authToken});
+  const _ReviewHero({
+    required this.review,
+    required this.authToken,
+    required this.onViewLocation,
+  });
 
   final OfflineActivityReview review;
   final String? authToken;
+  final VoidCallback? onViewLocation;
 
   @override
   Widget build(BuildContext context) {
@@ -257,82 +293,91 @@ class _ReviewHero extends StatelessWidget {
     if (images.isEmpty && cover != null && cover.trim().isNotEmpty) {
       images.add(cover);
     }
-    return _ActivityImageGallery(
-      imageUrls: images,
-      category: null,
-      authToken: authToken,
-      height: 208,
-      radius: 24,
-      overlay: Stack(
-        fit: StackFit.expand,
-        children: [
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Color(0xB3000000)],
-                stops: [0.4, 1],
-              ),
-            ),
-          ),
-          Positioned(
-            left: 18,
-            right: 18,
-            bottom: images.length > 1 ? 24 : 16,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '旅途回忆',
-                  style: TextStyle(
-                    color: Color(0xE6FFFFFF),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 2,
-                    decoration: TextDecoration.none,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _ActivityImageGallery(
+          imageUrls: images,
+          category: null,
+          authToken: authToken,
+          height: 208,
+          radius: 24,
+          overlay: Stack(
+            fit: StackFit.expand,
+            children: [
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Color(0xB3000000)],
+                    stops: [0.4, 1],
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  review.title,
+              ),
+              Positioned(
+                left: 18,
+                right: 18,
+                bottom: images.length > 1 ? 24 : 16,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '旅途回忆',
+                      style: TextStyle(
+                        color: Color(0xE6FFFFFF),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 2,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      review.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        height: 1.2,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _reviewTimeRange(review.startedAt, review.endedAt),
+                      style: const TextStyle(
+                        color: Color(0xCCFFFFFF),
+                        fontSize: 12,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if ((review.address ?? '').trim().isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '📍 ${review.address}',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    height: 1.2,
-                    decoration: TextDecoration.none,
-                  ),
+                  style: _mutedStyle(context, 13),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  _reviewTimeRange(review.startedAt, review.endedAt),
-                  style: const TextStyle(
-                    color: Color(0xCCFFFFFF),
-                    fontSize: 12,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-                if ((review.address ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    '📍 ${review.address}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xCCFFFFFF),
-                      fontSize: 12,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ],
-              ],
-            ),
+              ),
+              const SizedBox(width: 8),
+              _ActivityLocationButton(onPressed: onViewLocation),
+            ],
           ),
         ],
-      ),
+      ],
     );
   }
 }

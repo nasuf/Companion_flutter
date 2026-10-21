@@ -788,14 +788,72 @@ class _MetaLine extends StatelessWidget {
       if ((activity.scheduleLabel ?? '').isEmpty &&
           (activity.endsAt ?? '').isNotEmpty)
         '⏰ ${_shortTimeRange(activity.startsAt, activity.endsAt)}',
-      if ((activity.locationName ?? activity.address ?? '').isNotEmpty)
-        '📍 ${activity.locationName ?? activity.address}',
     ];
-    return Text(
-      parts.join('  ·  '),
-      style: _mutedStyle(context, 13).copyWith(fontWeight: FontWeight.w700),
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
+    final address = (activity.address ?? '').trim();
+    final location = address.isNotEmpty
+        ? address
+        : (activity.locationName ?? '').trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (parts.isNotEmpty)
+          Text(
+            parts.join('  ·  '),
+            style: _mutedStyle(
+              context,
+              13,
+            ).copyWith(fontWeight: FontWeight.w700),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        if (parts.isNotEmpty && location.isNotEmpty) const SizedBox(height: 8),
+        if (location.isNotEmpty)
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '📍 $location',
+                  style: _mutedStyle(context, 13),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              _ActivityLocationButton(
+                onPressed: () => showOfflineActivityLocationSheet(
+                  context,
+                  activity: activity,
+                ),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+}
+
+class _ActivityLocationButton extends StatelessWidget {
+  const _ActivityLocationButton({required this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoButton(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      minimumSize: Size.zero,
+      borderRadius: BorderRadius.circular(999),
+      color: _kActivityAccent.withValues(alpha: 0.12),
+      onPressed: onPressed,
+      child: const Text(
+        '查看位置',
+        style: TextStyle(
+          color: _kActivityAccent,
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          decoration: TextDecoration.none,
+        ),
+      ),
     );
   }
 }

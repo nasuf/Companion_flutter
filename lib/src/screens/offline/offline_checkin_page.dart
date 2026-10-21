@@ -290,15 +290,8 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
             const SizedBox(height: 16),
             _CheckinPlaceCard(
               activity: activity,
-              onViewLocation: () => showOfflineLocationSheet(
-                context,
-                name: activity.locationName ?? activity.title,
-                address: activity.address,
-                city: activity.city,
-                latitude: activity.placeLat,
-                longitude: activity.placeLng,
-                coordinateSystem: activity.coordinateSystem,
-              ),
+              onViewLocation: () =>
+                  showOfflineActivityLocationSheet(context, activity: activity),
             ),
           ],
         ),
@@ -669,25 +662,7 @@ class _CheckinPlaceCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                CupertinoButton(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  minimumSize: Size.zero,
-                  borderRadius: BorderRadius.circular(999),
-                  color: _kActivityAccent.withValues(alpha: 0.12),
-                  onPressed: onViewLocation,
-                  child: const Text(
-                    '查看位置',
-                    style: TextStyle(
-                      color: _kActivityAccent,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ),
+                _ActivityLocationButton(onPressed: onViewLocation),
               ],
             ),
           ],
