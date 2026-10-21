@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:geolocator/geolocator.dart';
 
@@ -86,61 +89,226 @@ String _composeAddress(geocoding.Placemark place) {
   return parts.join('');
 }
 
-/// Reads the current device location and optionally syncs coarse profile location.
+enum DeviceLocationFailure {
+  serviceDisabled,
+  permissionDenied,
+  permissionDeniedForever,
+  timeout,
+  unavailable,
+  profileSyncFailed,
+  profileRejected,
+}
+
+class DeviceLocationResult {
+  const DeviceLocationResult({
+    this.snapshot,
+    this.failure,
+    this.profileSaved = false,
+  });
+
+  final DeviceLocationSnapshot? snapshot;
+  final DeviceLocationFailure? failure;
+  final bool profileSaved;
+
+  String? get message => switch (failure) {
+    DeviceLocationFailure.serviceDisabled => '手机定位服务未开启，请在系统设置中开启后重试。',
+    DeviceLocationFailure.permissionDenied => '尚未获得位置权限，请允许使用位置后重试。',
+    DeviceLocationFailure.permissionDeniedForever =>
+      '位置权限已被关闭，请在应用设置中允许使用位置后重试。',
+    DeviceLocationFailure.timeout => '暂时未能获取位置，请确认系统定位已开启，移到窗边或室外后重试。',
+    DeviceLocationFailure.unavailable => '暂时无法获取位置，请检查系统定位服务后重试。',
+    DeviceLocationFailure.profileSyncFailed => '已获取手机位置，但同步暂未完成，请稍后重试。',
+    DeviceLocationFailure.profileRejected => '已获取手机位置，但服务器未确认保存，请稍后重试。',
+    null => null,
+  };
+}
+
+// Join an automatic request when the user taps the activity card mid-flight.
+final _pendingLocationRequests =
+    <(CompanionApi?, bool, bool), Future<DeviceLocationResult>>{};
+
+Future<DeviceLocationResult> requestDeviceLocationResult({
+  CompanionApi? api,
+  bool openSettingsWhenBlocked = false,
+  bool syncUserProfile = false,
+  bool allowRecentCache = false,
+}) {
+  final key = (api, syncUserProfile, allowRecentCache);
+  final pending = _pendingLocationRequests[key];
+  if (pending != null) return pending;
+  final future =
+      _requestDeviceLocation(
+        api: api,
+        openSettingsWhenBlocked: openSettingsWhenBlocked,
+        syncUserProfile: syncUserProfile,
+        allowRecentCache: allowRecentCache,
+      ).whenComplete(() {
+        _pendingLocationRequests.remove(key);
+      });
+  _pendingLocationRequests[key] = future;
+  return future;
+}
+
+/// Compatibility API for chat and arrival verification. Profile sync failure
+/// must not discard an already acquired device position.
 Future<DeviceLocationSnapshot?> requestCurrentDeviceLocation({
   CompanionApi? api,
   bool openSettingsWhenBlocked = false,
   bool syncUserProfile = false,
-}) async {
-  try {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      if (api != null) {
-        await api.saveUserLocation(permissionStatus: 'service_disabled');
-      }
-      if (openSettingsWhenBlocked) {
-        await Geolocator.openLocationSettings();
-      }
-      return null;
-    }
+}) async => (await requestDeviceLocationResult(
+  api: api,
+  openSettingsWhenBlocked: openSettingsWhenBlocked,
+  syncUserProfile: syncUserProfile,
+  allowRecentCache: syncUserProfile,
+)).snapshot;
 
-    var permission = await Geolocator.checkPermission();
+void _logLocationFailure(String stage, Object error) {
+  // No coordinates, user identifiers, API payloads or tokens in device logs.
+  debugPrint('device_location stage=$stage error=${error.runtimeType}');
+}
+
+Future<void> _recordBlockedLocation(CompanionApi? api, String status) async {
+  if (api == null) return;
+  try {
+    await api
+        .saveUserLocation(permissionStatus: status)
+        .timeout(const Duration(seconds: 3));
+  } catch (error) {
+    _logLocationFailure('permission_sync', error);
+  }
+}
+
+bool _validCoordinates(Position position) =>
+    position.latitude.isFinite &&
+    position.latitude.abs() <= 90 &&
+    position.longitude.isFinite &&
+    position.longitude.abs() <= 180 &&
+    position.accuracy.isFinite &&
+    position.accuracy >= 0;
+
+Future<Position> _readDevicePosition({required bool allowRecentCache}) async {
+  Object? failure;
+  final android = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  final settings = <LocationSettings>[
+    LocationSettings(
+      accuracy: android ? LocationAccuracy.high : LocationAccuracy.best,
+      timeLimit: Duration(seconds: 15),
+    ),
+    if (android)
+      AndroidSettings(
+        forceLocationManager: true,
+        accuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 10),
+        intervalDuration: const Duration(seconds: 1),
+      ),
+  ];
+  for (final setting in settings) {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: setting,
+      ).timeout(setting.timeLimit!);
+      if (!_validCoordinates(position)) throw StateError('Invalid position');
+      return position;
+    } on PermissionDeniedException {
+      rethrow;
+    } on LocationServiceDisabledException {
+      rethrow;
+    } catch (error) {
+      failure = error;
+      _logLocationFailure(
+        setting is AndroidSettings ? 'system_position' : 'position',
+        error,
+      );
+    }
+  }
+  if (allowRecentCache) {
+    try {
+      final cached = await Geolocator.getLastKnownPosition(
+        forceAndroidLocationManager: android,
+      ).timeout(const Duration(seconds: 2));
+      if (cached != null &&
+          _validCoordinates(cached) &&
+          cached.accuracy > 0 &&
+          cached.accuracy <= 100) {
+        final age = DateTime.now().difference(cached.timestamp);
+        if (!age.isNegative && age <= const Duration(minutes: 2)) return cached;
+      }
+    } on PermissionDeniedException {
+      rethrow;
+    } on LocationServiceDisabledException {
+      rethrow;
+    } catch (error) {
+      _logLocationFailure('cached_position', error);
+    }
+  }
+  throw failure ?? StateError('Position unavailable');
+}
+
+Future<List<geocoding.Placemark>> _readAddress(Position position) async {
+  try {
+    await geocoding.setLocaleIdentifier('zh_CN');
+  } catch (_) {
+    // Locale override is optional; the lookup still runs when unsupported.
+  }
+  return geocoding.placemarkFromCoordinates(
+    position.latitude,
+    position.longitude,
+  );
+}
+
+Future<DeviceLocationResult> _requestDeviceLocation({
+  required CompanionApi? api,
+  required bool openSettingsWhenBlocked,
+  required bool syncUserProfile,
+  required bool allowRecentCache,
+}) async {
+  final android = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  try {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled().timeout(
+      const Duration(seconds: 3),
+    );
+    if (!serviceEnabled) {
+      await _recordBlockedLocation(api, 'service_disabled');
+      if (openSettingsWhenBlocked) {
+        await Geolocator.openLocationSettings().timeout(
+          const Duration(seconds: 3),
+        );
+      }
+      return const DeviceLocationResult(
+        failure: DeviceLocationFailure.serviceDisabled,
+      );
+    }
+    var permission = await Geolocator.checkPermission().timeout(
+      const Duration(seconds: 3),
+    );
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
     }
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
-      if (api != null) {
-        await api.saveUserLocation(permissionStatus: permission.name);
+    if (permission != LocationPermission.whileInUse &&
+        permission != LocationPermission.always) {
+      await _recordBlockedLocation(api, permission.name);
+      if (openSettingsWhenBlocked &&
+          permission == LocationPermission.deniedForever) {
+        await Geolocator.openAppSettings().timeout(const Duration(seconds: 3));
       }
-      if (openSettingsWhenBlocked) {
-        await Geolocator.openAppSettings();
-      }
-      return null;
+      return DeviceLocationResult(
+        failure: permission == LocationPermission.deniedForever
+            ? DeviceLocationFailure.permissionDeniedForever
+            : DeviceLocationFailure.permissionDenied,
+      );
     }
 
-    final position = await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.best,
-        timeLimit: Duration(seconds: 15),
-      ),
+    final position = await _readDevicePosition(
+      allowRecentCache: allowRecentCache,
     );
-
     String? city;
     String? region;
     String? country;
     String? address;
     try {
-      // Keep city names searchable in the app's language even on English phones.
-      try {
-        await geocoding.setLocaleIdentifier('zh_CN');
-      } catch (_) {
-        // Some platform geocoders do not support a locale override.
-      }
-      final places = await geocoding.placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
+      final places = await _readAddress(
+        position,
+      ).timeout(Duration(seconds: android ? 3 : 10));
       if (places.isNotEmpty) {
         final place = places.first;
         city = _firstNonEmpty([
@@ -155,26 +323,12 @@ Future<DeviceLocationSnapshot?> requestCurrentDeviceLocation({
         ]);
         country = _firstNonEmpty([place.country, place.isoCountryCode]);
         final composed = _composeAddress(place).trim();
-        if (composed.isNotEmpty) {
-          address = composed;
-        }
+        if (composed.isNotEmpty) address = composed;
       }
-    } catch (_) {
-      // Coordinates are still useful even when reverse geocoding fails.
+    } catch (error) {
+      _logLocationFailure('reverse_geocoding', error);
     }
-
-    if (syncUserProfile && api != null) {
-      await api.saveUserLocation(
-        latitude: position.latitude,
-        longitude: position.longitude,
-        city: city,
-        region: region,
-        country: country,
-        permissionStatus: permission.name,
-      );
-    }
-
-    return DeviceLocationSnapshot(
+    final snapshot = DeviceLocationSnapshot(
       latitude: position.latitude,
       longitude: position.longitude,
       permissionStatus: permission.name,
@@ -185,7 +339,46 @@ Future<DeviceLocationSnapshot?> requestCurrentDeviceLocation({
       accuracyMeters: position.accuracy,
       observedAt: position.timestamp,
     );
-  } catch (_) {
-    return null;
+    if (syncUserProfile && api != null) {
+      try {
+        final saved = await api
+            .saveUserLocation(
+              latitude: position.latitude,
+              longitude: position.longitude,
+              city: city,
+              region: region,
+              country: country,
+              permissionStatus: permission.name,
+            )
+            .timeout(Duration(seconds: android ? 8 : 30));
+        return DeviceLocationResult(
+          snapshot: snapshot,
+          profileSaved: saved,
+          failure: saved ? null : DeviceLocationFailure.profileRejected,
+        );
+      } catch (error) {
+        _logLocationFailure('profile_sync', error);
+        return DeviceLocationResult(
+          snapshot: snapshot,
+          failure: DeviceLocationFailure.profileSyncFailed,
+        );
+      }
+    }
+    return DeviceLocationResult(snapshot: snapshot);
+  } on PermissionDeniedException {
+    return const DeviceLocationResult(
+      failure: DeviceLocationFailure.permissionDenied,
+    );
+  } on LocationServiceDisabledException {
+    return const DeviceLocationResult(
+      failure: DeviceLocationFailure.serviceDisabled,
+    );
+  } on TimeoutException {
+    return const DeviceLocationResult(failure: DeviceLocationFailure.timeout);
+  } catch (error) {
+    _logLocationFailure('request', error);
+    return const DeviceLocationResult(
+      failure: DeviceLocationFailure.unavailable,
+    );
   }
 }

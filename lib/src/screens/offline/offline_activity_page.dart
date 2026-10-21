@@ -7,6 +7,7 @@ class OfflineActivityPage extends StatefulWidget {
     required this.session,
     required this.hasLocation,
     this.initialActivityId,
+    this.initialLocationMessage,
     this.onChanged,
     this.onOpenChatAtMessage,
     this.onGoToChat,
@@ -16,6 +17,7 @@ class OfflineActivityPage extends StatefulWidget {
   final AuthSession session;
   final bool hasLocation;
   final String? initialActivityId;
+  final String? initialLocationMessage;
   final VoidCallback? onChanged;
 
   /// 回顾「查看原始聊天」→ 跨 Tab 回聊天并定位到到达卡（由外层 main_shell 提供）。
@@ -35,11 +37,13 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
   bool _requestingLocation = false;
   bool _initialActivityOpened = false;
   String? _error;
+  String? _locationError;
 
   @override
   void initState() {
     super.initState();
     _hasLocation = widget.hasLocation;
+    _locationError = widget.initialLocationMessage;
     _load();
   }
 
@@ -218,14 +222,20 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
 
   Future<void> _requestLocationFromEmptyCard() async {
     if (_requestingLocation) return;
-    setState(() => _requestingLocation = true);
-    final hasLocation = await _requestAndSaveUserLocation(
-      widget.api,
+    setState(() {
+      _requestingLocation = true;
+      _locationError = null;
+    });
+    final result = await requestDeviceLocationResult(
+      api: widget.api,
       openSettingsWhenBlocked: true,
+      syncUserProfile: true,
+      allowRecentCache: true,
     );
     if (!mounted) return;
     setState(() {
-      _hasLocation = hasLocation || _hasLocation;
+      _hasLocation = result.profileSaved || _hasLocation;
+      _locationError = result.message;
       _requestingLocation = false;
     });
     widget.onChanged?.call();
@@ -290,9 +300,19 @@ class _OfflineActivityPageState extends State<OfflineActivityPage> {
                                   ),
                                   const SizedBox(height: 16),
                                 ],
+                                if (_locationError != null &&
+                                    hasAnyActivity) ...[
+                                  _OfflineErrorBlock(
+                                    message: _locationError!,
+                                    onRetry: _requestLocationFromEmptyCard,
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
                                 if (!hasAnyActivity)
                                   _ActivityEmptyLanding(
                                     hasLocation: _hasLocation,
+                                    requestingLocation: _requestingLocation,
+                                    locationError: _locationError,
                                     onRequestLocation:
                                         _requestLocationFromEmptyCard,
                                   ),
@@ -485,10 +505,14 @@ class _ActivityEmptyLanding extends StatelessWidget {
   const _ActivityEmptyLanding({
     required this.hasLocation,
     required this.onRequestLocation,
+    this.requestingLocation = false,
+    this.locationError,
   });
 
   final bool hasLocation;
   final VoidCallback onRequestLocation;
+  final bool requestingLocation;
+  final String? locationError;
 
   @override
   Widget build(BuildContext context) {
@@ -513,11 +537,18 @@ class _ActivityEmptyLanding extends StatelessWidget {
         const SizedBox(height: 14),
         _ActivityInfoTile(
           icon: hasLocation ? '🎁' : '📍',
-          title: hasLocation ? '小惊喜一会儿不定时有' : '让我知道你在哪',
-          body: hasLocation
-              ? '除了活动，我还会偶尔给你寄点小礼物，记得去看看礼物页面哦。'
-              : '若不开启定位，本地景点与美食推荐将无法为你呈现',
-          onTap: hasLocation ? null : onRequestLocation,
+          title: requestingLocation
+              ? '正在获取位置…'
+              : hasLocation
+              ? '小惊喜一会儿不定时有'
+              : '让我知道你在哪',
+          body: requestingLocation
+              ? '正在尝试系统定位，请稍候。'
+              : locationError ??
+                    (hasLocation
+                        ? '除了活动，我还会偶尔给你寄点小礼物，记得去看看礼物页面哦。'
+                        : '若不开启定位，本地景点与美食推荐将无法为你呈现'),
+          onTap: hasLocation || requestingLocation ? null : onRequestLocation,
         ),
       ],
     );

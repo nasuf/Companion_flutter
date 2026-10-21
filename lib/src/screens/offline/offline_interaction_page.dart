@@ -31,7 +31,8 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
   late final AnimationController _controller;
   OfflineHome? _home;
   // Process-wide: remounting this tab on Android must not re-prompt location.
-  static bool _locationAskedThisSession = false;
+  static final _locationAskedThisSession = <String>{};
+  String? _locationMessage;
 
   @override
   void initState() {
@@ -96,12 +97,21 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
   }
 
   Future<void> _requestLocationOnce() async {
-    if (_locationAskedThisSession) return;
-    _locationAskedThisSession = true;
-    await requestCurrentDeviceLocation(
+    final userId = widget.session.userId;
+    if (!_locationAskedThisSession.add(userId)) return;
+    final result = await requestDeviceLocationResult(
       api: widget.api,
       syncUserProfile: true,
+      allowRecentCache: true,
     );
+    // Retry transient acquisition/sync failures on the next visit, while keeping
+    // denied permissions from causing repeated automatic permission prompts.
+    if (!result.profileSaved &&
+        result.failure != DeviceLocationFailure.permissionDenied &&
+        result.failure != DeviceLocationFailure.permissionDeniedForever) {
+      _locationAskedThisSession.remove(userId);
+    }
+    if (mounted) setState(() => _locationMessage = result.message);
     await _load();
   }
 
@@ -112,6 +122,7 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
           api: widget.api,
           session: widget.session,
           hasLocation: _home?.hasLocation == true,
+          initialLocationMessage: _locationMessage,
           onChanged: _load,
           onOpenChatAtMessage: widget.onOpenChatAtMessage,
           onGoToChat: widget.onGoToChat,
@@ -226,18 +237,6 @@ class _OfflineInteractionPageState extends State<OfflineInteractionPage>
     if (completedCount > 0) return '$completedCount 个已完成活动';
     return '周末一起出去走走';
   }
-}
-
-Future<bool> _requestAndSaveUserLocation(
-  CompanionApi api, {
-  bool openSettingsWhenBlocked = false,
-}) async {
-  final snapshot = await requestCurrentDeviceLocation(
-    api: api,
-    openSettingsWhenBlocked: openSettingsWhenBlocked,
-    syncUserProfile: true,
-  );
-  return snapshot != null;
 }
 
 class _OfflineBackground extends StatelessWidget {
