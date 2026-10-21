@@ -446,7 +446,7 @@ void main() {
       await _frames(tester);
       expect(find.text('新位置'), findsWidgets);
       expect(find.text('旧位置'), findsNothing);
-      expect(find.textContaining('31.100000'), findsWidgets);
+      expect(find.textContaining('31.100000'), findsNothing);
       await tester.tap(find.text('取消'));
       await _frames(tester);
       expect(find.byType(LocationConfirmPage), findsNothing);

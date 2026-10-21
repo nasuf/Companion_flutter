@@ -168,15 +168,6 @@ class _LocationConfirmPageState extends State<LocationConfirmPage> {
                       card: card,
                       accuracyMeters: _snapshot.accuracyMeters,
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${_snapshot.latitude.toStringAsFixed(6)}, ${_snapshot.longitude.toStringAsFixed(6)}',
-                      style: TextStyle(
-                        color: w.inkSoft,
-                        fontSize: 12,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
                     if (_resolvingAddress) ...[
                       const SizedBox(height: 8),
                       Text(
