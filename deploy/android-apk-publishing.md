@@ -30,16 +30,22 @@ INSTALL_ANDROID=0 OPEN_OUTPUT=0 FLAVOR=prod ./scripts/build-android-apk.sh
 上传暂存文件，核对 SHA-256，再原子发布。重复上传相同文件是幂等的；同版本不同内容
 会被拒绝，须先增加 build number，防止已分发链接悄悄变成另一个包。
 
-同时生成和上传 `bansheng-<version>.qr.svg`，二维码内容就是该版本 APK 的完整 HTTPS 地址。
+生成和上传固定的 `bansheng-latest.qr.svg`，二维码始终指向
+`https://banshengcomp.com/downloads/android/bansheng-latest.apk`。
+以后发布新版无需替换二维码，已保存或打印的这张固定二维码继续下载最新版本。
+历史版本二维码仍保留其原有含义；迁移前已分发的版本二维码需要换成新的固定二维码一次。
 QR 编码由本地固定版本 `qrcode==8.2` 生成，不使用第三方二维码服务。
 首次运行发布脚本会自动在 `build/android/.publish-venv` 准备小型 Python 工具环境。
 
 只有公网完整下载的 SHA-256、HTTP 状态、APK MIME、二维码和校验文件都通过，才切换
 `/downloads/android/latest.json` 并打印成功，
 并写入本地 `build/android/bansheng-<version>.apk.publish.json` 验证记录。
-控制台同时打印 APK 地址、二维码图片地址和可直接扫描的字符二维码；本地也保留 SVG。
-Web 首页读取同一份 latest.json，将下载按钮与二维码一起更新，无需为新版 APK 重新部署 Web。
-版本化 APK 和二维码保持不可变；latest.json 原子替换，旧版本不能覆盖最新入口。
+控制台同时打印版本 APK 地址、固定下载地址、二维码图片地址和可直接扫描的字符二维码；本地也保留 SVG。
+Web 首页读取同一份 latest.json，下载按钮显示当前版本，二维码图片和编码内容保持不变。
+版本化 APK 保持不可变；验证通过后，在发布锁内原子替换固定下载入口的相对符号链接，
+再原子替换 latest.json；旧版本不能覆盖最新入口。固定入口直接提供 APK（无需跳转），
+支持 HEAD 和断点续传，使用 no-store、关闭 ETag/修改时间条件缓存及 open_file_cache，
+避免沿用上个版本。日常发布无需 Nginx reload。
 失败时脚本非零退出，删除自身暂存目录；已发布的不可变版本不会因下载验证失败被删除。
 发布脚本不会自动 commit、push 或修改应用版本。
 
@@ -48,7 +54,8 @@ Web 首页读取同一份 latest.json，将下载按钮与二维码一起更新�
 ```text
 https://banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk
 https://banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk.sha256
-https://banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.qr.svg
+https://banshengcomp.com/downloads/android/bansheng-latest.apk
+https://banshengcomp.com/downloads/android/bansheng-latest.qr.svg
 https://banshengcomp.com/downloads/android/latest.json
 ```
 
@@ -69,6 +76,8 @@ SSH 使用已信任的 known_hosts，保持主机校验；新机器先单独核�
 日常上传不需要 sudo。构建机需要 Python 3、SSH/SCP、curl、Android SDK 的 aapt/apksigner。
 
 ## 首次 Nginx 配置 / 新服务器恢复
+
+从版本二维码迁移到固定二维码时，也需先执行下面的幂等配置脚本，启用固定入口的缓存策略。
 
 由现有 HTTPS server include `android-downloads.nginx.conf`。首次安装可运行：
 

@@ -117,9 +117,10 @@ class Publisher:
             digest = sha256(snapshot)
             size = snapshot.stat().st_size
             url = f"{self.base_url}/{quote(name)}"
-            qr_name = f"bansheng-{version}.qr.svg"
+            download_url = f"{self.base_url}/bansheng-latest.apk"
+            qr_name = "bansheng-latest.qr.svg"
             qr_path = Path(directory) / "qr.svg"
-            qr = make_qr(url, qr_path)
+            qr = make_qr(download_url, qr_path)
             qr_digest = sha256(qr_path)
             qr_url = f"{self.base_url}/{quote(qr_name)}"
             print(f"Verified prod release {version}, {size:,} bytes, SHA-256 {digest}", flush=True)
@@ -152,7 +153,7 @@ class Publisher:
                     raise ValueError("Public QR code failed status/MIME/SHA-256 verification.")
                 release = {"schema_version": 1, "version": version, "filename": name, "qr_filename": qr_name,
                            "sha256": digest, "qr_sha256": qr_digest, "size_bytes": size,
-                           "url": url, "qr_url": qr_url}
+                           "url": url, "qr_url": qr_url, "download_url": download_url}
                 self.remote("activate", release=release)
                 latest_url = f"{self.base_url}/latest.json"
                 latest = json.loads(run(["curl", "--fail", "--silent", "--show-error", "--proto", "=https",
@@ -160,15 +161,22 @@ class Publisher:
                                         capture_output=True).stdout)
                 if any(latest.get(key) != value for key, value in release.items()):
                     raise ValueError("Public latest.json does not match the verified APK and QR code.")
+                stable_download = Path(directory) / "latest.apk"
+                stable_response = run(["curl", "--fail", "--silent", "--show-error", "--proto", "=https",
+                                       "--connect-timeout", "15", "--max-time", "900", "--output", str(stable_download),
+                                       "--write-out", "%{http_code}\n%{content_type}", download_url],
+                                      capture_output=True, timeout=920).stdout.splitlines()
+                if stable_response != ["200", "application/vnd.android.package-archive"] or sha256(stable_download) != digest:
+                    raise ValueError("Stable APK download failed status/MIME/SHA-256 verification.")
                 receipt = {"version": version, "package": "com.bansheng.prod", "url": url,
                            "sha256": digest, "size_bytes": size, "certificate_sha256": RELEASE_CERT_SHA256,
-                           "qr_url": qr_url, "qr_sha256": qr_digest, "latest_url": latest_url,
+                           "download_url": download_url, "qr_url": qr_url, "qr_sha256": qr_digest, "latest_url": latest_url,
                            "remote_path": result["path"], "verified_at": datetime.now(timezone.utc).isoformat()}
                 receipt_path = apk.with_suffix(".apk.publish.json")
                 receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n")
-                local_qr = apk.with_suffix(".qr.svg")
+                local_qr = apk.parent / qr_name
                 shutil.copyfile(qr_path, local_qr)
-                print(f"Published and verified: {url}\nQR code: {qr_url}\nScan to download:", flush=True)
+                print(f"Published and verified: {url}\nLatest download (permanent): {download_url}\nQR code: {qr_url}\nScan to download:", flush=True)
                 qr.print_ascii(tty=sys.stdout.isatty(), invert=True)
                 print(f"Local QR code: {local_qr}\nReceipt: {receipt_path}", flush=True)
                 return receipt

@@ -54,7 +54,7 @@ def publish(payload):
     if source.is_symlink() or source.stat().st_size != payload["size"] or sha256(source) != digest:
         raise ValueError("Uploaded APK checksum/size mismatch.")
     destination = PUBLIC / name
-    qr_name = name.removesuffix(".apk") + ".qr.svg"
+    qr_name = "bansheng-latest.qr.svg"
     qr_source = stage / "qr.svg"
     qr_digest = payload["qr_sha256"]
     if (not re.fullmatch(r"[0-9a-f]{64}", qr_digest) or qr_source.is_symlink()
@@ -89,7 +89,7 @@ def activate(release):
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+", version):
         raise ValueError("Invalid release version.")
     name = f"bansheng-{version}.apk"
-    qr_name = f"bansheng-{version}.qr.svg"
+    qr_name = "bansheng-latest.qr.svg"
     if (release["schema_version"] != 1 or release["filename"] != name or release["qr_filename"] != qr_name
             or (PUBLIC / name).is_symlink() or (PUBLIC / qr_name).is_symlink()
             or (PUBLIC / name).stat().st_size != release["size_bytes"]
@@ -106,6 +106,9 @@ def activate(release):
             parts = lambda value: tuple(int(n) for n in re.split(r"[.+]", value))
             if parts(version) < parts(previous["version"]):
                 raise ValueError("An older release cannot replace the latest download.")
+        base_url = release["url"].rsplit("/", 1)[0]
+        if release.get("download_url") != f"{base_url}/bansheng-latest.apk":
+            raise ValueError("Invalid stable download URL.")
         release = {**release, "published_at": datetime.now(timezone.utc).isoformat()}
         fd, temporary = tempfile.mkstemp(prefix=".latest-", dir=ROOT)
         try:
@@ -113,6 +116,14 @@ def activate(release):
                 json.dump(release, stream, indent=2)
                 stream.write("\n")
             os.chmod(temporary, 0o644)
+            # A relative symlink stays on the data disk and switches in one rename.
+            # Only verified immutable APKs can become the stable download target.
+            pointer = Path(temporary + ".apk")
+            try:
+                pointer.symlink_to(name)
+                os.replace(pointer, PUBLIC / "bansheng-latest.apk")
+            finally:
+                pointer.unlink(missing_ok=True)
             os.replace(temporary, latest)
         finally:
             if os.path.exists(temporary):

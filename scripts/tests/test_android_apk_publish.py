@@ -133,10 +133,11 @@ class RemotePublicationTests(unittest.TestCase):
 
     def release(self, payload):
         return {"schema_version": 1, "version": "0.6.1+8", "filename": payload["name"],
-                "qr_filename": "bansheng-0.6.1+8.qr.svg", "sha256": payload["sha256"],
+                "qr_filename": "bansheng-latest.qr.svg", "sha256": payload["sha256"],
                 "qr_sha256": payload["qr_sha256"], "size_bytes": payload["size"],
                 "url": "https://example.invalid/downloads/android/bansheng-0.6.1%2B8.apk",
-                "qr_url": "https://example.invalid/downloads/android/bansheng-0.6.1%2B8.qr.svg"}
+                "qr_url": "https://example.invalid/downloads/android/bansheng-latest.qr.svg",
+                "download_url": "https://example.invalid/downloads/android/bansheng-latest.apk"}
 
     def test_activation_requires_complete_pair_and_preserves_newer_latest(self):
         payload = self.prepare()
@@ -152,6 +153,40 @@ class RemotePublicationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "older release"):
             remote.main("activate", {"release": release})
         self.assertEqual(json.loads((self.public / "latest.json").read_text())["version"], "0.6.1+9")
+
+    def test_stable_download_switches_versions_without_changing_qr(self):
+        first = self.prepare()
+        remote.main("publish", first)
+        remote.main("activate", {"release": self.release(first)})
+        pointer = self.public / "bansheng-latest.apk"
+        qr = self.public / "bansheng-latest.qr.svg"
+        qr_before = qr.read_bytes()
+        self.assertEqual(pointer.read_bytes(), b"signed APK")
+        second = self.prepare(b"new release")
+        second["name"] = "bansheng-0.6.1+9.apk"
+        remote.main("publish", second)
+        # Upload alone must not change the active download.
+        self.assertEqual(pointer.read_bytes(), b"signed APK")
+        newer = {**self.release(second), "version": "0.6.1+9"}
+        remote.main("activate", {"release": newer})
+        self.assertEqual(pointer.read_bytes(), b"new release")
+        self.assertEqual(os.readlink(pointer), second["name"])
+        self.assertEqual(qr.read_bytes(), qr_before)
+        self.assertEqual(json.loads((self.public / "latest.json").read_text())["version"], "0.6.1+9")
+        with self.assertRaisesRegex(ValueError, "older release"):
+            remote.main("activate", {"release": self.release(first)})
+        self.assertEqual(pointer.read_bytes(), b"new release")
+
+    def test_stable_qr_cannot_be_silently_replaced(self):
+        first = self.prepare()
+        remote.main("publish", first)
+        second = self.prepare(b"new release")
+        second["name"] = "bansheng-0.6.1+9.apk"
+        (Path(second["stage"]) / "qr.svg").write_bytes(b"different QR")
+        second["qr_sha256"] = remote.sha256(Path(second["stage"]) / "qr.svg")
+        with self.assertRaisesRegex(ValueError, "different contents"):
+            remote.main("publish", second)
+        self.assertFalse((self.public / second["name"]).exists())
 
     def test_corrupt_qr_does_not_publish_apk_or_switch_latest(self):
         payload = self.prepare()
@@ -179,9 +214,10 @@ class PublicDownloadTests(unittest.TestCase):
             self.assertFalse(apk.with_suffix(".apk.publish.json").exists())
 
     def test_receipt_only_after_correct_full_download_and_cleanup_on_failure(self):
-        for corrupt, content_type, corrupt_qr in [(False, "application/vnd.android.package-archive", False),
-                                      (True, "application/vnd.android.package-archive", False), (False, "text/html", False),
-                                      (False, "application/vnd.android.package-archive", True)]:
+        for corrupt, content_type, corrupt_qr, corrupt_stable in [(False, "application/vnd.android.package-archive", False, False),
+                                      (True, "application/vnd.android.package-archive", False, False), (False, "text/html", False, False),
+                                      (False, "application/vnd.android.package-archive", True, False),
+                                      (False, "application/vnd.android.package-archive", False, True)]:
             with self.subTest(corrupt=corrupt, content_type=content_type, corrupt_qr=corrupt_qr), tempfile.TemporaryDirectory() as directory:
                 apk = Path(directory) / "bansheng-0.6.1+8.apk"
                 apk.write_bytes(b"release bytes")
@@ -203,7 +239,7 @@ class PublicDownloadTests(unittest.TestCase):
                         return SimpleNamespace(stdout="")
                     if "--output" in args:
                         is_qr = args[-1].endswith(".svg")
-                        Path(args[args.index("--output") + 1]).write_bytes((b"corrupt QR" if corrupt_qr else assets["qr"]) if is_qr else b"wrong bytes" if corrupt else apk.read_bytes())
+                        Path(args[args.index("--output") + 1]).write_bytes((b"corrupt QR" if corrupt_qr else assets["qr"]) if is_qr else b"wrong bytes" if corrupt or (corrupt_stable and args[-1].endswith("bansheng-latest.apk")) else apk.read_bytes())
                         return SimpleNamespace(stdout="200\nimage/svg+xml" if is_qr else f"200\n{content_type}")
                     if args[-1].endswith("latest.json"): return SimpleNamespace(stdout=json.dumps(assets["release"]))
                     return SimpleNamespace(stdout=f"{client.sha256(apk)}  {apk.name}\n")
@@ -211,20 +247,20 @@ class PublicDownloadTests(unittest.TestCase):
                 with patch.object(client, "inspect_apk", return_value="0.6.1+8"), patch.object(
                     client, "run", side_effect=run
                 ), patch.object(publisher, "remote", side_effect=remote_call):
-                    if corrupt or content_type == "text/html" or corrupt_qr:
+                    if corrupt or content_type == "text/html" or corrupt_qr or corrupt_stable:
                         with self.assertRaisesRegex(ValueError, "download|QR code"):
                             publisher.publish(apk)
                     else:
                         publisher.publish(apk)
-                success = not corrupt and content_type != "text/html" and not corrupt_qr
-                self.assertEqual(calls, ["prepare", "publish", "activate", "cleanup"] if success else ["prepare", "publish", "cleanup"])
+                success = not corrupt and content_type != "text/html" and not corrupt_qr and not corrupt_stable
+                self.assertEqual(calls, ["prepare", "publish", "activate", "cleanup"] if success or corrupt_stable else ["prepare", "publish", "cleanup"])
                 self.assertEqual(apk.with_suffix(".apk.publish.json").exists(), success)
 
 
 class QrCodeTests(unittest.TestCase):
     def test_qr_artifact_and_terminal_share_exact_download_url(self):
         import io
-        url = "https://banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk"
+        url = "https://banshengcomp.com/downloads/android/bansheng-latest.apk"
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "qr.svg"
             qr = client.make_qr(url, path)
