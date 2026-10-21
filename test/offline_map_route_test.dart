@@ -80,6 +80,7 @@ Future<_Api> _openLocation(
   bool hasCoordinates = true,
   String coordinateSystem = 'gcj02',
   String status = 'accepted',
+  String description = '',
   bool reached = false,
   bool openLocation = true,
   String? takeoverId,
@@ -98,6 +99,7 @@ Future<_Api> _openLocation(
     'address': _address,
     'city': '镇江市',
     'summary': '顺路看看花艺',
+    'description': description,
     if (hasCoordinates) 'place_lat': 32.203,
     if (hasCoordinates) 'place_lng': 119.451,
     'coordinate_system': coordinateSystem,
@@ -329,7 +331,7 @@ void main() {
     expect(find.text('地址已复制'), findsOneWidget);
   });
 
-  for (final status in ['pending', 'completed']) {
+  for (final status in ['pending', 'ignored', 'completed']) {
     testWidgets('narrow $status address keeps location button clickable', (
       tester,
     ) async {
@@ -341,6 +343,50 @@ void main() {
       );
       await navigate(tester, label: '查看距离');
     });
+  }
+
+  for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+    testWidgets(
+      '$platform ignored long detail keeps address actions at bottom',
+      (tester) async {
+        await _openLocation(
+          tester,
+          platform,
+          status: 'ignored',
+          description: List.filled(
+            12,
+            '可以按自己的节奏看看展览，出发前确认当天的开放安排。',
+          ).join('\n\n'),
+          openLocation: false,
+          viewport: const Size(320, 740),
+        );
+        final address = tester.getRect(find.text('📍 $_address'));
+        final button = tester.getRect(find.text('查看位置'));
+        expect(button.left, greaterThan(address.right));
+        expect(button.right, lessThanOrEqualTo(320));
+        expect(button.center.dy, closeTo(address.center.dy, 1));
+        expect(find.text('重新接受邀请'), findsOneWidget);
+        await tester.tap(find.text('查看位置'));
+        await tester.pumpAndSettle();
+        expect(find.text('查看距离'), findsOneWidget);
+        expect(find.text('导航前往'), findsNothing);
+        await tester.tap(find.text('复制地址'));
+        await tester.pumpAndSettle();
+        expect(clipboard, _display);
+        expect(calls, isEmpty);
+        await tester.tap(find.text('知道了'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('查看位置'));
+        await tester.pumpAndSettle();
+        await navigate(tester, label: '查看距离');
+        final uri = launches().single;
+        expect(uri.host, platform == TargetPlatform.iOS ? 'path' : 'route');
+        expect(uri.queryParameters['dname'], _name);
+        expect(uri.queryParameters['dlat'], '32.203');
+        expect(uri.queryParameters['dlon'], '119.451');
+        expect(find.text('重新接受邀请'), findsOneWidget);
+      },
+    );
   }
 
   testWidgets('takeover review reads the original owner location', (
