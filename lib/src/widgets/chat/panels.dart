@@ -9,6 +9,7 @@ class _ChatPanel extends StatefulWidget {
     required this.onSendRedPacket,
     required this.onSendGift,
     required this.onSendLocation,
+    this.locating = false,
     required this.onSearch,
     this.onOpenActivity,
     this.activityOnly = false,
@@ -22,6 +23,7 @@ class _ChatPanel extends StatefulWidget {
   final VoidCallback onSendRedPacket;
   final VoidCallback onSendGift;
   final VoidCallback onSendLocation;
+  final bool locating;
   final VoidCallback onSearch;
   final VoidCallback? onOpenActivity;
   final bool activityOnly;
@@ -99,6 +101,7 @@ class _ChatPanelState extends State<_ChatPanel> {
               onSendRedPacket: widget.onSendRedPacket,
               onSendGift: widget.onSendGift,
               onSendLocation: widget.onSendLocation,
+              locating: widget.locating,
               onSearch: widget.onSearch,
             ),
             ComposerPanel.none => const SizedBox.shrink(),
@@ -265,6 +268,7 @@ class _MorePanel extends StatelessWidget {
     required this.onSendRedPacket,
     required this.onSendGift,
     required this.onSendLocation,
+    this.locating = false,
     required this.onSearch,
     this.onOpenActivity,
     this.activityOnly = false,
@@ -277,6 +281,7 @@ class _MorePanel extends StatelessWidget {
   final VoidCallback onSendRedPacket;
   final VoidCallback onSendGift;
   final VoidCallback onSendLocation;
+  final bool locating;
   final VoidCallback onSearch;
 
   static const _tools = [
@@ -336,6 +341,7 @@ class _MorePanel extends StatelessWidget {
                   child: _ToolButton(
                     tool: tool,
                     compact: true,
+                    busy: locating && tool.action == _ToolAction.location,
                     onTap: switch (tool.action) {
                       _ToolAction.photo => onPickPhoto,
                       _ToolAction.camera => onTakePhoto,
@@ -367,20 +373,22 @@ class _MorePanel extends StatelessWidget {
                   onSendRedPacket: onSendRedPacket,
                   onSendGift: onSendGift,
                   onSendLocation: onSendLocation,
+                  locating: locating,
                   onSearch: onSearch,
                 ),
                 if (_visibleTools.length > 3) ...[
-                const SizedBox(height: 26),
-                _ToolRow(
-                  tools: _visibleTools.skip(3).take(3).toList(),
-                  onOpenActivity: onOpenActivity,
-                  onPickPhoto: onPickPhoto,
-                  onTakePhoto: onTakePhoto,
-                  onSendRedPacket: onSendRedPacket,
-                  onSendGift: onSendGift,
-                  onSendLocation: onSendLocation,
-                  onSearch: onSearch,
-                ),
+                  const SizedBox(height: 26),
+                  _ToolRow(
+                    tools: _visibleTools.skip(3).take(3).toList(),
+                    onOpenActivity: onOpenActivity,
+                    onPickPhoto: onPickPhoto,
+                    onTakePhoto: onTakePhoto,
+                    onSendRedPacket: onSendRedPacket,
+                    onSendGift: onSendGift,
+                    onSendLocation: onSendLocation,
+                    locating: locating,
+                    onSearch: onSearch,
+                  ),
                 ],
               ],
             ),
@@ -400,6 +408,7 @@ class _ToolRow extends StatelessWidget {
     required this.onSendRedPacket,
     required this.onSendGift,
     required this.onSendLocation,
+    this.locating = false,
     required this.onSearch,
   });
 
@@ -410,6 +419,7 @@ class _ToolRow extends StatelessWidget {
   final VoidCallback onSendRedPacket;
   final VoidCallback onSendGift;
   final VoidCallback onSendLocation;
+  final bool locating;
   final VoidCallback onSearch;
 
   @override
@@ -422,6 +432,9 @@ class _ToolRow extends StatelessWidget {
                 ? Center(
                     child: _ToolButton(
                       tool: tools[index],
+                      busy:
+                          locating &&
+                          tools[index].action == _ToolAction.location,
                       onTap: switch (tools[index].action) {
                         _ToolAction.photo => onPickPhoto,
                         _ToolAction.camera => onTakePhoto,
@@ -442,11 +455,17 @@ class _ToolRow extends StatelessWidget {
 }
 
 class _ToolButton extends StatelessWidget {
-  const _ToolButton({required this.tool, this.onTap, this.compact = false});
+  const _ToolButton({
+    required this.tool,
+    this.onTap,
+    this.compact = false,
+    this.busy = false,
+  });
 
   final _ToolSpec tool;
   final VoidCallback? onTap;
   final bool compact;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -458,7 +477,7 @@ class _ToolButton extends StatelessWidget {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: onTap,
+      onTap: busy ? null : onTap,
       child: Opacity(
         opacity: onTap == null ? 0.45 : 1,
         child: Column(
@@ -471,7 +490,23 @@ class _ToolButton extends StatelessWidget {
                 color: tool.color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(iconRadius),
               ),
-              child: Icon(tool.icon, color: tool.color, size: iconGlyphSize),
+              child: busy
+                  ? Semantics(
+                      label: '正在获取位置',
+                      liveRegion: true,
+                      child: Center(
+                        child: SizedBox(
+                          width: iconGlyphSize,
+                          height: iconGlyphSize,
+                          child: CircularProgressIndicator(
+                            key: const ValueKey('chat-location-loading'),
+                            strokeWidth: 2,
+                            color: tool.color,
+                          ),
+                        ),
+                      ),
+                    )
+                  : Icon(tool.icon, color: tool.color, size: iconGlyphSize),
             ),
             SizedBox(height: labelGap),
             Text(

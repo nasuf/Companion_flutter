@@ -23,7 +23,9 @@ class LocationConfirmPage extends StatefulWidget {
       useSafeArea: false,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.46),
-      builder: (_) => LocationConfirmPage(snapshot: snapshot),
+      builder: (_) => SingleChildScrollView(
+        child: LocationConfirmPage(snapshot: snapshot),
+      ),
     );
   }
 
@@ -34,32 +36,50 @@ class LocationConfirmPage extends StatefulWidget {
 class _LocationConfirmPageState extends State<LocationConfirmPage> {
   late DeviceLocationSnapshot _snapshot;
   bool _refreshing = false;
+  bool _resolvingAddress = false;
+  int _addressGeneration = 0;
   String? _refreshError;
 
   @override
   void initState() {
     super.initState();
     _snapshot = widget.snapshot;
+    if (_snapshot.address == null) unawaited(_resolveAddress());
+  }
+
+  Future<void> _resolveAddress() async {
+    final generation = ++_addressGeneration;
+    setState(() => _resolvingAddress = true);
+    final resolved = await resolveDeviceLocationAddress(_snapshot);
+    if (!mounted || generation != _addressGeneration) return;
+    setState(() {
+      _snapshot = resolved;
+      _resolvingAddress = false;
+    });
   }
 
   Future<void> _refreshLocation() async {
     if (_refreshing) return;
+    _addressGeneration++;
     setState(() {
+      _resolvingAddress = false;
       _refreshing = true;
       _refreshError = null;
     });
     try {
-      final updated = await requestCurrentDeviceLocation(
-        openSettingsWhenBlocked: true,
+      final result = await requestDeviceLocationResult(
+        purpose: DeviceLocationPurpose.chatPreview,
       );
+      final updated = result.snapshot;
       if (!mounted) return;
       if (updated == null) {
         setState(() {
-          _refreshError = '未能更新位置，请检查定位权限或到开阔处重试';
+          _refreshError = result.message ?? '未能更新位置，请检查定位权限或到开阔处重试';
         });
         return;
       }
       setState(() => _snapshot = updated);
+      unawaited(_resolveAddress());
     } finally {
       if (mounted) {
         setState(() => _refreshing = false);
@@ -145,6 +165,26 @@ class _LocationConfirmPageState extends State<LocationConfirmPage> {
                     ),
                     const SizedBox(height: 16),
                     _LocationConfirmPreviewCard(card: card),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${_snapshot.latitude.toStringAsFixed(6)}, ${_snapshot.longitude.toStringAsFixed(6)}',
+                      style: TextStyle(
+                        color: w.inkSoft,
+                        fontSize: 12,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    if (_resolvingAddress) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '正在获取地址…',
+                        style: TextStyle(
+                          color: w.inkSoft,
+                          fontSize: 12,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
                     if (_snapshot.accuracyMeters != null) ...[
                       const SizedBox(height: 12),
                       Align(
@@ -188,7 +228,6 @@ class _LocationConfirmPageState extends State<LocationConfirmPage> {
                           child: _LocationConfirmActionButton(
                             label: '取消',
                             filled: false,
-                            enabled: !_refreshing,
                             onTap: () => Navigator.of(context).pop(),
                           ),
                         ),

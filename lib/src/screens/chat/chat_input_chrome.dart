@@ -245,6 +245,7 @@ class _ChatInputChromeLayerState extends State<_ChatInputChromeLayer> {
           child: ClipRect(
             child: _ChatPanel(
               panel: displayedPanel,
+              locating: _host._sendingLocation,
               bottomInset: safeBottom,
               onEmojiTap: _host._appendEmoji,
               onPickPhoto: () =>

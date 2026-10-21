@@ -74,6 +74,7 @@ class _Geocoder extends GeocodingPlatform {
   bool lookupWaits = false;
   Duration lookupDelay = Duration.zero;
   bool localeWaits = false;
+  Completer<List<Placemark>>? gate;
   String? district = '京口区';
 
   @override
@@ -89,6 +90,7 @@ class _Geocoder extends GeocodingPlatform {
     double longitude,
   ) async {
     calls.add('lookup');
+    if (gate != null) return gate!.future;
     if (lookupDelay > Duration.zero) await Future<void>.delayed(lookupDelay);
     if (lookupWaits) return Completer<List<Placemark>>().future;
     if (lookupFails) throw StateError('geocoder unavailable');
@@ -183,6 +185,88 @@ void main() {
       expect(location.toComponentCard().payload['region'], '京口区');
       expect(location.accuracyMeters, 10);
       expect(location.observedAt, DateTime(2026, 10, 6));
+    },
+  );
+
+  test(
+    'chat preview uses Android system provider before fused fallback',
+    () async {
+      final preview = await requestDeviceLocationResult(
+        purpose: DeviceLocationPurpose.chatPreview,
+      );
+      expect(preview.snapshot!.latitude, 32.2);
+      expect(gps.requests.single, isA<AndroidSettings>());
+      expect(
+        (gps.requests.single as AndroidSettings).forceLocationManager,
+        isTrue,
+      );
+      expect(geocoder.calls, isEmpty);
+
+      gps.requests.clear();
+      gps.failures = 1;
+      final fallback = await requestDeviceLocationResult(
+        purpose: DeviceLocationPurpose.chatPreview,
+      );
+      expect(fallback.snapshot, isNotNull);
+      expect(gps.requests, hasLength(2));
+      expect(gps.requests.last!.accuracy, LocationAccuracy.high);
+      expect(gps.requests.last, isNot(isA<AndroidSettings>()));
+    },
+  );
+
+  test('iOS chat preview preserves fresh best-accuracy GPS settings', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    final preview = await requestDeviceLocationResult(
+      purpose: DeviceLocationPurpose.chatPreview,
+    );
+    expect(preview.snapshot, isNotNull);
+    expect(gps.requests.single!.accuracy, LocationAccuracy.best);
+    expect(gps.requests.single!.timeLimit, const Duration(seconds: 15));
+    expect(geocoder.calls, isEmpty);
+  });
+
+  test('chat preview never falls back to cached profile coordinates', () async {
+    gps
+      ..failures = 2
+      ..cached = _cached();
+    final preview = await requestDeviceLocationResult(
+      purpose: DeviceLocationPurpose.chatPreview,
+    );
+    expect(preview.snapshot, isNull);
+    expect(gps.nativeCache, isNull);
+  });
+
+  test('address enrichment preserves the original observation', () async {
+    final preview = (await requestDeviceLocationResult(
+      purpose: DeviceLocationPurpose.chatPreview,
+    )).snapshot!;
+    final resolved = await resolveDeviceLocationAddress(preview);
+    expect(resolved.city, '镇江市');
+    expect(resolved.latitude, preview.latitude);
+    expect(resolved.longitude, preview.longitude);
+    expect(resolved.accuracyMeters, preview.accuracyMeters);
+    expect(resolved.observedAt, preview.observedAt);
+    expect(resolved.permissionStatus, preview.permissionStatus);
+    expect(gps.requests, hasLength(1));
+    geocoder.lookupFails = true;
+    expect(await resolveDeviceLocationAddress(preview), same(preview));
+  });
+
+  test(
+    'chat preview does not join an address-blocked standard request',
+    () async {
+      geocoder.gate = Completer<List<Placemark>>();
+      final standard = requestDeviceLocationResult();
+      await Future<void>.delayed(Duration.zero);
+      expect(geocoder.calls, ['zh_CN', 'lookup']);
+      final preview = await requestDeviceLocationResult(
+        purpose: DeviceLocationPurpose.chatPreview,
+      );
+      expect(preview.snapshot, isNotNull);
+      expect(geocoder.calls, ['zh_CN', 'lookup']);
+      expect(gps.requests, hasLength(2));
+      geocoder.gate!.complete([Placemark(locality: '镇江市')]);
+      expect((await standard).snapshot!.city, '镇江市');
     },
   );
 

@@ -123,17 +123,25 @@ class DeviceLocationResult {
   };
 }
 
+/// Chat previews return fresh coordinates first and resolve the address in-sheet.
+/// Profile synchronization and arrival verification keep the standard policy.
+enum DeviceLocationPurpose { standard, chatPreview }
+
 // Join an automatic request when the user taps the activity card mid-flight.
 final _pendingLocationRequests =
-    <(CompanionApi?, bool, bool), Future<DeviceLocationResult>>{};
+    <
+      (CompanionApi?, bool, bool, DeviceLocationPurpose),
+      Future<DeviceLocationResult>
+    >{};
 
 Future<DeviceLocationResult> requestDeviceLocationResult({
   CompanionApi? api,
   bool openSettingsWhenBlocked = false,
   bool syncUserProfile = false,
   bool allowRecentCache = false,
+  DeviceLocationPurpose purpose = DeviceLocationPurpose.standard,
 }) {
-  final key = (api, syncUserProfile, allowRecentCache);
+  final key = (api, syncUserProfile, allowRecentCache, purpose);
   final pending = _pendingLocationRequests[key];
   if (pending != null) return pending;
   final future =
@@ -142,6 +150,7 @@ Future<DeviceLocationResult> requestDeviceLocationResult({
         openSettingsWhenBlocked: openSettingsWhenBlocked,
         syncUserProfile: syncUserProfile,
         allowRecentCache: allowRecentCache,
+        purpose: purpose,
       ).whenComplete(() {
         _pendingLocationRequests.remove(key);
       });
@@ -149,7 +158,7 @@ Future<DeviceLocationResult> requestDeviceLocationResult({
   return future;
 }
 
-/// Compatibility API for chat and arrival verification. Profile sync failure
+/// Compatibility API for location consumers and arrival verification. Sync failure
 /// must not discard an already acquired device position.
 Future<DeviceLocationSnapshot?> requestCurrentDeviceLocation({
   CompanionApi? api,
@@ -186,7 +195,10 @@ bool _validCoordinates(Position position) =>
     position.accuracy.isFinite &&
     position.accuracy >= 0;
 
-Future<Position> _readDevicePosition({required bool allowRecentCache}) async {
+Future<Position> _readDevicePosition({
+  required bool allowRecentCache,
+  required DeviceLocationPurpose purpose,
+}) async {
   Object? failure;
   final android = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   final settings = <LocationSettings>[
@@ -202,7 +214,13 @@ Future<Position> _readDevicePosition({required bool allowRecentCache}) async {
         intervalDuration: const Duration(seconds: 1),
       ),
   ];
-  for (final setting in settings) {
+  // On Android, chat uses the system provider first so phones without a
+  // working fused provider do not wait for its timeout before seeing a preview.
+  final orderedSettings =
+      android && purpose == DeviceLocationPurpose.chatPreview
+      ? settings.reversed
+      : settings;
+  for (final setting in orderedSettings) {
     try {
       final position = await Geolocator.getCurrentPosition(
         locationSettings: setting,
@@ -244,16 +262,56 @@ Future<Position> _readDevicePosition({required bool allowRecentCache}) async {
   throw failure ?? StateError('Position unavailable');
 }
 
-Future<List<geocoding.Placemark>> _readAddress(Position position) async {
+Future<List<geocoding.Placemark>> _readAddress(
+  DeviceLocationSnapshot snapshot,
+) async {
   try {
     await geocoding.setLocaleIdentifier('zh_CN');
   } catch (_) {
     // Locale override is optional; the lookup still runs when unsupported.
   }
   return geocoding.placemarkFromCoordinates(
-    position.latitude,
-    position.longitude,
+    snapshot.latitude,
+    snapshot.longitude,
   );
+}
+
+/// Enrich the same position without another GPS read or any profile writes.
+/// Address lookup failure must never discard valid coordinates.
+Future<DeviceLocationSnapshot> resolveDeviceLocationAddress(
+  DeviceLocationSnapshot snapshot,
+) async {
+  final android = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  try {
+    final places = await _readAddress(
+      snapshot,
+    ).timeout(Duration(seconds: android ? 3 : 10));
+    if (places.isEmpty) return snapshot;
+    final place = places.first;
+    final address = _composeAddress(place).trim();
+    return DeviceLocationSnapshot(
+      latitude: snapshot.latitude,
+      longitude: snapshot.longitude,
+      permissionStatus: snapshot.permissionStatus,
+      city: _firstNonEmpty([
+        place.locality,
+        place.subAdministrativeArea,
+        place.administrativeArea,
+      ]),
+      region: _firstNonEmpty([
+        place.subLocality,
+        place.subAdministrativeArea,
+        place.administrativeArea,
+      ]),
+      country: _firstNonEmpty([place.country, place.isoCountryCode]),
+      address: address.isEmpty ? null : address,
+      accuracyMeters: snapshot.accuracyMeters,
+      observedAt: snapshot.observedAt,
+    );
+  } catch (error) {
+    _logLocationFailure('reverse_geocoding', error);
+    return snapshot;
+  }
 }
 
 Future<DeviceLocationResult> _requestDeviceLocation({
@@ -261,6 +319,7 @@ Future<DeviceLocationResult> _requestDeviceLocation({
   required bool openSettingsWhenBlocked,
   required bool syncUserProfile,
   required bool allowRecentCache,
+  required DeviceLocationPurpose purpose,
 }) async {
   final android = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   try {
@@ -300,54 +359,27 @@ Future<DeviceLocationResult> _requestDeviceLocation({
 
     final position = await _readDevicePosition(
       allowRecentCache: allowRecentCache,
+      purpose: purpose,
     );
-    String? city;
-    String? region;
-    String? country;
-    String? address;
-    try {
-      final places = await _readAddress(
-        position,
-      ).timeout(Duration(seconds: android ? 3 : 10));
-      if (places.isNotEmpty) {
-        final place = places.first;
-        city = _firstNonEmpty([
-          place.locality,
-          place.subAdministrativeArea,
-          place.administrativeArea,
-        ]);
-        region = _firstNonEmpty([
-          place.subLocality,
-          place.subAdministrativeArea,
-          place.administrativeArea,
-        ]);
-        country = _firstNonEmpty([place.country, place.isoCountryCode]);
-        final composed = _composeAddress(place).trim();
-        if (composed.isNotEmpty) address = composed;
-      }
-    } catch (error) {
-      _logLocationFailure('reverse_geocoding', error);
-    }
-    final snapshot = DeviceLocationSnapshot(
+    var snapshot = DeviceLocationSnapshot(
       latitude: position.latitude,
       longitude: position.longitude,
       permissionStatus: permission.name,
-      city: city,
-      region: region,
-      country: country,
-      address: address,
       accuracyMeters: position.accuracy,
       observedAt: position.timestamp,
     );
+    if (purpose == DeviceLocationPurpose.standard) {
+      snapshot = await resolveDeviceLocationAddress(snapshot);
+    }
     if (syncUserProfile && api != null) {
       try {
         final saved = await api
             .saveUserLocation(
               latitude: position.latitude,
               longitude: position.longitude,
-              city: city,
-              region: region,
-              country: country,
+              city: snapshot.city,
+              region: snapshot.region,
+              country: snapshot.country,
               permissionStatus: permission.name,
             )
             .timeout(Duration(seconds: android ? 8 : 30));

@@ -181,6 +181,9 @@ class _ChatPageState extends State<ChatPage>
       _takeoverRoute = route;
       appRouteObserver.subscribe(this, route);
     }
+    if (!(route?.isCurrent ?? false)) {
+      _invalidateLocationPreview(notify: false);
+    }
     _syncActiveTakeoverPage();
     _localTyping?.setVisible(_takeoverVisible);
     _scheduleUserRead();
@@ -196,6 +199,7 @@ class _ChatPageState extends State<ChatPage>
 
   @override
   void didPushNext() {
+    _invalidateLocationPreview();
     _syncActiveTakeoverPage(visible: false);
     _localTyping?.setVisible(false);
     _remoteTyping.clear();
@@ -296,7 +300,15 @@ class _ChatPageState extends State<ChatPage>
   StreamSubscription<void>? _musicCompleteSub;
   StreamSubscription<MusicQuotaReport>? _musicQuotaSub;
   StreamSubscription<List<SharedMediaFile>>? _shareIntentSub;
-  ComposerPanel _panel = ComposerPanel.none;
+  ComposerPanel _activePanel = ComposerPanel.none;
+  ComposerPanel get _panel => _activePanel;
+  set _panel(ComposerPanel value) {
+    if (_activePanel == ComposerPanel.more && value != ComposerPanel.more) {
+      // Even closing and reopening the panel invalidates the earlier tap.
+      _invalidateLocationPreview(notify: false);
+    }
+    _activePanel = value;
+  }
 
   /// Occupancy-only placeholder after the user asks for the keyboard. Must not
   /// be used to paint the emoji/more sheet — otherwise the IME overlays it.
@@ -768,17 +780,24 @@ class _ChatPageState extends State<ChatPage>
   void didUpdateWidget(covariant ChatPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.isActive != widget.isActive) {
+      if (!widget.isActive) _invalidateLocationPreview(notify: false);
       _syncChatVisibility();
+    }
+    if (oldWidget.api != widget.api ||
+        oldWidget.takeover?.takeoverId != widget.takeover?.takeoverId) {
+      _invalidateLocationPreview(notify: false);
     }
     if (oldWidget.session.conversationId != widget.session.conversationId ||
         oldWidget.session.token != widget.session.token ||
         oldWidget.api.baseUrl != widget.api.baseUrl) {
+      _invalidateLocationPreview(notify: false);
       _bootstrapChat();
     }
   }
 
   @override
   void dispose() {
+    _invalidateLocationPreview(notify: false);
     _localTyping?.dispose();
     _remoteTyping.dispose();
     WidgetsBinding.instance.removeObserver(this);
@@ -832,6 +851,12 @@ class _ChatPageState extends State<ChatPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // A permission dialog can make the app inactive; that is still this tap.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      _invalidateLocationPreview();
+    }
     _syncActiveTakeoverPage(visible: state == AppLifecycleState.resumed);
     _localTyping?.setVisible(
       state == AppLifecycleState.resumed && _takeoverVisible,
@@ -3665,6 +3690,29 @@ class _ChatPageState extends State<ChatPage>
   bool _sendingRedPacket = false;
   bool _sendingGift = false;
   bool _sendingLocation = false;
+  int _locationPreviewGeneration = 0;
+
+  bool get _locationChatVisible {
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    return mounted &&
+        widget.isActive &&
+        (ModalRoute.of(context)?.isCurrent ?? false) &&
+        (lifecycle == null ||
+            lifecycle == AppLifecycleState.resumed ||
+            lifecycle == AppLifecycleState.inactive);
+  }
+
+  void _invalidateLocationPreview({bool notify = true}) {
+    _locationPreviewGeneration++;
+    if (!_sendingLocation) return;
+    _sendingLocation = false;
+    if (notify && mounted) _bumpComposerShell();
+  }
+
+  bool _canShowLocationPreview(int generation) =>
+      generation == _locationPreviewGeneration &&
+      _panel == ComposerPanel.more &&
+      _locationChatVisible;
 
   Future<void> _onSendRedPacket() async {
     if (_sendingRedPacket) return;
@@ -3733,39 +3781,80 @@ class _ChatPageState extends State<ChatPage>
   }
 
   Future<void> _onSendLocation() async {
-    if (_sendingLocation) return;
+    if (_sendingLocation ||
+        _panel != ComposerPanel.more ||
+        !_locationChatVisible) {
+      return;
+    }
+    final generation = ++_locationPreviewGeneration;
+    final chat = (
+      widget.api,
+      widget.session.token,
+      _conversationId,
+      widget.takeover?.takeoverId,
+    );
+    bool sameChat() =>
+        _locationChatVisible &&
+        chat ==
+            (
+              widget.api,
+              widget.session.token,
+              _conversationId,
+              widget.takeover?.takeoverId,
+            );
+    var confirming = false;
     _sendingLocation = true;
-    _dismissInputSurfaces();
+    _bumpComposerShell();
     try {
-      final snapshot = await requestCurrentDeviceLocation(
-        openSettingsWhenBlocked: true,
+      final result = await requestDeviceLocationResult(
+        purpose: DeviceLocationPurpose.chatPreview,
       );
-      if (!mounted) return;
-      if (snapshot == null) {
-        _showRedPacketToast('未能获取当前位置，请检查定位权限或系统定位开关');
+      if (!mounted || !_canShowLocationPreview(generation) || !sameChat()) {
         return;
       }
+      final snapshot = result.snapshot;
+      if (snapshot == null) {
+        _showRedPacketToast(result.message ?? '暂时无法获取当前位置，请稍后重试');
+        return;
+      }
+      // Only a continuously open panel may present the confirmation sheet.
+      // Address lookup continues inside it, without blocking this transition.
+      _sendingLocation = false;
+      _dismissInputSurfaces();
+      confirming = true;
       final card = await LocationConfirmPage.push(context, snapshot: snapshot);
-      if (!mounted || card == null) return;
+      if (!sameChat() || card == null) return;
       final payload = card.payload;
       if (!_isTakeover) {
         unawaited(
-          widget.api.saveUserLocation(
-            latitude: (payload['latitude'] as num?)?.toDouble(),
-            longitude: (payload['longitude'] as num?)?.toDouble(),
-            city: payload['city']?.toString(),
-            region: payload['region']?.toString(),
-            country: payload['country']?.toString(),
-            permissionStatus: snapshot.permissionStatus,
-          ),
+          widget.api
+              .saveUserLocation(
+                latitude: (payload['latitude'] as num?)?.toDouble(),
+                longitude: (payload['longitude'] as num?)?.toDouble(),
+                city: payload['city']?.toString(),
+                region: payload['region']?.toString(),
+                country: payload['country']?.toString(),
+                permissionStatus: snapshot.permissionStatus,
+              )
+              .catchError((Object error) {
+                debugPrint(
+                  'chat_location profile_sync error=${error.runtimeType}',
+                );
+                return false;
+              }),
         );
       }
       sendComponentMessage('', card);
     } catch (error) {
-      if (!mounted) return;
+      if (!_canShowLocationPreview(generation) && !(confirming && sameChat())) {
+        return;
+      }
       _showRedPacketToast('位置发送失败：${_asMessage(error)}');
     } finally {
-      _sendingLocation = false;
+      if (mounted && generation == _locationPreviewGeneration) {
+        _sendingLocation = false;
+        _bumpComposerShell();
+      }
     }
   }
 
