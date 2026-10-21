@@ -270,6 +270,64 @@ void main() {
     },
   );
 
+  for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+    test(
+      '$platform formats Chinese addresses from province to house number',
+      () async {
+        debugDefaultTargetPlatformOverride = platform;
+        final cases = <(Placemark, String)>[
+          (
+            const Placemark(
+              administrativeArea: '江苏省',
+              subAdministrativeArea: '镇江市',
+              locality: '镇江市',
+              subLocality: '润州区',
+              thoroughfare: '解放路',
+              subThoroughfare: '10号',
+            ),
+            '江苏省镇江市润州区解放路10号',
+          ),
+          (
+            const Placemark(
+              administrativeArea: '北京市',
+              subAdministrativeArea: '北京市',
+              locality: '北京市',
+              subLocality: '朝阳区',
+              thoroughfare: '朝阳路',
+              subThoroughfare: '8号',
+            ),
+            '北京市朝阳区朝阳路8号',
+          ),
+          (
+            const Placemark(
+              administrativeArea: '江苏省',
+              subAdministrativeArea: '镇江市',
+              locality: '句容市',
+              thoroughfare: '华阳路',
+            ),
+            '江苏省镇江市句容市华阳路',
+          ),
+          (
+            const Placemark(
+              administrativeArea: ' 江苏省 ',
+              locality: ' 镇江市 ',
+              subLocality: ' ',
+              thoroughfare: ' 江滨路 ',
+            ),
+            '江苏省镇江市江滨路',
+          ),
+        ];
+        for (final (place, expected) in cases) {
+          geocoder.gate = Completer<List<Placemark>>()..complete([place]);
+          final snapshot = await requestCurrentDeviceLocation();
+          expect(snapshot!.address, expected);
+          expect(snapshot.toComponentCard().subtitle, expected);
+          expect(snapshot.toComponentCard().payload['address'], expected);
+        }
+      },
+    );
+  }
+
   test('county remains available when the district is missing', () async {
     geocoder.district = null;
     expect((await requestCurrentDeviceLocation())!.region, '句容市');

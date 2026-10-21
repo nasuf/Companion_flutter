@@ -48,6 +48,7 @@ import 'src/payment/subscription_action.dart';
 import 'offline_models.dart';
 import 'src/services/client_info.dart';
 import 'src/services/device_location.dart';
+import 'src/services/startup_location_permission.dart';
 import 'src/games/chess_family_engine.dart';
 import 'src/games/chinese_checkers_engine.dart';
 import 'src/games/gomoku_engine.dart';
@@ -275,6 +276,7 @@ Future<void> main() async {
   tz.setLocalLocation(tz.getLocation('Asia/Shanghai'));
   await appThemeController.restore();
   await CheckinNotificationService.instance.initialize();
+  await StartupLocationPermission.instance.requestOnce();
   await PushNotificationService.instance.initialize();
   AppNotificationService.instance.initialize();
   runApp(const CompanionApp());

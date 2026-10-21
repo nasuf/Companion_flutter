@@ -74,19 +74,20 @@ String? _firstNonEmpty(List<String?> values) {
 }
 
 String _composeAddress(geocoding.Placemark place) {
-  final parts = <String>[
-    if ((place.subThoroughfare ?? '').trim().isNotEmpty)
-      place.subThoroughfare!.trim(),
-    if ((place.thoroughfare ?? '').trim().isNotEmpty)
-      place.thoroughfare!.trim(),
-    if ((place.subLocality ?? '').trim().isNotEmpty) place.subLocality!.trim(),
-    if ((place.locality ?? '').trim().isNotEmpty) place.locality!.trim(),
-    if ((place.subAdministrativeArea ?? '').trim().isNotEmpty)
-      place.subAdministrativeArea!.trim(),
-    if ((place.administrativeArea ?? '').trim().isNotEmpty)
-      place.administrativeArea!.trim(),
-  ];
-  return parts.join('');
+  // Native providers can repeat the city in more than one administrative field.
+  return [
+        place.administrativeArea,
+        place.subAdministrativeArea,
+        place.locality,
+        place.subLocality,
+        place.thoroughfare,
+        place.subThoroughfare,
+      ]
+      .whereType<String>()
+      .map((part) => part.trim())
+      .where((part) => part.isNotEmpty)
+      .toSet()
+      .join();
 }
 
 enum DeviceLocationFailure {
