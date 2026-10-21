@@ -6,6 +6,7 @@ import 'package:companion_flutter/companion_api.dart';
 import 'package:companion_flutter/main.dart';
 import 'package:companion_flutter/models.dart';
 import 'package:companion_flutter/src/widgets/chat/chat_timeline_timestamp.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:extended_text_field/extended_text_field.dart';
 import 'package:flutter/services.dart';
@@ -78,6 +79,7 @@ Future<void> _withChat(
   List<ChatMessage> initialHistory = const [],
   Brightness? brightness,
   double textScale = 1,
+  Size viewportSize = const Size(390, 1200),
 }) async {
   await HttpOverrides.runZoned(() async {
     final server = await tester.runAsync(
@@ -109,7 +111,7 @@ Future<void> _withChat(
     await tester.runAsync(() async {
       MusicPlaybackController.instance.configureQuota(api);
     });
-    tester.view.physicalSize = const Size(390, 1200);
+    tester.view.physicalSize = viewportSize;
     tester.view.devicePixelRatio = 1;
     tester.platformDispatcher.textScaleFactorTestValue = textScale;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
@@ -734,6 +736,105 @@ void main() {
       expect(tester.getRect(slot), settled);
     }, initialHistory: [plain('before-typing', 0)]);
   });
+
+  for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+    for (final (width, scale) in [(360.0, 1.0), (320.0, 1.8), (390.0, 1.0)]) {
+      for (final isMine in [true, false]) {
+        testWidgets(
+          'activity card respects avatar bounds: $platform / $width / $scale / mine=$isMine',
+          (tester) async {
+            final status = isMine ? (width == 360 ? '我到了' : '待出行') : '待确定';
+            final component = <String, dynamic>{
+              'type': 'offline_activity',
+              'title': '海棠陶艺·银饰·烘焙·拼豆DIY',
+              'subtitle': '$status · 海棠陶艺·银饰·烘焙·拼豆DIY',
+              'body': '润州万达有一家可体验陶艺、银饰等项目的手作店，有空可以去看看',
+              'footer': '点击查看活动详情',
+              'payload': {'activity_id': 'synthetic', 'status_label': status},
+            };
+            final message = ChatMessage.fromJson({
+              'id': 'activity-layout',
+              'conversation_id': 'conv',
+              'role': isMine ? 'user' : 'assistant',
+              'content': '',
+              'created_at': DateTime.utc(2026, 10, 20).toIso8601String(),
+              'read': true,
+              'metadata': {'component_card': component},
+            });
+            await _withChat(
+              tester,
+              (api, peers) async {
+                final row = find.byKey(
+                  const ValueKey('chat-message-activity-layout'),
+                );
+                final card = find.descendant(
+                  of: row,
+                  matching: find.byWidgetPredicate(
+                    (w) =>
+                        w.runtimeType.toString() ==
+                        '_OfflineActivityComponentCard',
+                  ),
+                );
+                final avatar = find.descendant(
+                  of: row,
+                  matching: find.byWidgetPredicate(
+                    (w) => w.runtimeType.toString() == '_Avatar',
+                  ),
+                );
+                final cardRect = tester.getRect(card);
+                final avatarRect = tester.getRect(avatar);
+                expect(cardRect.left, greaterThanOrEqualTo(12));
+                expect(cardRect.right, lessThanOrEqualTo(width - 12));
+                if (isMine) {
+                  expect(
+                    cardRect.right,
+                    lessThanOrEqualTo(avatarRect.left - 10),
+                  );
+                  final status = find.descendant(
+                    of: row,
+                    matching: find.byWidgetPredicate(
+                      (w) => w.runtimeType.toString() == '_SendStatusIndicator',
+                    ),
+                  );
+                  expect(
+                    tester.getRect(status).right,
+                    lessThanOrEqualTo(cardRect.left - 8),
+                  );
+                  if (width == 390) expect(cardRect.width, closeTo(292, 0.1));
+                } else {
+                  expect(
+                    cardRect.left,
+                    greaterThanOrEqualTo(avatarRect.right + 10),
+                  );
+                }
+                final footer = find.descendant(
+                  of: card,
+                  matching: find.text('点击查看活动详情'),
+                );
+                final chevron = find.descendant(
+                  of: card,
+                  matching: find.byIcon(CupertinoIcons.chevron_right),
+                );
+                expect(
+                  tester.getRect(footer).right,
+                  lessThanOrEqualTo(tester.getRect(chevron).left),
+                );
+                expect(
+                  tester.getRect(chevron).right,
+                  lessThanOrEqualTo(cardRect.right - 14),
+                );
+                expect(tester.takeException(), isNull);
+              },
+              initialHistory: [message],
+              viewportSize: Size(width, 1400),
+              textScale: scale,
+            );
+          },
+          variant: TargetPlatformVariant({platform}),
+        );
+      }
+    }
+  }
 
   for (final summary in ['爱探店的话，可以了解这家常发广场里的花艺小店。', '']) {
     testWidgets(

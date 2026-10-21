@@ -1065,7 +1065,9 @@ class _Bubble extends StatelessWidget {
                       : null,
                 ),
                 const SizedBox(width: 8),
-                bubbleColumn,
+                // The status consumes width too. Keep the bubble inside the
+                // remaining row space instead of measuring it unconstrained.
+                Flexible(child: bubbleColumn),
               ],
             )
           else if (message.isMine)

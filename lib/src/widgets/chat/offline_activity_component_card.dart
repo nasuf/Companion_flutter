@@ -168,16 +168,20 @@ class _OfflineActivityComponentCard extends StatelessWidget {
                               color: colors.accent,
                             ),
                             const SizedBox(width: 6),
-                            Text(
-                              card.footer,
-                              style: TextStyle(
-                                color: colors.accent,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                decoration: TextDecoration.none,
+                            Expanded(
+                              child: Text(
+                                card.footer,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: colors.accent,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  decoration: TextDecoration.none,
+                                ),
                               ),
                             ),
-                            const Spacer(),
+                            const SizedBox(width: 8),
                             Icon(
                               CupertinoIcons.chevron_right,
                               size: 15,
