@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'support/android_location_mock.dart';
 
 import 'package:companion_flutter/companion_api.dart';
 import 'package:companion_flutter/main.dart';
@@ -168,11 +169,11 @@ class _Fixture {
     expect(find.text('位置'), findsOneWidget);
   }
 
-  Future<void> start(WidgetTester tester) async {
+  Future<void> start(WidgetTester tester, {int reads = 1}) async {
     await tester.tap(find.text('位置'));
     await tester.pump();
     expect(_spinner, findsOneWidget);
-    expect(gps.reads, hasLength(1));
+    expect(gps.reads, hasLength(reads));
   }
 
   Future<void> close(WidgetTester tester) async {
@@ -202,6 +203,7 @@ void _scenario(
     debugDefaultTargetPlatformOverride = platform;
     GeolocatorPlatform.instance = fixture.gps;
     GeocodingPlatform.instance = fixture.geocoder;
+    mockAndroidLocation(() => fixture.gps.getCurrentPosition());
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     try {
       await fixture.open(tester);
@@ -345,7 +347,7 @@ void main() {
           );
           await _frames(tester);
       }
-      f.gps.reads.single.complete(_position());
+      f.gps.reads.first.complete(_position());
       await _frames(tester);
       expect(find.byType(LocationConfirmPage), findsNothing);
       expect(_spinner, findsNothing);
@@ -354,7 +356,7 @@ void main() {
     });
   }
 
-  _scenario('new tap after reopening owns the pending result', (
+  _scenario('reopened panel uses a new read and ignores the cancelled read', (
     tester,
     f,
   ) async {
@@ -363,8 +365,11 @@ void main() {
     await _frames(tester);
     await tester.tap(_composerButton('更多'));
     await _frames(tester);
-    await f.start(tester);
-    f.gps.reads.single.complete(_position());
+    await f.start(tester, reads: 2);
+    f.gps.reads.first.complete(_position());
+    await _frames(tester);
+    expect(find.byType(LocationConfirmPage), findsNothing);
+    f.gps.reads.last.complete(_position());
     await _frames(tester);
     expect(find.byType(LocationConfirmPage), findsOneWidget);
   });

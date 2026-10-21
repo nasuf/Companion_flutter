@@ -308,6 +308,13 @@ class _ChatPageState extends State<ChatPage>
       _invalidateLocationPreview(notify: false);
     }
     _activePanel = value;
+    if (value == ComposerPanel.more &&
+        AndroidLocationSession.supported &&
+        !_isTakeover &&
+        _locationChatVisible) {
+      _locationSession ??= AndroidLocationSession.chat();
+      unawaited(_locationSession!.prewarm());
+    }
   }
 
   /// Occupancy-only placeholder after the user asks for the keyboard. Must not
@@ -3691,6 +3698,7 @@ class _ChatPageState extends State<ChatPage>
   bool _sendingGift = false;
   bool _sendingLocation = false;
   int _locationPreviewGeneration = 0;
+  AndroidLocationSession? _locationSession;
 
   bool get _locationChatVisible {
     final lifecycle = WidgetsBinding.instance.lifecycleState;
@@ -3704,6 +3712,8 @@ class _ChatPageState extends State<ChatPage>
 
   void _invalidateLocationPreview({bool notify = true}) {
     _locationPreviewGeneration++;
+    _locationSession?.close();
+    _locationSession = null;
     if (!_sendingLocation) return;
     _sendingLocation = false;
     if (notify && mounted) _bumpComposerShell();
@@ -3808,6 +3818,9 @@ class _ChatPageState extends State<ChatPage>
     try {
       final result = await requestDeviceLocationResult(
         purpose: DeviceLocationPurpose.chatPreview,
+        androidSession: AndroidLocationSession.supported
+            ? (_locationSession ??= AndroidLocationSession.chat())
+            : null,
       );
       if (!mounted || !_canShowLocationPreview(generation) || !sameChat()) {
         return;

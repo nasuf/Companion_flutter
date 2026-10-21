@@ -36,7 +36,82 @@ class OfflineCheckinPage extends StatefulWidget {
   State<OfflineCheckinPage> createState() => _OfflineCheckinPageState();
 }
 
-class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
+class _OfflineCheckinPageState extends State<OfflineCheckinPage>
+    with WidgetsBindingObserver, RouteAware {
+  AndroidLocationSession? _locationSession;
+  PageRoute<dynamic>? _locationRoute;
+  int _locationGeneration = 0;
+
+  bool get _locationVisible {
+    final state = WidgetsBinding.instance.lifecycleState;
+    return mounted &&
+        (ModalRoute.of(context)?.isCurrent ?? false) &&
+        (state == null ||
+            state == AppLifecycleState.resumed ||
+            state == AppLifecycleState.inactive);
+  }
+
+  void _prewarmLocation() {
+    if (!AndroidLocationSession.supported ||
+        !_locationVisible ||
+        widget.takeoverId != null ||
+        _arriving ||
+        widget.locationLoader != null ||
+        !(_activity?.arrivalVerificationAvailable ?? false) ||
+        (_activity?.reached ?? false)) {
+      return;
+    }
+    _locationSession ??= AndroidLocationSession();
+    unawaited(_locationSession!.prewarm());
+  }
+
+  void _releaseLocation() {
+    _locationGeneration++;
+    _locationSession?.close();
+    _locationSession = null;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!AndroidLocationSession.supported) return;
+    final route = ModalRoute.of(context);
+    if (route is PageRoute<dynamic> && route != _locationRoute) {
+      appRouteObserver.unsubscribe(this);
+      _locationRoute = route;
+      appRouteObserver.subscribe(this, route);
+    }
+    if (route?.isCurrent ?? false) {
+      _prewarmLocation();
+    } else {
+      _releaseLocation();
+    }
+  }
+
+  @override
+  void didPushNext() => _releaseLocation();
+  @override
+  void didPopNext() => _prewarmLocation();
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!AndroidLocationSession.supported) return;
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      _releaseLocation();
+    } else if (state == AppLifecycleState.resumed) {
+      _prewarmLocation();
+    }
+  }
+
+  @override
+  void dispose() {
+    _releaseLocation();
+    appRouteObserver.unsubscribe(this);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   OfflineActivity? _activity;
   bool _loading = true;
   String? _error;
@@ -49,6 +124,7 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _activity = widget.initialActivity;
     _loading = widget.initialActivity == null;
     _load();
@@ -69,6 +145,7 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
         _loading = false;
         _error = null;
       });
+      _prewarmLocation();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -84,19 +161,31 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage> {
     try {
       var confirmed = !(_activity?.arrivalVerificationAvailable ?? false);
       DeviceLocationSnapshot? snapshot;
+      final generation = _locationGeneration;
       try {
         if (!confirmed) {
           snapshot =
               await (widget.locationLoader?.call() ??
-                  requestCurrentDeviceLocation(
-                    api: widget.api,
-                    openSettingsWhenBlocked: false,
-                  ));
+                  (AndroidLocationSession.supported
+                      ? requestDeviceLocationResult(
+                          api: widget.api,
+                          purpose: DeviceLocationPurpose.arrival,
+                          androidSession: _locationSession ??=
+                              AndroidLocationSession(),
+                        ).then((result) => result.snapshot)
+                      : requestCurrentDeviceLocation(
+                          api: widget.api,
+                          openSettingsWhenBlocked: false,
+                        )));
         }
       } catch (_) {
         snapshot = null;
       }
-      if (!mounted) return;
+      if (!mounted ||
+          (AndroidLocationSession.supported &&
+              (generation != _locationGeneration || !_locationVisible))) {
+        return;
+      }
       if (snapshot != null &&
           (!snapshot.latitude.isFinite ||
               !snapshot.longitude.isFinite ||

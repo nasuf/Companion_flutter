@@ -33,7 +33,10 @@ class LocationConfirmPage extends StatefulWidget {
   State<LocationConfirmPage> createState() => _LocationConfirmPageState();
 }
 
-class _LocationConfirmPageState extends State<LocationConfirmPage> {
+class _LocationConfirmPageState extends State<LocationConfirmPage>
+    with WidgetsBindingObserver {
+  AndroidLocationSession? _locationSession;
+  int _refreshGeneration = 0;
   late DeviceLocationSnapshot _snapshot;
   bool _refreshing = false;
   bool _resolvingAddress = false;
@@ -43,8 +46,29 @@ class _LocationConfirmPageState extends State<LocationConfirmPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _snapshot = widget.snapshot;
     if (_snapshot.address == null) unawaited(_resolveAddress());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _locationSession?.close();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (AndroidLocationSession.supported &&
+        (state == AppLifecycleState.paused ||
+            state == AppLifecycleState.hidden ||
+            state == AppLifecycleState.detached)) {
+      _locationSession?.close();
+      _locationSession = null;
+      _refreshGeneration++;
+      if (mounted) setState(() => _refreshing = false);
+    }
   }
 
   Future<void> _resolveAddress() async {
@@ -61,6 +85,7 @@ class _LocationConfirmPageState extends State<LocationConfirmPage> {
   Future<void> _refreshLocation() async {
     if (_refreshing) return;
     _addressGeneration++;
+    final generation = ++_refreshGeneration;
     setState(() {
       _resolvingAddress = false;
       _refreshing = true;
@@ -69,9 +94,13 @@ class _LocationConfirmPageState extends State<LocationConfirmPage> {
     try {
       final result = await requestDeviceLocationResult(
         purpose: DeviceLocationPurpose.chatPreview,
+        androidSession: AndroidLocationSession.supported
+            ? (_locationSession ??= AndroidLocationSession.chat())
+            : null,
+        fresh: true,
       );
       final updated = result.snapshot;
-      if (!mounted) return;
+      if (!mounted || generation != _refreshGeneration) return;
       if (updated == null) {
         setState(() {
           _refreshError = result.message ?? '未能更新位置，请检查定位权限或到开阔处重试';
@@ -81,7 +110,7 @@ class _LocationConfirmPageState extends State<LocationConfirmPage> {
       setState(() => _snapshot = updated);
       unawaited(_resolveAddress());
     } finally {
-      if (mounted) {
+      if (mounted && generation == _refreshGeneration) {
         setState(() => _refreshing = false);
       }
     }

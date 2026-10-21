@@ -6,6 +6,8 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../companion_api.dart';
 import '../../models.dart';
+import 'android_location_session.dart';
+export 'android_location_session.dart';
 
 /// Result of a one-shot device location read (system GPS + reverse geocoding).
 class DeviceLocationSnapshot {
@@ -125,13 +127,20 @@ class DeviceLocationResult {
 }
 
 /// Chat previews return fresh coordinates first and resolve the address in-sheet.
-/// Profile synchronization and arrival verification keep the standard policy.
-enum DeviceLocationPurpose { standard, chatPreview }
+/// Android arrival verification needs coordinates only. iOS keeps its policy.
+enum DeviceLocationPurpose { standard, chatPreview, arrival }
 
 // Join an automatic request when the user taps the activity card mid-flight.
 final _pendingLocationRequests =
     <
-      (CompanionApi?, bool, bool, DeviceLocationPurpose),
+      (
+        CompanionApi?,
+        bool,
+        bool,
+        DeviceLocationPurpose,
+        AndroidLocationSession?,
+        bool,
+      ),
       Future<DeviceLocationResult>
     >{};
 
@@ -141,8 +150,17 @@ Future<DeviceLocationResult> requestDeviceLocationResult({
   bool syncUserProfile = false,
   bool allowRecentCache = false,
   DeviceLocationPurpose purpose = DeviceLocationPurpose.standard,
+  AndroidLocationSession? androidSession,
+  bool fresh = false,
 }) {
-  final key = (api, syncUserProfile, allowRecentCache, purpose);
+  final key = (
+    api,
+    syncUserProfile,
+    allowRecentCache,
+    purpose,
+    androidSession,
+    fresh,
+  );
   final pending = _pendingLocationRequests[key];
   if (pending != null) return pending;
   final future =
@@ -152,6 +170,8 @@ Future<DeviceLocationResult> requestDeviceLocationResult({
         syncUserProfile: syncUserProfile,
         allowRecentCache: allowRecentCache,
         purpose: purpose,
+        androidSession: androidSession,
+        fresh: fresh,
       ).whenComplete(() {
         _pendingLocationRequests.remove(key);
       });
@@ -196,10 +216,7 @@ bool _validCoordinates(Position position) =>
     position.accuracy.isFinite &&
     position.accuracy >= 0;
 
-Future<Position> _readDevicePosition({
-  required bool allowRecentCache,
-  required DeviceLocationPurpose purpose,
-}) async {
+Future<Position> _readDevicePosition({required bool allowRecentCache}) async {
   Object? failure;
   final android = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   final settings = <LocationSettings>[
@@ -215,13 +232,7 @@ Future<Position> _readDevicePosition({
         intervalDuration: const Duration(seconds: 1),
       ),
   ];
-  // On Android, chat uses the system provider first so phones without a
-  // working fused provider do not wait for its timeout before seeing a preview.
-  final orderedSettings =
-      android && purpose == DeviceLocationPurpose.chatPreview
-      ? settings.reversed
-      : settings;
-  for (final setting in orderedSettings) {
+  for (final setting in settings) {
     try {
       final position = await Geolocator.getCurrentPosition(
         locationSettings: setting,
@@ -321,6 +332,8 @@ Future<DeviceLocationResult> _requestDeviceLocation({
   required bool syncUserProfile,
   required bool allowRecentCache,
   required DeviceLocationPurpose purpose,
+  required AndroidLocationSession? androidSession,
+  required bool fresh,
 }) async {
   final android = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   try {
@@ -358,10 +371,22 @@ Future<DeviceLocationResult> _requestDeviceLocation({
       );
     }
 
-    final position = await _readDevicePosition(
-      allowRecentCache: allowRecentCache,
-      purpose: purpose,
-    );
+    final interactiveAndroid =
+        android && purpose != DeviceLocationPurpose.standard;
+    final session = interactiveAndroid
+        ? (androidSession ??
+              (purpose == DeviceLocationPurpose.chatPreview
+                  ? AndroidLocationSession.chat()
+                  : AndroidLocationSession()))
+        : null;
+    final Position position;
+    try {
+      position = session != null
+          ? await session.read(fresh: fresh)
+          : await _readDevicePosition(allowRecentCache: allowRecentCache);
+    } finally {
+      if (androidSession == null) session?.close();
+    }
     var snapshot = DeviceLocationSnapshot(
       latitude: position.latitude,
       longitude: position.longitude,
@@ -369,7 +394,8 @@ Future<DeviceLocationResult> _requestDeviceLocation({
       accuracyMeters: position.accuracy,
       observedAt: position.timestamp,
     );
-    if (purpose == DeviceLocationPurpose.standard) {
+    if (purpose == DeviceLocationPurpose.standard ||
+        (!android && purpose == DeviceLocationPurpose.arrival)) {
       snapshot = await resolveDeviceLocationAddress(snapshot);
     }
     if (syncUserProfile && api != null) {

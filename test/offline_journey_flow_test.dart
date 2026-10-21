@@ -114,6 +114,7 @@ Future<void> showCheckin(
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     MaterialApp(
+      navigatorObservers: [appRouteObserver],
       home: OfflineCheckinPage(
         api: api,
         session: session,
@@ -127,6 +128,48 @@ Future<void> showCheckin(
 }
 
 void main() {
+  for (final exit in ['route', 'background', 'dispose']) {
+    testWidgets('Android arrival ignores pending location after $exit', (
+      tester,
+    ) async {
+      final gate = Completer<DeviceLocationSnapshot?>();
+      final api = FakeApi(activity(known: true));
+      await showCheckin(tester, api, locationLoader: () => gate.future);
+      await tester.tap(find.text('我已经抵达这里'));
+      await tester.pump();
+      final context = tester.element(find.byType(OfflineCheckinPage));
+      if (exit == 'route') {
+        unawaited(
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const Scaffold(body: Text('其他页面')),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+      } else if (exit == 'background') {
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await tester.pump();
+      } else {
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+      gate.complete(null);
+      await tester.pump();
+      expect(api.arrived, 0);
+      expect(find.text('我已确认到达'), findsNothing);
+      if (exit == 'background') {
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+      }
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  }
+
   testWidgets('event detail displays the canonical session without midnight', (
     tester,
   ) async {

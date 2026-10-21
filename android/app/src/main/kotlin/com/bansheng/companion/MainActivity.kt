@@ -24,6 +24,7 @@ import io.flutter.plugin.common.MethodChannel
  */
 class MainActivity : FlutterActivity() {
 
+    private var foregroundLocation: ForegroundLocationBridge? = null
     private var flutterSurfaceView: FlutterSurfaceView? = null
     private var surfaceCallbackAttached = false
     private var windowModeApplied = false
@@ -54,6 +55,9 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        foregroundLocation?.dispose()
+        foregroundLocation = ForegroundLocationBridge(this,
+            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "companion/foreground_location"))
         PushBridge.configure(this, MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "companion/push_notifications"))
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
@@ -117,7 +121,14 @@ class MainActivity : FlutterActivity() {
         super.onPause()
     }
 
+    override fun onStop() {
+        foregroundLocation?.stop()
+        super.onStop()
+    }
+
     override fun onDestroy() {
+        foregroundLocation?.dispose()
+        foregroundLocation = null
         stopDisplayWatch()
         stopKeepAlive()
         PushBridge.channel = null

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'support/android_location_mock.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:companion_flutter/companion_api.dart';
@@ -167,6 +168,13 @@ void main() {
     GeolocatorPlatform.instance = gps;
     geocoder = _Geocoder();
     GeocodingPlatform.instance = geocoder;
+    mockAndroidLocation(() async {
+      final position = await gps.getCurrentPosition();
+      return Position.fromMap({
+        ...position.toJson(),
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      });
+    });
   });
 
   tearDown(() {
@@ -189,28 +197,34 @@ void main() {
   );
 
   test(
-    'chat preview uses Android system provider before fused fallback',
+    'Android chat returns coordinates through one bounded native request',
     () async {
       final preview = await requestDeviceLocationResult(
         purpose: DeviceLocationPurpose.chatPreview,
       );
       expect(preview.snapshot!.latitude, 32.2);
-      expect(gps.requests.single, isA<AndroidSettings>());
-      expect(
-        (gps.requests.single as AndroidSettings).forceLocationManager,
-        isTrue,
-      );
+      expect(gps.requests, hasLength(1));
       expect(geocoder.calls, isEmpty);
-
-      gps.requests.clear();
-      gps.failures = 1;
-      final fallback = await requestDeviceLocationResult(
-        purpose: DeviceLocationPurpose.chatPreview,
+      final reused = await requestDeviceLocationResult(
+        purpose: DeviceLocationPurpose.arrival,
       );
-      expect(fallback.snapshot, isNotNull);
-      expect(gps.requests, hasLength(2));
-      expect(gps.requests.last!.accuracy, LocationAccuracy.high);
-      expect(gps.requests.last, isNot(isA<AndroidSettings>()));
+      expect(reused.snapshot!.observedAt, preview.snapshot!.observedAt);
+      expect(gps.requests, hasLength(1));
+      expect(geocoder.calls, isEmpty);
+    },
+  );
+
+  test(
+    'iOS arrival retains its original geocoder and best accuracy settings',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final result = await requestDeviceLocationResult(
+        purpose: DeviceLocationPurpose.arrival,
+      );
+      expect(result.snapshot!.city, '镇江市');
+      expect(gps.requests.single!.accuracy, LocationAccuracy.best);
+      expect(gps.requests.single!.timeLimit, const Duration(seconds: 15));
+      expect(geocoder.calls, ['zh_CN', 'lookup']);
     },
   );
 
