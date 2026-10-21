@@ -54,6 +54,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        PushBridge.configure(this, MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "companion/push_notifications"))
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -70,6 +71,14 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        PushBridge.takePayload(intent)?.let {
+            PushBridge.channel?.invokeMethod("remoteNotificationTapped", it)
+        }
     }
 
     override fun onFlutterSurfaceViewCreated(flutterSurfaceView: FlutterSurfaceView) {
@@ -111,6 +120,7 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         stopDisplayWatch()
         stopKeepAlive()
+        PushBridge.channel = null
         super.onDestroy()
     }
 

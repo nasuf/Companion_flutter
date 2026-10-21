@@ -255,6 +255,7 @@ mixin _CompanionApiAuth on _CompanionApiCore {
   }
 
   Future<void> registerPushDevice({
+    String platform = 'ios',
     required String token,
     required String environment,
     required String deviceId,
@@ -262,7 +263,7 @@ mixin _CompanionApiAuth on _CompanionApiCore {
     String? appVersion,
   }) async {
     final body = {
-      'platform': 'ios',
+      'platform': platform,
       'token': token,
       'environment': environment,
       'device_id': deviceId,

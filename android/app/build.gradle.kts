@@ -42,6 +42,9 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["JPUSH_PKGNAME"] = "\${applicationId}"
+        manifestPlaceholders["JPUSH_CHANNEL"] = "developer-default"
+        manifestPlaceholders["JPUSH_APPKEY"] = ""
     }
 
     flavorDimensions += "env"
@@ -50,10 +53,16 @@ android {
         create("dev") {
             dimension = "env"
             applicationId = "com.bansheng.dev"
+            manifestPlaceholders["JPUSH_PKGNAME"] = "com.bansheng.dev"
+            manifestPlaceholders["JPUSH_APPKEY"] = providers.gradleProperty("JPUSH_DEV_APPKEY")
+                .orElse(providers.environmentVariable("JPUSH_DEV_APPKEY")).getOrElse("")
         }
         create("prod") {
             dimension = "env"
             applicationId = "com.bansheng.prod"
+            manifestPlaceholders["JPUSH_PKGNAME"] = "com.bansheng.prod"
+            manifestPlaceholders["JPUSH_APPKEY"] = providers.gradleProperty("JPUSH_PROD_APPKEY")
+                .orElse(providers.environmentVariable("JPUSH_PROD_APPKEY")).getOrElse("")
         }
     }
 
@@ -78,6 +87,7 @@ android {
 }
 
 dependencies {
+    implementation("cn.jiguang.sdk:jpush:6.2.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 

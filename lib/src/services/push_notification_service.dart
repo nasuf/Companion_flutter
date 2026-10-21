@@ -12,7 +12,22 @@ class PushNotificationPayload {
 }
 
 class PushNotificationService with WidgetsBindingObserver {
-  PushNotificationService._();
+  PushNotificationService._() : _testAndroid = null;
+
+  @visibleForTesting
+  PushNotificationService.forTesting() : _testAndroid = true;
+
+  final bool? _testAndroid;
+  bool get _isAndroid => _testAndroid ?? Platform.isAndroid;
+  bool get _isIOS => _testAndroid == null && Platform.isIOS;
+  Future<void> _operations = Future<void>.value();
+  Future<void>? _registrationInFlight;
+
+  Future<void> _serialize(Future<void> Function() operation) {
+    final result = _operations.then((_) => operation());
+    _operations = result.catchError((Object _, StackTrace __) {});
+    return result;
+  }
 
   static final PushNotificationService instance = PushNotificationService._();
   static const _channel = MethodChannel('companion/push_notifications');
@@ -44,7 +59,9 @@ class PushNotificationService with WidgetsBindingObserver {
   }
 
   Future<void> initialize() async {
-    if (_initialized || kIsWeb || !Platform.isIOS) return;
+    if (_initialized || kIsWeb || !(_isIOS || _isAndroid)) {
+      return;
+    }
     WidgetsBinding.instance.addObserver(this);
     _channel.setMethodCallHandler(_handleNativeCall);
     _deviceId = await _loadDeviceId();
@@ -53,7 +70,7 @@ class PushNotificationService with WidgetsBindingObserver {
         'takeInitialNotification',
       );
       if (initial != null) _emitPayload(Map<String, dynamic>.from(initial));
-      _apnsEnvironment = await _loadApnsEnvironment();
+      _apnsEnvironment = _isIOS ? await _loadApnsEnvironment() : 'production';
       await _loadAppMetadata();
       final token = await _channel.invokeMethod<String>('getToken');
       if (token != null && token.isNotEmpty) {
@@ -65,10 +82,13 @@ class PushNotificationService with WidgetsBindingObserver {
     _initialized = true;
   }
 
-  Future<void> configure(CompanionApi api, AuthSession session) async {
+  Future<void> configure(CompanionApi api, AuthSession session) =>
+      _serialize(() => _configure(api, session));
+
+  Future<void> _configure(CompanionApi api, AuthSession session) async {
     _api = api;
     _session = session;
-    if (kIsWeb || !Platform.isIOS) return;
+    if (kIsWeb || !(_isIOS || _isAndroid)) return;
     await initialize();
     await _requestAuthorizationAndRegister();
     await _registerTokenIfReady();
@@ -82,12 +102,25 @@ class PushNotificationService with WidgetsBindingObserver {
     if (_foreground) unawaited(_sendPresence());
   }
 
-  Future<void> clear() async {
+  Future<void> clear() => _serialize(_clear);
+
+  Future<void> _clear() async {
     _presenceTimer?.cancel();
     _presenceTimer = null;
     _cancelRegistrationRefreshes();
     final api = _api;
     final token = _token;
+    final session = _session;
+    _api = null;
+    _session = null;
+    _pendingPayload = null;
+    if (!kIsWeb && _isAndroid && _initialized) {
+      try {
+        await _channel.invokeMethod<void>('stopPush');
+      } catch (_) {}
+    }
+    // A delayed registration must complete before logout disables the token.
+    await _registrationInFlight;
     if (api != null && token != null && token.isNotEmpty) {
       try {
         await api.disablePushDevice(token: token);
@@ -95,11 +128,16 @@ class PushNotificationService with WidgetsBindingObserver {
         // Best effort on logout.
       }
     }
-    if (_deviceId != null) {
-      await _sendPresence(foreground: false);
+    if (_deviceId != null && api != null && session != null) {
+      try {
+        await api.updatePushPresence(
+          deviceId: _deviceId!,
+          foreground: false,
+          workspaceId: session.workspaceId,
+          conversationId: session.conversationId,
+        );
+      } catch (_) {}
     }
-    _api = null;
-    _session = null;
   }
 
   @override
@@ -122,6 +160,7 @@ class PushNotificationService with WidgetsBindingObserver {
 
   Future<dynamic> _handleNativeCall(MethodCall call) async {
     switch (call.method) {
+      case 'jpushToken':
       case 'apnsToken':
         final token = call.arguments?.toString() ?? '';
         if (token.isNotEmpty) {
@@ -165,7 +204,10 @@ class PushNotificationService with WidgetsBindingObserver {
   }
 
   Future<void> _refreshRegistrationAndRegister() async {
-    if (kIsWeb || !Platform.isIOS || _api == null || _refreshingRegistration) {
+    if (kIsWeb ||
+        !(_isIOS || _isAndroid) ||
+        _api == null ||
+        _refreshingRegistration) {
       return;
     }
     _refreshingRegistration = true;
@@ -194,7 +236,9 @@ class PushNotificationService with WidgetsBindingObserver {
 
   void _scheduleRegistrationRefreshes() {
     _cancelRegistrationRefreshes();
-    if (kIsWeb || !Platform.isIOS || _api == null) return;
+    if (kIsWeb || !(_isIOS || _isAndroid) || _api == null) {
+      return;
+    }
     for (final delay in const [
       Duration(seconds: 2),
       Duration(seconds: 10),
@@ -215,7 +259,19 @@ class PushNotificationService with WidgetsBindingObserver {
     _registrationRetryTimers.clear();
   }
 
-  Future<void> _registerTokenIfReady() async {
+  Future<void> _registerTokenIfReady() {
+    final existing = _registrationInFlight;
+    if (existing != null) return existing;
+    final registration = _performRegistration();
+    _registrationInFlight = registration;
+    return registration.whenComplete(() {
+      if (identical(_registrationInFlight, registration)) {
+        _registrationInFlight = null;
+      }
+    });
+  }
+
+  Future<void> _performRegistration() async {
     final api = _api;
     final token = _token;
     final deviceId = _deviceId;
@@ -223,9 +279,10 @@ class PushNotificationService with WidgetsBindingObserver {
       return;
     }
     try {
-      _apnsEnvironment ??= await _loadApnsEnvironment();
+      _apnsEnvironment ??= _isIOS ? await _loadApnsEnvironment() : 'production';
       await api.registerPushDevice(
         token: token,
+        platform: _isAndroid ? 'android' : 'ios',
         environment:
             _apnsEnvironment ?? (kReleaseMode ? 'production' : 'sandbox'),
         deviceId: deviceId,
@@ -266,7 +323,7 @@ class PushNotificationService with WidgetsBindingObserver {
     final existing = await _storage.read(key: _deviceIdKey);
     if (existing != null && existing.isNotEmpty) return existing;
     final generated =
-        'ios-${DateTime.now().microsecondsSinceEpoch}-${math.Random().nextInt(1 << 32)}';
+        '${_isAndroid ? 'android' : 'ios'}-${DateTime.now().microsecondsSinceEpoch}-${math.Random().nextInt(1 << 32)}';
     await _storage.write(key: _deviceIdKey, value: generated);
     return generated;
   }
