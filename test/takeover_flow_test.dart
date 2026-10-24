@@ -524,6 +524,89 @@ void main() {
     },
   );
 
+  testWidgets(
+    'Redis operations push shows a banner and details without opening chat',
+    (tester) async {
+      final api = FakeTakeoverApi();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MainShell(
+            api: api,
+            session: adminSession(),
+            onSessionChanged: (_) {},
+            onLogout: () {},
+          ),
+        ),
+      );
+      await drain(tester);
+      const payload = PushNotificationPayload({
+        'type': 'admin_redis_capacity',
+        'route': 'system',
+        'notification_id': 'ops-alert',
+        'title': 'Redis 内存预警',
+        'body': '隔离验收：内存使用76%',
+        '_foreground_delivery': true,
+      });
+      final event = AppNotificationEvent.fromPushPayload(payload);
+      expect(event.id, 'ops-alert');
+      AppNotificationService.instance.emit(event);
+      await drain(tester);
+      expect(find.text('Redis 内存预警'), findsOneWidget);
+      AppNotificationService.instance.emit(event);
+      await drain(tester);
+      expect(find.text('Redis 内存预警'), findsOneWidget);
+      await tester.tap(find.text('Redis 内存预警'));
+      await drain(tester);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('隔离验收：内存使用76%'), findsOneWidget);
+      await tester.tap(find.text('关闭'));
+      await drain(tester);
+      await tester.pumpWidget(const SizedBox());
+      await drain(tester);
+    },
+  );
+
+  testWidgets('non-admin ignores Redis operations notifications', (
+    tester,
+  ) async {
+    final api = FakeTakeoverApi();
+    const session = AuthSession(
+      token: 'synthetic',
+      userId: 'ordinary',
+      username: 'ordinary',
+      role: UserRole.user,
+      hasAgent: false,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MainShell(
+          api: api,
+          session: session,
+          onSessionChanged: (_) {},
+          onLogout: () {},
+        ),
+      ),
+    );
+    await drain(tester);
+    for (final source in AppNotificationSource.values) {
+      AppNotificationService.instance.emit(
+        AppNotificationEvent(
+          id: 'ops-$source',
+          type: 'admin_redis_capacity',
+          title: 'Redis 内存预警',
+          body: '禁止泄露',
+          route: 'system',
+          source: source,
+        ),
+      );
+      await drain(tester);
+      expect(find.text('禁止泄露'), findsNothing);
+      expect(find.byType(AlertDialog), findsNothing);
+    }
+    await tester.pumpWidget(const SizedBox());
+    await drain(tester);
+  });
+
   testWidgets('takeover menu entry uses the same numeric unread snapshot', (
     tester,
   ) async {

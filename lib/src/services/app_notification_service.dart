@@ -31,6 +31,8 @@ class AppNotificationEvent {
   final String? memoryId;
   final Map<String, dynamic> payload;
 
+  bool get isOperationsAlert => type == 'admin_redis_capacity';
+
   bool get isRemotePush => source == AppNotificationSource.remotePush;
   bool get isChat => route == 'chat' || type == 'agent_message';
   bool get isCheckin => route == 'checkin' || type == 'checkin_reminder';

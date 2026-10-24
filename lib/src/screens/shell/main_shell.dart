@@ -276,8 +276,19 @@ class _MainShellState extends State<MainShell> with RouteAware {
 
   void _handleAppNotification(AppNotificationEvent event) {
     if (!mounted) return;
+    if (event.isOperationsAlert && widget.session.role != UserRole.admin) {
+      return;
+    }
     if (event.isRemotePush) {
       _openAppNotification(event);
+      return;
+    }
+    if (event.isOperationsAlert) {
+      if (!_seenTakeoverNotifications.add(event.id)) return;
+      if (_seenTakeoverNotifications.length > 200) {
+        _seenTakeoverNotifications.remove(_seenTakeoverNotifications.first);
+      }
+      _showInAppNotification(event);
       return;
     }
     if (event.isTakeoverChat || event.isTakeoverReview) {
@@ -446,6 +457,25 @@ class _MainShellState extends State<MainShell> with RouteAware {
   void _openAppNotification(AppNotificationEvent event) {
     if (!mounted) return;
     _dismissInAppNotification();
+    if (event.isOperationsAlert) {
+      if (widget.session.role != UserRole.admin) return;
+      unawaited(
+        showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(event.title),
+            content: Text(event.body),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('关闭'),
+              ),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
     _setChatSidebarOpen(false);
     if (widget.session.role == UserRole.admin &&
         (event.isTakeoverReview || event.isTakeoverChat)) {

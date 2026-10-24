@@ -245,6 +245,42 @@ void main() {
     );
   });
 
+  testWidgets(
+    'delayed replies stay silent through reconnect and keep composer usable',
+    (tester) async {
+      await _withChat(tester, (api, peers) async {
+        final internalHints = find.textContaining(
+          RegExp(r'已排队|消息已进入聚合|预计.*后回复'),
+        );
+        await _emit(tester, peers.last, 'pending', {
+          'status': 'queued',
+          'delay': 30,
+        });
+        expect(internalHints, findsNothing);
+        final composer = find.byType(ExtendedTextField);
+        expect(tester.widget<ExtendedTextField>(composer).readOnly, isFalse);
+        tester.widget<ExtendedTextField>(composer).controller!.text = '我还想再说一句';
+        await tester.pump();
+        await _emit(tester, peers.last, 'delay', {'duration': 30});
+        expect(internalHints, findsNothing);
+        expect(tester.widget<ExtendedTextField>(composer).controller!.text, '我还想再说一句');
+        await _reconnect(tester, api, peers);
+        await _emit(tester, peers.last, 'pending', {
+          'status': 'queued',
+          'reconnected': true,
+        });
+        expect(internalHints, findsNothing);
+        await _emit(tester, peers.last, 'reply', {
+          'text': '我听着呢',
+          'message_id': 'delayed-reply',
+          'reply_index': 0,
+        });
+        expect(find.text('我听着呢'), findsOneWidget);
+        expect(internalHints, findsNothing);
+      });
+    },
+  );
+
   ChatMessage plain(String id, int minute) => ChatMessage(
     id: id,
     conversationId: 'conv',
