@@ -128,4 +128,29 @@ void main() {
     expect((await payload).data['conversation_id'], 'conversation');
     expect(service.takePendingPayload()!.route, 'chat');
   });
+
+  test('native Redis foreground push becomes an in-app alert', () async {
+    await service.configure(_Api('admin'), _session('admin'));
+    final payload = service.payloads.first;
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          channel.name,
+          const StandardMethodCodec().encodeMethodCall(
+            const MethodCall('remoteNotificationForeground', {
+              'type': 'admin_redis_capacity',
+              'route': 'system',
+              'notification_id': 'redis-capacity-1',
+              'title': 'Redis 内存预警',
+              'body': '内存使用76%',
+            }),
+          ),
+          (_) {},
+        );
+    final event = AppNotificationEvent.fromPushPayload(await payload);
+    expect(event.isOperationsAlert, isTrue);
+    expect(event.source, AppNotificationSource.inApp);
+    expect(event.id, 'redis-capacity-1');
+    expect(event.title, 'Redis 内存预警');
+    expect(event.body, '内存使用76%');
+  });
 }

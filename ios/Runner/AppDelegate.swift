@@ -187,13 +187,32 @@ import UserNotifications
     withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
   ) {
     let payload = normalizeNotificationPayload(notification.request.content.userInfo)
-    let type = payload["type"] as? String
-    if (type == "admin_new_user" || type == "admin_takeover_message"), let channel = pushChannel {
-      channel.invokeMethod("remoteNotificationForeground", arguments: payload)
+    if Self.forwardForegroundNotification(payload, channel: pushChannel) {
       completionHandler([])
       return
     }
     super.userNotificationCenter(center, willPresent: notification, withCompletionHandler: completionHandler)
+  }
+
+  // These notifications have an in-app admin banner. Other types keep their
+  // existing Flutter/plugin handling; an unavailable channel must not swallow them.
+  static func forwardForegroundNotification(
+    _ payload: [String: Any], channel: FlutterMethodChannel?
+  ) -> Bool {
+    guard let channel, let type = payload["type"] as? String,
+      ["admin_new_user", "admin_takeover_message", "admin_redis_capacity"].contains(type)
+    else {
+      return false
+    }
+    let deliver = {
+      channel.invokeMethod("remoteNotificationForeground", arguments: payload)
+    }
+    if Thread.isMainThread {
+      deliver()
+    } else {
+      DispatchQueue.main.async(execute: deliver)
+    }
+    return true
   }
 
   override func userNotificationCenter(
