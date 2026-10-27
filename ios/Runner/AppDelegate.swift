@@ -200,7 +200,8 @@ import UserNotifications
     _ payload: [String: Any], channel: FlutterMethodChannel?
   ) -> Bool {
     guard let channel, let type = payload["type"] as? String,
-      ["admin_new_user", "admin_takeover_message", "admin_redis_capacity"].contains(type)
+      ["admin_new_user", "admin_takeover_message", "admin_redis_capacity", "admin_service_health"]
+        .contains(type)
     else {
       return false
     }

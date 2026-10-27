@@ -5,7 +5,9 @@ import XCTest
 
 class RunnerTests: XCTestCase {
   func testAdminForegroundPushCrossesNativeFlutterChannel() {
-    for type in ["admin_redis_capacity", "admin_new_user", "admin_takeover_message"] {
+    for type in [
+      "admin_redis_capacity", "admin_service_health", "admin_new_user", "admin_takeover_message",
+    ] {
       let messenger = RecordingMessenger()
       let channel = FlutterMethodChannel(
         name: "companion/push_notifications", binaryMessenger: messenger

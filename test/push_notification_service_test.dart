@@ -129,6 +129,20 @@ void main() {
     expect(service.takePendingPayload()!.route, 'chat');
   });
 
+  test('service health push is an operations alert too', () {
+    final event = AppNotificationEvent.fromPushPayload(
+      const PushNotificationPayload({
+        'type': 'admin_service_health',
+        'route': 'system',
+        'notification_id': 'service-health-1',
+        'title': '服务告警',
+        'body': '30分钟内3条用户消息超过3分钟未回复。',
+      }),
+    );
+    expect(event.isOperationsAlert, isTrue);
+    expect(event.title, '服务告警');
+  });
+
   test('native Redis foreground push becomes an in-app alert', () async {
     await service.configure(_Api('admin'), _session('admin'));
     final payload = service.payloads.first;
