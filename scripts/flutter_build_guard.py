@@ -108,10 +108,12 @@ def locked(script: str, args: list[str]) -> int:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise ValueError('Another Flutter build/run script is using this checkout. Finish it first.') from exc
+        # Keep this fd non-inheritable. Handing it to the shell also hands it to
+        # every child; adb's fork-server daemonizes and would keep the flock
+        # after this process exits, so the next run fails until adb is killed.
+        os.set_inheritable(lock.fileno(), False)
         env = dict(os.environ, COMPANION_BUILD_SCRIPT=str(Path(script).resolve()))
-        # Keep the lock alive in the shell too, even if this parent is killed
-        # while its build process is still writing output.
-        return subprocess.call(['/bin/bash', script, *args], env=env, pass_fds=(lock.fileno(),))
+        return subprocess.call(['/bin/bash', script, *args], env=env)
 
 
 def main() -> int:

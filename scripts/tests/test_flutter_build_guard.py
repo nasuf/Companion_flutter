@@ -191,6 +191,31 @@ class ReceiptTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'Another Flutter'):
                     guard.locked('/does/not/matter.sh', [])
 
+    def test_lock_fd_is_not_inherited_by_child_processes(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(guard, 'ROOT', Path(directory)):
+            result = Path(directory) / 'result.txt'
+            script = Path(directory) / 'inspect.sh'
+            script.write_text(
+                "#!/bin/bash\n"
+                "python3 - <<'PY'\n"
+                "import os\n"
+                "from pathlib import Path\n"
+                "found = False\n"
+                "for name in os.listdir('/dev/fd'):\n"
+                "    try:\n"
+                "        target = os.readlink('/dev/fd/' + name)\n"
+                "    except OSError:\n"
+                "        continue\n"
+                "    if 'companion-flutter-build-' in target:\n"
+                "        found = True\n"
+                "Path(os.environ['RESULT']).write_text('inherited' if found else 'clean')\n"
+                "PY\n"
+            )
+            with patch.dict(os.environ, {'RESULT': str(result)}):
+                code = guard.locked(str(script), [])
+            self.assertEqual(code, 0)
+            self.assertEqual(result.read_text(), 'clean')
+
 
 original = guard.source_digest
 
