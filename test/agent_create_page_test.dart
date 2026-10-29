@@ -46,6 +46,7 @@ void main() {
     await _pumpAgentCreatePage(tester);
 
     expect(find.text('寻找专属你的TA'), findsOneWidget);
+    expect(find.byKey(const ValueKey('agent-create-back')), findsNothing);
     expect(find.text('TA是男生还是女生？'), findsOneWidget);
     expect(find.text('性别设置后将无法修改'), findsOneWidget);
     expect(find.byKey(const ValueKey('agent-gender-female')), findsOneWidget);
@@ -75,6 +76,7 @@ void main() {
     expect(find.text('理性度'), findsOneWidget);
     expect(find.text('幽默度'), findsOneWidget);
     expect(find.text('上一步'), findsOneWidget);
+    expect(find.byKey(const ValueKey('agent-create-back')), findsNothing);
     expect(find.text('让故事开始'), findsOneWidget);
 
     const tooltipCopy = {

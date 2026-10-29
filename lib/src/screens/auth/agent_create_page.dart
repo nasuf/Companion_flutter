@@ -107,15 +107,6 @@ class _AgentCreatePageState extends State<AgentCreatePage>
     );
   }
 
-  void _handleBack() {
-    if (_submitting || _pageTransitioning) return;
-    if (_step == _AgentCreateStep.traits) {
-      _showGender();
-      return;
-    }
-    Navigator.of(context).maybePop();
-  }
-
   void _randomizeTraits() {
     final random = math.Random.secure();
     final traitMoveProgress = Curves.easeOutCubic.transform(
@@ -418,7 +409,6 @@ class _AgentCreatePageState extends State<AgentCreatePage>
                             openTraitInfoIndex: _openTraitInfoIndex,
                             submitting: _submitting,
                             error: _error,
-                            onBack: _handleBack,
                             onGenderChanged: (gender) =>
                                 setState(() => _gender = gender),
                             onNext: _showTraits,
@@ -491,7 +481,6 @@ class _AgentCreateCanvas extends StatelessWidget {
     required this.openTraitInfoIndex,
     required this.submitting,
     required this.error,
-    required this.onBack,
     required this.onGenderChanged,
     required this.onNext,
     required this.onPrevious,
@@ -510,7 +499,6 @@ class _AgentCreateCanvas extends StatelessWidget {
   final int? openTraitInfoIndex;
   final bool submitting;
   final String? error;
-  final VoidCallback onBack;
   final ValueChanged<_AgentGender> onGenderChanged;
   final VoidCallback onNext;
   final VoidCallback onPrevious;
@@ -538,7 +526,7 @@ class _AgentCreateCanvas extends StatelessWidget {
                 children: [
                   Stack(
                     children: [
-                      _AgentCreateHeader(onBack: onBack),
+                      const _AgentCreateHeader(),
                       _GenderStep(
                         gender: gender,
                         onGenderChanged: onGenderChanged,
@@ -548,7 +536,7 @@ class _AgentCreateCanvas extends StatelessWidget {
                   ),
                   Stack(
                     children: [
-                      _AgentCreateHeader(onBack: onBack),
+                      const _AgentCreateHeader(),
                       _TraitsStep(
                         traits: traits,
                         previousTraitValues: previousTraitValues,
@@ -677,50 +665,24 @@ class _AgentCreatePlanetPainter extends CustomPainter {
 }
 
 class _AgentCreateHeader extends StatelessWidget {
-  const _AgentCreateHeader({required this.onBack});
-
-  final VoidCallback onBack;
+  const _AgentCreateHeader();
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        const Positioned(
-          top: 58,
-          left: 0,
-          right: 0,
-          child: Text(
-            '寻找专属你的TA',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.black,
-              fontSize: 18,
-              height: 25 / 18,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+    return const Positioned(
+      top: 58,
+      left: 0,
+      right: 0,
+      child: Text(
+        '寻找专属你的TA',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: Colors.black,
+          fontSize: 18,
+          height: 25 / 18,
+          fontWeight: FontWeight.w600,
         ),
-        Positioned(
-          left: 16,
-          top: 54,
-          width: 36,
-          height: 36,
-          child: CupertinoButton(
-            key: const ValueKey('agent-create-back'),
-            padding: EdgeInsets.zero,
-            minimumSize: Size.zero,
-            borderRadius: BorderRadius.circular(18),
-            color: Colors.white.withValues(alpha: 0.62),
-            pressedOpacity: 0.72,
-            onPressed: onBack,
-            child: const Icon(
-              CupertinoIcons.chevron_left,
-              size: 25,
-              color: Color(0xFF111111),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
