@@ -4,10 +4,13 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import pty
+import select
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -27,7 +30,8 @@ with (root / 'calls.jsonl').open('a') as stream:
     stream.write(json.dumps([tool, *args]) + '\n')
 if tool == 'git': sys.exit(128)
 if tool == 'adb':
-    if args == ['devices']: print('List of devices attached\nfixture-device\tdevice')
+    if args[:1] == ['devices']:
+        print(os.environ.get('ADB_DEVICES') or 'List of devices attached\nfixture-device\tdevice')
     elif 'install' in args: (root / 'installed.txt').write_text(args[-1])
     elif 'pm' in args: print('package:/data/app/fixture/base.apk')
     elif 'exec-out' in args:
@@ -67,7 +71,42 @@ raise RuntimeError('Unexpected tool: ' + tool)
 
 
 class RunScriptTests(unittest.TestCase):
-    def fixture(self, script='run-android-device.sh', *, mode='release', extra=(), **options):
+    def _run(self, argv, env, cwd, tty_input):
+        if tty_input is None:
+            return subprocess.run(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+                                  capture_output=True, text=True, timeout=25)
+        master, slave = pty.openpty()
+        proc = subprocess.Popen(argv, cwd=cwd, env=env, stdin=slave, stdout=slave, stderr=slave)
+        os.close(slave)
+        os.write(master, tty_input.encode())
+        chunks = []
+        deadline = time.time() + 25
+        try:
+            while True:
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    proc.kill()
+                    output = b''.join(chunks).decode(errors='replace')
+                    raise AssertionError('timed out\n' + output)
+                ready, _, _ = select.select([master], [], [], min(0.2, remaining))
+                if ready:
+                    try:
+                        data = os.read(master, 4096)
+                    except OSError:
+                        break
+                    if not data:
+                        break
+                    chunks.append(data)
+                    continue
+                if proc.poll() is not None:
+                    break
+            code = proc.wait(timeout=5)
+        finally:
+            os.close(master)
+        output = b''.join(chunks).decode(errors='replace')
+        return subprocess.CompletedProcess(argv, code, output, '')
+
+    def fixture(self, script='run-android-device.sh', *, mode='release', extra=(), tty_input=None, **options):
         with tempfile.TemporaryDirectory(prefix='flutter-script-') as directory:
             root = Path(directory) / 'project with spaces'
             for name in ('scripts', 'tools', 'lib', 'ios/Flutter', 'build/stale', '.dart_tool/flutter_build'):
@@ -86,13 +125,49 @@ class RunScriptTests(unittest.TestCase):
             env = {k: v for k, v in os.environ.items() if not k.startswith(('COMPANION_BUILD_', 'IOS_', 'FLUTTER_'))}
             env.update(PATH=str(root / 'tools') + os.pathsep + os.environ['PATH'], FIXTURE_ROOT=str(root),
                        FLAVOR='prod', FLUTTER_RUN_MODE=mode, PHYSICAL_DEVICE_ID='iphone',
-                       IPAD_DEVICE_ID='ipad', ANDROID_DEVICE_ID='android', **options)
-            result = subprocess.run(['/bin/bash', str(root / 'scripts' / script), *extra],
-                                    cwd=directory, env=env, stdin=subprocess.DEVNULL,
-                                    capture_output=True, text=True, timeout=25)
+                       IPAD_DEVICE_ID='ipad', ANDROID_DEVICE_ID='android')
+            env.update(options)
+            result = self._run(['/bin/bash', str(root / 'scripts' / script), *extra], env, directory, tty_input)
             calls_file = root / 'calls.jsonl'
             calls = [json.loads(line) for line in calls_file.read_text().splitlines()] if calls_file.exists() else []
             return result, calls
+
+    def test_android_device_prompt_targets_the_selected_device(self):
+        listing = (
+            'List of devices attached\n'
+            'a3b2dcbc               unauthorized usb:1-1 transport_id:5\n'
+            'emulator-5554          device product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 device:emu64a\n'
+            'b59b20ad               device usb:1-1 product:PHB110 model:PHB110 device:OP5913L1\n'
+        )
+        result, calls = self.fixture(ANDROID_DEVICE_ID='', ADB_DEVICES=listing, tty_input='2\n')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Not ready:', result.stdout)
+        self.assertIn('a3b2dcbc  unauthorized', result.stdout)
+        flutter = [call[1:] for call in calls if call[0] == 'flutter']
+        self.assertEqual(flutter[-1][flutter[-1].index('-d') + 1], 'b59b20ad')
+        self.assertTrue(any(call[:3] == ['adb', '-s', 'b59b20ad'] for call in calls))
+
+    def test_android_uses_the_only_ready_device_without_a_terminal(self):
+        listing = (
+            'List of devices attached\n'
+            'a3b2dcbc               unauthorized\n'
+            'emulator-5554          device model:sdk_gphone64_arm64\n'
+        )
+        result, calls = self.fixture(ANDROID_DEVICE_ID='', ADB_DEVICES=listing)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        flutter = [call[1:] for call in calls if call[0] == 'flutter']
+        self.assertEqual(flutter[-1][flutter[-1].index('-d') + 1], 'emulator-5554')
+
+    def test_android_refuses_multiple_devices_without_a_terminal(self):
+        listing = (
+            'List of devices attached\n'
+            'emulator-5554          device model:sdk_gphone64_arm64\n'
+            'b59b20ad               device model:PHB110\n'
+        )
+        result, calls = self.fixture(ANDROID_DEVICE_ID='', ADB_DEVICES=listing)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Multiple Android devices', result.stderr)
+        self.assertFalse(any(call[0] == 'flutter' for call in calls))
 
     def test_android_build_is_verified_before_running_exact_binary(self):
         for mode in ('release', 'profile'):

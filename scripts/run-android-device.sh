@@ -31,19 +31,90 @@ case "$FLUTTER_RUN_MODE" in
     ;;
 esac
 
-if [[ -z "$ANDROID_DEVICE_ID" ]]; then
-  ANDROID_DEVICE_ID="$(
-    adb devices | awk 'NR > 1 && $2 == "device" { print $1; exit }'
-  )"
-fi
+# ANDROID_DEVICE_ID skips the prompt. Otherwise list every adb device in the
+# "device" state and, on a terminal, ask which one receives this build.
+# Unauthorized/offline devices are shown but cannot be selected.
+select_android_device() {
+  if [[ -n "${ANDROID_DEVICE_ID:-}" ]]; then
+    return
+  fi
 
-if [[ -z "$ANDROID_DEVICE_ID" ]]; then
-  echo "No connected Android device found." >&2
-  echo "Set ANDROID_DEVICE_ID=<device-id> and retry." >&2
-  exit 1
-fi
+  local listing ids=() models=() skipped=() kind id extra
+  listing="$(adb devices -l | awk '
+    NR == 1 || NF < 2 { next }
+    $2 == "device" {
+      model = $1
+      for (i = 3; i <= NF; i++) if ($i ~ /^model:/) model = substr($i, 7)
+      printf "ready\t%s\t%s\n", $1, model
+      next
+    }
+    { printf "skip\t%s\t%s\n", $1, $2 }
+  ')"
 
-echo "Running $FLAVOR (com.bansheng.$FLAVOR) $FLUTTER_RUN_MODE on $ANDROID_DEVICE_ID"
+  while IFS=$'\t' read -r kind id extra; do
+    [[ -n "${kind:-}" ]] || continue
+    if [[ "$kind" == "skip" ]]; then
+      skipped+=("$id  $extra")
+    elif [[ "$kind" == "ready" ]]; then
+      ids+=("$id")
+      models+=("$extra")
+    fi
+  done <<< "$listing"
+
+  if [[ ${#skipped[@]} -gt 0 ]]; then
+    echo "Not ready:"
+    local item
+    for item in "${skipped[@]}"; do
+      echo "  $item"
+    done
+  fi
+
+  if [[ ${#ids[@]} -eq 0 ]]; then
+    echo "No connected Android device is ready." >&2
+    echo "Authorize a device, or set ANDROID_DEVICE_ID=<device-id> and retry." >&2
+    exit 1
+  fi
+
+  if [[ ! -t 0 ]]; then
+    if [[ ${#ids[@]} -eq 1 ]]; then
+      ANDROID_DEVICE_ID="${ids[0]}"
+      ANDROID_DEVICE_LABEL="${models[0]} ($ANDROID_DEVICE_ID)"
+      echo "No interactive terminal detected; using $ANDROID_DEVICE_LABEL"
+      return
+    fi
+    echo "Multiple Android devices are connected. Set ANDROID_DEVICE_ID and retry." >&2
+    local i
+    for i in "${!ids[@]}"; do
+      echo "  ${ids[$i]}  ${models[$i]}" >&2
+    done
+    exit 1
+  fi
+
+  echo "Which Android device do you want?"
+  local i
+  for i in "${!ids[@]}"; do
+    printf '  %d) %s  %s\n' "$((i + 1))" "${models[$i]}" "${ids[$i]}"
+  done
+  local choice=""
+  if ! read -r -p "Select [1]: " choice; then
+    echo >&2
+    echo "No device selected; aborting." >&2
+    exit 1
+  fi
+  choice="${choice:-1}"
+  if [[ ! "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > ${#ids[@]} )); then
+    echo "Invalid selection: '$choice' (expected 1-${#ids[@]})." >&2
+    exit 1
+  fi
+  ANDROID_DEVICE_ID="${ids[$((choice - 1))]}"
+  ANDROID_DEVICE_LABEL="${models[$((choice - 1))]} ($ANDROID_DEVICE_ID)"
+  echo
+}
+
+ANDROID_DEVICE_LABEL=""
+select_android_device
+
+echo "Running $FLAVOR (com.bansheng.$FLAVOR) $FLUTTER_RUN_MODE on ${ANDROID_DEVICE_LABEL:-$ANDROID_DEVICE_ID}"
 
 fresh_build_prepare
 source_fingerprint="$(fresh_build_fingerprint)"
