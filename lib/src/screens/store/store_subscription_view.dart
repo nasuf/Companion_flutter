@@ -125,8 +125,10 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
       activeProductId: widget.activeProductId,
       vipUntil: widget.vipUntil,
     );
+    // 一屏放得下时不接受拖动，保持固定布局；矮屏或系统字体调大放不下时才能滚动，
+    // 否则底部的恢复购买 / 兑换激活码会被导航栏挡住、点不到。
     return ListView(
-      physics: const NeverScrollableScrollPhysics(),
+      physics: const ClampingScrollPhysics(),
       padding: EdgeInsets.fromLTRB(8, 8, 8, widget.bottomSpace),
       children: [
         const SizedBox(height: 4),

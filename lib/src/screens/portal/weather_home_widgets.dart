@@ -22,9 +22,9 @@ class _WeatherHome extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final today = forecast.days.first;
-    // 整屏不滚动：Column 填满可视区，各区块之间用弹性 Spacer 分配剩余空间，
-    // 屏幕越高越透气、越矮越紧凑，保证所有元素同屏、互不重叠。
-    return Padding(
+    // 放得下时整屏不滚动：Column 填满可视区，各区块之间用弹性 Spacer 分配剩余
+    // 空间，屏幕越高越透气、越矮越紧凑；矮屏或大字体放不下时由 FitOrScroll 滚动。
+    return FitOrScroll(
       padding: EdgeInsets.fromLTRB(20, 12, 20, bottomPadding + 20),
       child: Column(
         children: [

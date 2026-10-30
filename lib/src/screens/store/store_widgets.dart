@@ -155,13 +155,15 @@ class _StoreBottomBar extends StatelessWidget {
   final _StoreSection selected;
   final ValueChanged<_StoreSection> onSelected;
 
+  static const double height = 68;
+
   @override
   Widget build(BuildContext context) {
     final w = _W2b.resolve(context);
     final values = _StoreSection.values;
     final selectedIndex = values.indexOf(selected);
     return Container(
-      height: 68,
+      height: height,
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
       decoration: BoxDecoration(
         color: w.isDark ? const Color(0xFF121A26) : Colors.white,

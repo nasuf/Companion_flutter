@@ -289,17 +289,25 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
     final label = '${widget.visibleMonth.year}年${widget.visibleMonth.month}月';
     return Row(
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: tokens.title,
-            fontSize: 14,
-            height: 1.2,
-            fontWeight: FontWeight.w500,
-            decoration: TextDecoration.none,
+        // 行宽固定；系统字体调大、窄屏时月份文字缩小，给右侧周范围让位。
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: tokens.title,
+                  fontSize: 14,
+                  height: 1.2,
+                  fontWeight: FontWeight.w500,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
           ),
         ),
-        const Spacer(),
         // The chip and the collapse chevron occupy the same slot, so they
         // cross-fade with the card instead of jumping between two rows.
         Stack(
@@ -382,14 +390,22 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        _weekdayLabels[offset],
-                        style: TextStyle(
-                          color: tokens.sectionTitle,
-                          fontSize: 12,
-                          height: 1.4,
-                          fontWeight: FontWeight.w500,
-                          decoration: TextDecoration.none,
+                      // 周条所在的槽定高 79；系统字体调大时只缩小星期文字，
+                      // 日期胶囊保持原尺寸。
+                      SizedBox(
+                        height: 17,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            _weekdayLabels[offset],
+                            style: TextStyle(
+                              color: tokens.sectionTitle,
+                              fontSize: 12,
+                              height: 1.4,
+                              fontWeight: FontWeight.w500,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -513,33 +529,37 @@ class _CheckinCalendarCardState extends State<_CheckinCalendarCard>
               ? Border.all(color: tokens.accent)
               : null,
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              '${date.day}',
-              style: TextStyle(
-                color: isToday
-                    ? Colors.white
-                    : dimmed
-                    ? tokens.dayNumber.withValues(alpha: 0.35)
-                    : tokens.dayNumber,
-                fontSize: 12,
-                height: 1.16,
-                fontWeight: FontWeight.w400,
-                decoration: TextDecoration.none,
+        // 胶囊定高 54；系统字体调大后日期和标记整组等比缩小，不撑破胶囊。
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${date.day}',
+                style: TextStyle(
+                  color: isToday
+                      ? Colors.white
+                      : dimmed
+                      ? tokens.dayNumber.withValues(alpha: 0.35)
+                      : tokens.dayNumber,
+                  fontSize: 12,
+                  height: 1.16,
+                  fontWeight: FontWeight.w400,
+                  decoration: TextDecoration.none,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Opacity(
-              opacity: dimmed ? 0.4 : 1,
-              child: _CheckinDayMarker(
-                mark: mark,
-                tokens: tokens,
-                onAccent: isToday,
+              const SizedBox(height: 8),
+              Opacity(
+                opacity: dimmed ? 0.4 : 1,
+                child: _CheckinDayMarker(
+                  mark: mark,
+                  tokens: tokens,
+                  onAccent: isToday,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

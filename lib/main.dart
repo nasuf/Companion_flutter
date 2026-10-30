@@ -11,7 +11,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:flutter/rendering.dart'
-    show ScrollCacheExtent, RenderRepaintBoundary;
+    show ScrollCacheExtent, RenderProxyBox, RenderRepaintBoundary;
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -234,6 +234,7 @@ part 'src/theme/app_theme.dart';
 part 'src/theme/app_colors.dart';
 part 'src/dialogs/vip_quota_dialogs.dart';
 part 'src/widgets/route_ticker_scope.dart';
+part 'src/widgets/fit_or_scroll.dart';
 part 'src/widgets/achievement_card.dart';
 part 'src/widgets/achievement_feedback.dart';
 part 'src/widgets/achievement_header.dart';

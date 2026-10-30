@@ -73,6 +73,12 @@ Future<void> _show(
   await t.pump(const Duration(milliseconds: 50));
 }
 
+Finder _subscriptionScroll() => find
+    .byWidgetPredicate(
+      (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+    )
+    .first;
+
 CupertinoButton _button(WidgetTester t, String label) =>
     t.widget<CupertinoButton>(
       find
@@ -84,17 +90,13 @@ CupertinoButton _button(WidgetTester t, String label) =>
     );
 void main() {
   testWidgets(
-    'subscription remains fixed vertically while payment availability changes silently',
+    'subscription stays fixed when it fits while payment availability changes silently',
     (t) async {
       final api = _Api()..gate = Completer<bool>();
       await _show(t, api);
-      final vertical = find
-          .byWidgetPredicate(
-            (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
-          )
-          .first;
+      final vertical = _subscriptionScroll();
       final scroll = t.state<ScrollableState>(vertical);
-      expect(scroll.position.physics.allowUserScrolling, false);
+      expect(scroll.position.maxScrollExtent, 0);
       expect(find.text('正在确认购买服务…'), findsNothing);
       final initialButton = t.getRect(find.text('立即开通'));
       expect(initialButton.top, greaterThan(0));
@@ -116,6 +118,36 @@ void main() {
       await t.drag(vertical, const Offset(0, 220));
       await t.pump(const Duration(milliseconds: 300));
       expect(scroll.position.pixels, 0);
+      expect(t.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'short screens and large system fonts can scroll to the bottom links',
+    (t) async {
+      t.view.physicalSize = const Size(360, 720);
+      t.view.devicePixelRatio = 1;
+      t.view.padding = const FakeViewPadding(top: 32, bottom: 48);
+      t.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(t.view.reset);
+      addTearDown(t.platformDispatcher.clearTextScaleFactorTestValue);
+      await t.pumpWidget(
+        MaterialApp(
+          home: StorePage(api: _Api(), session: session),
+        ),
+      );
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 50));
+      final scroll = t.state<ScrollableState>(_subscriptionScroll());
+      expect(scroll.position.maxScrollExtent, greaterThan(0));
+      await t.drag(_subscriptionScroll(), const Offset(0, -1000));
+      await t.pumpAndSettle();
+      expect(scroll.position.pixels, scroll.position.maxScrollExtent);
+      final barTop = t.getRect(find.text('充值').last).top;
+      expect(t.getRect(find.text('兑换激活码')).bottom, lessThan(barTop));
+      await t.tap(find.text('兑换激活码'));
+      await t.pumpAndSettle();
+      expect(find.text('兑换 VIP 激活码'), findsOneWidget);
       expect(t.takeException(), isNull);
     },
   );

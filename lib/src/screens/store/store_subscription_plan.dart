@@ -115,58 +115,62 @@ class _PlanCard extends StatelessWidget {
                   12,
                   isCurrentPlan ? 28 : 16,
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: titleColor,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    // 价格单行自适应：人民币「¥29」按 32px 原样显示，美元/其它币种
-                    // 的长串（如「US$12.99」）等比缩小到一行，绝不折行。FittedBox
-                    // 只缩不放，短价保持满级字号。
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        price,
-                        maxLines: 1,
-                        softWrap: false,
+                // 卡片定高；系统字体调大后整组等比缩小，不撑破卡片底部。
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
                         style: TextStyle(
                           color: titleColor,
-                          fontSize: 32,
-                          height: 1,
+                          fontSize: 15,
                           fontWeight: FontWeight.w900,
-                          letterSpacing: -0.5,
+                          letterSpacing: 0,
                           decoration: TextDecoration.none,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    // 原价同样单行自适应，避免美元长串折行撑高卡片。
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        origin,
-                        maxLines: 1,
-                        softWrap: false,
-                        style: TextStyle(
-                          color: originColor,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0,
-                          decoration: TextDecoration.lineThrough,
-                          decorationColor: originColor,
+                      const SizedBox(height: 6),
+                      // 价格单行自适应：人民币「¥29」按 32px 原样显示，美元/其它币种
+                      // 的长串（如「US$12.99」）等比缩小到一行，绝不折行。FittedBox
+                      // 只缩不放，短价保持满级字号。
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          price,
+                          maxLines: 1,
+                          softWrap: false,
+                          style: TextStyle(
+                            color: titleColor,
+                            fontSize: 32,
+                            height: 1,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.5,
+                            decoration: TextDecoration.none,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 6),
+                      // 原价同样单行自适应，避免美元长串折行撑高卡片。
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          origin,
+                          maxLines: 1,
+                          softWrap: false,
+                          style: TextStyle(
+                            color: originColor,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0,
+                            decoration: TextDecoration.lineThrough,
+                            decorationColor: originColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

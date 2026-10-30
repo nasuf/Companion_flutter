@@ -287,79 +287,98 @@ class _DailyHeroCard extends StatelessWidget {
                               fit: BoxFit.cover,
                             ),
                     ),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black.withValues(alpha: 0.10),
-                          Colors.black.withValues(alpha: 0.52),
-                          Colors.black.withValues(alpha: 0.86),
-                        ],
-                        stops: const [0, 0.48, 1],
-                      ),
-                    ),
-                  ),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: RadialGradient(
-                        center: const Alignment(0.68, -0.76),
-                        radius: 0.8,
-                        colors: [
-                          Colors.white.withValues(alpha: 0.36),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const _DailyHeroMark(),
-                        const Spacer(),
-                        const Text(
-                          '把照片整理成一句自然分享',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 27,
-                            height: 1.09,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0,
-                          ),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.black.withValues(alpha: 0.10),
+                            Colors.black.withValues(alpha: 0.52),
+                            Colors.black.withValues(alpha: 0.86),
+                          ],
+                          stops: const [0, 0.48, 1],
                         ),
-                        const SizedBox(height: 10),
-                        const SizedBox(
-                          width: 248,
-                          child: Text(
-                            '照片分享不需要长文案，保留画面、时间和一句像朋友会说的话就够了。',
-                            style: TextStyle(
-                              color: Color(0xD6FFFFFF),
-                              fontSize: 13,
-                              height: 1.48,
-                              fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          center: const Alignment(0.68, -0.76),
+                          radius: 0.8,
+                          colors: [
+                            Colors.white.withValues(alpha: 0.36),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _DailyHeroMark(),
+                          // 卡片定高 248；系统字体调大后标题和说明整组等比缩小，
+                          // 贴底对齐，不撑破卡片。宽度仍按卡片内宽排版、正常折行。
+                          Expanded(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) => FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.bottomLeft,
+                                child: SizedBox(
+                                  width: constraints.maxWidth,
+                                  child: const Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '把照片整理成一句自然分享',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 27,
+                                          height: 1.09,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 0,
+                                        ),
+                                      ),
+                                      SizedBox(height: 10),
+                                      SizedBox(
+                                        width: 248,
+                                        child: Text(
+                                          '照片分享不需要长文案，保留画面、时间和一句像朋友会说的话就够了。',
+                                          style: TextStyle(
+                                            color: Color(0xD6FFFFFF),
+                                            fontSize: 13,
+                                            height: 1.48,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 14),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: _DailyCountChip(
-                            label: total > 0 ? '$total 张照片' : '暂无照片',
+                          const SizedBox(height: 14),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: _DailyCountChip(
+                              label: total > 0 ? '$total 张照片' : '暂无照片',
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
         ),
       ),
-    ),
     );
   }
 

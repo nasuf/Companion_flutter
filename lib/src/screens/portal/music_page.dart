@@ -707,7 +707,9 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
             ),
             SafeArea(
               bottom: false,
-              child: Padding(
+              // 放得下时整屏不滚动，播放器吃掉剩余高度；矮屏或大字体时播放器
+              // 至少保留 FitOrScrollFloor 的高度，整页改为可滚动。
+              child: FitOrScroll(
                 padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding + 12),
                 child: Column(
                   children: [
@@ -715,11 +717,16 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
                     const SizedBox(height: 12),
                     _MusicHeader(agentName: _agentName),
                     const SizedBox(height: 12),
-                    _MusicLibrarySelector(
-                      libraries: _libraries,
-                      selectedLibrary: _selectedLibrary,
-                      onSelected: (library) =>
-                          unawaited(_selectLibrary(library)),
+                    // 选择条内部用了 LayoutBuilder，FitOrScroll 量不出它的高度；
+                    // 它本来就定高 54，外面给定高即可。
+                    SizedBox(
+                      height: 54,
+                      child: _MusicLibrarySelector(
+                        libraries: _libraries,
+                        selectedLibrary: _selectedLibrary,
+                        onSelected: (library) =>
+                            unawaited(_selectLibrary(library)),
+                      ),
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: 8),
@@ -727,35 +734,40 @@ class _MusicPageState extends State<MusicPage> with TickerProviderStateMixin {
                     ],
                     const SizedBox(height: 12),
                     Expanded(
-                      child: _MusicPlayerPanel(
-                        track: _currentTrack,
-                        loading:
-                            _loading ||
-                            _loadingTrack ||
-                            _playback.isLoadingTrack(_currentTrack),
-                        position: _position,
-                        duration: _duration,
-                        isPlaying: _isPlaying,
-                        lyricsMode: _lyricsMode,
-                        lyrics: _lyricsLines,
-                        canGoPrevious: _canGoPrevious,
-                        discAnimation: _discController,
-                        waveAnimation: _waveController,
-                        onToggleDisplay: _toggleDisplay,
-                        onSeekStart: _beginSeek,
-                        onSeekChanged: _previewSeek,
-                        onSeekEnd: (progress) => unawaited(_seekTo(progress)),
-                        onPrevious: () => unawaited(_previousTrack()),
-                        onNext: () => unawaited(
-                          _playRandom(
-                            refresh: true,
-                            changeSource: 'manual_next',
+                      child: FitOrScrollFloor(
+                        // 实测播放器在 1.0 倍字体下至少要 218、1.5 倍要 236，
+                        // 取 240；再矮就整页滚动。
+                        minHeight: 240,
+                        child: _MusicPlayerPanel(
+                          track: _currentTrack,
+                          loading:
+                              _loading ||
+                              _loadingTrack ||
+                              _playback.isLoadingTrack(_currentTrack),
+                          position: _position,
+                          duration: _duration,
+                          isPlaying: _isPlaying,
+                          lyricsMode: _lyricsMode,
+                          lyrics: _lyricsLines,
+                          canGoPrevious: _canGoPrevious,
+                          discAnimation: _discController,
+                          waveAnimation: _waveController,
+                          onToggleDisplay: _toggleDisplay,
+                          onSeekStart: _beginSeek,
+                          onSeekChanged: _previewSeek,
+                          onSeekEnd: (progress) => unawaited(_seekTo(progress)),
+                          onPrevious: () => unawaited(_previousTrack()),
+                          onNext: () => unawaited(
+                            _playRandom(
+                              refresh: true,
+                              changeSource: 'manual_next',
+                            ),
                           ),
+                          onTogglePlay: _togglePlay,
+                          onToggleFavorite: _currentTrack == null
+                              ? null
+                              : () => _toggleFavorite(_currentTrack!),
                         ),
-                        onTogglePlay: _togglePlay,
-                        onToggleFavorite: _currentTrack == null
-                            ? null
-                            : () => _toggleFavorite(_currentTrack!),
                       ),
                     ),
                     const SizedBox(height: 10),

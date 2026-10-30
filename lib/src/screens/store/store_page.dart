@@ -307,7 +307,8 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
     } catch (_) {}
 
     final pid = productId;
-    final wantsPoll = pid != null &&
+    final wantsPoll =
+        pid != null &&
         (iapProductGrantsVip(pid) || iapProductGrantsTickets(pid));
 
     IapMembership? polled;
@@ -389,10 +390,8 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
   Future<void> _openWalletLedger() async {
     await Navigator.of(context).push<void>(
       CompanionPageRoute(
-        builder: (context) => StoreWalletLedgerPage(
-          api: widget.api,
-          currency: _rechargeCurrency,
-        ),
+        builder: (context) =>
+            StoreWalletLedgerPage(api: widget.api, currency: _rechargeCurrency),
       ),
     );
     if (!mounted) return;
@@ -403,8 +402,7 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
   }
 
   Future<void> _openAppleSubscriptions({DateTime? expires}) async {
-    final dateText =
-        expires != null ? formatVipDisplayDate(expires) : '当前周期结束';
+    final dateText = expires != null ? formatVipDisplayDate(expires) : '当前周期结束';
     final proceed = await showCupertinoDialog<bool>(
       context: context,
       builder: (context) => CupertinoAlertDialog(
@@ -438,9 +436,7 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
     if (_subscribing) return;
     final ui = _subscribeUi;
     if (ui.action == StoreSubscribeAction.manageSubscription) {
-      await _openAppleSubscriptions(
-        expires: _subscriptionExpires ?? _vipUntil,
-      );
+      await _openAppleSubscriptions(expires: _subscriptionExpires ?? _vipUntil);
       return;
     }
     if (ui.needsAutoRenewWarning) {
@@ -468,7 +464,8 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
       if (proceed != true || !mounted) return;
     }
     final productId =
-        (_selectedPlan >= 0 && _selectedPlan < IapProducts.subscriptionPlans.length)
+        (_selectedPlan >= 0 &&
+            _selectedPlan < IapProducts.subscriptionPlans.length)
         ? IapProducts.subscriptionPlans[_selectedPlan]
         : IapProducts.vipMonthlyAuto;
     if (!_iap.available || _iap.priceLabel(productId) == null) {
@@ -978,6 +975,10 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
     double safeBottom,
   ) {
     final bottomSpace = safeBottom + 98;
+    // 订阅页一屏放得下时不能滚动，所以底部只留到「导航栏上沿 + 12」：
+    // 再多留的空白会变成几像素的可拖动空间。导航栏位置见 build() 里的 Positioned。
+    final subscriptionBottomSpace =
+        math.max(10.0, safeBottom - 2) + _StoreBottomBar.height + 12;
     return switch (section) {
       _StoreSection.subscription => _SubscriptionStoreView(
         selectedPlan: _selectedPlan,
@@ -1000,7 +1001,7 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
                   _iap.priceLabel(id),
               ]
             : const [],
-        bottomSpace: bottomSpace,
+        bottomSpace: subscriptionBottomSpace,
       ),
       _StoreSection.bundle => _BundleStoreView(
         paymentsEnabled: _realMoneyPaymentsEnabled,
@@ -1065,9 +1066,7 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
         builder: (context) {
           return CupertinoAlertDialog(
             title: const Text('月度 VIP 体验'),
-            content: Text(
-              '将支付 $priceLabel 获得 30 天会员权益（账号限购一次）。到期不自动续费。',
-            ),
+            content: Text('将支付 $priceLabel 获得 30 天会员权益（账号限购一次）。到期不自动续费。'),
             actions: [
               CupertinoDialogAction(
                 onPressed: () => Navigator.of(context).pop(false),

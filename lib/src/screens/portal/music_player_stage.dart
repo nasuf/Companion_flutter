@@ -55,7 +55,10 @@ class _MusicPlayerPanel extends StatelessWidget {
         final sectionGap = compact ? 8.0 : 12.0;
         final discGap = compact ? 8.0 : 14.0;
         final waveGap = compact ? 10.0 : 16.0;
-        final titleHeight = compact ? 30.0 : 32.0;
+        // 歌名单行，槽高随系统字体放大，否则大字体下歌名会撑破这一格。
+        final titleHeight = MediaQuery.textScalerOf(
+          context,
+        ).scale(compact ? 30.0 : 32.0);
         return Container(
           padding: EdgeInsets.fromLTRB(
             contentPadding,

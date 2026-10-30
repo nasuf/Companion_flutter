@@ -44,12 +44,12 @@ class _RechargeStoreView extends StatelessWidget {
     final accent = currency == _StoreCurrency.ticket
         ? const Color(0xFFFFC83D)
         : _kStoreBlue;
-    // 不滚动、一屏铺满、且按钮永远在底部导航栏之上：
+    // 一屏铺满、且按钮永远在底部导航栏之上：
     // - 用 Column 填满可视高度，余额区放进 Expanded 吸收多余空间（内容不足时它变大、
-    //   显得更透气；内容偏多时它收缩，绝不把别的组件挤出屏幕）。
-    // - 余额再套 FittedBox(scaleDown)，极端窄屏也只会等比缩小、不会溢出重叠。
+    //   显得更透气；内容偏多时它收缩到最小高度，余额 FittedBox 等比缩小）。
+    // - 矮屏或系统字体调大，收缩到底也放不下时，由 FitOrScroll 整页滚动。
     // - 底部留白 = bottomSpace - 16，让按钮落在导航栏上方约 16px 处。
-    return Padding(
+    return FitOrScroll(
       padding: EdgeInsets.fromLTRB(20, 6, 20, bottomSpace - 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -62,25 +62,28 @@ class _RechargeStoreView extends StatelessWidget {
             onSelected: onCurrencyChanged,
           ),
           Expanded(
-            child: Stack(
-              children: [
-                // 方块网格只铺在余额区（跟随该区域高度）。
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: _RechargePatternPainter(color: accent),
-                  ),
-                ),
-                Center(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: _RechargeBalance(
-                      currency: currency,
-                      balance: balance,
-                      accent: accent,
+            child: FitOrScrollFloor(
+              minHeight: 96,
+              child: Stack(
+                children: [
+                  // 方块网格只铺在余额区（跟随该区域高度）。
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _RechargePatternPainter(color: accent),
                     ),
                   ),
-                ),
-              ],
+                  Center(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: _RechargeBalance(
+                        currency: currency,
+                        balance: balance,
+                        accent: accent,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           // 两个入口都固定在套餐上方，位置在两个 tab 之间保持一致。
@@ -98,25 +101,20 @@ class _RechargeStoreView extends StatelessWidget {
               onTap: onConvertGamePoints!,
             ),
           const SizedBox(height: 14),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: packs.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 1.32,
-            ),
-            itemBuilder: (context, index) {
-              final pack = packs[index];
-              return _RechargePackCard(
-                pack: pack,
-                selected: selectedIndex == index,
-                priceLabel: priceLabelFor?.call(pack),
-                onTap: () => onSelectPack(index),
-              );
-            },
+          FitOrScrollGrid(
+            crossAxisCount: 3,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 1.32,
+            children: [
+              for (var index = 0; index < packs.length; index += 1)
+                _RechargePackCard(
+                  pack: packs[index],
+                  selected: selectedIndex == index,
+                  priceLabel: priceLabelFor?.call(packs[index]),
+                  onTap: () => onSelectPack(index),
+                ),
+            ],
           ),
           const SizedBox(height: 18),
           _StorePrimaryButton(
@@ -343,6 +341,10 @@ class _RechargePackCard extends StatelessWidget {
       onPressed: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
+        // CupertinoButton 给的是宽松约束，这里显式撑满网格格子。
+        width: double.infinity,
+        height: double.infinity,
+        alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
         // 与其它页一致的玻璃卡：中性玻璃底 + 玻璃描边 + 面板投影；选中改深蓝描边。
         decoration: BoxDecoration(
@@ -354,19 +356,22 @@ class _RechargePackCard extends StatelessWidget {
           ),
           boxShadow: w.panelShadow,
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _CurrencyIcon(currency: pack.currency, size: 16),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
+        // 卡片按宽高比定高；系统字体调大后整组等比缩小，不撑破卡片。
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _CurrencyIcon(currency: pack.currency, size: 16),
+                  const SizedBox(width: 4),
+                  // 外层 FittedBox 宽度不设限，这里不能用 Flexible；过长时整组缩小。
+                  Text(
                     '${pack.amount}',
                     maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
                     style: TextStyle(
                       color: w.ink,
                       fontSize: 18,
@@ -375,24 +380,24 @@ class _RechargePackCard extends StatelessWidget {
                       decoration: TextDecoration.none,
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              pack.currency == _StoreCurrency.ticket
-                  ? (priceLabel ?? '¥${pack.cost}')
-                  : '${pack.cost} 钞票',
-              style: TextStyle(
-                // 选中只改边框，金额/价格颜色保持不变。
-                color: w.inkSoft,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0,
-                decoration: TextDecoration.none,
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 6),
+              Text(
+                pack.currency == _StoreCurrency.ticket
+                    ? (priceLabel ?? '¥${pack.cost}')
+                    : '${pack.cost} 钞票',
+                style: TextStyle(
+                  // 选中只改边框，金额/价格颜色保持不变。
+                  color: w.inkSoft,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

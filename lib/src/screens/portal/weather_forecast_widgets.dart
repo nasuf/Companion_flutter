@@ -32,17 +32,12 @@ class _WeatherMetricGrid extends StatelessWidget {
       ),
     ];
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: items.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 14,
-        mainAxisSpacing: 16,
-        childAspectRatio: 168 / 88,
-      ),
-      itemBuilder: (context, index) => _WeatherMetricCard(data: items[index]),
+    return FitOrScrollGrid(
+      crossAxisCount: 2,
+      crossAxisSpacing: 14,
+      mainAxisSpacing: 16,
+      childAspectRatio: 168 / 88,
+      children: [for (final item in items) _WeatherMetricCard(data: item)],
     );
   }
 }
@@ -132,37 +127,42 @@ class _WeatherMetricCard extends StatelessWidget {
         children: [
           _WeatherMetricIcon(glyph: data.glyph),
           const SizedBox(width: 12),
+          // 卡片定高；系统字体调大后文字整组等比缩小，不撑破卡片。
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  data.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: w.inkSoft,
-                    fontSize: 13,
-                    height: 1,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                FittedBox(
-                  alignment: Alignment.centerLeft,
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    data.value,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    data.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: w.ink,
-                      fontSize: 20,
+                      color: w.inkSoft,
+                      fontSize: 13,
                       height: 1,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  FittedBox(
+                    alignment: Alignment.centerLeft,
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      data.value,
+                      style: TextStyle(
+                        color: w.ink,
+                        fontSize: 20,
+                        height: 1,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
