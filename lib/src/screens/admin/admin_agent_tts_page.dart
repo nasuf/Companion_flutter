@@ -24,7 +24,8 @@ class _AdminAgentTtsPageState extends State<_AdminAgentTtsPage> {
   final AudioPlayer _player = AudioPlayer();
   List<_AdminTtsVoiceProfile> _voices = const [];
   String? _voiceProfileId;
-  double _rate = 1;
+  double _rate = 0.9;
+  String? _defaultInstruction;
   double _pitch = 1;
   double _volume = 50;
   double _emotionScale = 1;
@@ -125,6 +126,7 @@ class _AdminAgentTtsPageState extends State<_AdminAgentTtsPage> {
             ? config.voiceProfileId
             : fallback?.id;
         _rate = config.rate;
+        _defaultInstruction = config.defaultInstruction;
         _pitch = config.pitch;
         _volume = config.volume.toDouble();
         _autoEmotion = config.autoEmotion;
@@ -375,7 +377,9 @@ class _AdminAgentTtsPageState extends State<_AdminAgentTtsPage> {
                         const SizedBox(height: 12),
                         CupertinoTextField(
                           controller: _instructionController,
-                          placeholder: '风格指令（留空使用默认）',
+                          placeholder: _defaultInstruction == null
+                              ? '风格指令（留空使用默认）'
+                              : '留空使用默认风格：$_defaultInstruction',
                           minLines: 3,
                           maxLines: 5,
                           onTapOutside: (_) =>

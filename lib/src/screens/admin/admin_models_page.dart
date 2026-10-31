@@ -266,6 +266,7 @@ class _AdminAgentTtsConfig {
     required this.instruction,
     required this.autoEmotion,
     required this.emotionScale,
+    this.defaultInstruction,
   });
 
   final String agentId;
@@ -279,6 +280,7 @@ class _AdminAgentTtsConfig {
   final String? instruction;
   final bool autoEmotion;
   final double emotionScale;
+  final String? defaultInstruction;
 
   factory _AdminAgentTtsConfig.fromJson(Map<String, dynamic> json) {
     return _AdminAgentTtsConfig(
@@ -286,11 +288,12 @@ class _AdminAgentTtsConfig {
       agentName: _jsonString(json['agent_name']),
       gender: _jsonNullableString(json['gender']),
       voiceProfileId: _jsonNullableString(json['voice_profile_id']),
-      rate: _jsonDouble(json['rate'], fallback: 1),
+      rate: _jsonDouble(json['rate'], fallback: 0.9),
       pitch: _jsonDouble(json['pitch'], fallback: 1),
       volume: _jsonInt(json['volume'], fallback: 50),
       seed: _jsonInt(json['seed']),
       instruction: _jsonNullableString(json['instruction']),
+      defaultInstruction: _jsonNullableString(json['default_instruction']),
       autoEmotion: json['auto_emotion'] != false,
       emotionScale: _jsonDouble(json['emotion_scale'], fallback: 1),
     );
