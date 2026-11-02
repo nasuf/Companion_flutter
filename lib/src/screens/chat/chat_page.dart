@@ -339,6 +339,7 @@ class _ChatPageState extends State<ChatPage>
   Timer? _capsuleScanTimer;
   Timer? _conversationMetaTimer;
   Timer? _silentReconcileRetryTimer;
+  Timer? _reminderSyncTimer;
   TimeCapsule? _readyCapsule;
   String? _autoShownReadyCapsuleId;
   bool _readyCapsuleNoticeShowing = false;
@@ -846,6 +847,7 @@ class _ChatPageState extends State<ChatPage>
     _capsuleScanTimer?.cancel();
     _conversationMetaTimer?.cancel();
     _silentReconcileRetryTimer?.cancel();
+    _reminderSyncTimer?.cancel();
     _stationPauseTimer?.cancel();
     _sendTimeoutTimer?.cancel();
     _replyUiDelay.dispose();
@@ -3299,9 +3301,11 @@ class _ChatPageState extends State<ChatPage>
           },
         );
         break;
+      case 'reminder_changed':
+        _scheduleReminderNotificationSync();
+        break;
       case 'pong':
       case 'memory_extracted':
-      case 'reminder_changed':
       case 'trace_ready':
         break;
       case 'achievement_unlocked':
@@ -3310,6 +3314,25 @@ class _ChatPageState extends State<ChatPage>
       default:
         break;
     }
+  }
+
+  /// 聊天里创建/取消/暂停/恢复提醒后, 服务端推 reminder_changed; 重新拉一遍待响的
+  /// 提醒, 让手机本地通知跟着变 (暂停后不该再响)。连续多条事件合并成一次。
+  void _scheduleReminderNotificationSync() {
+    if (_isTakeover) return;
+    _reminderSyncTimer?.cancel();
+    _reminderSyncTimer = Timer(const Duration(seconds: 2), () async {
+      try {
+        final response = await widget.api.listReminders(
+          userId: widget.session.userId,
+          agentId: widget.session.agentId,
+          status: 'open',
+        );
+        await CheckinNotificationService.instance.syncReminders(response.items);
+      } catch (_) {
+        // 打卡页打开时还会再同步一次, 这里失败不打扰用户。
+      }
+    });
   }
 
   void _handleRealtimeMessageEvent(Map<String, dynamic> payload) {
