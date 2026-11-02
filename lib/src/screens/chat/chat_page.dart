@@ -2830,6 +2830,12 @@ class _ChatPageState extends State<ChatPage>
         final deferUi = replyUiDefer(payload['defer_ui']);
         final humanReceipt = payload['human_takeover'] == true;
         final takeoverSequence = payload['takeover_sequence'];
+        // 回复、成就等实时行都按服务端时间排序; 用户气泡若沿用手机本地时间,
+        // 手机时钟一快, 随后解锁的成就就会被排到它上面甚至滚出屏幕。
+        // 重发得到的 duplicate ack 带的是"现在", 不是当初落库时间, 不能采用。
+        final receivedAt = payload['duplicate'] == true
+            ? null
+            : DateTime.tryParse(payload['received_at']?.toString() ?? '');
         // 服务端已经确认收到并落库了这条消息 (哪怕 AI 回复还没生成完),
         // 不再需要"发出去杳无音讯"的超时兜底。
         if (clientId == _inFlightClientId) _clearSendTimeout();
@@ -2839,12 +2845,14 @@ class _ChatPageState extends State<ChatPage>
             for (var i = 0; i < _messages.length; i += 1) {
               final message = _messages[i];
               if (message.id == clientId || message.clientId == clientId) {
+                final serverTime = message.pending ? receivedAt : null;
                 _messages[i] = message.copyWith(
                   id: messageId.isEmpty ? message.id : messageId,
                   read: humanReceipt
                       ? false
                       : (deferUi || uiDelaySeconds > 0 ? message.read : true),
                   pending: false,
+                  createdAt: serverTime,
                   metadata: {
                     ...?message.metadata,
                     'client_id': clientId,
@@ -2855,6 +2863,9 @@ class _ChatPageState extends State<ChatPage>
                 );
                 if (messageId.isNotEmpty) {
                   _musicStation.acknowledgeMessageId(clientId, messageId);
+                }
+                if (serverTime != null) {
+                  _messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
                 }
                 break;
               }

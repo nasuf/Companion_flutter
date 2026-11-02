@@ -80,6 +80,7 @@ Future<void> _withChat(
   Brightness? brightness,
   double textScale = 1,
   Size viewportSize = const Size(390, 1200),
+  bool shell = false,
 }) async {
   await HttpOverrides.runZoned(() async {
     final server = await tester.runAsync(
@@ -116,26 +117,35 @@ Future<void> _withChat(
     tester.platformDispatcher.textScaleFactorTestValue = textScale;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     addTearDown(tester.view.reset);
+    const session = AuthSession(
+      token: 'synthetic',
+      userId: 'subject',
+      username: 'user',
+      role: UserRole.user,
+      hasAgent: true,
+      conversationId: 'conv',
+    );
     try {
       await tester.pumpWidget(
         MaterialApp(
           theme: brightness == null ? null : AppTheme.materialTheme(brightness),
           navigatorObservers: [appRouteObserver],
-          home: Scaffold(
-            body: ChatPage(
-              api: api,
-              session: const AuthSession(
-                token: 'synthetic',
-                userId: 'subject',
-                username: 'user',
-                role: UserRole.user,
-                hasAgent: true,
-                conversationId: 'conv',
-              ),
-              isActive: true,
-              onOpenSidebar: () {},
-            ),
-          ),
+          // The shell adds the real achievement overlay, which deactivates chat.
+          home: shell
+              ? MainShell(
+                  api: api,
+                  session: session,
+                  onSessionChanged: (_) {},
+                  onLogout: () {},
+                )
+              : Scaffold(
+                  body: ChatPage(
+                    api: api,
+                    session: session,
+                    isActive: true,
+                    onOpenSidebar: () {},
+                  ),
+                ),
         ),
       );
       await flow.drain(tester);
@@ -263,7 +273,10 @@ void main() {
         await tester.pump();
         await _emit(tester, peers.last, 'delay', {'duration': 30});
         expect(internalHints, findsNothing);
-        expect(tester.widget<ExtendedTextField>(composer).controller!.text, '我还想再说一句');
+        expect(
+          tester.widget<ExtendedTextField>(composer).controller!.text,
+          '我还想再说一句',
+        );
         await _reconnect(tester, api, peers);
         await _emit(tester, peers.last, 'pending', {
           'status': 'queued',
@@ -467,6 +480,104 @@ void main() {
         expect(tester.getTopLeft(old).dy, lessThan(duringSend));
         await tester.runAsync(sentSub.cancel);
       }, initialHistory: [plain('motion-history', 0)]);
+    },
+  );
+
+  testWidgets(
+    'achievement unlocked by a sent message lands under it despite clock skew',
+    (tester) async {
+      // The phone clock runs two minutes ahead of the server. Live rows use
+      // server time, so the user's own bubble must too once acknowledged.
+      final serverNow = DateTime.now().toUtc().subtract(
+        const Duration(minutes: 2),
+      );
+      await _withChat(
+        tester,
+        (api, peers) async {
+          final sentFrames = <Map<String, dynamic>>[];
+          final sentSub = peers.last.listen((raw) {
+            final frame = jsonDecode(raw as String) as Map<String, dynamic>;
+            if (frame['type'] == 'message') sentFrames.add(frame);
+          });
+          tester
+                  .widget<ExtendedTextField>(find.byType(ExtendedTextField))
+                  .controller!
+                  .text =
+              '嗯呐';
+          await flow.drain(tester);
+          await tester.tap(find.text('发送'));
+          await flow.drain(tester);
+          await typing.network(tester, () async {});
+          final clientId =
+              (sentFrames.single['data'] as Map)['client_id'] as String;
+          // The agent is busy: the reply stays queued long after the unlock.
+          await _emit(tester, peers.last, 'ack', {
+            'client_id': clientId,
+            'message_id': 'user-msg',
+            'received_at': serverNow.toIso8601String(),
+            'defer_ui': true,
+          });
+          await _emit(tester, peers.last, 'pending', {
+            'status': 'queued',
+            'delay': 600,
+          });
+          final userBefore = tester.getRect(find.text('嗯呐'));
+          await _emit(tester, peers.last, 'achievement_unlocked', {
+            'achievement_id': 25,
+            'name': '双向奔赴',
+            'level_name': '心澜痕迹',
+            'score': 10,
+            'unlocked': true,
+            'unlocked_at': serverNow
+                .add(const Duration(seconds: 4))
+                .toIso8601String(),
+          });
+          // The popup repeats the name; the transcript row uses 15px text.
+          final row = find.byWidgetPredicate(
+            (widget) =>
+                widget is Text &&
+                widget.data == '双向奔赴' &&
+                widget.style?.fontSize == 15,
+          );
+          expect(row, findsOneWidget);
+          final rowRect = tester.getRect(row);
+          final userAfter = tester.getRect(find.text('嗯呐'));
+          expect(userAfter.top, lessThan(userBefore.top));
+          expect(rowRect.top, greaterThan(userAfter.bottom));
+          expect(
+            rowRect.bottom,
+            lessThan(tester.getTopLeft(find.byType(ExtendedTextField)).dy),
+          );
+          // A resend's duplicate ACK reports "now", not the original commit.
+          await _emit(tester, peers.last, 'ack', {
+            'client_id': clientId,
+            'message_id': 'user-msg',
+            'received_at': serverNow
+                .add(const Duration(hours: 1))
+                .toIso8601String(),
+            'duplicate': true,
+          });
+          expect(
+            tester.getRect(row).top,
+            greaterThan(tester.getRect(find.text('嗯呐')).bottom),
+          );
+          await tester.binding.handlePopRoute();
+          await flow.drain(tester);
+          await tester.runAsync(sentSub.cancel);
+        },
+        initialHistory: [
+          for (var i = 0; i < 40; i++)
+            ChatMessage(
+              id: 'recent-$i',
+              conversationId: 'conv',
+              role: i.isEven ? 'assistant' : 'user',
+              content: '近期消息$i',
+              createdAt: serverNow.subtract(Duration(seconds: 200 - i * 4)),
+            ),
+        ],
+        viewportSize: const Size(390, 844),
+        shell: true,
+      );
     },
   );
 

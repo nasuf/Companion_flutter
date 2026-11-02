@@ -312,13 +312,14 @@ class ChatMessage {
     bool? pending,
     bool? read,
     bool? failed,
+    DateTime? createdAt,
   }) {
     return ChatMessage(
       id: id ?? this.id,
       conversationId: conversationId,
       role: role ?? this.role,
       content: content,
-      createdAt: createdAt,
+      createdAt: createdAt ?? this.createdAt,
       metadata: metadata ?? this.metadata,
       pending: pending ?? this.pending,
       read: read ?? this.read,
