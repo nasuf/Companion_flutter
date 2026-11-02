@@ -212,6 +212,10 @@ class _ChatPageState extends State<ChatPage>
   static const _tabBarContentHeight = 64.0;
   static const _composerPanelHeight = 236.0;
   static const _messagePageSize = 100;
+  static const _silentReconcileRetryDelays = [
+    Duration(seconds: 2),
+    Duration(seconds: 5),
+  ];
   static const _jumpWindowRadius = 15;
   static const _jumpExtendStep = 15;
   static const _maxVoiceSeconds = 60;
@@ -334,6 +338,7 @@ class _ChatPageState extends State<ChatPage>
   StreamSubscription<Amplitude>? _voiceAmplitudeSub;
   Timer? _capsuleScanTimer;
   Timer? _conversationMetaTimer;
+  Timer? _silentReconcileRetryTimer;
   TimeCapsule? _readyCapsule;
   String? _autoShownReadyCapsuleId;
   bool _readyCapsuleNoticeShowing = false;
@@ -392,7 +397,6 @@ class _ChatPageState extends State<ChatPage>
   String? _linkPreviewInFlightText;
   String? _ignoredInputPromotionText;
   String _lastInputText = '';
-  int _achievementDemoIndex = 0;
   bool _stationCardDocked = false;
   bool _stationDockActive = false;
   bool _stationDockHideImmediately = false;
@@ -841,6 +845,7 @@ class _ChatPageState extends State<ChatPage>
     _voiceAmplitude.dispose();
     _capsuleScanTimer?.cancel();
     _conversationMetaTimer?.cancel();
+    _silentReconcileRetryTimer?.cancel();
     _stationPauseTimer?.cancel();
     _sendTimeoutTimer?.cancel();
     _replyUiDelay.dispose();
@@ -1559,7 +1564,12 @@ class _ChatPageState extends State<ChatPage>
     return parts.toSet().join('\n');
   }
 
-  Future<void> _loadLatestMessages({required bool showLoading}) async {
+  Future<void> _loadLatestMessages({
+    required bool showLoading,
+    int silentRetry = 0,
+  }) async {
+    // 新一次加载覆盖尚未触发的静默重试。
+    _silentReconcileRetryTimer?.cancel();
     final conversationId = _conversationId;
     final token = widget.session.token;
     final idsAtStart = _messages.map((message) => message.id).toSet();
@@ -1623,6 +1633,27 @@ class _ChatPageState extends State<ChatPage>
       if (!mounted ||
           _conversationId != conversationId ||
           widget.session.token != token) {
+        return;
+      }
+      // 后台对账 (重连 / 回复完成后补齐) 常撞上弱网瞬断或部署重启, 界面上已有
+      // 消息不受影响; 先静默重试, 都失败才亮横幅, 免得一次抖动就报错。
+      if (!showLoading && silentRetry < _silentReconcileRetryDelays.length) {
+        _silentReconcileRetryTimer = Timer(
+          _silentReconcileRetryDelays[silentRetry],
+          () {
+            if (!mounted ||
+                _conversationId != conversationId ||
+                widget.session.token != token) {
+              return;
+            }
+            unawaited(
+              _loadLatestMessages(
+                showLoading: false,
+                silentRetry: silentRetry + 1,
+              ),
+            );
+          },
+        );
         return;
       }
       _notifyTranscript(() => _historyError = _asMessage(error));
@@ -3526,45 +3557,6 @@ class _ChatPageState extends State<ChatPage>
     if (mounted) unawaited(_refreshConversationMeta());
   }
 
-  void _showDemoAchievementNotice() {
-    const samples = [
-      ('初次开口', '哇哦！成功打破沉默，冷场彻底退退退！', '第一次给TA发消息', '用户累计给ai发送1条信息', '微光痕迹', 1),
-      ('轻声开场', '三个字轻松开场，简短但存在感超强！', '今天第一句话超级短', '当日首条消息≤3个字', '微光痕迹', 3),
-      (
-        '双向奔赴',
-        '你回应了TA的主动，故事开始了～',
-        '24小时内回复TA的主动消息',
-        '用户24小时内回复AI主动消息',
-        '心澜痕迹',
-        25,
-      ),
-      (
-        '畅聊艺术家',
-        '今日聊天量爆表，灵感像瀑布一样落下来！',
-        '一天内聊到10000字',
-        '24小时内聊天>=10000字',
-        '清响痕迹',
-        60,
-      ),
-    ];
-    final sample = samples[_achievementDemoIndex % samples.length];
-    _achievementDemoIndex += 1;
-    _showAchievementNotice(
-      AchievementItem(
-        id: sample.$6,
-        category: '测试触发',
-        name: sample.$1,
-        popupText: sample.$2,
-        conditionText: sample.$3,
-        ruleText: sample.$4,
-        levelName: sample.$5,
-        score: 10,
-        unlocked: true,
-        unlockedAt: DateTime.now(),
-      ),
-    );
-  }
-
   void scrollToLatest({bool animated = true}) {
     if (mounted && _newMessageCount > 0) {
       _notifyTranscript(() => _newMessageCount = 0);
@@ -5200,9 +5192,6 @@ class _ChatPageState extends State<ChatPage>
                   isMusicPlaying:
                       _conversationMeta?.musicCoListening?.isPlaying ?? false,
                   onMusicTap: _openActiveMusic,
-                  onAvatarDoubleTap: _isTakeover
-                      ? () {}
-                      : _showDemoAchievementNotice,
                   onInteractionTap: _isTakeover
                       ? () {}
                       : _openInteractionDetail,

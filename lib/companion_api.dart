@@ -305,9 +305,20 @@ abstract class _CompanionApiCore {
       throw ApiException(0, '无法连接到后端：${error.message}');
     } on HandshakeException catch (error) {
       throw ApiException(0, '后端连接失败：${error.message}');
+    } on HttpException catch (error) {
+      throw _connectionInterrupted(error);
     } finally {
       client.close(force: true);
     }
+  }
+
+  /// 收发途中连接被断开 (弱网 / 切网 / 切后台) 抛的是 [HttpException], 不是
+  /// [SocketException]; 原文是英文且带完整 URL, 不能直接给用户看。
+  ApiException _connectionInterrupted(HttpException error) {
+    debugPrint(
+      '[api] connection interrupted: ${error.message} uri=${error.uri}',
+    );
+    return const ApiException(0, '网络连接中断，请稍后重试');
   }
 
   String _extractError(String text) {
@@ -425,6 +436,8 @@ abstract class _CompanionApiCore {
       throw ApiException(0, '无法连接到后端：${error.message}');
     } on HandshakeException catch (error) {
       throw ApiException(0, '后端连接失败：${error.message}');
+    } on HttpException catch (error) {
+      throw _connectionInterrupted(error);
     } finally {
       client.close(force: true);
     }
@@ -513,6 +526,8 @@ abstract class _CompanionApiCore {
       throw ApiException(0, '无法连接到后端：${error.message}');
     } on HandshakeException catch (error) {
       throw ApiException(0, '后端连接失败：${error.message}');
+    } on HttpException catch (error) {
+      throw _connectionInterrupted(error);
     } finally {
       client.close(force: true);
     }

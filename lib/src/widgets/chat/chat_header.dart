@@ -34,7 +34,6 @@ class _ChatHeader extends StatelessWidget {
     this.isMusicListening = false,
     this.isMusicPlaying = false,
     this.onMusicTap,
-    required this.onAvatarDoubleTap,
     required this.onInteractionTap,
     required this.onOpenSidebar,
     this.onExit,
@@ -53,7 +52,6 @@ class _ChatHeader extends StatelessWidget {
   final bool isMusicListening;
   final bool isMusicPlaying;
   final VoidCallback? onMusicTap;
-  final VoidCallback onAvatarDoubleTap;
   final VoidCallback onInteractionTap;
   final VoidCallback onOpenSidebar;
   final VoidCallback? onExit;
@@ -84,30 +82,26 @@ class _ChatHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onDoubleTap: onAvatarDoubleTap,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                _Avatar(
-                  size: 40,
-                  label: avatarLabel,
-                  imageUrl: avatarUrl,
-                  gradient: const [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
-                ),
-                if (isMusicListening)
-                  Positioned(
-                    right: -2,
-                    bottom: -2,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: onMusicTap,
-                      child: _ListeningBadge(isPlaying: isMusicPlaying),
-                    ),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              _Avatar(
+                size: 40,
+                label: avatarLabel,
+                imageUrl: avatarUrl,
+                gradient: const [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
+              ),
+              if (isMusicListening)
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onMusicTap,
+                    child: _ListeningBadge(isPlaying: isMusicPlaying),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
           const SizedBox(width: 10),
           Expanded(
