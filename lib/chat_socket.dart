@@ -147,6 +147,7 @@ class ChatSocket {
     ChatComponentCard? componentCard,
     List<ChatAttachment> attachments = const [],
     bool paidConfirmed = false,
+    Map<String, int>? inputMetrics,
   }) {
     return send({
       'type': 'message',
@@ -159,6 +160,8 @@ class ChatSocket {
         // CLAUDE.md 权益项 1: 用户在额度确认框里点了"继续发送"才为 true；
         // 服务端只在这个值为 true 时才真正扣钞票，否则超额消息会被拒绝。
         if (paidConfirmed) 'paid_confirmed': true,
+        // Admin 真人判定: compose duration / largest insertion / edit count only.
+        if (inputMetrics != null) 'input_metrics': inputMetrics,
       },
     });
   }

@@ -377,6 +377,7 @@ class _ChatPageState extends State<ChatPage>
     ChatComponentCard? componentCard,
     List<ChatAttachment> attachments,
     bool paidConfirmed,
+    Map<String, int>? inputMetrics,
   })?
   _pendingSend;
   final List<_PendingChatImage> _pendingImages = [];
@@ -455,6 +456,7 @@ class _ChatPageState extends State<ChatPage>
   bool _userReadSending = false;
   int _userReadEpoch = 0;
   LocalChatTyping? _localTyping;
+  final _composeMetrics = ComposeMetrics();
   // Human presence must not overwrite ordinary agent processing feedback.
   bool _peerTyping = false;
   late final RemoteChatTyping _remoteTyping = RemoteChatTyping(
@@ -908,7 +910,10 @@ class _ChatPageState extends State<ChatPage>
     _syncTakeoverTyping();
     final previousText = _lastInputText;
     final currentText = _inputController.text;
-    if (currentText != previousText) _localTyping?.textChanged(currentText);
+    if (currentText != previousText) {
+      _localTyping?.textChanged(currentText);
+      _composeMetrics.textChanged(previousText, currentText);
+    }
     _lastInputText = currentText;
     if (_composerLineCountEstimate(previousText) !=
         _composerLineCountEstimate(currentText)) {
@@ -1326,6 +1331,7 @@ class _ChatPageState extends State<ChatPage>
               componentCard: pending.componentCard,
               attachments: pending.attachments,
               paidConfirmed: pending.paidConfirmed,
+              inputMetrics: pending.inputMetrics,
             );
             _pendingSend = null;
           }
@@ -3639,6 +3645,7 @@ class _ChatPageState extends State<ChatPage>
             componentCard: componentCard,
             attachments: const <ChatAttachment>[],
             paidConfirmed: false,
+            inputMetrics: null,
           );
           unawaited(_socket?.connect());
         }
@@ -4056,6 +4063,7 @@ class _ChatPageState extends State<ChatPage>
     );
     if (blockedDraft != null && _inputController.text.trim().isEmpty) {
       _inputController.text = blockedDraft!.content;
+      _composeMetrics.discard();
     }
     unawaited(_refreshChatQuota());
     if (!mounted) return;
@@ -4568,6 +4576,8 @@ class _ChatPageState extends State<ChatPage>
     bool paidConfirmed = false,
   }) {
     if (text.isEmpty && componentCard == null && attachments.isEmpty) return;
+    // Counts only (admin 真人判定); only for text that came from the composer.
+    final inputMetrics = clearComposer ? _composeMetrics.take() : null;
     final clientId =
         'draft-${DateTime.now().microsecondsSinceEpoch}-${(text.isEmpty ? (componentCard?.title ?? attachments.map((item) => item.id).join(',')) : text).hashCode}';
     final metadata = <String, dynamic>{
@@ -4637,6 +4647,7 @@ class _ChatPageState extends State<ChatPage>
           componentCard: componentCard,
           attachments: attachments,
           paidConfirmed: paidConfirmed,
+          inputMetrics: inputMetrics,
         ) ??
         false;
     if (!sent) {
@@ -4646,6 +4657,7 @@ class _ChatPageState extends State<ChatPage>
         componentCard: componentCard,
         attachments: attachments,
         paidConfirmed: paidConfirmed,
+        inputMetrics: inputMetrics,
       );
       unawaited(_socket?.connect());
     }
@@ -4855,6 +4867,7 @@ class _ChatPageState extends State<ChatPage>
           componentCard: message.componentCard,
           attachments: message.attachments,
           paidConfirmed: false,
+          inputMetrics: null,
         );
         unawaited(_socket?.connect());
       }
@@ -4864,6 +4877,7 @@ class _ChatPageState extends State<ChatPage>
       _messages.removeWhere((m) => m.id == message.id);
       if (_inputController.text.trim().isEmpty) {
         _inputController.text = message.content;
+        _composeMetrics.discard();
       }
     });
   }
