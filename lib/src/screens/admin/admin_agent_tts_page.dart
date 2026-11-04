@@ -30,6 +30,11 @@ class _AdminAgentTtsPageState extends State<_AdminAgentTtsPage> {
   bool _autoEmotion = true;
   String _emotion = '中性';
   double _intensity = 50;
+
+  /// null = 跟随全局；otherwise the agent's own override.
+  bool _inheritProbability = true;
+  double _outputProbability = 0;
+  int _globalOutputProbability = 0;
   bool _loading = true;
   bool _saving = false;
   bool _previewing = false;
@@ -126,6 +131,12 @@ class _AdminAgentTtsPageState extends State<_AdminAgentTtsPage> {
         _volume = config.volume.toDouble();
         _autoEmotion = config.autoEmotion;
         _emotionScale = config.emotionScale;
+        _globalOutputProbability = config.globalOutputProbability;
+        _inheritProbability = config.outputProbability == null;
+        _outputProbability =
+            (config.outputProbability ?? config.globalOutputProbability)
+                .clamp(0, 100)
+                .toDouble();
         _loading = false;
       });
     } catch (error) {
@@ -168,9 +179,22 @@ class _AdminAgentTtsPageState extends State<_AdminAgentTtsPage> {
     });
     widget.api.authToken = widget.session.token;
     try {
-      await widget.api.updateAdminAgentTtsConfig(widget.agent.id, payload);
+      final saved = await widget.api
+          .updateAdminAgentTtsConfig(widget.agent.id, {
+            ...payload,
+            'output_probability': _inheritProbability
+                ? null
+                : _outputProbability.round(),
+          });
       if (!mounted) return;
-      setState(() => _notice = '已保存，下一条语音回复立即生效');
+      setState(() {
+        _globalOutputProbability = saved.globalOutputProbability;
+        _inheritProbability = saved.outputProbability == null;
+        if (saved.outputProbability != null) {
+          _outputProbability = saved.outputProbability!.toDouble();
+        }
+        _notice = '已保存，下一条语音回复立即生效';
+      });
     } catch (error) {
       if (mounted) setState(() => _error = _asMessage(error));
     } finally {
@@ -399,6 +423,49 @@ class _AdminAgentTtsPageState extends State<_AdminAgentTtsPage> {
                             max: 2,
                             onChanged: (value) =>
                                 setState(() => _emotionScale = value),
+                          ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    '语音消息概率',
+                                    style: TextStyle(fontSize: 13),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _inheritProbability
+                                        ? '跟随全局（当前 $_globalOutputProbability%）'
+                                        : '自定义，全局为 $_globalOutputProbability%',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: CupertinoColors.systemGrey,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Text('跟随全局', style: TextStyle(fontSize: 12)),
+                            const SizedBox(width: 6),
+                            CupertinoSwitch(
+                              value: _inheritProbability,
+                              onChanged: (value) =>
+                                  setState(() => _inheritProbability = value),
+                            ),
+                          ],
+                        ),
+                        if (!_inheritProbability)
+                          _slider(
+                            label: '每条回复以语音发送的概率（%）',
+                            value: _outputProbability,
+                            min: 0,
+                            max: 100,
+                            integerValue: true,
+                            onChanged: (value) =>
+                                setState(() => _outputProbability = value),
                           ),
                         const SizedBox(height: 12),
                         SizedBox(

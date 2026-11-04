@@ -174,15 +174,50 @@ extension _AdminModelsApi on CompanionApi {
   Future<_AdminTtsPreview> previewAdminAgentTts(
     String agentId,
     Map<String, dynamic> payload,
+  ) {
+    return _postAdminTtsPreview(
+      '/admin-api/tts/agents/${Uri.encodeComponent(agentId)}/preview',
+      payload,
+    );
+  }
+
+  /// Marks [profileId] as the default voice of its gender. The backend
+  /// answers with the full voice list so every badge updates at once.
+  Future<List<_AdminTtsVoiceProfile>> setAdminTtsVoiceDefault(
+    String profileId,
+  ) async {
+    final json =
+        await _adminHttpRequest(
+              this,
+              'PUT',
+              '/admin-api/tts/voices/${Uri.encodeComponent(profileId)}/default',
+            )
+            as Map<String, dynamic>;
+    return _jsonList(
+      json['voices'],
+    ).map(_AdminTtsVoiceProfile.fromJson).toList(growable: false);
+  }
+
+  /// Auditions a library voice (disabled ones included). Omitting `text`
+  /// lets the server use its default sample sentence.
+  Future<_AdminTtsPreview> previewAdminTtsVoice(
+    String profileId, {
+    String? text,
+  }) {
+    return _postAdminTtsPreview(
+      '/admin-api/tts/voices/${Uri.encodeComponent(profileId)}/preview',
+      {if (text != null && text.isNotEmpty) 'text': text},
+    );
+  }
+
+  Future<_AdminTtsPreview> _postAdminTtsPreview(
+    String path,
+    Map<String, dynamic> payload,
   ) async {
     final client = HttpClient();
     client.connectionTimeout = const Duration(seconds: 70);
     try {
-      final request = await client.postUrl(
-        Uri.parse(
-          '$baseUrl/admin-api/tts/agents/${Uri.encodeComponent(agentId)}/preview',
-        ),
-      );
+      final request = await client.postUrl(Uri.parse('$baseUrl$path'));
       request.headers.contentType = ContentType.json;
       if (authToken != null && authToken!.isNotEmpty) {
         request.headers.set(
@@ -228,6 +263,7 @@ class _AdminTtsVoiceProfile {
     required this.source,
     required this.enabled,
     required this.agentCount,
+    this.isDefault = false,
   });
 
   final String id;
@@ -238,6 +274,10 @@ class _AdminTtsVoiceProfile {
   final bool enabled;
   final int agentCount;
 
+  /// The voice newly created agents of this gender are bound to. The backend
+  /// rejects disabling, deleting or re-gendering it (409).
+  final bool isDefault;
+
   factory _AdminTtsVoiceProfile.fromJson(Map<String, dynamic> json) {
     return _AdminTtsVoiceProfile(
       id: _jsonString(json['id']),
@@ -247,6 +287,7 @@ class _AdminTtsVoiceProfile {
       source: _jsonString(json['source']),
       enabled: json['enabled'] == true,
       agentCount: _jsonInt(json['agent_count']),
+      isDefault: json['is_default'] == true,
     );
   }
 }
@@ -262,6 +303,8 @@ class _AdminAgentTtsConfig {
     required this.instruction,
     required this.autoEmotion,
     required this.emotionScale,
+    required this.outputProbability,
+    required this.globalOutputProbability,
     this.defaultInstruction,
   });
 
@@ -276,6 +319,10 @@ class _AdminAgentTtsConfig {
   final double emotionScale;
   final String? defaultInstruction;
 
+  /// Per-agent voice-message probability (0–100); null = inherit global.
+  final int? outputProbability;
+  final int globalOutputProbability;
+
   factory _AdminAgentTtsConfig.fromJson(Map<String, dynamic> json) {
     return _AdminAgentTtsConfig(
       agentId: _jsonString(json['agent_id']),
@@ -288,6 +335,10 @@ class _AdminAgentTtsConfig {
       defaultInstruction: _jsonNullableString(json['default_instruction']),
       autoEmotion: json['auto_emotion'] != false,
       emotionScale: _jsonDouble(json['emotion_scale'], fallback: 1),
+      outputProbability: json['output_probability'] == null
+          ? null
+          : _jsonInt(json['output_probability']),
+      globalOutputProbability: _jsonInt(json['global_output_probability']),
     );
   }
 }
@@ -2135,6 +2186,9 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
   final AudioRecorder _recorder = AudioRecorder();
   final Stopwatch _recordingWatch = Stopwatch();
   final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _previewTextController = TextEditingController();
+  final AudioPlayer _player = AudioPlayer();
+  StreamSubscription<void>? _playerCompleteSub;
   List<_AdminTtsVoiceProfile> _voices = const [];
   bool _loading = true;
   bool _saving = false;
@@ -2147,9 +2201,23 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
   int _recordingSeconds = 0;
   Timer? _recordingTimer;
 
+  /// Voice whose audition is being synthesized; blocks other auditions so
+  /// only one plays at a time.
+  String? _previewLoadingId;
+  String? _playingId;
+  String? _previewPath;
+  String? _lastPreviewVoiceId;
+  _AdminTtsPreview? _lastPreview;
+
+  /// Voice with an in-flight PATCH / DELETE / set-default request.
+  String? _busyVoiceId;
+
   @override
   void initState() {
     super.initState();
+    _playerCompleteSub = _player.onPlayerComplete.listen((_) {
+      if (mounted) setState(() => _playingId = null);
+    });
     _load();
   }
 
@@ -2161,6 +2229,11 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
     final path = _recordingPath;
     if (path != null) unawaited(_deleteRecordingFile(path));
     _nameController.dispose();
+    _previewTextController.dispose();
+    unawaited(_playerCompleteSub?.cancel());
+    unawaited(_player.dispose());
+    final previewPath = _previewPath;
+    if (previewPath != null) unawaited(_deleteRecordingFile(previewPath));
     super.dispose();
   }
 
@@ -2293,7 +2366,9 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
         setState(() => _error = '停止录音失败，请再次点击停止：${_asMessage(error)}');
         _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
           if (mounted) {
-            setState(() => _recordingSeconds = _recordingWatch.elapsed.inSeconds);
+            setState(
+              () => _recordingSeconds = _recordingWatch.elapsed.inSeconds,
+            );
           }
         });
       }
@@ -2348,16 +2423,101 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
     }
   }
 
+  /// Per-voice failures (e.g. the backend's 409 detail for the default
+  /// voice) are shown in a dialog: the banner at the top of a ~25-card list
+  /// would be off screen.
+  Future<void> _showVoiceError(Object error) async {
+    if (!mounted) return;
+    await showCupertinoDialog<void>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('操作失败'),
+        content: Text(_asMessage(error)),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.pop(context),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _runVoiceAction(
+    _AdminTtsVoiceProfile voice,
+    Future<void> Function() action,
+  ) async {
+    if (_busyVoiceId != null) return;
+    setState(() => _busyVoiceId = voice.id);
+    widget.api.authToken = widget.session.token;
+    try {
+      await action();
+    } catch (error) {
+      await _showVoiceError(error);
+    } finally {
+      if (mounted) setState(() => _busyVoiceId = null);
+    }
+  }
+
   Future<void> _updateVoice(
     _AdminTtsVoiceProfile voice,
     Map<String, dynamic> payload,
-  ) async {
-    widget.api.authToken = widget.session.token;
-    try {
+  ) {
+    return _runVoiceAction(voice, () async {
       await widget.api.updateAdminTtsVoice(voice.id, payload);
       await _load();
+    });
+  }
+
+  Future<void> _setDefaultVoice(_AdminTtsVoiceProfile voice) {
+    return _runVoiceAction(voice, () async {
+      final voices = await widget.api.setAdminTtsVoiceDefault(voice.id);
+      if (mounted) setState(() => _voices = voices);
+    });
+  }
+
+  Future<void> _togglePreview(_AdminTtsVoiceProfile voice) async {
+    if (_previewLoadingId != null) return;
+    if (_playingId == voice.id) {
+      await _player.stop();
+      if (mounted) setState(() => _playingId = null);
+      return;
+    }
+    final text = _previewTextController.text.trim();
+    setState(() {
+      _previewLoadingId = voice.id;
+      _playingId = null;
+    });
+    widget.api.authToken = widget.session.token;
+    try {
+      await _player.stop();
+      final preview = await widget.api.previewAdminTtsVoice(
+        voice.id,
+        text: text,
+      );
+      final directory = await getTemporaryDirectory();
+      final path =
+          '${directory.path}/tts_voice_preview_${DateTime.now().microsecondsSinceEpoch}.wav';
+      await File(path).writeAsBytes(preview.bytes, flush: true);
+      if (!mounted) {
+        await _deleteRecordingFile(path);
+        return;
+      }
+      final oldPath = _previewPath;
+      _previewPath = path;
+      if (oldPath != null) await _deleteRecordingFile(oldPath);
+      await _player.play(DeviceFileSource(path));
+      if (!mounted) return;
+      setState(() {
+        _playingId = voice.id;
+        _lastPreviewVoiceId = voice.id;
+        _lastPreview = preview;
+      });
     } catch (error) {
-      if (mounted) setState(() => _error = _asMessage(error));
+      await _showVoiceError(error);
+    } finally {
+      if (mounted) setState(() => _previewLoadingId = null);
     }
   }
 
@@ -2381,16 +2541,17 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
       ),
     );
     if (confirmed != true) return;
-    widget.api.authToken = widget.session.token;
-    try {
+    await _runVoiceAction(voice, () async {
       await widget.api.deleteAdminTtsVoice(voice.id);
       await _load();
-    } catch (error) {
-      if (mounted) setState(() => _error = _asMessage(error));
-    }
+    });
   }
 
   Future<void> _pickGender(_AdminTtsVoiceProfile voice) async {
+    if (voice.isDefault) {
+      await _showDefaultLockedReason(voice);
+      return;
+    }
     final value = await showCupertinoModalPopup<String>(
       context: context,
       builder: (context) => CupertinoActionSheet(
@@ -2414,6 +2575,216 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
     if (value != null && value != voice.gender) {
       await _updateVoice(voice, {'gender': value});
     }
+  }
+
+  static String _genderLabel(String gender) => gender == 'male' ? '男声' : '女声';
+
+  Future<void> _showDefaultLockedReason(_AdminTtsVoiceProfile voice) {
+    return showCupertinoDialog<void>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('默认音色不可修改'),
+        content: Text(
+          '“${voice.displayName}”是${_genderLabel(voice.gender)}默认音色，'
+          '新建的${_genderLabel(voice.gender)} Agent 会绑定它，'
+          '因此不能停用、删除或修改性别。请先将其他${_genderLabel(voice.gender)}设为默认。',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.pop(context),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Default first, then enabled, then disabled; server order otherwise.
+  List<_AdminTtsVoiceProfile> _voicesOf(String gender) {
+    int rank(_AdminTtsVoiceProfile voice) =>
+        voice.isDefault ? 0 : (voice.enabled ? 1 : 2);
+    final indexed =
+        [
+          for (var i = 0; i < _voices.length; i++)
+            if ((_voices[i].gender == 'male' ? 'male' : 'female') == gender)
+              (i, _voices[i]),
+        ]..sort((a, b) {
+          final byRank = rank(a.$2).compareTo(rank(b.$2));
+          return byRank != 0 ? byRank : a.$1.compareTo(b.$1);
+        });
+    return [for (final entry in indexed) entry.$2];
+  }
+
+  Widget _buildVoiceCard(_AdminTtsVoiceProfile voice) {
+    final busy = _busyVoiceId == voice.id;
+    final anyBusy = _busyVoiceId != null;
+    final previewLoading = _previewLoadingId == voice.id;
+    final playing = _playingId == voice.id;
+    final preview = _lastPreviewVoiceId == voice.id ? _lastPreview : null;
+    return _AdminCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          voice.displayName,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        if (voice.isDefault)
+                          const _StatusPill(text: '默认', positive: true),
+                        if (!voice.enabled)
+                          const _StatusPill(text: '已停用', positive: false),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${voice.source == 'cloned' ? '复刻' : '系统'} · '
+                      '${_genderLabel(voice.gender)} · '
+                      '${voice.agentCount} 个 Agent',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: CupertinoColors.systemGrey,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (busy)
+                const Padding(
+                  padding: EdgeInsets.only(right: 8),
+                  child: CupertinoActivityIndicator(),
+                ),
+              CupertinoSwitch(
+                value: voice.enabled,
+                onChanged: voice.isDefault || anyBusy
+                    ? null
+                    : (value) => _updateVoice(voice, {'enabled': value}),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _AdminDetailLine(label: 'Voice ID', value: voice.voiceId),
+          if (voice.isDefault) ...[
+            const SizedBox(height: 4),
+            _adminModelsCaption(
+              context,
+              '新建${_genderLabel(voice.gender)} Agent 默认绑定此音色；'
+              '不可停用、删除或修改性别，请先将其他音色设为默认。',
+            ),
+          ],
+          if (preview != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              '试听 ${((preview.durationMilliseconds ?? 0) / 1000).toStringAsFixed(2)} 秒 · '
+              '${preview.billableCharacters ?? 0} 字符 · '
+              '¥${(preview.costCny ?? 0).toStringAsFixed(6)}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: CupertinoColors.systemGrey,
+              ),
+            ),
+          ],
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              children: [
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  onPressed: _previewLoadingId != null
+                      ? null
+                      : () => _togglePreview(voice),
+                  child: Text(
+                    previewLoading
+                        ? '生成中...'
+                        : playing
+                        ? '停止'
+                        : '试听',
+                  ),
+                ),
+                if (voice.enabled && !voice.isDefault)
+                  CupertinoButton(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    onPressed: anyBusy ? null : () => _setDefaultVoice(voice),
+                    child: const Text('设为默认'),
+                  ),
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  onPressed: anyBusy ? null : () => _pickGender(voice),
+                  child: const Text('修改性别'),
+                ),
+                if (voice.source == 'cloned')
+                  CupertinoButton(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    onPressed: anyBusy
+                        ? null
+                        : voice.isDefault
+                        ? () => _showDefaultLockedReason(voice)
+                        : voice.agentCount > 0
+                        ? null
+                        : () => _deleteVoice(voice),
+                    child: Text(
+                      '移除',
+                      style: TextStyle(
+                        color: voice.isDefault
+                            ? CupertinoColors.systemGrey
+                            : CupertinoColors.destructiveRed,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildGenderSection(String gender) {
+    final voices = _voicesOf(gender);
+    if (voices.isEmpty) return const [];
+    final defaultName = voices
+        .where((voice) => voice.isDefault)
+        .map((voice) => voice.displayName)
+        .firstOrNull;
+    final enabledCount = voices.where((voice) => voice.enabled).length;
+    return [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _adminModelsTitle(
+              context,
+              '${_genderLabel(gender)}（${voices.length}，启用 $enabledCount）',
+            ),
+            const SizedBox(height: 2),
+            _adminModelsCaption(
+              context,
+              defaultName == null ? '尚未设置默认音色' : '默认：$defaultName',
+            ),
+          ],
+        ),
+      ),
+      for (final voice in voices) ...[
+        _buildVoiceCard(voice),
+        const SizedBox(height: 12),
+      ],
+    ];
   }
 
   @override
@@ -2554,73 +2925,29 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
           ),
         ],
         const SizedBox(height: 16),
-        for (final voice in _voices) ...[
-          _AdminCard(
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            voice.displayName,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            '${voice.source == 'cloned' ? '复刻' : '系统'} · '
-                            '${voice.gender == 'male' ? '男声' : '女声'} · '
-                            '${voice.agentCount} 个 Agent',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: CupertinoColors.systemGrey,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    CupertinoSwitch(
-                      value: voice.enabled,
-                      onChanged: (value) =>
-                          _updateVoice(voice, {'enabled': value}),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                _AdminDetailLine(label: 'Voice ID', value: voice.voiceId),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    CupertinoButton(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      onPressed: () => _pickGender(voice),
-                      child: const Text('修改性别'),
-                    ),
-                    if (voice.source == 'cloned')
-                      CupertinoButton(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        onPressed: voice.agentCount > 0
-                            ? null
-                            : () => _deleteVoice(voice),
-                        child: const Text(
-                          '移除',
-                          style: TextStyle(
-                            color: CupertinoColors.destructiveRed,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
+        _AdminCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _adminModelsTitle(context, '试听文本'),
+              const SizedBox(height: 6),
+              _adminModelsCaption(context, '所有音色共用，留空使用服务端默认例句；停用的音色也可试听。'),
+              const SizedBox(height: 10),
+              CupertinoTextField(
+                controller: _previewTextController,
+                placeholder: '留空使用默认例句',
+                minLines: 1,
+                maxLines: 3,
+                maxLength: 300,
+                onTapOutside: (_) =>
+                    FocusManager.instance.primaryFocus?.unfocus(),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-        ],
+        ),
+        const SizedBox(height: 8),
+        ..._buildGenderSection('female'),
+        ..._buildGenderSection('male'),
       ],
     );
   }
