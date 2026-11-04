@@ -3823,6 +3823,30 @@ class _ChatPageState extends State<ChatPage>
     }
   }
 
+  Future<void> _onVoiceCall() async {
+    _dismissInputSurfaces();
+    // Check microphone permission first
+    final mic = VoiceMicStream();
+    final hasPermission = await mic.checkPermission();
+    await mic.dispose();
+    if (!mounted) return;
+    if (!hasPermission) {
+      _showRedPacketToast('需要先授权麦克风权限才能进行语音通话');
+      return;
+    }
+    final session = widget.session;
+    final conversationId = _conversationId;
+    final agentName = session.agentDisplayName ?? session.agentName ?? '伙伴';
+    await VoiceCallSheet.show(
+      context,
+      api: widget.api,
+      session: session,
+      conversationId: conversationId,
+      agentAvatarUrl: _agentAvatarUrl,
+      agentDisplayName: agentName,
+    );
+  }
+
   Future<void> _onSendLocation() async {
     if (_sendingLocation ||
         _panel != ComposerPanel.more ||

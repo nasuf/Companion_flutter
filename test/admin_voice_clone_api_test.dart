@@ -101,7 +101,6 @@ void main() {
     file: recording,
     displayName: name,
     gender: 'female',
-    prefix: 'casual',
     consentConfirmed: consent,
   );
 
@@ -119,14 +118,12 @@ void main() {
         unorderedEquals([
           'display_name',
           'gender',
-          'prefix',
           'consent_confirmed',
           'file',
         ]),
       );
       expect(utf8.decode(parts['display_name']!.bytes), name);
       expect(utf8.decode(parts['gender']!.bytes), 'female');
-      expect(utf8.decode(parts['prefix']!.bytes), 'casual');
       expect(utf8.decode(parts['consent_confirmed']!.bytes), 'true');
       expect(parts['file']!.headers['content-type'], 'audio/mp4');
       expect(

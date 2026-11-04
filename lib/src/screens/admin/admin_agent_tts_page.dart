@@ -20,13 +20,11 @@ class _AdminAgentTtsPageState extends State<_AdminAgentTtsPage> {
   final TextEditingController _previewController = TextEditingController(
     text: '你好，很高兴见到你。今天想聊点什么？',
   );
-  final TextEditingController _seedController = TextEditingController();
   final AudioPlayer _player = AudioPlayer();
   List<_AdminTtsVoiceProfile> _voices = const [];
   String? _voiceProfileId;
   double _rate = 0.9;
   String? _defaultInstruction;
-  double _pitch = 1;
   double _volume = 50;
   double _emotionScale = 1;
   bool _autoEmotion = true;
@@ -65,7 +63,6 @@ class _AdminAgentTtsPageState extends State<_AdminAgentTtsPage> {
   void dispose() {
     _instructionController.dispose();
     _previewController.dispose();
-    _seedController.dispose();
     unawaited(_player.dispose());
     final path = _previewPath;
     if (path != null) unawaited(_deletePreviewFile(path));
@@ -119,7 +116,6 @@ class _AdminAgentTtsPageState extends State<_AdminAgentTtsPage> {
         (voice) => voice.id == config.voiceProfileId && voice.enabled,
       );
       _instructionController.text = config.instruction ?? '';
-      _seedController.text = config.seed.toString();
       setState(() {
         _voices = voices;
         _voiceProfileId = currentVoiceIsEnabled
@@ -127,7 +123,6 @@ class _AdminAgentTtsPageState extends State<_AdminAgentTtsPage> {
             : fallback?.id;
         _rate = config.rate;
         _defaultInstruction = config.defaultInstruction;
-        _pitch = config.pitch;
         _volume = config.volume.toDouble();
         _autoEmotion = config.autoEmotion;
         _emotionScale = config.emotionScale;
@@ -156,9 +151,7 @@ class _AdminAgentTtsPageState extends State<_AdminAgentTtsPage> {
     return {
       'voice_profile_id': profileId,
       'rate': double.parse(_rate.toStringAsFixed(2)),
-      'pitch': double.parse(_pitch.toStringAsFixed(2)),
       'volume': _volume.round(),
-      'seed': (int.tryParse(_seedController.text) ?? 0).clamp(0, 65535).toInt(),
       'instruction': instruction.isEmpty ? null : instruction,
       'auto_emotion': _autoEmotion,
       'emotion_scale': double.parse(_emotionScale.toStringAsFixed(2)),
@@ -349,30 +342,12 @@ class _AdminAgentTtsPageState extends State<_AdminAgentTtsPage> {
                           onChanged: (value) => setState(() => _rate = value),
                         ),
                         _slider(
-                          label: '音调',
-                          value: _pitch,
-                          min: 0.5,
-                          max: 2,
-                          onChanged: (value) => setState(() => _pitch = value),
-                        ),
-                        _slider(
                           label: '音量',
                           value: _volume,
                           min: 0,
                           max: 100,
                           integerValue: true,
                           onChanged: (value) => setState(() => _volume = value),
-                        ),
-                        CupertinoTextField(
-                          controller: _seedController,
-                          placeholder: '随机种子 0–65535',
-                          keyboardType: TextInputType.number,
-                          onTapOutside: (_) =>
-                              FocusManager.instance.primaryFocus?.unfocus(),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(5),
-                          ],
                         ),
                         const SizedBox(height: 12),
                         CupertinoTextField(

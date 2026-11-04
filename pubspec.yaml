@@ -61,6 +61,7 @@ dependencies:
   refresh_rate: ^1.0.2
   extended_text_field: ^17.0.0
   gal: ^2.3.3
+  flutter_pcm_sound: ^3.3.3
 
 dev_dependencies:
   flutter_test:

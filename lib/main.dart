@@ -64,6 +64,9 @@ import 'src/games/reversi_engine.dart';
 import 'src/games/tetris_duel_engine.dart';
 import 'src/widgets/chat/voice_recording_overlay.dart';
 import 'src/widgets/agent_avatar_image.dart';
+import 'src/voice/voice_call_socket.dart';
+import 'src/voice/voice_mic_stream.dart';
+import 'src/voice/voice_pcm_player.dart';
 import 'src/widgets/chat/message_entrance.dart';
 import 'src/widgets/chat/chat_timeline_timestamp.dart';
 import 'src/screens/chat/chat_transcript_controller.dart';
@@ -266,6 +269,7 @@ part 'src/screens/chat/gift_picker_page.dart';
 part 'src/screens/chat/location_confirm_page.dart';
 part 'src/screens/chat/chat_search_page.dart';
 part 'src/services/chat_search_history_store.dart';
+part 'src/screens/chat/voice_call_sheet.dart';
 
 final RouteObserver<PageRoute<dynamic>> appRouteObserver =
     RouteObserver<PageRoute<dynamic>>();

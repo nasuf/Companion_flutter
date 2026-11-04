@@ -135,13 +135,11 @@ extension _AdminModelsApi on CompanionApi {
     required File file,
     required String displayName,
     required String gender,
-    required String prefix,
   }) async {
     final json = await createAdminClonedVoice(
       file: file,
       displayName: displayName,
       gender: gender,
-      prefix: prefix,
       consentConfirmed: true,
     );
     return _AdminTtsVoiceProfile.fromJson(json);
@@ -260,9 +258,7 @@ class _AdminAgentTtsConfig {
     required this.gender,
     required this.voiceProfileId,
     required this.rate,
-    required this.pitch,
     required this.volume,
-    required this.seed,
     required this.instruction,
     required this.autoEmotion,
     required this.emotionScale,
@@ -274,9 +270,7 @@ class _AdminAgentTtsConfig {
   final String? gender;
   final String? voiceProfileId;
   final double rate;
-  final double pitch;
   final int volume;
-  final int seed;
   final String? instruction;
   final bool autoEmotion;
   final double emotionScale;
@@ -289,9 +283,7 @@ class _AdminAgentTtsConfig {
       gender: _jsonNullableString(json['gender']),
       voiceProfileId: _jsonNullableString(json['voice_profile_id']),
       rate: _jsonDouble(json['rate'], fallback: 0.9),
-      pitch: _jsonDouble(json['pitch'], fallback: 1),
       volume: _jsonInt(json['volume'], fallback: 50),
-      seed: _jsonInt(json['seed']),
       instruction: _jsonNullableString(json['instruction']),
       defaultInstruction: _jsonNullableString(json['default_instruction']),
       autoEmotion: json['auto_emotion'] != false,
@@ -1036,7 +1028,7 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
               ),
               const SizedBox(height: 10),
               _MediaModelField(
-                label: '语音输出模型 · 阿里云百炼',
+                label: '语音输出模型 · 阶跃星辰',
                 value: (config['tts_model'] as String?) ?? '',
                 placeholder: '${resolved['tts_model'] ?? ''}（环境默认）',
                 onChanged: (text) =>
@@ -2143,9 +2135,6 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
   final AudioRecorder _recorder = AudioRecorder();
   final Stopwatch _recordingWatch = Stopwatch();
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _prefixController = TextEditingController(
-    text: 'voice',
-  );
   List<_AdminTtsVoiceProfile> _voices = const [];
   bool _loading = true;
   bool _saving = false;
@@ -2172,7 +2161,6 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
     final path = _recordingPath;
     if (path != null) unawaited(_deleteRecordingFile(path));
     _nameController.dispose();
-    _prefixController.dispose();
     super.dispose();
   }
 
@@ -2245,7 +2233,7 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
       _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         if (!mounted) return;
         setState(() => _recordingSeconds = _recordingWatch.elapsed.inSeconds);
-        if (_recordingSeconds >= 30) unawaited(_stopRecording());
+        if (_recordingSeconds >= 10) unawaited(_stopRecording());
       });
       if (previousPath != null) await _deleteRecordingFile(previousPath);
     } catch (error) {
@@ -2318,13 +2306,12 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
     if (_saving || _recording || _recordingTransition) return;
     final path = _recordingPath;
     final name = _nameController.text.trim();
-    final prefix = _prefixController.text.trim();
     if (path == null || _recordingSeconds < 5) {
-      setState(() => _error = '请先录制至少 5 秒清晰人声，建议录制 10–20 秒');
+      setState(() => _error = '请先录制 5–10 秒清晰人声');
       return;
     }
-    if (name.isEmpty || !RegExp(r'^[A-Za-z0-9]{1,10}$').hasMatch(prefix)) {
-      setState(() => _error = '请填写名称，并使用 1–10 位字母或数字作为前缀');
+    if (name.isEmpty) {
+      setState(() => _error = '请填写音色显示名');
       return;
     }
     if (!_consent) {
@@ -2341,14 +2328,12 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
         file: File(path),
         displayName: name,
         gender: _gender,
-        prefix: prefix,
       );
       try {
         await File(path).delete();
       } catch (_) {}
       if (!mounted) return;
       _nameController.clear();
-      _prefixController.text = 'voice';
       setState(() {
         _recordingPath = null;
         _recordingSeconds = 0;
@@ -2380,8 +2365,8 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
     final confirmed = await showCupertinoDialog<bool>(
       context: context,
       builder: (context) => CupertinoAlertDialog(
-        title: const Text('删除复刻音色'),
-        content: Text('确定删除“${voice.displayName}”吗？此操作不可恢复。'),
+        title: const Text('移除复刻音色'),
+        content: Text('确定将“${voice.displayName}”从音色库移除吗？此操作不可恢复。'),
         actions: [
           CupertinoDialogAction(
             onPressed: () => Navigator.pop(context, false),
@@ -2390,7 +2375,7 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
           CupertinoDialogAction(
             isDestructiveAction: true,
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
+            child: const Text('移除'),
           ),
         ],
       ),
@@ -2449,7 +2434,7 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
               const SizedBox(height: 6),
               _adminModelsCaption(
                 context,
-                '建议录制 10–20 秒自然聊天，至少包含 5 秒清晰人声；最长 30 秒。'
+                '请录制 5–10 秒清晰人声的自然聊天，满 10 秒自动停止。'
                 '在安静环境单人说话，创建前必须取得本人授权。',
               ),
               const SizedBox(height: 14),
@@ -2459,18 +2444,6 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
                 enabled: !_saving,
                 onTapOutside: (_) =>
                     FocusManager.instance.primaryFocus?.unfocus(),
-              ),
-              const SizedBox(height: 10),
-              CupertinoTextField(
-                controller: _prefixController,
-                placeholder: '1–10 位英文或数字前缀',
-                enabled: !_saving,
-                onTapOutside: (_) =>
-                    FocusManager.instance.primaryFocus?.unfocus(),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
-                  LengthLimitingTextInputFormatter(10),
-                ],
               ),
               const SizedBox(height: 10),
               _PickerRow(
@@ -2635,7 +2608,7 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
                             ? null
                             : () => _deleteVoice(voice),
                         child: const Text(
-                          '删除',
+                          '移除',
                           style: TextStyle(
                             color: CupertinoColors.destructiveRed,
                           ),

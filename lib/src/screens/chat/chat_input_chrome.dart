@@ -258,6 +258,7 @@ class _ChatInputChromeLayerState extends State<_ChatInputChromeLayer> {
               onSearch: () => unawaited(_host._openChatSearch()),
               onOpenActivity: _host._openTakeoverActivities,
               activityOnly: _host._isTakeover,
+              onVoiceCall: _host._isTakeover ? null : () => unawaited(_host._onVoiceCall()),
             ),
           ),
         ),

@@ -578,7 +578,6 @@ class CompanionApi extends _CompanionApiCore
     required File file,
     required String displayName,
     required String gender,
-    required String prefix,
     required bool consentConfirmed,
   }) async {
     final json = await _requestMultipart(
@@ -588,7 +587,6 @@ class CompanionApi extends _CompanionApiCore
       fields: {
         'display_name': displayName,
         'gender': gender,
-        'prefix': prefix,
         'consent_confirmed': consentConfirmed.toString(),
       },
       fileField: 'file',
