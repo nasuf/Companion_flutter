@@ -363,56 +363,37 @@ void main() {
     'stale_location',
     'no_geocode',
   ]) {
-    for (final confirm in [false, true]) {
-      testWidgets('location $reason can be cancelled/confirmed: $confirm', (
+    testWidgets('location $reason rejection blocks arrival without override', (
+      tester,
+    ) async {
+      final api = FakeApi(activity(known: true))
+        ..arrivalErrors.add(ApiException(422, '定位未通过', reason: reason));
+      var navigated = 0;
+      await showCheckin(
         tester,
-      ) async {
-        final api = FakeApi(activity(known: true))
-          ..arrivalErrors.add(ApiException(422, '定位未通过', reason: reason));
-        var navigated = 0;
-        await showCheckin(
-          tester,
-          api,
-          locationLoader: () async => gps,
-          onNavigate: () => navigated++,
-        );
-        await tester.tap(find.text('我已经抵达这里'));
-        await tester.pumpAndSettle();
-        expect(find.text('已经到这里了吗？'), findsOneWidget);
-        expect(
-          find.textContaining(
-            reason == 'too_far' ? '定位显示你好像还没到附近' : '暂时没能确认你的位置',
-          ),
-          findsOneWidget,
-        );
-        expect(api.arrived, 1);
-        expect(api.current.reached, isFalse);
-        await tester.tap(find.text(confirm ? '我已确认到达' : '再等等'));
-        await tester.pumpAndSettle();
-        expect(api.arrived, confirm ? 2 : 1);
-        expect(navigated, confirm ? 1 : 0);
-        expect(api.current.reached, confirm);
-        expect(api.current.arrivalVerified, isFalse);
-        if (confirm) {
-          expect(api.arrivalRequests.last, {
-            'manual': true,
-            'lat': null,
-            'lng': null,
-            'accuracy': null,
-            'observedAt': null,
-          });
-          expect(find.text('已确认到达'), findsOneWidget);
-          expect(find.textContaining('手动'), findsNothing);
-          expect(find.textContaining('核验'), findsNothing);
-        }
-        expect(find.byType(CupertinoAlertDialog), findsNothing);
-        expect(tester.takeException(), isNull);
-      });
-    }
+        api,
+        locationLoader: () async => gps,
+        onNavigate: () => navigated++,
+      );
+      await tester.tap(find.text('我已经抵达这里'));
+      await tester.pumpAndSettle();
+      expect(find.text('定位未通过'), findsOneWidget);
+      expect(find.text('我已确认到达'), findsNothing);
+      expect(api.arrived, 1);
+      expect(api.manual, isFalse);
+      await tester.tap(find.text('知道了'));
+      await tester.pumpAndSettle();
+      expect(api.arrived, 1);
+      expect(navigated, 0);
+      expect(api.current.reached, isFalse);
+      expect(find.text('我已经抵达这里'), findsOneWidget);
+      expect(find.byType(CupertinoAlertDialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
   }
 
   for (final missing in ['null', 'exception', 'invalid']) {
-    testWidgets('missing device location can be confirmed: $missing', (
+    testWidgets('missing device location blocks arrival: $missing', (
       tester,
     ) async {
       final api = FakeApi(activity(known: true));
@@ -433,18 +414,18 @@ void main() {
       );
       await tester.tap(find.text('我已经抵达这里'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('暂时没能确认你的位置'), findsOneWidget);
+      expect(find.text('需要当前位置才能确认到达，请开启定位后重试'), findsOneWidget);
+      expect(find.text('我已确认到达'), findsNothing);
       expect(api.arrived, 0);
-      await tester.tap(find.text('我已确认到达'));
+      await tester.tap(find.text('知道了'));
       await tester.pumpAndSettle();
-      expect(api.arrived, 1);
-      expect(api.manual, isTrue);
-      expect(api.current.arrivalVerified, isFalse);
+      expect(api.arrived, 0);
+      expect(api.current.reached, isFalse);
       expect(tester.takeException(), isNull);
     });
   }
 
-  testWidgets('cancel missing GPS leaves arrival untouched and permits retry', (
+  testWidgets('missing GPS leaves arrival untouched and permits retry', (
     tester,
   ) async {
     final api = FakeApi(activity(known: true));
@@ -458,12 +439,13 @@ void main() {
     );
     await tester.tap(find.text('我已经抵达这里'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('再等等'));
+    await tester.tap(find.text('知道了'));
     await tester.pumpAndSettle();
     expect(api.arrived, 0);
     await tester.tap(find.text('我已经抵达这里'));
     await tester.pumpAndSettle();
     expect(api.arrived, 1);
+    expect(api.manual, isFalse);
     expect(api.current.arrivalVerified, isTrue);
   });
 
@@ -489,31 +471,7 @@ void main() {
     });
   }
 
-  testWidgets('failed override does not open another confirmation', (
-    tester,
-  ) async {
-    final api = FakeApi(activity(known: true))
-      ..arrivalErrors.addAll([
-        const ApiException(422, '定位未通过', reason: 'too_far'),
-        const ApiException(409, '旅途已结束'),
-      ]);
-    await showCheckin(tester, api, locationLoader: () async => gps);
-    await tester.tap(find.text('我已经抵达这里'));
-    await tester.pumpAndSettle();
-    expect(api.arrived, 1);
-    expect(find.byType(CupertinoAlertDialog), findsOneWidget);
-    await tester.tap(find.text('我已确认到达'));
-    await tester.pumpAndSettle();
-    expect(api.arrived, 2);
-    expect(api.current.reached, isFalse);
-    expect(find.text('已经到这里了吗？'), findsNothing);
-    expect(find.text('旅途已结束'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('rapid arrival taps send one request and one confirmation', (
-    tester,
-  ) async {
+  testWidgets('rapid arrival taps send one request', (tester) async {
     final gate = Completer<void>();
     final api = FakeApi(activity(known: true))
       ..arrivalGate = gate.future
@@ -524,11 +482,10 @@ void main() {
     expect(api.arrived, 1);
     gate.complete();
     await tester.pumpAndSettle();
-    expect(find.text('已经到这里了吗？'), findsOneWidget);
-    await tester.tap(find.text('我已确认到达'));
-    await tester.pumpAndSettle();
-    expect(api.arrived, 2);
-    expect(api.current.reached, isTrue);
+    expect(find.text('定位未通过'), findsOneWidget);
+    expect(find.text('我已确认到达'), findsNothing);
+    expect(api.arrived, 1);
+    expect(api.current.reached, isFalse);
   });
 
   testWidgets('leaving during location lookup never starts an arrival', (

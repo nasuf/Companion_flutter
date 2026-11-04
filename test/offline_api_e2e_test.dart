@@ -12,7 +12,7 @@ class _RealHttp extends HttpOverrides {}
 void main() {
   final base = Platform.environment['OFFLINE_E2E_API'];
   testWidgets(
-    'arrival UI -> location rejection -> cancel/confirm -> real HTTP/DB -> archive',
+    'arrival UI -> location rejection blocks arrival over real HTTP/DB',
     (tester) async {
       await HttpOverrides.runZoned(() async {
         final api = CompanionApi(baseUrl: base!)
@@ -58,32 +58,19 @@ void main() {
           fail('Expected UI was not shown: $finder');
         }
 
-        await tester.tap(find.text('我已经抵达这里'));
-        await waitFor(find.text('我已确认到达'));
-        expect(find.textContaining('定位显示你好像还没到附近'), findsOneWidget);
-        await tester.tap(find.text('再等等'));
-        await tester.pumpAndSettle();
-        expect(
-          (await tester.runAsync(() => api.fetchOfflineActivity(id)))!.reached,
-          isFalse,
-        );
-        expect(navigated, 0);
-        await tester.tap(find.text('我已经抵达这里'));
-        await waitFor(find.text('我已确认到达'));
-        await tester.tap(find.text('我已确认到达'));
-        await waitFor(find.text('已确认到达'));
-        expect(navigated, 1);
-        final arrived = await tester.runAsync(
+        for (var attempt = 0; attempt < 2; attempt++) {
+          await tester.tap(find.text('我已经抵达这里'));
+          await waitFor(find.text('知道了'));
+          expect(find.textContaining('好像还没到附近'), findsOneWidget);
+          expect(find.text('我已确认到达'), findsNothing);
+          await tester.tap(find.text('知道了'));
+          await tester.pumpAndSettle();
+        }
+        final rejected = await tester.runAsync(
           () => api.fetchOfflineActivity(id),
         );
-        expect(arrived!.reached, isTrue);
-        expect(arrived.arrivalVerified, isFalse);
-        await tester.runAsync(() => api.archiveOfflineActivity(id));
-        final review = await tester.runAsync(
-          () => api.fetchOfflineActivityReview(id),
-        );
-        expect(review!.canGenerateMemoryNote, isFalse);
-        expect(review.story, contains('还没有留下'));
+        expect(rejected!.reached, isFalse);
+        expect(navigated, 0);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
       }, createHttpClient: _RealHttp().createHttpClient);

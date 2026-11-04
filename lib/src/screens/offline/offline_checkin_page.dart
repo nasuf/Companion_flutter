@@ -159,11 +159,13 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage>
     if (widget.takeoverId != null || _arriving) return;
     setState(() => _arriving = true);
     try {
-      var confirmed = !(_activity?.arrivalVerificationAvailable ?? false);
+      // Activities without place coordinates cannot be verified; the user's tap
+      // is the arrival. Verifiable ones must pass the server location check.
+      final manual = !(_activity?.arrivalVerificationAvailable ?? false);
       DeviceLocationSnapshot? snapshot;
       final generation = _locationGeneration;
       try {
-        if (!confirmed) {
+        if (!manual) {
           snapshot =
               await (widget.locationLoader?.call() ??
                   (AndroidLocationSession.supported
@@ -196,44 +198,18 @@ class _OfflineCheckinPageState extends State<OfflineCheckinPage>
                       snapshot.accuracyMeters! < 0)))) {
         snapshot = null;
       }
-      if (!confirmed && snapshot == null) {
-        confirmed = await showOfflineArrivalConfirm(context);
-        if (!confirmed || !mounted) return;
+      if (!manual && snapshot == null) {
+        _showActivityToast(context, '需要当前位置才能确认到达，请开启定位后重试');
+        return;
       }
-      Future<OfflineActivity> submit(bool confirmation) =>
-          widget.api.arriveOfflineActivity(
-            widget.activityId,
-            lat: confirmation ? null : snapshot?.latitude,
-            lng: confirmation ? null : snapshot?.longitude,
-            accuracyMeters: confirmation ? null : snapshot?.accuracyMeters,
-            observedAt: confirmation ? null : snapshot?.observedAt,
-            manualConfirmation: confirmation,
-          );
-      OfflineActivity updated;
-      try {
-        updated = await submit(confirmed);
-      } on ApiException catch (error) {
-        // Only location failures can be overridden, never lifecycle/auth errors.
-        const locationReasons = {
-          'too_far',
-          'location_required',
-          'low_accuracy',
-          'stale_location',
-          'no_geocode',
-        };
-        if (confirmed ||
-            error.statusCode != 422 ||
-            !locationReasons.contains(error.reason)) {
-          rethrow;
-        }
-        if (!mounted) return;
-        final retry = await showOfflineArrivalConfirm(
-          context,
-          nearbyMismatch: error.reason == 'too_far',
-        );
-        if (!retry || !mounted) return;
-        updated = await submit(true);
-      }
+      final updated = await widget.api.arriveOfflineActivity(
+        widget.activityId,
+        lat: snapshot?.latitude,
+        lng: snapshot?.longitude,
+        accuracyMeters: snapshot?.accuracyMeters,
+        observedAt: snapshot?.observedAt,
+        manualConfirmation: manual,
+      );
       if (!mounted) return;
       setState(() => _activity = updated);
       widget.onChanged?.call();
