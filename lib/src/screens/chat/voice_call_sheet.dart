@@ -475,7 +475,7 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
 /// circle as `_GiftSheetCloseButton`.
 /// The agent avatar and everything that signals the call state around it:
 /// a white arc spins while connecting; once connected a gradient ring turns
-/// slowly and a halo breathes, green while the agent talks (stronger, in
+/// slowly and a halo breathes, blue (accent) while the agent talks (stronger, in
 /// time with the pulse) and cyan with ripples while the user talks.
 class _CallAvatar extends StatelessWidget {
   const _CallAvatar({
