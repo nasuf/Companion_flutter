@@ -251,8 +251,10 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
     await _mic.stop();
     await _socket.dispose();
     await _player.dispose();
-    // After the PCM player releases its audio session, so it can't cut the
-    // tone off; the tone player outlives this page.
+    // The call left the session on the earpiece; put it back on the speaker
+    // for the tone and every later voice message.
+    await restoreSpeakerPlayback();
+    // The tone player outlives this page.
     _playHangUpTone();
     if (mounted) Navigator.of(context).pop();
   }

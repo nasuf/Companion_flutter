@@ -67,6 +67,7 @@ import 'src/widgets/agent_avatar_image.dart';
 import 'src/voice/voice_call_socket.dart';
 import 'src/voice/voice_mic_stream.dart';
 import 'src/voice/voice_pcm_player.dart';
+import 'src/voice/speaker_playback.dart';
 import 'src/widgets/chat/message_entrance.dart';
 import 'src/widgets/chat/chat_timeline_timestamp.dart';
 import 'src/screens/chat/chat_transcript_controller.dart';

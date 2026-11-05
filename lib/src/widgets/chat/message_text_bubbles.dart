@@ -496,6 +496,9 @@ class _AudioAttachmentBubbleState extends State<_AudioAttachmentBubble> {
     }
     setState(() => _loading = true);
     try {
+      // Voice messages always play on the loudspeaker, even if something
+      // (a call, a recording) left the session on the earpiece.
+      await restoreSpeakerPlayback();
       if (_paused) {
         await _player.resume();
       } else {
