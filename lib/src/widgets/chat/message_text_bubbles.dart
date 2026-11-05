@@ -1,9 +1,17 @@
 part of 'package:companion_flutter/main.dart';
 
+const _chatMineColor = Color(0xFF06C893);
+const _chatFontSize = 14.0;
+const _chatLineHeight = 1.42;
+const _chatBubblePadding = EdgeInsets.symmetric(horizontal: 12, vertical: 9);
+
+/// A one-line text bubble's height; voice bubbles use it so both line up.
+const _chatSingleLineBubbleHeight = 9 * 2 + _chatFontSize * _chatLineHeight;
+
 TextStyle _chatMessageTextStyle(bool isMine) => TextStyle(
   color: isMine ? Colors.white : AppColors.text,
-  fontSize: 14,
-  height: 1.42,
+  fontSize: _chatFontSize,
+  height: _chatLineHeight,
 );
 
 /// Shared surface for pending typing and the actual reply: same fill, border,
@@ -18,10 +26,7 @@ class _MessageBubbleSurface extends StatelessWidget {
     constraints: const BoxConstraints(maxWidth: 270),
     child: DecoratedBox(
       decoration: _chatBubbleDecoration(context, isMine: isMine),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        child: child,
-      ),
+      child: Padding(padding: _chatBubblePadding, child: child),
     ),
   );
 }
@@ -94,10 +99,10 @@ class _VoiceTranscriptionPendingBubble extends StatelessWidget {
       child: Container(
         key: const ValueKey('voice-transcription-pending-bubble'),
         width: 52,
-        height: 44,
+        height: _chatSingleLineBubbleHeight,
         alignment: Alignment.center,
         decoration: _pendingVoiceBubbleDecoration(),
-        child: const VoiceTranscriptionSpinner(size: 24, color: Colors.white),
+        child: const VoiceTranscriptionSpinner(size: 20, color: Colors.white),
       ),
     );
   }
@@ -111,30 +116,93 @@ class _VoiceUploadPendingBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final duration = math.max(1, durationSeconds);
-    final width = (108.0 + duration * 2.2).clamp(116.0, 250.0).toDouble();
     return Container(
-      width: width,
-      height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 13),
+      width: _voiceBubbleWidth(duration),
+      height: _chatSingleLineBubbleHeight,
       decoration: _pendingVoiceBubbleDecoration(),
+      child: _VoiceBubbleContent(
+        isMine: true,
+        seed: 'pending-$duration',
+        label: '$duration″',
+        progress: 0,
+        active: false,
+        button: const CupertinoActivityIndicator(radius: 7, color: _chatMineColor),
+      ),
+    );
+  }
+}
+
+/// WeChat-style: longer messages get wider bubbles, within one line's width.
+double _voiceBubbleWidth(int seconds) =>
+    (96.0 + seconds * 4.0).clamp(112.0, 236.0).toDouble();
+
+/// Play control, waveform and duration, inset to match a text bubble.
+class _VoiceBubbleContent extends StatelessWidget {
+  const _VoiceBubbleContent({
+    required this.isMine,
+    required this.seed,
+    required this.label,
+    required this.progress,
+    required this.active,
+    required this.button,
+  });
+
+  final bool isMine;
+
+  /// Stable per message so its waveform never reshuffles on rebuild.
+  final String seed;
+  final String label;
+
+  /// Played fraction, 0–1.
+  final double progress;
+
+  /// Playing or paused: the waveform shows the played part.
+  final bool active;
+  final Widget button;
+
+  static const _buttonSize = 26.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = isMine ? Colors.white : AppColors.text;
+    // Same inset on all sides of the round control: (37.9 - 26) / 2.
+    const inset = (_chatSingleLineBubbleHeight - _buttonSize) / 2;
+    return Padding(
+      padding: const EdgeInsets.only(left: inset, right: 12),
       child: Row(
         children: [
-          const CupertinoActivityIndicator(radius: 8, color: Colors.white),
+          Container(
+            width: _buttonSize,
+            height: _buttonSize,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isMine ? Colors.white : _chatMineColor,
+            ),
+            child: button,
+          ),
           const SizedBox(width: 9),
           Expanded(
-            child: Icon(
-              Icons.graphic_eq_rounded,
-              color: Colors.white.withValues(alpha: 0.88),
-              size: 29,
+            child: SizedBox(
+              height: 18,
+              child: CustomPaint(
+                painter: _VoiceWaveformBarsPainter(
+                  seed: seed,
+                  progress: progress,
+                  active: active,
+                  color: foreground,
+                ),
+              ),
             ),
           ),
-          const SizedBox(width: 7),
+          const SizedBox(width: 8),
           Text(
-            '$duration″',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+            label,
+            style: TextStyle(
+              color: foreground,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
         ],
@@ -143,11 +211,78 @@ class _VoiceUploadPendingBubble extends StatelessWidget {
   }
 }
 
+/// Speech-like bars from a seeded generator (no amplitude data is stored),
+/// tapering at both ends. Played bars are solid, the rest translucent.
+class _VoiceWaveformBarsPainter extends CustomPainter {
+  _VoiceWaveformBarsPainter({
+    required this.seed,
+    required this.progress,
+    required this.active,
+    required this.color,
+  });
+
+  final String seed;
+  final double progress;
+  final bool active;
+  final Color color;
+
+  static const _barWidth = 2.4;
+  static const _gap = 2.2;
+
+  static int _hash(String value) {
+    var hash = 0x811c9dc5;
+    for (final unit in value.codeUnits) {
+      hash = ((hash ^ unit) * 0x01000193) & 0x7fffffff;
+    }
+    return hash;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final count = ((size.width + _gap) / (_barWidth + _gap)).floor();
+    if (count <= 0) return;
+    final random = math.Random(_hash(seed));
+    final paint = Paint()..strokeCap = StrokeCap.round;
+    final used = count * (_barWidth + _gap) - _gap;
+    final left = (size.width - used) / 2 + _barWidth / 2;
+    final middle = size.height / 2;
+    var previous = 0.5;
+    for (var index = 0; index < count; index++) {
+      final raw = random.nextDouble();
+      final smoothed = previous * 0.45 + raw * 0.55;
+      previous = raw;
+      final position = count == 1 ? 0.5 : index / (count - 1);
+      final envelope = 0.55 + 0.45 * math.sin(position * math.pi);
+      final amplitude = (0.22 + 0.78 * smoothed) * envelope;
+      final barHeight = math.max(_barWidth, amplitude * size.height);
+      final played = active && (index + 0.5) / count <= progress;
+      paint
+        ..color = color.withValues(
+          alpha: active ? (played ? 1.0 : 0.32) : 0.62,
+        )
+        ..strokeWidth = _barWidth;
+      final x = left + index * (_barWidth + _gap);
+      canvas.drawLine(
+        Offset(x, middle - barHeight / 2 + _barWidth / 2),
+        Offset(x, middle + barHeight / 2 - _barWidth / 2),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_VoiceWaveformBarsPainter old) =>
+      old.seed != seed ||
+      old.progress != progress ||
+      old.active != active ||
+      old.color != color;
+}
+
 BoxDecoration _chatBubbleDecoration(
   BuildContext context, {
   required bool isMine,
 }) {
-  const mineColor = Color(0xFF06C893);
+  const mineColor = _chatMineColor;
   final dark = AppColors.isDark(context);
   return BoxDecoration(
     color: isMine ? mineColor : _chatIncomingBubbleColor(context),
@@ -177,7 +312,7 @@ BoxDecoration _chatBubbleDecoration(
 }
 
 BoxDecoration _pendingVoiceBubbleDecoration() {
-  const mineColor = Color(0xFF06C893);
+  const mineColor = _chatMineColor;
   return BoxDecoration(
     color: mineColor,
     borderRadius: const BorderRadius.only(
@@ -302,6 +437,10 @@ class _AudioAttachmentBubble extends StatefulWidget {
 class _AudioAttachmentBubbleState extends State<_AudioAttachmentBubble> {
   late final AudioPlayer _player;
   StreamSubscription<void>? _completeSubscription;
+  StreamSubscription<Duration>? _positionSubscription;
+  StreamSubscription<Duration>? _durationSubscription;
+  Duration _position = Duration.zero;
+  Duration? _duration;
   bool _playing = false;
   bool _paused = false;
   bool _loading = false;
@@ -316,7 +455,16 @@ class _AudioAttachmentBubbleState extends State<_AudioAttachmentBubble> {
         setState(() {
           _playing = false;
           _paused = false;
+          _position = Duration.zero;
         });
+      }
+    });
+    _positionSubscription = _player.onPositionChanged.listen((position) {
+      if (mounted && (_playing || _paused)) setState(() => _position = position);
+    });
+    _durationSubscription = _player.onDurationChanged.listen((duration) {
+      if (mounted && duration > Duration.zero) {
+        setState(() => _duration = duration);
       }
     });
   }
@@ -324,6 +472,8 @@ class _AudioAttachmentBubbleState extends State<_AudioAttachmentBubble> {
   @override
   void dispose() {
     _completeSubscription?.cancel();
+    _positionSubscription?.cancel();
+    _durationSubscription?.cancel();
     unawaited(_player.dispose());
     final path = _localPath;
     if (path != null) {
@@ -439,44 +589,48 @@ class _AudioAttachmentBubbleState extends State<_AudioAttachmentBubble> {
 
   @override
   Widget build(BuildContext context) {
-    final duration = math.max(1, widget.attachment.durationSeconds ?? 1);
-    final width = (108.0 + duration * 2.2).clamp(116.0, 250.0).toDouble();
-    final foreground = widget.isMine ? Colors.white : AppColors.text;
-    return GestureDetector(
-      onTap: _togglePlayback,
-      child: Container(
-        width: width,
-        height: 48,
-        padding: const EdgeInsets.symmetric(horizontal: 13),
-        decoration: _chatBubbleDecoration(context, isMine: widget.isMine),
-        child: Row(
-          children: [
-            if (_loading)
-              CupertinoActivityIndicator(radius: 9, color: foreground)
-            else
-              Icon(
-                _playing ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
-                color: foreground,
-                size: 18,
-              ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Icon(
-                Icons.graphic_eq_rounded,
-                color: foreground.withValues(alpha: 0.88),
-                size: 30,
-              ),
-            ),
-            const SizedBox(width: 7),
-            Text(
-              '$duration″',
-              style: TextStyle(
-                color: foreground,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
+    final seconds = math.max(1, widget.attachment.durationSeconds ?? 1);
+    final total = _duration ?? Duration(seconds: seconds);
+    final active = _playing || _paused;
+    final progress = total.inMilliseconds <= 0
+        ? 0.0
+        : (_position.inMilliseconds / total.inMilliseconds).clamp(0.0, 1.0);
+    // While playing, count down what is left, like WeChat.
+    final shown = active
+        ? math.max(0, (total - _position).inMilliseconds / 1000).ceil()
+        : seconds;
+    final buttonColor = widget.isMine ? _chatMineColor : Colors.white;
+    return Semantics(
+      button: true,
+      label: '语音 $seconds 秒，${_playing ? '暂停' : '播放'}',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _togglePlayback,
+        child: Container(
+          width: _voiceBubbleWidth(seconds),
+          height: _chatSingleLineBubbleHeight,
+          decoration: _chatBubbleDecoration(context, isMine: widget.isMine),
+          child: _VoiceBubbleContent(
+            isMine: widget.isMine,
+            seed: widget.attachment.id,
+            label: '$shown″',
+            progress: progress,
+            active: active,
+            button: _loading
+                ? CupertinoActivityIndicator(radius: 7, color: buttonColor)
+                : Padding(
+                    // Optical centring: a play triangle reads left of centre.
+                    padding: EdgeInsets.only(left: _playing ? 0 : 1.5),
+                    child: Icon(
+                      _playing
+                          ? CupertinoIcons.pause_fill
+                          : CupertinoIcons.play_fill,
+                      color: buttonColor,
+                      size: 13,
+                    ),
+                  ),
+          ),
         ),
       ),
     );
