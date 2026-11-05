@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
 
 /// Streams 24 kHz mono PCM16 from the device microphone.
@@ -14,6 +14,7 @@ class VoiceMicStream {
   final int _sampleRate;
   AudioRecorder? _recorder;
   StreamSubscription<Uint8List>? _sub;
+  StreamSubscription<RecordState>? _stateSub;
   bool _active = false;
 
   bool get isActive => _active;
@@ -27,7 +28,12 @@ class VoiceMicStream {
 
   /// Start streaming PCM16 audio. Calls [onData] with each chunk.
   /// Returns false if permission was denied or recording failed to start.
-  Future<bool> start({required void Function(Uint8List pcm) onData}) async {
+  /// [onFailure] fires once if the recorder stops working mid-call: the
+  /// native side reports that only on the state stream, never on the data.
+  Future<bool> start({
+    required void Function(Uint8List pcm) onData,
+    void Function()? onFailure,
+  }) async {
     if (_active) return true;
     _recorder ??= AudioRecorder();
 
@@ -44,6 +50,10 @@ class VoiceMicStream {
           numChannels: 1,
           echoCancel: true,
           noiseSuppress: true,
+          // Android's communication capture is quiet (about -38 dBFS RMS on
+          // a PHB110); StepFun's VAD needs roughly -26. iOS voice
+          // processing already levels it, so its gain stays untouched.
+          autoGain: defaultTargetPlatform == TargetPlatform.android,
           androidConfig: const AndroidRecordConfig(
             audioSource: AndroidAudioSource.voiceCommunication,
             audioManagerMode: AudioManagerMode.modeInCommunication,
@@ -52,13 +62,24 @@ class VoiceMicStream {
         ),
       );
       _active = true;
+      var failed = false;
+      void fail() {
+        if (failed || !_active) return;
+        failed = true;
+        onFailure?.call();
+      }
+
+      _stateSub = _recorder!.onStateChanged().listen(
+        (_) {},
+        onError: (Object _) => fail(),
+      );
       _sub = stream.listen(
         (data) {
           if (_active && data.isNotEmpty) {
             onData(data);
           }
         },
-        onError: (_) {},
+        onError: (Object _) => fail(),
         cancelOnError: false,
       );
       return true;
@@ -73,6 +94,8 @@ class VoiceMicStream {
     _active = false;
     await _sub?.cancel();
     _sub = null;
+    await _stateSub?.cancel();
+    _stateSub = null;
     try {
       await _recorder?.stop();
     } catch (_) {}

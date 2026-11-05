@@ -194,7 +194,14 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
       return;
     }
     if (_disposed) return;
-    final ok = await _mic.start(onData: _socket.sendAudio);
+    final ok = await _mic.start(
+      onData: _socket.sendAudio,
+      onFailure: () {
+        if (_disposed || _ending) return;
+        _showError('麦克风出了问题，通话已结束');
+        unawaited(_endCall());
+      },
+    );
     if (_disposed) return;
     if (!ok) {
       _showError('需要麦克风权限才能进行语音通话');
