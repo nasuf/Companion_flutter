@@ -71,6 +71,11 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
   late final AnimationController _pulseCtrl;
   late final Animation<double> _pulseAnim;
 
+  // Always running: drives the ring rotation and the connected halo's breath.
+  late final AnimationController _ambientCtrl;
+  // One-shot burst when the call connects.
+  late final AnimationController _connectCtrl;
+
   StreamSubscription? _statusSub;
   StreamSubscription? _audioSub;
   StreamSubscription? _eventSub;
@@ -92,6 +97,15 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
       begin: 1.0,
       end: 1.08,
     ).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
+
+    _ambientCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 6000),
+    )..repeat();
+    _connectCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
 
     _mic = VoiceMicStream(sampleRate: 24000);
     _player = VoicePcmPlayer(sampleRate: 24000);
@@ -121,9 +135,9 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
                     ? '连接失败，请稍后重试'
                     : '通话连接中断，请稍后重试'),
           );
-          _endCall(showConfirm: false);
+          _endCall();
         case VoiceCallStatus.ended:
-          _endCall(showConfirm: false);
+          _endCall();
         default:
           break;
       }
@@ -165,7 +179,7 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
     // reports it; ending here too is safe because _endCall runs once. Popping
     // directly would pop the chat page as well once that handler ran.
     final ok = await _socket.connect();
-    if (!ok && !_disposed) unawaited(_endCall(showConfirm: false));
+    if (!ok && !_disposed) unawaited(_endCall());
   }
 
   /// Speaker first, then microphone: on iOS the recorder re-applies the
@@ -176,7 +190,7 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
     } catch (_) {
       if (_disposed) return;
       _showError('无法打开扬声器，请稍后重试');
-      unawaited(_endCall(showConfirm: false));
+      unawaited(_endCall());
       return;
     }
     if (_disposed) return;
@@ -184,13 +198,16 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
     if (_disposed) return;
     if (!ok) {
       _showError('需要麦克风权限才能进行语音通话');
-      unawaited(_endCall(showConfirm: false));
+      unawaited(_endCall());
       return;
     }
     _startDurationTimer();
     // Let the agent say hello first.
     _socket.sendGreet();
-    if (mounted) setState(() => _phase = _CallPhase.idle);
+    if (!mounted) return;
+    setState(() => _phase = _CallPhase.idle);
+    _connectCtrl.forward(from: 0);
+    unawaited(HapticFeedback.mediumImpact());
   }
 
   void _onPlayingChanged(bool playing) {
@@ -221,40 +238,22 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
     );
   }
 
-  Future<void> _endCall({bool showConfirm = true}) async {
+  /// Hangs up at once, with a short tap and the hang-up tone instead of a
+  /// confirmation dialog.
+  Future<void> _endCall() async {
     if (_ending) return;
-    if (showConfirm && mounted) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        barrierDismissible: true,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text('结束通话'),
-          content: const Text('确定要挂断吗？'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: Text('继续通话', style: TextStyle(color: AppColors.muted)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: Text('挂断', style: TextStyle(color: AppColors.danger)),
-            ),
-          ],
-        ),
-      );
-      if (confirmed != true || !mounted) return;
-    }
     _ending = true;
+    unawaited(HapticFeedback.mediumImpact());
     _durationTimer?.cancel();
     _rippleCtrl.stop();
     _pulseCtrl.stop();
+    _ambientCtrl.stop();
     await _mic.stop();
     await _socket.dispose();
     await _player.dispose();
+    // After the PCM player releases its audio session, so it can't cut the
+    // tone off; the tone player outlives this page.
+    _playHangUpTone();
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -267,6 +266,8 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
     _eventSub?.cancel();
     _rippleCtrl.dispose();
     _pulseCtrl.dispose();
+    _ambientCtrl.dispose();
+    _connectCtrl.dispose();
     _mic.dispose();
     unawaited(_player.dispose());
     unawaited(_socket.dispose());
@@ -372,105 +373,15 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
   }
 
   Widget _buildAvatar() {
-    const avatarSize = 110.0;
-    return SizedBox(
-      width: avatarSize + 60,
-      height: avatarSize + 60,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Ripple rings (user speaking)
-          if (_phase == _CallPhase.userSpeaking)
-            ..._buildRippleRings(avatarSize),
-          // Pulse glow (AI speaking)
-          if (_phase == _CallPhase.aiSpeaking)
-            AnimatedBuilder(
-              animation: _pulseAnim,
-              builder: (_, __) => Container(
-                width: avatarSize + 24,
-                height: avatarSize + 24,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.accent.withValues(
-                        alpha: 0.3 * _pulseAnim.value,
-                      ),
-                      blurRadius: 30 * _pulseAnim.value,
-                      spreadRadius: 8 * _pulseAnim.value,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          // Static ring
-          Container(
-            width: avatarSize + 8,
-            height: avatarSize + 8,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: _phase == _CallPhase.aiSpeaking
-                    ? AppColors.accent.withValues(alpha: 0.5)
-                    : Colors.white.withValues(alpha: 0.15),
-                width: 2,
-              ),
-            ),
-          ),
-          // Avatar
-          ScaleTransition(
-            scale: _phase == _CallPhase.aiSpeaking
-                ? _pulseAnim
-                : const AlwaysStoppedAnimation(1.0),
-            child: ClipOval(
-              child: SizedBox(
-                width: avatarSize,
-                height: avatarSize,
-                child: AgentAvatarImage(
-                  imageUrl: widget.agentAvatarUrl,
-                  width: avatarSize,
-                  height: avatarSize,
-                  fit: BoxFit.cover,
-                  fallback: Container(
-                    color: AppColors.accentSoft,
-                    child: Icon(
-                      Icons.person,
-                      size: avatarSize * 0.5,
-                      color: AppColors.accent,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+    return _CallAvatar(
+      phase: _phase,
+      avatarUrl: widget.agentAvatarUrl,
+      ambient: _ambientCtrl,
+      pulse: _pulseCtrl,
+      pulseScale: _pulseAnim,
+      ripple: _rippleAnim,
+      connect: _connectCtrl,
     );
-  }
-
-  List<Widget> _buildRippleRings(double avatarSize) {
-    return List.generate(3, (i) {
-      final delay = i * 0.33;
-      return AnimatedBuilder(
-        animation: _rippleAnim,
-        builder: (_, __) {
-          var t = (_rippleAnim.value + delay) % 1.0;
-          final scale = 1.0 + t * 0.5;
-          final opacity = (1.0 - t).clamp(0.0, 0.4);
-          return Container(
-            width: (avatarSize + 16) * scale,
-            height: (avatarSize + 16) * scale,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: AppColors.accentCyan.withValues(alpha: opacity),
-                width: 1.5,
-              ),
-            ),
-          );
-        },
-      );
-    });
   }
 
   Widget _buildAgentName() {
@@ -488,7 +399,7 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
   Widget _buildStatusLine() {
     final color = switch (_phase) {
       _CallPhase.connecting => Colors.white38,
-      _CallPhase.idle => Colors.white54,
+      _CallPhase.idle => Colors.white70,
       _CallPhase.userSpeaking => AppColors.accentCyan,
       _CallPhase.aiSpeaking => AppColors.accent,
     };
@@ -502,6 +413,24 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
               width: 12,
               height: 12,
               child: CircularProgressIndicator(strokeWidth: 1.5, color: color),
+            ),
+          ),
+        if (_phase == _CallPhase.idle)
+          Padding(
+            padding: const EdgeInsets.only(right: 7),
+            child: Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.accent,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.accent.withValues(alpha: 0.7),
+                    blurRadius: 6,
+                  ),
+                ],
+              ),
             ),
           ),
         if (_phase == _CallPhase.userSpeaking ||
@@ -544,6 +473,237 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
 
 /// Frosted-glass close button tuned for the dark call background; same 36pt
 /// circle as `_GiftSheetCloseButton`.
+/// The agent avatar and everything that signals the call state around it:
+/// a white arc spins while connecting; once connected a gradient ring turns
+/// slowly and a halo breathes, green while the agent talks (stronger, in
+/// time with the pulse) and cyan with ripples while the user talks.
+class _CallAvatar extends StatelessWidget {
+  const _CallAvatar({
+    required this.phase,
+    required this.avatarUrl,
+    required this.ambient,
+    required this.pulse,
+    required this.pulseScale,
+    required this.ripple,
+    required this.connect,
+  });
+
+  final _CallPhase phase;
+  final String? avatarUrl;
+  final Animation<double> ambient;
+  final Animation<double> pulse;
+  final Animation<double> pulseScale;
+  final Animation<double> ripple;
+  final Animation<double> connect;
+
+  static const _avatarSize = 110.0;
+  static const _ringSize = _avatarSize + 12;
+
+  @override
+  Widget build(BuildContext context) {
+    final connected = phase != _CallPhase.connecting;
+    final glow = phase == _CallPhase.userSpeaking
+        ? AppColors.accentCyan
+        : AppColors.accent;
+    return SizedBox(
+      width: _avatarSize + 90,
+      height: _avatarSize + 90,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if (connected)
+            TweenAnimationBuilder<Color?>(
+              tween: ColorTween(end: glow),
+              duration: const Duration(milliseconds: 300),
+              builder: (_, color, __) => AnimatedBuilder(
+                animation: Listenable.merge([ambient, pulse, connect]),
+                builder: (_, __) => _halo(color ?? glow),
+              ),
+            ),
+          if (phase == _CallPhase.userSpeaking) ..._rippleRings(),
+          _connectBurst(),
+          AnimatedBuilder(
+            animation: ambient,
+            builder: (_, __) => CustomPaint(
+              size: const Size.square(_ringSize),
+              painter: connected
+                  ? _CallRingPainter(
+                      rotation: ambient.value * 2 * math.pi,
+                      strokeWidth: 2.5,
+                      colors: [
+                        AppColors.accent,
+                        AppColors.accentCyan,
+                        AppColors.accent.withValues(alpha: 0.35),
+                        AppColors.accentCyan,
+                        AppColors.accent,
+                      ],
+                    )
+                  : _CallRingPainter(
+                      rotation: ambient.value * 6 * math.pi,
+                      strokeWidth: 2,
+                      base: Colors.white.withValues(alpha: 0.12),
+                      colors: [
+                        Colors.white.withValues(alpha: 0),
+                        Colors.white.withValues(alpha: 0.75),
+                      ],
+                    ),
+            ),
+          ),
+          ScaleTransition(
+            scale: phase == _CallPhase.aiSpeaking
+                ? pulseScale
+                : const AlwaysStoppedAnimation(1.0),
+            child: ClipOval(
+              child: SizedBox(
+                width: _avatarSize,
+                height: _avatarSize,
+                child: AgentAvatarImage(
+                  imageUrl: avatarUrl,
+                  width: _avatarSize,
+                  height: _avatarSize,
+                  fit: BoxFit.cover,
+                  fallback: Container(
+                    color: AppColors.accentSoft,
+                    child: Icon(
+                      Icons.person,
+                      size: _avatarSize * 0.5,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _halo(Color color) {
+    // 3 s breath, inside the 6 s ambient cycle.
+    final breath = 0.5 - 0.5 * math.cos(ambient.value * 4 * math.pi);
+    final talking = phase == _CallPhase.aiSpeaking ? pulse.value : 0.0;
+    final burst = connect.value > 0 && connect.value < 1
+        ? 1 - connect.value
+        : 0.0;
+    final strength = (0.22 + 0.10 * breath + 0.28 * talking + 0.35 * burst)
+        .clamp(0.0, 0.8);
+    return Container(
+      width: _ringSize,
+      height: _ringSize,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: strength),
+            blurRadius: 26 + 10 * breath + 14 * talking,
+            spreadRadius: 2 + 4 * breath + 6 * talking + 6 * burst,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _connectBurst() {
+    return AnimatedBuilder(
+      animation: connect,
+      builder: (_, __) {
+        final value = connect.value;
+        if (value <= 0 || value >= 1) return const SizedBox.shrink();
+        final t = Curves.easeOutCubic.transform(value);
+        final size = _ringSize + 76 * t;
+        return Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: AppColors.accent.withValues(alpha: 0.75 * (1 - t)),
+              width: 2.5,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  List<Widget> _rippleRings() {
+    return List.generate(3, (i) {
+      final delay = i * 0.33;
+      return AnimatedBuilder(
+        animation: ripple,
+        builder: (_, __) {
+          final t = (ripple.value + delay) % 1.0;
+          final scale = 1.0 + t * 0.5;
+          final opacity = (1.0 - t).clamp(0.0, 0.4);
+          return Container(
+            width: (_ringSize + 4) * scale,
+            height: (_ringSize + 4) * scale,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppColors.accentCyan.withValues(alpha: opacity),
+                width: 1.5,
+              ),
+            ),
+          );
+        },
+      );
+    });
+  }
+}
+
+class _CallRingPainter extends CustomPainter {
+  _CallRingPainter({
+    required this.rotation,
+    required this.strokeWidth,
+    required this.colors,
+    this.base,
+  });
+
+  final double rotation;
+  final double strokeWidth;
+  final List<Color> colors;
+
+  /// Faint full circle under the sweep (the connecting track).
+  final Color? base;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final radius = (size.shortestSide - strokeWidth) / 2;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+    if (base != null) {
+      canvas.drawCircle(rect.center, radius, paint..color = base!);
+    }
+    paint.shader = SweepGradient(
+      colors: colors,
+      transform: GradientRotation(rotation),
+    ).createShader(rect);
+    canvas.drawCircle(rect.center, radius, paint);
+  }
+
+  @override
+  bool shouldRepaint(_CallRingPainter old) =>
+      old.rotation != rotation ||
+      old.strokeWidth != strokeWidth ||
+      old.base != base ||
+      !listEquals(old.colors, colors);
+}
+
+final AudioPlayer _hangUpTonePlayer = AudioPlayer()
+  ..setReleaseMode(ReleaseMode.stop);
+
+void _playHangUpTone() {
+  unawaited(
+    _hangUpTonePlayer
+        .play(AssetSource('sounds/call_end.wav'), volume: 0.8)
+        .catchError((Object _) {}),
+  );
+}
+
 class _VoiceCallCloseButton extends StatelessWidget {
   const _VoiceCallCloseButton({required this.onTap});
 

@@ -115,6 +115,7 @@ flutter:
     - assets/prototype/games/hub-figma/
     - assets/prototype/games/hub-figma/gloves/
     - assets/achievements/
+    - assets/sounds/
     - assets/interaction/
     - assets/navigation/
     - assets/chat_sidebar/
