@@ -137,6 +137,10 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
       if (_disposed || !mounted) return;
       switch (type) {
         case 'speech.started':
+          // Barge-in. StepFun finishes generating long before playback
+          // ends, so most of the reply is still queued here: drop it now
+          // rather than talk over the user.
+          _player.clear();
           setState(() => _phase = _CallPhase.userSpeaking);
           _rippleCtrl.repeat();
           _pulseCtrl.stop();
