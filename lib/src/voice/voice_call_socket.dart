@@ -45,9 +45,12 @@ class VoiceCallSocket {
   VoiceCallStatus _lastStatus = VoiceCallStatus.connecting;
   VoiceCallStatus get currentStatus => _lastStatus;
 
+  /// The server tunes speech detection per platform: Android's call capture
+  /// is much quieter than iOS voice processing.
   Uri _wsUri() {
     final normalized = baseUrl.replaceFirst(RegExp('^http'), 'ws');
-    return Uri.parse('$normalized/ws/voice/$conversationId');
+    return Uri.parse('$normalized/ws/voice/$conversationId')
+        .replace(queryParameters: {'platform': Platform.operatingSystem});
   }
 
   Future<bool> connect() async {
