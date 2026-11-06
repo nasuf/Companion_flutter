@@ -51,7 +51,7 @@ class VoiceMicStream {
           echoCancel: true,
           noiseSuppress: true,
           // Android's communication capture is quiet (about -38 dBFS RMS on
-          // a PHB110); StepFun's VAD needs roughly -26. iOS voice
+          // a PHB110); server VAD needs roughly -26. iOS voice
           // processing already levels it, so its gain stays untouched.
           autoGain: defaultTargetPlatform == TargetPlatform.android,
           androidConfig: const AndroidRecordConfig(

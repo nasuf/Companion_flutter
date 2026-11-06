@@ -1078,14 +1078,6 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
                     _setConfig('asr_model', text.trim().isEmpty ? null : text),
               ),
               const SizedBox(height: 10),
-              _MediaModelField(
-                label: '语音输出模型 · 阶跃星辰',
-                value: (config['tts_model'] as String?) ?? '',
-                placeholder: '${resolved['tts_model'] ?? ''}（环境默认）',
-                onChanged: (text) =>
-                    _setConfig('tts_model', text.trim().isEmpty ? null : text),
-              ),
-              const SizedBox(height: 10),
               // 只读: 换 embedding 模型要连同全部存量向量一起重算, 并重新标定
               // 十余个相似度阈值 —— 是一次数据迁移, 不是改配置项. 给输入框等于
               // 给一个"点了检索就静默失效"的按钮.
@@ -1142,7 +1134,8 @@ class _AdminModelsPageState extends State<_AdminModelsPage> {
                 ('本地小模型', '${resolved['local_small_model'] ?? ''}'),
                 ('视觉理解', '${resolved['vision_model'] ?? ''}'),
                 ('语音转写', '${resolved['asr_model'] ?? ''}'),
-                ('语音输出', '${resolved['tts_model'] ?? ''}'),
+                // 通话与语音消息共用百炼实时模型; null = 服务器默认.
+                ('语音', '${resolved['realtime_model'] ?? 'qwen3.8-omni-flash-realtime'}'),
                 ('语音概率', '${resolved['tts_output_probability'] ?? 0}%'),
                 ('记忆向量', '${resolved['embedding_model'] ?? ''}'),
               ])
@@ -2306,7 +2299,7 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
       _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         if (!mounted) return;
         setState(() => _recordingSeconds = _recordingWatch.elapsed.inSeconds);
-        if (_recordingSeconds >= 10) unawaited(_stopRecording());
+        if (_recordingSeconds >= 20) unawaited(_stopRecording());
       });
       if (previousPath != null) await _deleteRecordingFile(previousPath);
     } catch (error) {
@@ -2382,7 +2375,7 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
     final path = _recordingPath;
     final name = _nameController.text.trim();
     if (path == null || _recordingSeconds < 5) {
-      setState(() => _error = '请先录制 5–10 秒清晰人声');
+      setState(() => _error = '请先录制至少 5 秒清晰人声（建议 10–20 秒）');
       return;
     }
     if (name.isEmpty) {
@@ -2805,7 +2798,7 @@ class _AdminTtsVoiceLibraryState extends State<_AdminTtsVoiceLibrary> {
               const SizedBox(height: 6),
               _adminModelsCaption(
                 context,
-                '请录制 5–10 秒清晰人声的自然聊天，满 10 秒自动停止。'
+                '请录制 10–20 秒清晰人声的自然聊天（至少 5 秒），满 20 秒自动停止。'
                 '在安静环境单人说话，创建前必须取得本人授权。',
               ),
               const SizedBox(height: 14),

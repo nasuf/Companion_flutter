@@ -151,7 +151,7 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
       if (_disposed || !mounted) return;
       switch (type) {
         case 'speech.started':
-          // Barge-in. StepFun finishes generating long before playback
+          // Barge-in. The model finishes generating long before playback
           // ends, so most of the reply is still queued here: drop it now
           // rather than talk over the user.
           _player.clear();
