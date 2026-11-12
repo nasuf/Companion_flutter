@@ -36,6 +36,7 @@ class AuthSession {
     this.conversationId,
     this.phone,
     this.wechatBound = false,
+    this.realnameRequired = const [],
   });
 
   final String token;
@@ -67,6 +68,12 @@ class AuthSession {
   /// 已绑定的手机号，服务端已脱敏成 `138****5678`。未绑定为 null。
   final String? phone;
   final bool wechatBound;
+
+  /// 实名门槛还差的步骤，按顺序：`phone` / `id_card` / `minor_blocked`。
+  /// 空表示可以聊天。由服务端按 REALNAME_MODE 给出，管理员恒为空。
+  final List<String> realnameRequired;
+
+  bool get realnameComplete => realnameRequired.isEmpty;
 
   /// 账号已绑定的登录方式，用于个人资料页展示。可能同时有多个（微信 + 手机号）。
   ///
@@ -123,6 +130,7 @@ class AuthSession {
       conversationId: json['conversation_id'] as String?,
       phone: json['phone'] as String?,
       wechatBound: json['wechat_bound'] as bool? ?? false,
+      realnameRequired: parseRealnameSteps(json['realname_required']),
     );
   }
 
@@ -157,9 +165,13 @@ class AuthSession {
       // 改昵称/头像都会把它清掉。
       phone: phone,
       wechatBound: wechatBound,
+      realnameRequired: realnameRequired,
     );
   }
 }
+
+List<String> parseRealnameSteps(Object? raw) =>
+    raw is List ? raw.whereType<String>().toList(growable: false) : const [];
 
 /// 用户在圆形取景框里框定的正方形，坐标是**源图像素**（EXIF 校正后）。
 ///

@@ -89,6 +89,37 @@ mixin _CompanionApiAuth on _CompanionApiCore {
     return session;
   }
 
+  /// 已登录用户绑定手机号（短信验证码确认）。返回刷新后的会话（含实名步骤）。
+  Future<AuthSession> bindPhone(String phone, String code) async {
+    final json =
+        await _request(
+              'POST',
+              '/auth/phone/bind',
+              body: {'phone': phone, 'code': code},
+            )
+            as Map<String, dynamic>;
+    final session = _normalizeAuthSession(AuthSession.fromJson(json));
+    authToken = session.token;
+    return session;
+  }
+
+  /// 姓名 + 身份证号核验。返回剩余实名步骤；未成年为 `['minor_blocked']`。
+  /// [consent] 必须是用户单独勾选的同意（敏感个人信息单独同意）。
+  Future<List<String>> verifyRealname({
+    required String name,
+    required String idNumber,
+    required bool consent,
+  }) async {
+    final json =
+        await _request(
+              'POST',
+              '/auth/realname/verify',
+              body: {'name': name, 'id_number': idNumber, 'consent': consent},
+            )
+            as Map<String, dynamic>;
+    return parseRealnameSteps(json['required']);
+  }
+
   Future<AuthSession> getMe(String token) async {
     authToken = token;
     final json = await _request('GET', '/auth/me') as Map<String, dynamic>;
@@ -328,12 +359,7 @@ mixin _CompanionApiAuth on _CompanionApiCore {
       body['name'] = trimmed;
     }
     final json =
-        await _request(
-              'POST',
-              '/agents',
-              body: body,
-            )
-            as Map<String, dynamic>;
+        await _request('POST', '/agents', body: body) as Map<String, dynamic>;
     return _normalizeAgentProfile(AgentProfile.fromJson(json));
   }
 

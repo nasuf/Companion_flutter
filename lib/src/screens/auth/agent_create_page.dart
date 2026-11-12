@@ -341,6 +341,7 @@ class _AgentCreatePageState extends State<AgentCreatePage>
         workspaceId: latestAgent.workspaceId ?? agent.workspaceId,
         phone: session.phone,
         wechatBound: session.wechatBound,
+        realnameRequired: session.realnameRequired,
       );
       final readySession = await api.ensureConversation(createdSession);
       if (!mounted) return;

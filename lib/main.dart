@@ -113,6 +113,7 @@ part 'src/screens/admin/admin_last_will_sms_page.dart';
 part 'src/screens/admin/admin_vip_subscription_page.dart';
 part 'src/screens/auth/agent_create_page.dart';
 part 'src/screens/auth/avatar_crop_page.dart';
+part 'src/screens/auth/realname_gate_page.dart';
 part 'src/screens/achievement_page.dart';
 part 'src/screens/chat/chat_music_station_state.dart';
 part 'src/screens/chat/chat_page.dart';

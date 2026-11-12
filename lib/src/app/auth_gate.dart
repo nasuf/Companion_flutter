@@ -130,7 +130,16 @@ class _AuthGateState extends State<AuthGate> {
     final session = _session;
     final api = _api;
     late final Widget screen;
-    if (session != null && api != null) {
+    if (session != null && api != null && !session.realnameComplete) {
+      // 实名门槛没过不进主界面；完成后 onSessionChanged 刷新会话自动切过去
+      screen = RealnameGatePage(
+        key: ValueKey('realname-${session.realnameRequired.first}'),
+        api: api,
+        session: session,
+        onSessionChanged: _onSessionChanged,
+        onLogout: _logout,
+      );
+    } else if (session != null && api != null) {
       screen = MainShell(
         key: const ValueKey('main-shell'),
         api: api,

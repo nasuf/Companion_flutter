@@ -295,6 +295,7 @@ class _ProfilePageState extends State<ProfilePage>
           // 需要把 agent 相关字段清空，而 copyWith 的 null 表示"保持原值"。）
           phone: widget.session.phone,
           wechatBound: widget.session.wechatBound,
+          realnameRequired: widget.session.realnameRequired,
         ),
       );
     } catch (error) {
