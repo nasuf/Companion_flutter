@@ -147,7 +147,7 @@ class _AboutCompanionPage extends StatelessWidget {
           _SubCard(
             children: [
               const _SubCardRow(label: '开发者团队', value: '启序科技'),
-              _SubCardRow(label: '联系我们/意见反馈', value: '›', onTap: onContact),
+              _SubCardRow(label: '意见反馈/投诉举报', value: '›', onTap: onContact),
               _SubCardRow(
                 label: '用户协议',
                 value: '›',
