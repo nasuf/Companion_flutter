@@ -9,11 +9,19 @@ import 'companion_api.dart';
 enum ChatSocketStatus { disconnected, connecting, open, closed, error }
 
 class ChatSocketState {
-  const ChatSocketState(this.status, {this.code, this.reason});
+  const ChatSocketState(
+    this.status, {
+    this.code,
+    this.reason,
+    this.realnameRequired = false,
+  });
 
   final ChatSocketStatus status;
   final int? code;
   final String? reason;
+
+  /// 服务端因实名门槛拒绝连接；上层应刷新会话并进入实名页。
+  final bool realnameRequired;
 }
 
 class ChatSocket {
@@ -124,11 +132,15 @@ class ChatSocket {
     } catch (error) {
       if (_disposed || generation != _generation) return;
       final status = error is SocketTicketException ? error.statusCode : null;
+      final realname = error is SocketTicketException && error.realnameRequired;
       _states.add(
         ChatSocketState(
           ChatSocketStatus.error,
           code: status,
-          reason: status == 401
+          realnameRequired: realname,
+          reason: realname
+              ? '请先完成实名认证'
+              : status == 401
               ? '登录已过期，请重新登录'
               : status == 403
               ? '无权访问此会话'

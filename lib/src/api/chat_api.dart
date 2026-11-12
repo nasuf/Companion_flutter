@@ -41,7 +41,7 @@ mixin _CompanionApiChat on _CompanionApiCore {
       }
       return ticket;
     } on ApiException catch (error) {
-      throw SocketTicketException(error.statusCode);
+      throw SocketTicketException(error.statusCode, reason: error.reason);
     }
   }
 

@@ -47,6 +47,7 @@ class ChatPage extends StatefulWidget {
     this.onVoiceRecordingOverlayChanged,
     this.onComposerPanelChanged,
     this.onReturnToChatAfterOfflineArrive,
+    this.onRealnameRequired,
   });
 
   final CompanionApi api;
@@ -65,6 +66,9 @@ class ChatPage extends StatefulWidget {
 
   /// Shell-level navigation after offline check-in arrive (pop routes + chat tab).
   final VoidCallback? onReturnToChatAfterOfflineArrive;
+
+  /// 使用中被服务端实名门槛拦截（后台刚开启或加入名单）：由外层刷新会话进入实名页。
+  final VoidCallback? onRealnameRequired;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -1342,6 +1346,10 @@ class _ChatPageState extends State<ChatPage>
         case ChatSocketStatus.error:
           _localTyping?.stop();
           _remoteTyping.clear();
+          if (state.realnameRequired && widget.onRealnameRequired != null) {
+            widget.onRealnameRequired!();
+            break;
+          }
           if (state.code == 401 || state.code == 403) {
             ScaffoldMessenger.of(
               context,

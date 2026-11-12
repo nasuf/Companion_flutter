@@ -1,4 +1,5 @@
 import 'package:companion_flutter/models.dart';
+import 'package:companion_flutter/socket_ticket.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// 实名门槛步骤由服务端给出（REALNAME_MODE），客户端只负责解析和按顺序引导。
@@ -33,5 +34,14 @@ void main() {
 
   test('non-list payload is treated as no steps', () {
     expect(parseRealnameSteps('phone'), isEmpty);
+  });
+
+  test('chat ticket rejection carries the real-name reason', () {
+    const blocked = SocketTicketException(403, reason: 'realname_required');
+    expect(blocked.realnameRequired, isTrue);
+    expect(blocked.toString(), '请先完成实名认证');
+    const denied = SocketTicketException(403);
+    expect(denied.realnameRequired, isFalse);
+    expect(denied.toString(), '无权访问此会话');
   });
 }

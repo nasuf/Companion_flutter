@@ -526,6 +526,22 @@ class _MainShellState extends State<MainShell> with RouteAware {
     });
   }
 
+  bool _realnameRefreshing = false;
+
+  /// 聊天连接被实名门槛拒绝：重新拉会话，AuthGate 看到待办步骤会切到实名页。
+  Future<void> _refreshForRealname() async {
+    if (_realnameRefreshing) return;
+    _realnameRefreshing = true;
+    try {
+      final me = await widget.api.getMe(widget.session.token);
+      if (mounted && !me.realnameComplete) widget.onSessionChanged(me);
+    } catch (error) {
+      debugPrint('[realname-refresh] $error');
+    } finally {
+      _realnameRefreshing = false;
+    }
+  }
+
   void _handleAgentDeleted(AuthSession session) {
     _setChatSidebarOpen(false);
     _goToChatTab();
@@ -571,6 +587,7 @@ class _MainShellState extends State<MainShell> with RouteAware {
             onVoiceRecordingOverlayChanged: _setVoiceRecordingOverlay,
             onComposerPanelChanged: _setComposerPanelOpen,
             onReturnToChatAfterOfflineArrive: _openChatAfterOfflineArrive,
+            onRealnameRequired: _refreshForRealname,
           );
     Widget tabPlaceholder(int index) {
       if (!_visitedTabs.contains(index)) {
@@ -914,10 +931,26 @@ class _FloatingTabBar extends StatelessWidget {
 /// Stretch them apart: body → neutral gray, glyph → the app's light ink.
 /// Translation is in 0–255 space (see ColorFilter.matrix).
 const _darkInactiveTabIcon = ColorFilter.matrix(<double>[
-  3.8125, 0, 0, 0, -703.5,
-  0, 3.71875, 0, 0, -675.25,
-  0, 0, 3.59375, 0, -640.25,
-  0, 0, 0, 1, 0,
+  3.8125,
+  0,
+  0,
+  0,
+  -703.5,
+  0,
+  3.71875,
+  0,
+  0,
+  -675.25,
+  0,
+  0,
+  3.59375,
+  0,
+  -640.25,
+  0,
+  0,
+  0,
+  1,
+  0,
 ]);
 
 class _TabBarItem extends StatelessWidget {
