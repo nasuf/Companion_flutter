@@ -4,7 +4,7 @@ part of 'package:companion_flutter/main.dart';
 class _AiGeneratedHint extends StatelessWidget {
   const _AiGeneratedHint();
 
-  static const _label = '回复由AI生成';
+  static const _label = '文字和语音回复由AI生成';
 
   @override
   Widget build(BuildContext context) {

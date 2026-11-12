@@ -367,6 +367,13 @@ class _VoiceCallSheetState extends State<VoiceCallSheet>
                 ),
               ),
             ),
+            // 合成语音标识（人工智能生成合成内容标识办法）：通话全程常驻
+            const Positioned(
+              right: 0,
+              top: 0,
+              bottom: 0,
+              child: Center(child: _AiVoiceBadge()),
+            ),
             Positioned(
               left: 0,
               top: 0,
@@ -807,6 +814,37 @@ class _AnimatedDotsState extends State<_AnimatedDots>
           }),
         );
       },
+    );
+  }
+}
+
+/// 通话页右上角的「AI 语音」标识：通话中的声音由 AI 合成。
+class _AiVoiceBadge extends StatelessWidget {
+  const _AiVoiceBadge();
+
+  static const label = 'AI 语音';
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '通话声音由AI合成',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
+        ),
+        child: const Text(
+          label,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.4,
+          ),
+        ),
+      ),
     );
   }
 }

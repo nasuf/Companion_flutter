@@ -210,7 +210,7 @@ void main() {
       expect(find.text('图片'), findsNothing);
       await tester.tap(find.byTooltip('更多'));
       await drain(tester);
-      expect(find.text('回复由AI生成'), findsNothing);
+      expect(find.text('文字和语音回复由AI生成'), findsNothing);
       tester
               .widget<ExtendedTextField>(find.byType(ExtendedTextField))
               .controller!
