@@ -450,6 +450,7 @@ abstract class _CompanionApiCore {
     String? occurredAt,
     String? appVersion,
     String? platform,
+    String category = 'feedback',
     required List<Uint8List> imageBytes,
     required List<String> imageNames,
     required List<String> imageMimes,
@@ -485,6 +486,7 @@ abstract class _CompanionApiCore {
 
       writeField('content', content);
       writeField('contact', contact);
+      writeField('category', category);
       if (occurredAt != null && occurredAt.isNotEmpty) {
         writeField('occurred_at', occurredAt);
       }

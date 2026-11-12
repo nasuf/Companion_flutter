@@ -211,6 +211,10 @@ class _ContactFeedbackPageState extends State<_ContactFeedbackPage> {
   final List<_FeedbackAttachmentDraft> _attachments = [];
   bool _submitting = false;
 
+  /// feedback = 意见反馈；report = 投诉举报（不良内容、侵权、违规行为等）。
+  String _category = 'feedback';
+  bool get _isReport => _category == 'report';
+
   @override
   void dispose() {
     _contentController.dispose();
@@ -295,7 +299,7 @@ class _ContactFeedbackPageState extends State<_ContactFeedbackPage> {
     final content = _contentController.text.trim();
     final contact = _contactController.text.trim();
     if (content.length < 5) {
-      _showSnack('请至少输入 5 个字的反馈内容');
+      _showSnack(_isReport ? '请至少输入 5 个字描述投诉内容' : '请至少输入 5 个字的反馈内容');
       return;
     }
     if (contact.isEmpty) {
@@ -312,6 +316,7 @@ class _ContactFeedbackPageState extends State<_ContactFeedbackPage> {
         occurredAt: _occurredAtController.text.trim(),
         appVersion: clientInfo.appVersion,
         platform: clientInfo.platform,
+        category: _category,
         imageBytes: _attachments.map((item) => item.bytes).toList(),
         imageNames: _attachments.map((item) => item.name).toList(),
         imageMimes: _attachments.map((item) => item.mime).toList(),
@@ -321,7 +326,7 @@ class _ContactFeedbackPageState extends State<_ContactFeedbackPage> {
         context: context,
         builder: (context) => CupertinoAlertDialog(
           title: const Text('提交成功'),
-          content: const Text('感谢你的反馈，我们会尽快处理。'),
+          content: Text(_isReport ? '我们已收到你的投诉举报，会尽快核实处理。' : '感谢你的反馈，我们会尽快处理。'),
           actions: [
             CupertinoDialogAction(
               onPressed: () => Navigator.of(context).pop(),
@@ -349,19 +354,57 @@ class _ContactFeedbackPageState extends State<_ContactFeedbackPage> {
   @override
   Widget build(BuildContext context) {
     return _SettingsSubScaffold(
-      title: '联系我们/意见反馈',
+      title: '意见反馈/投诉举报',
       child: _SubPageContent(
         children: [
           _SubCard(
             padding: const EdgeInsets.all(16),
             children: [
-              const _SubTitle('问题与意见 *'),
+              const _SubTitle('类型'),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: CupertinoSlidingSegmentedControl<String>(
+                  groupValue: _category,
+                  children: const {
+                    'feedback': Padding(
+                      padding: EdgeInsets.symmetric(vertical: 6),
+                      child: Text('意见反馈'),
+                    ),
+                    'report': Padding(
+                      padding: EdgeInsets.symmetric(vertical: 6),
+                      child: Text('投诉举报'),
+                    ),
+                  },
+                  onValueChanged: (value) {
+                    if (value != null) setState(() => _category = value);
+                  },
+                ),
+              ),
+              if (_isReport) ...[
+                const SizedBox(height: 10),
+                Text(
+                  '可举报 AI 伙伴生成的不良或违法内容、侵权内容等。请尽量写明发生时间和具体内容，可附截图。',
+                  style: TextStyle(
+                    color: _SettingsColors.tertiary,
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          _SubCard(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _SubTitle(_isReport ? '投诉举报内容 *' : '问题与意见 *'),
               const SizedBox(height: 10),
               CupertinoTextField(
                 controller: _contentController,
                 maxLines: 5,
                 minLines: 4,
-                placeholder: '请详细描述您的问题或建议...',
+                placeholder: _isReport ? '请描述你要投诉举报的内容...' : '请详细描述您的问题或建议...',
                 decoration: BoxDecoration(
                   color: _SettingsColors.page,
                   borderRadius: BorderRadius.circular(12),

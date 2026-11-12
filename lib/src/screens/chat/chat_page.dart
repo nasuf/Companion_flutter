@@ -642,6 +642,7 @@ class _ChatPageState extends State<ChatPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (!_isTakeover) _startUsageClock();
     _scrollController.addListener(_handleScroll);
     _inputController.addListener(_handleInputChanged);
     _inputFocus.addListener(_handleInputFocusChanged);
@@ -866,11 +867,57 @@ class _ChatPageState extends State<ChatPage>
     _composerShell.dispose();
     _viewportShell.dispose();
     _transcript.dispose();
+    _usageTimer?.cancel();
     super.dispose();
+  }
+
+  // ── 连续使用 2 小时提醒（拟人化互动服务管理暂行办法）──
+  final _usageClock = UsageReminderClock();
+  Timer? _usageTimer;
+  int? _usageBannerHours;
+  // 每次触发加 1：重复触发时重新播放动画，普通重建不会重置浮层
+  int _usageBannerSerial = 0;
+
+  void _startUsageClock() {
+    _usageClock.resume(DateTime.now());
+    _scheduleUsageCheck();
+  }
+
+  void _scheduleUsageCheck() {
+    _usageTimer?.cancel();
+    final wait = _usageClock.untilNext(DateTime.now());
+    _usageTimer = Timer(wait + const Duration(seconds: 1), _checkUsage);
+  }
+
+  void _checkUsage() {
+    if (!mounted) return;
+    final now = DateTime.now();
+    if (_usageClock.due(now)) {
+      _showUsageBanner(_usageClock.usedAt(now).inHours.clamp(2, 99));
+    }
+    _scheduleUsageCheck();
+  }
+
+  void _showUsageBanner(int hours) {
+    if (!mounted) return;
+    setState(() {
+      _usageBannerHours = hours;
+      _usageBannerSerial += 1;
+    });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!_isTakeover) {
+      if (state == AppLifecycleState.resumed) {
+        _usageClock.resume(DateTime.now());
+        _checkUsage();
+      } else if (state == AppLifecycleState.paused ||
+          state == AppLifecycleState.hidden) {
+        _usageClock.pause(DateTime.now());
+        _usageTimer?.cancel();
+      }
+    }
     // A permission dialog can make the app inactive; that is still this tap.
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
@@ -5249,6 +5296,19 @@ class _ChatPageState extends State<ChatPage>
       decoration: BoxDecoration(color: _chatCanvasColor(context)),
       child: Stack(
         children: [
+          if (_usageBannerHours != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              top: safeTop + 84,
+              child: _UsageReminderBanner(
+                key: ValueKey('usage-banner-$_usageBannerSerial'),
+                hours: _usageBannerHours!,
+                onDismissed: () {
+                  if (mounted) setState(() => _usageBannerHours = null);
+                },
+              ),
+            ),
           Column(
             children: [
               RepaintBoundary(
@@ -5280,6 +5340,10 @@ class _ChatPageState extends State<ChatPage>
                       ? () => Navigator.of(context).maybePop()
                       : null,
                   onStatusTap: _isTakeover ? _pickTakeoverStatus : null,
+                  // 暂时的测试入口：双击头像预览使用时长提醒
+                  onAvatarDoubleTap: _isTakeover
+                      ? null
+                      : () => _showUsageBanner(2),
                 ),
               ),
               if (_taskBarActivity != null)
