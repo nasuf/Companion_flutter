@@ -45,6 +45,7 @@ class _AuthGateState extends State<AuthGate> {
         _session = session;
         _restoring = false;
       });
+      _noticeDeletionCancelled(loggedIn);
     } catch (error) {
       debugPrint('[auth-restore] $error');
       await _sessionStore.clear();
@@ -70,6 +71,28 @@ class _AuthGateState extends State<AuthGate> {
       _api = api;
       _session = session;
       _restoring = false;
+    });
+    _noticeDeletionCancelled(session);
+  }
+
+  /// 冷静期内登录会撤销注销申请：提示一次，让用户知道账号已恢复。
+  void _noticeDeletionCancelled(AuthSession session) {
+    if (!session.deletionCancelled) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showCupertinoDialog<void>(
+        context: context,
+        builder: (context) => CupertinoAlertDialog(
+          title: const Text('已撤销注销'),
+          content: const Text('你在冷静期内重新登录，账号注销申请已自动撤销，数据都还在。'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('好的'),
+            ),
+          ],
+        ),
+      );
     });
   }
 

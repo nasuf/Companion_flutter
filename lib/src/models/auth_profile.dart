@@ -37,6 +37,7 @@ class AuthSession {
     this.phone,
     this.wechatBound = false,
     this.realnameRequired = const [],
+    this.deletionCancelled = false,
   });
 
   final String token;
@@ -74,6 +75,9 @@ class AuthSession {
   final List<String> realnameRequired;
 
   bool get realnameComplete => realnameRequired.isEmpty;
+
+  /// 这次登录撤销了冷静期内的注销申请（只用于登录后提示一次）。
+  final bool deletionCancelled;
 
   /// 账号已绑定的登录方式，用于个人资料页展示。可能同时有多个（微信 + 手机号）。
   ///
@@ -131,6 +135,7 @@ class AuthSession {
       phone: json['phone'] as String?,
       wechatBound: json['wechat_bound'] as bool? ?? false,
       realnameRequired: parseRealnameSteps(json['realname_required']),
+      deletionCancelled: json['deletion_cancelled'] as bool? ?? false,
     );
   }
 

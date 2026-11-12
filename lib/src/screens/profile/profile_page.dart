@@ -219,6 +219,121 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
+  /// 自助注销：说明 → 短信验证码（已绑手机号时）→ 提交后退出登录。
+  /// 7 天冷静期内重新登录会自动撤销，到期后删除全部数据。
+  Future<void> _confirmDeleteAccount() async {
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('注销账号'),
+        content: const Text(
+          '\n注销后，账号进入 7 天冷静期：\n'
+          '· 期间重新登录即可撤销注销；\n'
+          '· 7 天后将永久删除你的账号、聊天记录、记忆、实名信息等全部数据，无法恢复；\n'
+          '· 已购买的会员、点券等权益将一并失效。',
+          textAlign: TextAlign.left,
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('再想想'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('继续注销'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    widget.api.authToken = widget.session.token;
+    bool codeRequired;
+    try {
+      codeRequired = await widget.api.sendAccountDeletionCode();
+    } catch (error) {
+      if (mounted) _showDeletionMessage('验证码发送失败：${_asMessage(error)}');
+      return;
+    }
+    if (!mounted) return;
+    String? code;
+    if (codeRequired) {
+      code = await _askDeletionCode();
+      if (code == null || !mounted) return;
+    }
+    try {
+      await widget.api.requestAccountDeletion(code: code);
+    } catch (error) {
+      if (mounted) _showDeletionMessage('注销申请失败：${_asMessage(error)}');
+      return;
+    }
+    if (!mounted) return;
+    await showCupertinoDialog<void>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('已提交注销申请'),
+        content: const Text('账号将在 7 天后永久删除。期间重新登录即可撤销。'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    widget.onLogout();
+  }
+
+  Future<String?> _askDeletionCode() {
+    final controller = TextEditingController();
+    return showCupertinoDialog<String>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('短信验证'),
+        content: Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('验证码已发送至你绑定的手机号'),
+              const SizedBox(height: 10),
+              CupertinoTextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                placeholder: '6 位验证码',
+                autofocus: true,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () {
+              final code = controller.text.trim();
+              if (RegExp(r'^\d{6}$').hasMatch(code))
+                Navigator.of(context).pop(code);
+            },
+            child: const Text('确认注销'),
+          ),
+        ],
+      ),
+    ).whenComplete(controller.dispose);
+  }
+
+  void _showDeletionMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+  }
+
   Future<void> _confirmLogout() async {
     if (_deleting) return;
     final confirmed = await showCupertinoDialog<bool>(
@@ -485,6 +600,7 @@ class _ProfilePageState extends State<ProfilePage>
                                   onDeleteFriend: () => _confirmDeleteAgent(
                                     popOverlayRoute: true,
                                   ),
+                                  onDeleteAccount: _confirmDeleteAccount,
                                 ),
                                 refreshStatsOnReturn: true,
                               ),

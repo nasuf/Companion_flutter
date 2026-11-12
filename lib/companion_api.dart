@@ -121,6 +121,7 @@ abstract class _CompanionApiCore {
       phone: session.phone,
       wechatBound: session.wechatBound,
       realnameRequired: session.realnameRequired,
+      deletionCancelled: session.deletionCancelled,
     );
   }
 

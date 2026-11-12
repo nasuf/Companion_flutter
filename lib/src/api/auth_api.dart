@@ -120,6 +120,26 @@ mixin _CompanionApiAuth on _CompanionApiCore {
     return parseRealnameSteps(json['required']);
   }
 
+  /// 给已绑定手机号发注销验证码。返回是否需要验证码（没绑手机号时不需要）。
+  Future<bool> sendAccountDeletionCode() async {
+    final json =
+        await _request('POST', '/auth/account/deletion/code')
+            as Map<String, dynamic>;
+    return json['code_required'] as bool? ?? false;
+  }
+
+  /// 申请注销：7 天冷静期，期间重新登录即撤销。返回到期删除时间。
+  Future<DateTime?> requestAccountDeletion({String? code}) async {
+    final json =
+        await _request(
+              'POST',
+              '/auth/account/deletion',
+              body: {if (code != null && code.isNotEmpty) 'code': code},
+            )
+            as Map<String, dynamic>;
+    return DateTime.tryParse(json['deletion_due_at'] as String? ?? '');
+  }
+
   Future<AuthSession> getMe(String token) async {
     authToken = token;
     final json = await _request('GET', '/auth/me') as Map<String, dynamic>;

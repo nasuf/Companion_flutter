@@ -625,12 +625,14 @@ class _PrivacySecurityPage extends StatefulWidget {
     required this.session,
     this.initialStats,
     required this.onDeleteFriend,
+    required this.onDeleteAccount,
   });
 
   final CompanionApi api;
   final AuthSession session;
   final ProfileStats? initialStats;
   final VoidCallback onDeleteFriend;
+  final VoidCallback onDeleteAccount;
 
   @override
   State<_PrivacySecurityPage> createState() => _PrivacySecurityPageState();
@@ -749,8 +751,7 @@ class _PrivacySecurityPageState extends State<_PrivacySecurityPage> {
           _SettingsActionButton(
             label: '注销账号',
             destructive: true,
-            enabled: false,
-            onTap: () {},
+            onTap: widget.onDeleteAccount,
           ),
         ],
       ),
