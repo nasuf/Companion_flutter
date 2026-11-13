@@ -1212,4 +1212,36 @@ void main() {
       expect(find.text('4″'), findsOneWidget);
     });
   });
+
+  testWidgets('message text and composer expose platform text selection', (
+    tester,
+  ) async {
+    const content = '可复制的一条聊天消息';
+    final at = DateTime(2026, 3, 1, 10, 0);
+    await _withChat(
+      tester,
+      (api, peers) async {
+        expect(
+          find.descendant(
+            of: find.byType(SelectionArea),
+            matching: find.textContaining(content),
+          ),
+          findsOneWidget,
+        );
+        final field = tester.widget<ExtendedTextField>(
+          find.byType(ExtendedTextField),
+        );
+        expect(field.enableInteractiveSelection, isTrue);
+      },
+      initialHistory: [
+        ChatMessage.fromJson({
+          'id': 'msg-text-select',
+          'conversation_id': 'conv',
+          'role': 'assistant',
+          'content': content,
+          'created_at': at.toIso8601String(),
+        }),
+      ],
+    );
+  });
 }

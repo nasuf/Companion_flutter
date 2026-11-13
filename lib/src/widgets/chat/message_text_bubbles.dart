@@ -66,17 +66,19 @@ class _MessageTextBubble extends StatelessWidget {
               alpha: 0.35 * progress,
             ),
           );
-          return Text.rich(
-            TextSpan(
-              children: emojiAwareSpans(
-                text: message.content,
-                baseStyle: baseStyle,
-                emojiSize: 18,
-                wrapPlainText: (chunk) => highlightedSpans(
-                  text: chunk,
-                  query: highlightQuery ?? '',
+          return SelectionArea(
+            child: Text.rich(
+              TextSpan(
+                children: emojiAwareSpans(
+                  text: message.content,
                   baseStyle: baseStyle,
-                  highlightStyle: highlightStyle,
+                  emojiSize: 18,
+                  wrapPlainText: (chunk) => highlightedSpans(
+                    text: chunk,
+                    query: highlightQuery ?? '',
+                    baseStyle: baseStyle,
+                    highlightStyle: highlightStyle,
+                  ),
                 ),
               ),
             ),
@@ -400,12 +402,14 @@ class _VoiceMessageBubbleState extends State<_VoiceMessageBubble> {
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: _chatHairline(context)),
                     ),
-                    child: Text(
-                      transcript,
-                      style: TextStyle(
-                        color: AppColors.text,
-                        fontSize: 13,
-                        height: 1.42,
+                    child: SelectionArea(
+                      child: Text(
+                        transcript,
+                        style: TextStyle(
+                          color: AppColors.text,
+                          fontSize: 13,
+                          height: 1.42,
+                        ),
                       ),
                     ),
                   )

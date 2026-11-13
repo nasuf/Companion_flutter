@@ -200,6 +200,7 @@ class _Composer extends StatelessWidget {
                           controller: controller,
                           focusNode: focusNode,
                           cursorColor: chatVoiceAccent,
+                          enableInteractiveSelection: true,
                           minLines: 1,
                           maxLines: resolvingLink ? 1 : 3,
                           keyboardType: TextInputType.multiline,
@@ -355,24 +356,83 @@ class _Composer extends StatelessWidget {
     BuildContext context,
     ExtendedEditableTextState editableTextState,
   ) {
-    final items = editableTextState.contextMenuButtonItems
-        .map(
-          (item) => item.type == ContextMenuButtonType.paste
-              ? ContextMenuButtonItem(
-                  type: item.type,
-                  label: item.label,
-                  onPressed: () {
-                    editableTextState.hideToolbar();
-                    unawaited(_handlePasteFromToolbar());
-                  },
-                )
-              : item,
-        )
-        .toList();
+    // Android defers the whole toolbar until clipboardStatus leaves `unknown`,
+    // which often yields an empty menu (no paste on an empty field). Kick off
+    // the probe but still build a paste item optimistically for the composer.
+    editableTextState.clipboardStatus.update();
+    _primeAndroidComposerWordSelection(editableTextState);
+    final items = _composerContextMenuItems(editableTextState);
     return AdaptiveTextSelectionToolbar.buttonItems(
       anchors: editableTextState.contextMenuAnchors,
       buttonItems: items,
     );
+  }
+
+  /// Long-press on Android often opens the toolbar before a word is selected,
+  /// leaving only "Select all". Prime word selection so copy/cut/paste appear.
+  void _primeAndroidComposerWordSelection(
+    ExtendedEditableTextState editableTextState,
+  ) {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    final value = editableTextState.textEditingValue;
+    if (value.text.isEmpty || !value.selection.isCollapsed) return;
+    editableTextState.renderEditable.selectWord(
+      cause: SelectionChangedCause.longPress,
+    );
+  }
+
+  List<ContextMenuButtonItem> _composerContextMenuItems(
+    ExtendedEditableTextState editableTextState,
+  ) {
+    ContextMenuButtonItem composerPasteItem() => ContextMenuButtonItem(
+      type: ContextMenuButtonType.paste,
+      onPressed: () {
+        editableTextState.hideToolbar();
+        unawaited(_handlePasteFromToolbar());
+      },
+    );
+
+    final mapped = editableTextState.contextMenuButtonItems
+        .map(
+          (item) => item.type == ContextMenuButtonType.paste
+              ? composerPasteItem()
+              : item,
+        )
+        .toList();
+
+    final hasPaste = mapped.any(
+      (item) => item.type == ContextMenuButtonType.paste,
+    );
+    if (!hasPaste) {
+      final paste = composerPasteItem();
+      final selectAllIndex = mapped.indexWhere(
+        (item) => item.type == ContextMenuButtonType.selectAll,
+      );
+      if (selectAllIndex >= 0) {
+        mapped.insert(selectAllIndex, paste);
+      } else {
+        mapped.insert(0, paste);
+      }
+    }
+
+    if (mapped.isNotEmpty) {
+      return mapped;
+    }
+
+    // Empty field on Android: default items are empty — at least offer paste.
+    final fallback = <ContextMenuButtonItem>[composerPasteItem()];
+    if (editableTextState.selectAllEnabled) {
+      fallback.add(
+        ContextMenuButtonItem(
+          type: ContextMenuButtonType.selectAll,
+          onPressed: () {
+            editableTextState.hideToolbar();
+            editableTextState.selectAll(SelectionChangedCause.toolbar);
+          },
+        ),
+      );
+    }
+    return fallback;
   }
 
   Future<void> _handlePasteFromToolbar() async {
