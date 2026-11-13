@@ -642,12 +642,32 @@ class _PrivacySecurityPageState extends State<_PrivacySecurityPage> {
   ProfileStats? _stats;
   bool _loading = false;
   String? _error;
+  RealnameRecord? _realname;
+  bool _realnameFailed = false;
 
   @override
   void initState() {
     super.initState();
     _stats = widget.initialStats;
     _refreshStats();
+    _refreshRealname();
+  }
+
+  Future<void> _refreshRealname() async {
+    try {
+      widget.api.authToken = widget.session.token;
+      final record = await widget.api.getRealnameRecord();
+      if (mounted) setState(() => _realname = record);
+    } catch (error) {
+      debugPrint('[privacy] realname record: $error');
+      if (mounted) setState(() => _realnameFailed = true);
+    }
+  }
+
+  String get _realnameStatusLabel {
+    final record = _realname;
+    if (record != null) return record.statusLabel;
+    return _realnameFailed ? '暂不可用' : '同步中...';
   }
 
   Future<void> _refreshStats() async {
@@ -705,19 +725,31 @@ class _PrivacySecurityPageState extends State<_PrivacySecurityPage> {
             ],
           ),
           const SizedBox(height: 12),
-          const _SubCard(
+          _SubCard(
             children: [
-              _SubSectionHeader('实名认证'),
-              _SubCardRow(label: '认证状态', value: '未认证'),
-              _SubCardRow(label: '姓名', value: '未填写'),
-              _SubCardRow(label: '身份证号', value: '未填写', showDivider: false),
+              const _SubSectionHeader('实名认证'),
+              _SubCardRow(label: '认证状态', value: _realnameStatusLabel),
+              _SubCardRow(label: '姓名', value: _realname?.maskedName ?? '未填写'),
+              _SubCardRow(
+                label: '身份证号',
+                value: _realname?.maskedIdNumber ?? '未填写',
+                showDivider: false,
+              ),
             ],
           ),
           const SizedBox(height: 12),
-          const _SubCard(
+          _SubCard(
             children: [
-              _SubSectionHeader('适龄验证'),
-              _SubCardRow(label: '适龄状态', value: '成年人（18+）', showDivider: false),
+              const _SubSectionHeader('适龄验证'),
+              _SubCardRow(
+                label: '适龄状态',
+                value: switch (_realname?.status) {
+                  'verified' => '成年人（18+）',
+                  'minor' => '未满 18 周岁',
+                  _ => '未验证',
+                },
+                showDivider: false,
+              ),
             ],
           ),
           const SizedBox(height: 12),

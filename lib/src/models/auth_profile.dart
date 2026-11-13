@@ -178,6 +178,44 @@ class AuthSession {
 List<String> parseRealnameSteps(Object? raw) =>
     raw is List ? raw.whereType<String>().toList(growable: false) : const [];
 
+/// 隐私中心展示的本人实名记录（`GET /auth/realname`）。姓名、证件号均已打码。
+class RealnameRecord {
+  const RealnameRecord({
+    required this.status,
+    this.maskedName,
+    this.maskedIdNumber,
+    this.verifiedAt,
+  });
+
+  /// `verified` / `minor` / `rejected`；null 表示从未提交过。
+  final String? status;
+  final String? maskedName;
+  final String? maskedIdNumber;
+  final DateTime? verifiedAt;
+
+  bool get verified => status == 'verified';
+
+  String get statusLabel => switch (status) {
+    'verified' => '已认证',
+    'minor' => '未成年，已限制使用',
+    'rejected' => '认证未通过',
+    _ => '未认证',
+  };
+
+  factory RealnameRecord.fromJson(Map<String, dynamic> json) {
+    final record = json['record'];
+    if (record is! Map) return const RealnameRecord(status: null);
+    String? text(Object? v) => v is String && v.isNotEmpty ? v : null;
+    final at = text(record['verified_at']);
+    return RealnameRecord(
+      status: text(record['status']),
+      maskedName: text(record['masked_name']),
+      maskedIdNumber: text(record['masked_id_number']),
+      verifiedAt: at == null ? null : DateTime.tryParse(at)?.toLocal(),
+    );
+  }
+}
+
 /// 用户在圆形取景框里框定的正方形，坐标是**源图像素**（EXIF 校正后）。
 ///
 /// 不在客户端出成品图: Flutter 只能编码 PNG，一张 512² 的照片 PNG 约 400KB，

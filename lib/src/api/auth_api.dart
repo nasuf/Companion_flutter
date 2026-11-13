@@ -120,6 +120,13 @@ mixin _CompanionApiAuth on _CompanionApiCore {
     return parseRealnameSteps(json['required']);
   }
 
+  /// 本人实名记录（隐私中心展示）。
+  Future<RealnameRecord> getRealnameRecord() async {
+    final json =
+        await _request('GET', '/auth/realname') as Map<String, dynamic>;
+    return RealnameRecord.fromJson(json);
+  }
+
   /// 给已绑定手机号发注销验证码。返回是否需要验证码（没绑手机号时不需要）。
   Future<bool> sendAccountDeletionCode() async {
     final json =

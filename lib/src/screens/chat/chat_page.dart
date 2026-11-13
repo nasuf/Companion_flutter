@@ -1406,6 +1406,10 @@ class _ChatPageState extends State<ChatPage>
         case ChatSocketStatus.closed:
           _localTyping?.stop();
           _remoteTyping.clear();
+          if (state.realnameRequired && widget.onRealnameRequired != null) {
+            widget.onRealnameRequired!();
+            break;
+          }
           if (state.code == 4403 && _agentTasks.isNotEmpty) {
             setState(_agentTasks.clear);
           }

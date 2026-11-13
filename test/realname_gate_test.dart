@@ -44,4 +44,32 @@ void main() {
     expect(denied.realnameRequired, isFalse);
     expect(denied.toString(), '无权访问此会话');
   });
+
+  test('privacy center reads the masked real-name record', () {
+    final verified = RealnameRecord.fromJson({
+      'record': {
+        'status': 'verified',
+        'masked_name': '张*',
+        'masked_id_number': '1****************X',
+        'verified_at': '2026-11-13T12:00:00+00:00',
+      },
+    });
+    expect(verified.verified, isTrue);
+    expect(verified.statusLabel, '已认证');
+    expect(verified.maskedName, '张*');
+    expect(verified.maskedIdNumber, '1****************X');
+    expect(verified.verifiedAt, isNotNull);
+
+    // 从未提交 / 旧服务端没有 record 字段 / 被后台重置
+    final none = RealnameRecord.fromJson({'record': null});
+    expect(none.statusLabel, '未认证');
+    expect(none.maskedName, isNull);
+    expect(RealnameRecord.fromJson({}).statusLabel, '未认证');
+    expect(
+      RealnameRecord.fromJson({
+        'record': {'status': 'minor'},
+      }).statusLabel,
+      '未成年，已限制使用',
+    );
+  });
 }

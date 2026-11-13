@@ -260,11 +260,15 @@ class ChatSocket {
     if (_socket != socket) return;
     _stopKeepalive();
     _socket = null;
+    // 连接中途实名门槛生效（后台重置实名 / 加进名单）：服务端以 4403 关闭。
+    final realname =
+        socket.closeCode == 4403 && socket.closeReason == 'realname_required';
     _states.add(
       ChatSocketState(
         ChatSocketStatus.closed,
         code: socket.closeCode,
         reason: socket.closeReason,
+        realnameRequired: realname,
       ),
     );
     if (!_intentionalClose && socket.closeCode != 4403) _scheduleReconnect();
