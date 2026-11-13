@@ -14,6 +14,28 @@ REMOTE_SCRIPT="$SCRIPT_DIR/publish_android_apk_remote.py"
 RELEASE_CERT_SHA256="9d9845f19d19dd953edcd1ddd08628a9e5374f1dad12c40df86e61c48243a658"
 
 fail() { echo "Publish failed: $*" >&2; exit 1; }
+
+# Keep in sync with androidVersionCode() in android/app/build.gradle.kts.
+android_version_code() {
+  local name="$1" build="$2"
+  local major minor patch
+  IFS='.' read -r major minor patch <<< "$name"
+  echo $(( 10#$major * 10000000 + 10#$minor * 100000 + 10#$patch * 1000 + 10#$build ))
+}
+
+# Encoded versionCodes map back to that version's own build number.
+# Older APKs stored the build number directly in versionCode.
+public_build_number() {
+  local version_name="$1" version_code="$2"
+  local encoded_build expected
+  encoded_build=$(( 10#$version_code % 1000 ))
+  expected="$(android_version_code "$version_name" "$encoded_build")"
+  if [[ "$version_code" == "$expected" ]]; then
+    echo "$encoded_build"
+  else
+    echo "$version_code"
+  fi
+}
 started_at=$SECONDS
 step() { printf '[%s +%ss] [%s/7] %s\n' "$(date +%H:%M:%S)" "$((SECONDS - started_at))" "$1" "$2" >&2; }
 [[ "$#" -le 1 ]] || { usage >&2; exit 1; }
@@ -154,8 +176,11 @@ aapt="$(android_tool aapt)"
 apksigner="$(android_tool apksigner)"
 run_bounded 60 "$aapt" dump badging "$snapshot" > "$work_dir/badging.txt"
 package="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" "$work_dir/badging.txt")"
-build_number="$(sed -n "s/^package:.*versionCode='\([0-9]*\)'.*/\1/p" "$work_dir/badging.txt")"
+version_code="$(sed -n "s/^package:.*versionCode='\([0-9]*\)'.*/\1/p" "$work_dir/badging.txt")"
 build_name="$(sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p" "$work_dir/badging.txt")"
+# New APKs encode versionCode from the version name plus that version's own
+# build number. Older APKs stored the build number itself.
+build_number="$(public_build_number "$build_name" "$version_code")"
 [[ "$package" == "com.bansheng.prod" ]] || fail "Only com.bansheng.prod APKs may be published."
 if grep -q 'application-debuggable' "$work_dir/badging.txt"; then fail "Debuggable APKs cannot be published."; fi
 version="$build_name+$build_number"

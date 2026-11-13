@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Release APK counterpart of build-testflight.sh.
 # Version comes from the same pubspec.yaml line both stores ship
-# (`0.5.0+3` → versionName + versionCode). Output is copied to
-#   build/android/bansheng-0.5.0+3.apk (prod release)
+# (`0.6.2+2` → versionName 0.6.2, build 2 of that version). Output is copied to
+#   build/android/bansheng-0.6.2+2.apk (prod release)
 #
 # Default flavor is prod: WeChat Android only allows one package name, and
 # that must be com.bansheng.prod (same as the store). Flavor dev still
@@ -121,6 +121,18 @@ find_aapt() {
   ls -1d "$sdk"/build-tools/*/aapt 2>/dev/null | tail -1 || true
 }
 
+# Keep in sync with androidVersionCode() in android/app/build.gradle.kts.
+android_version_code() {
+  local name="$1" build="$2"
+  local major minor patch
+  IFS='.' read -r major minor patch <<< "$name"
+  if (( 10#$major > 99 || 10#$minor > 99 || 10#$patch > 99 || 10#$build > 999 )); then
+    echo "Cannot encode $name+$build as an Android versionCode." >&2
+    return 1
+  fi
+  echo $(( 10#$major * 10000000 + 10#$minor * 100000 + 10#$patch * 1000 + 10#$build ))
+}
+
 verify_apk_identity() {
   local apk="$1"
   local aapt
@@ -148,11 +160,13 @@ verify_apk_identity() {
   fi
   echo "Verified versionName:   $actual_name"
 
-  if [[ "$actual_code" != "$build_number" ]]; then
-    echo "Built APK versionCode is '$actual_code' but expected '$build_number'." >&2
+  local expected_code
+  expected_code="$(android_version_code "$build_name" "$build_number")"
+  if [[ "$actual_code" != "$expected_code" ]]; then
+    echo "Built APK versionCode is '$actual_code' but $build_name+$build_number encodes to '$expected_code'." >&2
     exit 1
   fi
-  echo "Verified versionCode:   $actual_code"
+  echo "Verified versionCode:   $actual_code ($build_name+$build_number)"
 }
 
 print_wechat_signature() {

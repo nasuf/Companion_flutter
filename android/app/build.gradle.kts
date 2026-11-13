@@ -18,6 +18,21 @@ if (hasReleaseSigning) {
     releaseKeyPropertiesFile.inputStream().use { releaseKeyProperties.load(it) }
 }
 
+// pubspec "0.6.2+2" means version 0.6.2, build 2 of that version. Android's
+// versionCode is a single integer and must increase for every install, so
+// encode both. 0.6.1+15 -> 601015 and 0.6.2+2 -> 602002.
+fun androidVersionCode(versionName: String, buildNumber: Int): Int {
+    val parts = versionName.split('.')
+    require(parts.size == 3) { "Android versionName must be major.minor.patch, got $versionName" }
+    val major = parts[0].toInt()
+    val minor = parts[1].toInt()
+    val patch = parts[2].toInt()
+    require(major in 0..99 && minor in 0..99 && patch in 0..99 && buildNumber in 0..999) {
+        "Cannot encode $versionName+$buildNumber as an Android versionCode"
+    }
+    return major * 10_000_000 + minor * 100_000 + patch * 1_000 + buildNumber
+}
+
 android {
     namespace = "com.bansheng.companion"
     compileSdk = 37
@@ -40,7 +55,7 @@ android {
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 24
         targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
+        versionCode = androidVersionCode(flutter.versionName, flutter.versionCode)
         versionName = flutter.versionName
         manifestPlaceholders["JPUSH_PKGNAME"] = "\${applicationId}"
         manifestPlaceholders["JPUSH_CHANNEL"] = "developer-default"
