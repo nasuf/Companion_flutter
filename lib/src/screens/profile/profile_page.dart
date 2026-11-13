@@ -318,8 +318,9 @@ class _ProfilePageState extends State<ProfilePage>
             isDestructiveAction: true,
             onPressed: () {
               final code = controller.text.trim();
-              if (RegExp(r'^\d{6}$').hasMatch(code))
+              if (RegExp(r'^\d{6}$').hasMatch(code)) {
                 Navigator.of(context).pop(code);
+              }
             },
             child: const Text('确认注销'),
           ),
