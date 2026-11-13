@@ -178,6 +178,36 @@ class AuthSession {
 List<String> parseRealnameSteps(Object? raw) =>
     raw is List ? raw.whereType<String>().toList(growable: false) : const [];
 
+/// 提交前的本地校验，和服务端 `id_number_problem` 同一套规则。
+/// 返回给用户看的提示；格式没问题时返回 null（是否与姓名一致仍由服务端核验）。
+String? idNumberProblem(String raw, {DateTime? today}) {
+  final value = raw.trim().toUpperCase();
+  if (!RegExp(r'^\d{17}[\dX]$').hasMatch(value)) {
+    return '请输入 18 位身份证号（最后一位可以是 X）';
+  }
+  final year = int.parse(value.substring(6, 10));
+  final month = int.parse(value.substring(10, 12));
+  final day = int.parse(value.substring(12, 14));
+  final birth = DateTime(year, month, day);
+  final now = today ?? DateTime.now();
+  if (birth.year != year ||
+      birth.month != month ||
+      birth.day != day ||
+      year < 1900 ||
+      birth.isAfter(DateTime(now.year, now.month, now.day))) {
+    return '身份证号中的出生日期不正确，请核对后重新输入';
+  }
+  const weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2];
+  var total = 0;
+  for (var i = 0; i < 17; i++) {
+    total += int.parse(value[i]) * weights[i];
+  }
+  if ('10X98765432'[total % 11] != value[17]) {
+    return '身份证号有误，请逐位核对后重新输入';
+  }
+  return null;
+}
+
 /// 隐私中心展示的本人实名记录（`GET /auth/realname`）。姓名、证件号均已打码。
 class RealnameRecord {
   const RealnameRecord({

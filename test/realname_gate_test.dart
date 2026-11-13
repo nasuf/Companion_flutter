@@ -45,6 +45,19 @@ void main() {
     expect(denied.toString(), '无权访问此会话');
   });
 
+  test('ID number check tells the user what is wrong', () {
+    final today = DateTime(2026, 11, 13);
+    String? check(String id) => idNumberProblem(id, today: today);
+    expect(check('11010519491231002X'), isNull);
+    expect(check('11010519491231002x'), isNull);
+    expect(check(''), contains('18 位'));
+    expect(check('11010519491231002'), contains('18 位'));
+    expect(check('110105194913310021'), contains('出生日期')); // 13 月
+    expect(check('110105202502300011'), contains('出生日期')); // 2 月 30 日
+    expect(check('110105202701010011'), contains('出生日期')); // 未来
+    expect(check('110105194912310021'), contains('逐位核对')); // 校验位不对
+  });
+
   test('privacy center reads the masked real-name record', () {
     final verified = RealnameRecord.fromJson({
       'record': {

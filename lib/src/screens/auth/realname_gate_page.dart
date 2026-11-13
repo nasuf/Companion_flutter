@@ -117,9 +117,8 @@ class _RealnameGatePageState extends State<RealnameGatePage> {
     final name = _nameController.text.trim();
     final id = _idController.text.trim().toUpperCase();
     if (name.length < 2) return setState(() => _error = '请填写身份证上的姓名');
-    if (!RegExp(r'^\d{17}[\dX]$').hasMatch(id)) {
-      return setState(() => _error = '请输入 18 位身份证号');
-    }
+    final idProblem = idNumberProblem(id);
+    if (idProblem != null) return setState(() => _error = idProblem);
     unawaited(
       _run(() async {
         await widget.api.verifyRealname(
