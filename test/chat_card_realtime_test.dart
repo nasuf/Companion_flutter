@@ -1244,4 +1244,44 @@ void main() {
       ],
     );
   });
+
+  testWidgets('usage reminder sits above the chat and can be tapped away', (
+    tester,
+  ) async {
+    final at = DateTime(2026, 3, 1, 10, 0);
+    await _withChat(
+      tester,
+      (api, peers) async {
+        // 临时测试入口：双击左上角头像
+        final avatar = find.byWidgetPredicate(
+          (w) => w is GestureDetector && w.onDoubleTap != null,
+        );
+        await tester.tap(avatar.first);
+        await tester.pump(const Duration(milliseconds: 60));
+        await tester.tap(avatar.first);
+        await tester.pump(const Duration(milliseconds: 400));
+        final title = find.text('已经连续聊了 2 小时');
+        expect(title, findsOneWidget);
+        // 命中测试的最上层就是提醒卡片：没被消息列表盖住
+        final hits = tester.hitTestOnBinding(tester.getCenter(title));
+        // 最上层命中就是提醒标题本身（被盖住时会先命中消息列表）
+        final paragraph = tester.renderObject(title);
+        expect(hits.path.take(3).any((h) => h.target == paragraph), isTrue);
+        // 点一下立即收起（5 秒自动收起之前）
+        await tester.tap(title, warnIfMissed: false);
+        await tester.pump(const Duration(milliseconds: 600));
+        expect(find.text('已经连续聊了 2 小时'), findsNothing);
+      },
+      initialHistory: [
+        for (var i = 0; i < 30; i++)
+          ChatMessage.fromJson({
+            'id': 'm$i',
+            'conversation_id': 'conv',
+            'role': i.isEven ? 'assistant' : 'user',
+            'content': '第 $i 条消息，用来铺满聊天区域',
+            'created_at': at.add(Duration(minutes: i)).toIso8601String(),
+          }),
+      ],
+    );
+  });
 }

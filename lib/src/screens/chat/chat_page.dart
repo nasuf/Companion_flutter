@@ -5300,19 +5300,6 @@ class _ChatPageState extends State<ChatPage>
       decoration: BoxDecoration(color: _chatCanvasColor(context)),
       child: Stack(
         children: [
-          if (_usageBannerHours != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              top: safeTop + 84,
-              child: _UsageReminderBanner(
-                key: ValueKey('usage-banner-$_usageBannerSerial'),
-                hours: _usageBannerHours!,
-                onDismissed: () {
-                  if (mounted) setState(() => _usageBannerHours = null);
-                },
-              ),
-            ),
           Column(
             children: [
               RepaintBoundary(
@@ -5451,6 +5438,20 @@ class _ChatPageState extends State<ChatPage>
               ),
             ),
           ),
+          // 放在最后: Stack 后画的在上层, 不能被消息列表、输入框和音乐条盖住
+          if (_usageBannerHours != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              top: safeTop + 84,
+              child: _UsageReminderBanner(
+                key: ValueKey('usage-banner-$_usageBannerSerial'),
+                hours: _usageBannerHours!,
+                onDismissed: () {
+                  if (mounted) setState(() => _usageBannerHours = null);
+                },
+              ),
+            ),
         ],
       ),
     );
