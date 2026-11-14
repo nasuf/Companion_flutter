@@ -157,9 +157,9 @@ void main() {
     (t) async {
       final api = _Api();
       await _show(t, api);
-      await t.ensureVisible(find.text('已阅读同意《会员协议与续费条款》'));
+      await t.ensureVisible(find.text('已阅读同意'));
       await t.pump();
-      await t.tap(find.text('已阅读同意《会员协议与续费条款》'));
+      await t.tap(find.text('已阅读同意'));
       await t.pump();
       expect(_button(t, '立即开通').onPressed, isNull);
       expect(_button(t, '兑换激活码').onPressed, isNotNull);
@@ -175,6 +175,25 @@ void main() {
       expect(api.reads, 3);
     },
   );
+  testWidgets('agreement links open legal documents without toggling consent', (
+    t,
+  ) async {
+    final api = _Api()..enabled = true;
+    await _show(t, api);
+    await t.ensureVisible(find.text('《隐私政策》'));
+    await t.pump();
+    await t.tap(find.text('《隐私政策》'));
+    await t.pumpAndSettle();
+    expect(find.text('隐私政策'), findsWidgets);
+    t.state<NavigatorState>(find.byType(Navigator).last).pop();
+    await t.pumpAndSettle();
+    // 点链接不应顺带勾选同意。
+    expect(_button(t, '立即开通').onPressed, isNull);
+    await t.tap(find.text('《会员协议与续费条款》'));
+    await t.pumpAndSettle();
+    expect(find.text('用户协议'), findsWidgets);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('loading and network errors never enable cash recharge', (
     t,
   ) async {

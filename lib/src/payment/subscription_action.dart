@@ -66,6 +66,10 @@ const kIapCreditingLabel = '正在确认到账…';
 const kIapCreditedToast = '已到账';
 const kIapCreditDelayedToast = '到账可能有延迟，请稍后再看';
 
+/// Server `detail` when the transaction's appAccountToken is another user.
+const kIapOwnerMismatchReason = 'transaction_owner_mismatch';
+const kIapOwnerMismatchToast = '这笔购买属于本设备登录过的其他账号，请切换回该账号查看到账';
+
 typedef IapMembershipFetcher = Future<IapMembership> Function();
 
 bool membershipReflectsIapCredit({

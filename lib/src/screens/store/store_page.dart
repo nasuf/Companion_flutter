@@ -236,6 +236,15 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
         });
         _showToast(event.message ?? '购买失败');
       case IapEventType.verifyFailed:
+        // 交易属于设备上登录过的另一个账号：不 complete，原账号登录后照常到账。
+        if (event.message == kIapOwnerMismatchReason) {
+          setState(() {
+            _subscribing = false;
+            _rechargeSubmitting = false;
+          });
+          _showToast(kIapOwnerMismatchToast);
+          return;
+        }
         _showToast(kIapCreditingLabel);
         unawaited(_finishPurchasePolling(event.productId));
     }

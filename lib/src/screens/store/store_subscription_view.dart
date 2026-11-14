@@ -116,6 +116,35 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
     });
   }
 
+  TextStyle _agreementStyle(BuildContext context) => TextStyle(
+    color: _W2b.resolve(context).inkSoft,
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 0,
+    decoration: TextDecoration.none,
+  );
+
+  Widget _agreementLink(
+    BuildContext context,
+    String label, {
+    required String title,
+    required String assetPath,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.of(context).push(
+        CompanionPageRoute<void>(
+          builder: (_) =>
+              _LegalDocumentPage(title: title, assetPath: assetPath),
+        ),
+      ),
+      child: Text(
+        label,
+        style: _agreementStyle(context).copyWith(color: AppColors.accent),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const edge = EdgeInsets.symmetric(horizontal: 12);
@@ -225,16 +254,27 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
                       : null,
                 ),
                 const SizedBox(width: 8),
+                // Apple 3.1.2：订阅购买页必须能打开使用条款与隐私政策。
                 Flexible(
-                  child: Text(
-                    '已阅读同意《会员协议与续费条款》',
-                    style: TextStyle(
-                      color: _W2b.resolve(context).inkSoft,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0,
-                      decoration: TextDecoration.none,
-                    ),
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text('已阅读同意', style: _agreementStyle(context)),
+                      _agreementLink(
+                        context,
+                        '《会员协议与续费条款》',
+                        title: '用户协议',
+                        assetPath: 'assets/legal/service_agreement.txt',
+                      ),
+                      Text('和', style: _agreementStyle(context)),
+                      _agreementLink(
+                        context,
+                        '《隐私政策》',
+                        title: '隐私政策',
+                        assetPath: 'assets/legal/privacy_policy.txt',
+                      ),
+                    ],
                   ),
                 ),
               ],
