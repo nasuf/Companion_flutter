@@ -1,4 +1,6 @@
+import 'package:companion_flutter/companion_api.dart';
 import 'package:companion_flutter/main.dart';
+import 'package:companion_flutter/models.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -39,7 +41,75 @@ class FakeWeChatGateway implements WeChatGateway {
   }
 }
 
+class _BindApi extends CompanionApi {
+  _BindApi() : super(baseUrl: 'http://127.0.0.1');
+  final codes = <String>[];
+
+  @override
+  Future<AuthSession> bindWechat(String code) async {
+    codes.add(code);
+    return AuthSession.fromJson({
+      'token': 't2',
+      'user_id': 'u',
+      'username': 'phone_x',
+      'role': 'user',
+      'has_agent': true,
+      'phone': '138****5678',
+      'wechat_bound': true,
+      'wechat_nickname': '阿涛',
+    });
+  }
+}
+
 void main() {
+  test('bind sends the WeChat code to the bind endpoint', () async {
+    final gateway = FakeWeChatGateway();
+    final service = WeChatLoginService(
+      gateway: gateway,
+      appId: 'wx-test',
+      responseTimeout: const Duration(seconds: 1),
+    );
+    final api = _BindApi();
+
+    final future = service.bind(api: api);
+    await Future<void>.delayed(Duration.zero);
+    gateway.listener!(
+      WeChatAuthResult(errCode: 0, code: 'bind-code', state: gateway.lastState),
+    );
+
+    final session = await future;
+    expect(api.codes, ['bind-code']);
+    expect(session.wechatBound, isTrue);
+    expect(session.wechatNickname, '阿涛');
+    // 改昵称/头像等本地 copyWith 不能把绑定信息清掉
+    expect(session.copyWith(userDisplayName: '山木').wechatNickname, '阿涛');
+    expect(
+      AuthSession.fromJson({
+        'token': 't',
+        'user_id': 'u',
+        'username': 'n',
+      }).wechatNickname,
+      isNull,
+    );
+  });
+
+  test('bind surfaces a cancelled authorisation', () async {
+    final gateway = FakeWeChatGateway();
+    final service = WeChatLoginService(
+      gateway: gateway,
+      appId: 'wx-test',
+      responseTimeout: const Duration(seconds: 1),
+    );
+    final api = _BindApi();
+    final future = service.bind(api: api);
+    await Future<void>.delayed(Duration.zero);
+    gateway.listener!(
+      WeChatAuthResult(errCode: -2, code: null, state: gateway.lastState),
+    );
+    await expectLater(future, throwsA(isA<WeChatLoginException>()));
+    expect(api.codes, isEmpty);
+  });
+
   test('requestAuthCode returns code from matching WeChat response', () async {
     final gateway = FakeWeChatGateway();
     final service = WeChatLoginService(

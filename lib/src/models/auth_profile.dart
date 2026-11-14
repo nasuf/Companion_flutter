@@ -36,6 +36,7 @@ class AuthSession {
     this.conversationId,
     this.phone,
     this.wechatBound = false,
+    this.wechatNickname,
     this.realnameRequired = const [],
     this.deletionCancelled = false,
   });
@@ -69,6 +70,9 @@ class AuthSession {
   /// 已绑定的手机号，服务端已脱敏成 `138****5678`。未绑定为 null。
   final String? phone;
   final bool wechatBound;
+
+  /// 已绑微信时的微信昵称（隐私中心「账号信息」展示）。
+  final String? wechatNickname;
 
   /// 实名门槛还差的步骤，按顺序：`phone` / `id_card` / `minor_blocked`。
   /// 空表示可以聊天。由服务端按 REALNAME_MODE 给出，管理员恒为空。
@@ -134,6 +138,7 @@ class AuthSession {
       conversationId: json['conversation_id'] as String?,
       phone: json['phone'] as String?,
       wechatBound: json['wechat_bound'] as bool? ?? false,
+      wechatNickname: json['wechat_nickname'] as String?,
       realnameRequired: parseRealnameSteps(json['realname_required']),
       deletionCancelled: json['deletion_cancelled'] as bool? ?? false,
     );
@@ -170,6 +175,7 @@ class AuthSession {
       // 改昵称/头像都会把它清掉。
       phone: phone,
       wechatBound: wechatBound,
+      wechatNickname: wechatNickname,
       realnameRequired: realnameRequired,
     );
   }

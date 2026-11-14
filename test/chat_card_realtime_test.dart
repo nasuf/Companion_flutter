@@ -81,6 +81,7 @@ Future<void> _withChat(
   double textScale = 1,
   Size viewportSize = const Size(390, 1200),
   bool shell = false,
+  Duration usageReminderInterval = const Duration(hours: 2),
 }) async {
   await HttpOverrides.runZoned(() async {
     final server = await tester.runAsync(
@@ -144,6 +145,7 @@ Future<void> _withChat(
                     session: session,
                     isActive: true,
                     onOpenSidebar: () {},
+                    usageReminderInterval: usageReminderInterval,
                   ),
                 ),
         ),
@@ -1252,13 +1254,11 @@ void main() {
     await _withChat(
       tester,
       (api, peers) async {
-        // 临时测试入口：双击左上角头像
-        final avatar = find.byWidgetPredicate(
-          (w) => w is GestureDetector && w.onDoubleTap != null,
+        // 间隔设成 2 秒：计时用真实时间，定时器用测试时间，两边都推过到点
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 2200)),
         );
-        await tester.tap(avatar.first);
-        await tester.pump(const Duration(milliseconds: 60));
-        await tester.tap(avatar.first);
+        await tester.pump(const Duration(seconds: 4));
         await tester.pump(const Duration(milliseconds: 400));
         final title = find.text('已经连续聊了 2 小时');
         expect(title, findsOneWidget);
@@ -1269,9 +1269,12 @@ void main() {
         expect(hits.path.take(3).any((h) => h.target == paragraph), isTrue);
         // 点一下立即收起（5 秒自动收起之前）
         await tester.tap(title, warnIfMissed: false);
+        // 先让点击开始收起动画，再推过动画时长，onDismissed 后重建
+        await tester.pump(const Duration(milliseconds: 100));
         await tester.pump(const Duration(milliseconds: 600));
         expect(find.text('已经连续聊了 2 小时'), findsNothing);
       },
+      usageReminderInterval: const Duration(seconds: 2),
       initialHistory: [
         for (var i = 0; i < 30; i++)
           ChatMessage.fromJson({

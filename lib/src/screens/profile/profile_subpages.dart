@@ -623,6 +623,7 @@ class _PrivacySecurityPage extends StatefulWidget {
   const _PrivacySecurityPage({
     required this.api,
     required this.session,
+    required this.onSessionChanged,
     this.initialStats,
     required this.onDeleteFriend,
     required this.onDeleteAccount,
@@ -630,6 +631,7 @@ class _PrivacySecurityPage extends StatefulWidget {
 
   final CompanionApi api;
   final AuthSession session;
+  final ValueChanged<AuthSession> onSessionChanged;
   final ProfileStats? initialStats;
   final VoidCallback onDeleteFriend;
   final VoidCallback onDeleteAccount;
@@ -644,6 +646,32 @@ class _PrivacySecurityPageState extends State<_PrivacySecurityPage> {
   String? _error;
   RealnameRecord? _realname;
   bool _realnameFailed = false;
+  // 绑定微信后服务端返回的新会话；页面内立即展示，同时冒泡给外层
+  late AuthSession _session = widget.session;
+  bool _bindingWechat = false;
+  final _wechat = WeChatLoginService();
+
+  Future<void> _bindWechat() async {
+    if (_bindingWechat) return;
+    setState(() => _bindingWechat = true);
+    try {
+      widget.api.authToken = _session.token;
+      final updated = await _wechat.bind(api: widget.api);
+      if (!mounted) return;
+      setState(() => _session = updated);
+      widget.onSessionChanged(updated);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已绑定微信，之后可用微信或手机号登录')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_asMessage(error))));
+    } finally {
+      if (mounted) setState(() => _bindingWechat = false);
+    }
+  }
 
   @override
   void initState() {
@@ -655,7 +683,7 @@ class _PrivacySecurityPageState extends State<_PrivacySecurityPage> {
 
   Future<void> _refreshRealname() async {
     try {
-      widget.api.authToken = widget.session.token;
+      widget.api.authToken = _session.token;
       final record = await widget.api.getRealnameRecord();
       if (mounted) setState(() => _realname = record);
     } catch (error) {
@@ -679,7 +707,7 @@ class _PrivacySecurityPageState extends State<_PrivacySecurityPage> {
       _error = null;
     });
     try {
-      widget.api.authToken = widget.session.token;
+      widget.api.authToken = _session.token;
       final stats = await widget.api.fetchProfileStats(
         workspaceId: widget.session.workspaceId,
       );
@@ -710,19 +738,7 @@ class _PrivacySecurityPageState extends State<_PrivacySecurityPage> {
       child: _SubPageContent(
         children: [
           _SubCard(
-            children: [
-              const _SubSectionHeader('绑定信息'),
-              _SubCardRow(
-                label: '绑定手机',
-                value: _maskedPhone(widget.session.username),
-              ),
-              const _SubCardRow(label: '绑定微信', value: '未绑定 ›'),
-              const _SubCardRow(
-                label: '绑定邮箱',
-                value: '未绑定 ›',
-                showDivider: false,
-              ),
-            ],
+            children: [const _SubSectionHeader('账号信息'), ..._accountRows()],
           ),
           const SizedBox(height: 12),
           _SubCard(
@@ -790,10 +806,35 @@ class _PrivacySecurityPageState extends State<_PrivacySecurityPage> {
     );
   }
 
-  static String _maskedPhone(String username) {
-    final digits = username.replaceAll(RegExp(r'\D'), '');
-    if (digits.length < 7) return '未绑定 ›';
-    return '${digits.substring(0, 3)}****${digits.substring(digits.length - 4)} ›';
+  /// 只展示已有的登录方式；手机号账号没绑微信时多一行「绑定微信」。
+  List<Widget> _accountRows() {
+    final phone = _session.phone?.trim();
+    final rows = <({String label, String? value, VoidCallback? onTap})>[
+      if (phone != null && phone.isNotEmpty)
+        (label: '手机号', value: phone, onTap: null),
+      if (_session.wechatBound)
+        (label: '微信', value: _session.wechatNickname ?? '已绑定', onTap: null)
+      else if (phone != null && phone.isNotEmpty)
+        (
+          label: '绑定微信',
+          value: _bindingWechat ? '正在打开微信…' : '去绑定 ›',
+          onTap: _bindingWechat ? null : _bindWechat,
+        ),
+    ];
+    if (rows.isEmpty) {
+      return const [
+        _SubCardRow(label: '登录方式', value: '账号密码', showDivider: false),
+      ];
+    }
+    return [
+      for (var i = 0; i < rows.length; i++)
+        _SubCardRow(
+          label: rows[i].label,
+          value: rows[i].value,
+          onTap: rows[i].onTap,
+          showDivider: i < rows.length - 1,
+        ),
+    ];
   }
 }
 

@@ -38,7 +38,6 @@ class _ChatHeader extends StatelessWidget {
     required this.onOpenSidebar,
     this.onExit,
     this.onStatusTap,
-    this.onAvatarDoubleTap,
     this.showInteraction = true,
   });
 
@@ -57,9 +56,6 @@ class _ChatHeader extends StatelessWidget {
   final VoidCallback onOpenSidebar;
   final VoidCallback? onExit;
   final VoidCallback? onStatusTap;
-
-  /// 测试入口：双击头像预览使用时长提醒。
-  final VoidCallback? onAvatarDoubleTap;
 
   @override
   Widget build(BuildContext context) {
@@ -89,15 +85,11 @@ class _ChatHeader extends StatelessWidget {
           Stack(
             clipBehavior: Clip.none,
             children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onDoubleTap: onAvatarDoubleTap,
-                child: _Avatar(
-                  size: 40,
-                  label: avatarLabel,
-                  imageUrl: avatarUrl,
-                  gradient: const [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
-                ),
+              _Avatar(
+                size: 40,
+                label: avatarLabel,
+                imageUrl: avatarUrl,
+                gradient: const [Color(0xFFE8F3FF), Color(0xFFDDEBFF)],
               ),
               if (isMusicListening)
                 Positioned(

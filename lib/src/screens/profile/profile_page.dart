@@ -597,6 +597,7 @@ class _ProfilePageState extends State<ProfilePage>
                                 _PrivacySecurityPage(
                                   api: widget.api,
                                   session: widget.session,
+                                  onSessionChanged: widget.onSessionChanged,
                                   initialStats: _profileStats,
                                   onDeleteFriend: () => _confirmDeleteAgent(
                                     popOverlayRoute: true,

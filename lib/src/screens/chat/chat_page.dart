@@ -48,6 +48,7 @@ class ChatPage extends StatefulWidget {
     this.onComposerPanelChanged,
     this.onReturnToChatAfterOfflineArrive,
     this.onRealnameRequired,
+    this.usageReminderInterval = const Duration(hours: 2),
   });
 
   final CompanionApi api;
@@ -69,6 +70,9 @@ class ChatPage extends StatefulWidget {
 
   /// 使用中被服务端实名门槛拦截（后台刚开启或加入名单）：由外层刷新会话进入实名页。
   final VoidCallback? onRealnameRequired;
+
+  /// 连续使用提醒间隔。只有测试会改成很短的值。
+  final Duration usageReminderInterval;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -872,7 +876,9 @@ class _ChatPageState extends State<ChatPage>
   }
 
   // ── 连续使用 2 小时提醒（拟人化互动服务管理暂行办法）──
-  final _usageClock = UsageReminderClock();
+  late final _usageClock = UsageReminderClock(
+    interval: widget.usageReminderInterval,
+  );
   Timer? _usageTimer;
   int? _usageBannerHours;
   // 每次触发加 1：重复触发时重新播放动画，普通重建不会重置浮层
@@ -5331,10 +5337,6 @@ class _ChatPageState extends State<ChatPage>
                       ? () => Navigator.of(context).maybePop()
                       : null,
                   onStatusTap: _isTakeover ? _pickTakeoverStatus : null,
-                  // 暂时的测试入口：双击头像预览使用时长提醒
-                  onAvatarDoubleTap: _isTakeover
-                      ? null
-                      : () => _showUsageBanner(2),
                 ),
               ),
               if (_taskBarActivity != null)

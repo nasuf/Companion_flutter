@@ -89,6 +89,17 @@ mixin _CompanionApiAuth on _CompanionApiCore {
     return session;
   }
 
+  /// 已登录用户（如手机号账号）绑定微信：[code] 来自 App 微信授权，流程与微信登录相同。
+  /// 该微信已是另一个账号时服务端返回 409。
+  Future<AuthSession> bindWechat(String code) async {
+    final json =
+        await _request('POST', '/auth/wechat/mobile/bind', body: {'code': code})
+            as Map<String, dynamic>;
+    final session = _normalizeAuthSession(AuthSession.fromJson(json));
+    authToken = session.token;
+    return session;
+  }
+
   /// 已登录用户绑定手机号（短信验证码确认）。返回刷新后的会话（含实名步骤）。
   Future<AuthSession> bindPhone(String phone, String code) async {
     final json =

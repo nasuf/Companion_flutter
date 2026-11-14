@@ -134,6 +134,12 @@ class WeChatLoginService {
     );
   }
 
+  /// 给已登录账号绑定微信：拉起微信授权，拿到 code 交给服务端绑定。
+  Future<AuthSession> bind({required CompanionApi api}) async {
+    final code = await requestAuthCode();
+    return api.bindWechat(code);
+  }
+
   Future<String> requestAuthCode() async {
     final appId = _appId.trim();
     if (appId.isEmpty) {

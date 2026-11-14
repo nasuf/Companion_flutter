@@ -120,6 +120,7 @@ abstract class _CompanionApiCore {
       conversationId: session.conversationId,
       phone: session.phone,
       wechatBound: session.wechatBound,
+      wechatNickname: session.wechatNickname,
       realnameRequired: session.realnameRequired,
       deletionCancelled: session.deletionCancelled,
     );
