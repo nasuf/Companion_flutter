@@ -302,30 +302,33 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
                   ),
                 ),
               ),
-              Text(
-                '|',
-                style: TextStyle(
-                  color: _W2b.resolve(context).inkSoft.withValues(alpha: 0.45),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-              CupertinoButton(
-                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                minimumSize: Size.zero,
-                onPressed: widget.subscribing ? null : widget.onRedeemCode,
-                child: Text(
-                  '兑换激活码',
+              // Apple 3.1.1：iOS 上不能用内购以外的方式解锁 VIP，激活码只在其他端开放。
+              if (defaultTargetPlatform != TargetPlatform.iOS) ...[
+                Text(
+                  '|',
                   style: TextStyle(
-                    color: _W2b.resolve(context).inkSoft,
+                    color: _W2b.resolve(context).inkSoft.withValues(alpha: 0.45),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    letterSpacing: 0,
                     decoration: TextDecoration.none,
                   ),
                 ),
-              ),
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                  minimumSize: Size.zero,
+                  onPressed: widget.subscribing ? null : widget.onRedeemCode,
+                  child: Text(
+                    '兑换激活码',
+                    style: TextStyle(
+                      color: _W2b.resolve(context).inkSoft,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

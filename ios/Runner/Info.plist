@@ -69,12 +69,6 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_dartobservatory._tcp</string>
-	</array>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>允许 Flutter 调试工具连接此设备，以便在开发时运行和诊断应用。</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>用于推荐附近活动，以及在聊天中向 AI 分享你的当前位置。</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

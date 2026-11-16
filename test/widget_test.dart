@@ -172,7 +172,19 @@ void main() {
     expect(find.text('获取验证码'), findsOneWidget);
   });
 
-  for (final method in ['微信登录', '苹果登录', 'QQ登录', '手机号登录']) {
+  testWidgets(
+    'hides apple login on iOS and keeps account and phone login',
+    (tester) async {
+      await pumpLoginPage(tester);
+
+      expect(find.bySemanticsLabel('苹果登录'), findsNothing);
+      expect(find.bySemanticsLabel('账号登录'), findsOneWidget);
+      expect(find.bySemanticsLabel('手机号登录'), findsOneWidget);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
+
+  for (final method in ['微信登录', '苹果登录', '账号登录', '手机号登录']) {
     testWidgets('requires consent before $method', (tester) async {
       await pumpLoginPage(tester);
 
@@ -191,12 +203,12 @@ void main() {
     });
   }
 
-  testWidgets('opens username and password login from QQ entry', (
+  testWidgets('opens username and password login from account entry', (
     tester,
   ) async {
     await pumpLoginPage(tester);
 
-    await tester.tap(find.bySemanticsLabel('QQ登录'));
+    await tester.tap(find.bySemanticsLabel('账号登录'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -237,7 +249,7 @@ void main() {
     _usePhoneCanvas(tester);
     await pumpLoginPage(tester);
 
-    await tester.tap(find.bySemanticsLabel('QQ登录'));
+    await tester.tap(find.bySemanticsLabel('账号登录'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('同意并继续'));

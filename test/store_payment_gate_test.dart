@@ -153,6 +153,17 @@ void main() {
   );
 
   testWidgets(
+    'iOS hides activation code redemption but keeps restore purchases',
+    (t) async {
+      await _show(t, _Api());
+      expect(find.text('恢复购买'), findsOneWidget);
+      expect(find.text('兑换激活码'), findsNothing);
+      expect(t.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
+
+  testWidgets(
     'subscription disabled after consent while redemption stays available; remote toggle updates live',
     (t) async {
       final api = _Api();

@@ -215,7 +215,7 @@ class _LoginPageState extends State<LoginPage>
                       errorMessage: _wechatError,
                       onWechatTap: () =>
                           unawaited(_runAfterConsent(_loginWithWechat)),
-                      onQqTap: () => unawaited(
+                      onAccountTap: () => unawaited(
                         _runAfterConsent(_openUsernamePasswordLogin),
                       ),
                       onPhoneTap: () => unawaited(
@@ -252,7 +252,7 @@ class _LoginCanvas extends StatelessWidget {
     required this.wechatLoading,
     required this.errorMessage,
     required this.onWechatTap,
-    required this.onQqTap,
+    required this.onAccountTap,
     required this.onPhoneTap,
     required this.onUnavailableLogin,
     required this.onTermsToggle,
@@ -265,7 +265,7 @@ class _LoginCanvas extends StatelessWidget {
   final bool wechatLoading;
   final String? errorMessage;
   final VoidCallback onWechatTap;
-  final VoidCallback onQqTap;
+  final VoidCallback onAccountTap;
   final VoidCallback onPhoneTap;
   final ValueChanged<String> onUnavailableLogin;
   final VoidCallback onTermsToggle;
@@ -422,8 +422,12 @@ class _LoginCanvas extends StatelessWidget {
           top: 691,
           width: 240,
           child: _SecondaryLoginRow(
-            onAppleTap: () => onUnavailableLogin('苹果登录'),
-            onQqTap: onQqTap,
+            // Sign in with Apple is not wired up yet; App Review rejects a
+            // visible entry that only says "coming soon" (guideline 2.1).
+            onAppleTap: defaultTargetPlatform == TargetPlatform.iOS
+                ? null
+                : () => onUnavailableLogin('苹果登录'),
+            onAccountTap: onAccountTap,
             onPhoneTap: onPhoneTap,
           ),
         ),
@@ -694,33 +698,36 @@ class _OtherLoginDivider extends StatelessWidget {
 class _SecondaryLoginRow extends StatelessWidget {
   const _SecondaryLoginRow({
     required this.onAppleTap,
-    required this.onQqTap,
+    required this.onAccountTap,
     required this.onPhoneTap,
   });
 
-  final VoidCallback onAppleTap;
-  final VoidCallback onQqTap;
+  /// Null hides the Apple entry.
+  final VoidCallback? onAppleTap;
+  final VoidCallback onAccountTap;
   final VoidCallback onPhoneTap;
 
   @override
   Widget build(BuildContext context) {
+    final appleTap = onAppleTap;
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      mainAxisAlignment: appleTap == null
+          ? MainAxisAlignment.spaceEvenly
+          : MainAxisAlignment.spaceBetween,
       children: [
-        _SecondaryLoginButton(
-          label: '苹果登录',
-          onTap: onAppleTap,
-          icon: const FaIcon(
-            FontAwesomeIcons.apple,
-            color: Colors.white,
-            size: 25,
+        if (appleTap != null)
+          _SecondaryLoginButton(
+            label: '苹果登录',
+            onTap: appleTap,
+            icon: const FaIcon(
+              FontAwesomeIcons.apple,
+              color: Colors.white,
+              size: 25,
+            ),
           ),
-        ),
         _SecondaryLoginButton(
-          label: 'QQ登录',
-          onTap: onQqTap,
-          // Temporary stand-in until QQ login ships. This entry opens
-          // username/password login, so the glyph matches that action.
+          label: '账号登录',
+          onTap: onAccountTap,
           icon: const FaIcon(
             FontAwesomeIcons.userLock,
             color: Colors.white,
