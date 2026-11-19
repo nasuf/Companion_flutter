@@ -275,6 +275,8 @@ class _RealnameGatePageState extends State<RealnameGatePage> {
       controller: _nameController,
       label: '真实姓名',
       icon: CupertinoIcons.person,
+      // Android 上 enableSuggestions=false 会带上 VISIBLE_PASSWORD, 输入法锁成英文键盘打不了中文
+      enableSuggestions: true,
       inputFormatters: [LengthLimitingTextInputFormatter(20)],
     ),
     const SizedBox(height: 12),
@@ -514,6 +516,7 @@ class _RealnameField extends StatelessWidget {
     required this.label,
     required this.icon,
     this.keyboardType,
+    this.enableSuggestions = false,
     this.inputFormatters,
     this.onSubmitted,
     this.trailing,
@@ -523,6 +526,7 @@ class _RealnameField extends StatelessWidget {
   final String label;
   final IconData icon;
   final TextInputType? keyboardType;
+  final bool enableSuggestions;
   final List<TextInputFormatter>? inputFormatters;
   final ValueChanged<String>? onSubmitted;
   final Widget? trailing;
@@ -541,7 +545,9 @@ class _RealnameField extends StatelessWidget {
       inputFormatters: inputFormatters,
       onSubmitted: onSubmitted,
       autocorrect: false,
-      enableSuggestions: false,
+      enableSuggestions: enableSuggestions,
+      // 姓名、证件号不进输入法的个性化词库
+      enableIMEPersonalizedLearning: false,
       style: TextStyle(color: c.text, fontSize: 15),
       cursorColor: c.accent,
       decoration: InputDecoration(
