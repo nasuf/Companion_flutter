@@ -45,7 +45,7 @@ class _Api extends CompanionApi {
 
 Finder get card => find
     .ancestor(
-      of: find.text('真实付费购买'),
+      of: find.text('Apple 内购（iOS）'),
       matching: find.byWidgetPredicate(
         (w) => w.runtimeType.toString() == '_AdminFlagCard',
       ),

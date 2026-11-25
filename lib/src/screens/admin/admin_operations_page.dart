@@ -992,11 +992,12 @@ class _AdminRealMoneyPaymentCardState extends State<_AdminRealMoneyPaymentCard>
     if (widget.session.role != UserRole.admin) return const SizedBox.shrink();
     return _AdminFlagCard(
       marker: '付',
-      title: '真实付费购买',
+      title: 'Apple 内购（iOS）',
       badge: '全局',
       description:
-          '控制订阅、钞票充值和现金体验购买。关闭后相关购买按钮不可点击；'
-          '激活码兑换 VIP、后台赠送钞票和内部余额购买不受影响。',
+          '控制 App 内订阅、钞票充值和现金体验购买。关闭后相关购买按钮不可点击；'
+          '激活码兑换 VIP、后台赠送钞票和内部余额购买不受影响。'
+          '服务号微信支付是独立开关，在 Web 后台设置。',
       scope:
           '与 Web 后台共用配置 · 商城 10 秒内同步，支付前实时检查。'
           '恢复购买、已付款到账继续处理；不会取消已有 Apple 自动续费。',
