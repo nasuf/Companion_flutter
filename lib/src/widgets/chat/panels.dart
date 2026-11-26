@@ -331,7 +331,15 @@ class _MorePanel extends StatelessWidget {
     _ToolAction.activity,
   );
 
-  List<_ToolSpec> get _visibleTools => activityOnly ? const [_activityTool] : _tools;
+  /// 语音通话由后台全局开关控制：没有回调就不显示图标，其余工具顺延补位
+  /// （7 个变 6 个，两行 4 + 2）。
+  List<_ToolSpec> get _visibleTools => activityOnly
+      ? const [_activityTool]
+      : [
+          for (final tool in _tools)
+            if (tool.action != _ToolAction.voiceCall || onVoiceCall != null)
+              tool,
+        ];
 
   @override
   Widget build(BuildContext context) {

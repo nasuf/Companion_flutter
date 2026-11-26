@@ -312,6 +312,12 @@ class _ChatPageState extends State<ChatPage>
   StreamSubscription<void>? _musicCompleteSub;
   StreamSubscription<MusicQuotaReport>? _musicQuotaSub;
   StreamSubscription<List<SharedMediaFile>>? _shareIntentSub;
+  /// 后台「语音通话」全局开关。默认关闭，读不到也按关闭；首屏、回到前台和
+  /// 每次打开加号面板时重新读取，后台切换后下一次打开面板即生效。
+  bool _voiceCallEnabled = false;
+  int _voiceCallFlagGeneration = 0;
+  // 拨号前要先确认开关和麦克风权限，连点时只发起一次。
+  bool _startingVoiceCall = false;
   ComposerPanel _activePanel = ComposerPanel.none;
   ComposerPanel get _panel => _activePanel;
   set _panel(ComposerPanel value) {
@@ -320,6 +326,9 @@ class _ChatPageState extends State<ChatPage>
       _invalidateLocationPreview(notify: false);
     }
     _activePanel = value;
+    if (value == ComposerPanel.more && !_isTakeover) {
+      unawaited(_refreshVoiceCallEnabled());
+    }
     if (value == ComposerPanel.more &&
         AndroidLocationSession.supported &&
         !_isTakeover &&
@@ -673,6 +682,16 @@ class _ChatPageState extends State<ChatPage>
     );
     _bootstrapChat();
     unawaited(_refreshChatQuota());
+    unawaited(_refreshVoiceCallEnabled());
+  }
+
+  Future<void> _refreshVoiceCallEnabled() async {
+    final generation = ++_voiceCallFlagGeneration;
+    final enabled = await widget.api.getVoiceCallEnabled();
+    if (!mounted || generation != _voiceCallFlagGeneration) return;
+    if (enabled == _voiceCallEnabled) return;
+    _voiceCallEnabled = enabled;
+    _bumpComposerShell();
   }
 
   /// CLAUDE.md 权益项 6: "一起听音乐" 走的是同一个 [MusicPlaybackController]
@@ -918,6 +937,7 @@ class _ChatPageState extends State<ChatPage>
       if (state == AppLifecycleState.resumed) {
         _usageClock.resume(DateTime.now());
         _checkUsage();
+        unawaited(_refreshVoiceCallEnabled());
       } else if (state == AppLifecycleState.paused ||
           state == AppLifecycleState.hidden) {
         _usageClock.pause(DateTime.now());
@@ -3889,7 +3909,27 @@ class _ChatPageState extends State<ChatPage>
   }
 
   Future<void> _onVoiceCall() async {
+    if (_startingVoiceCall) return;
+    _startingVoiceCall = true;
+    try {
+      await _startVoiceCall();
+    } finally {
+      _startingVoiceCall = false;
+    }
+  }
+
+  Future<void> _startVoiceCall() async {
     _dismissInputSurfaces();
+    // 面板上的图标可能是开关关闭前渲染的：拨号前再确认一次。
+    if (!await widget.api.getVoiceCallEnabled()) {
+      if (!mounted) return;
+      _voiceCallFlagGeneration++;
+      _voiceCallEnabled = false;
+      _bumpComposerShell();
+      _showRedPacketToast('语音通话暂未开放');
+      return;
+    }
+    if (!mounted) return;
     // Check microphone permission first
     final mic = VoiceMicStream();
     final hasPermission = await mic.checkPermission();

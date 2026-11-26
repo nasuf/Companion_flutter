@@ -52,10 +52,10 @@ class _SubscriptionStoreView extends StatefulWidget {
   /// 所以 `IapProducts.subscriptionPlans` 与续费判断都不受影响。
   final bool showAutoRenewPlan;
 
-  /// 安卓专用：服务号 H5 微信支付能否下单。为 true 时购买按钮改成「去微信购买」。
+  /// 安卓专用：服务号 H5 微信支付能否下单。为 true 时购买按钮点击后弹窗引导去服务号付款。
   final bool wechatPayEnabled;
 
-  /// 安卓专用：点「去微信购买」时调用。
+  /// 安卓专用：点购买按钮时调用。
   final VoidCallback? onOpenWechatStore;
 
   static const _plans = [
@@ -101,9 +101,6 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
       widget.wechatPayEnabled &&
       widget.onOpenWechatStore != null &&
       defaultTargetPlatform != TargetPlatform.iOS;
-
-  String get _buttonLabel =>
-      _viaWechat ? '去微信购买' : widget.subscribeUi.buttonLabel;
 
   VoidCallback? get _onPressed {
     if (widget.subscribeUi.action ==
@@ -248,7 +245,9 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
         Padding(
           padding: edge,
           child: _StorePrimaryButton(
-            label: _buttonLabel,
+            // 文案保持原样（立即开通等）：应用市场审核不允许诱导跳转的按钮文字，
+            // 去微信的说明放在点击后的确认弹窗里。
+            label: widget.subscribeUi.buttonLabel,
             // 未勾选会员协议则置灰不可点（合规要求用户明示同意续费条款）。
             onPressed: _onPressed,
             loading: widget.subscribing,

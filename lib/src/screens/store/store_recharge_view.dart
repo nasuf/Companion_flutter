@@ -41,7 +41,7 @@ class _RechargeStoreView extends StatelessWidget {
   /// iOS 上始终为 false，不显示该入口。
   final bool wechatPayEnabled;
 
-  /// 安卓专用：点击「去微信购买」时调用。
+  /// 安卓专用：点击充值按钮时调用，弹窗引导去服务号付款。
   final VoidCallback? onOpenWechatStore;
 
   /// 安卓的钞票充值走服务号微信支付（没有 Apple 内购）。
@@ -51,10 +51,9 @@ class _RechargeStoreView extends StatelessWidget {
       onOpenWechatStore != null &&
       defaultTargetPlatform != TargetPlatform.iOS;
 
-  String get _submitLabel {
-    if (currency != _StoreCurrency.ticket) return '立即兑换';
-    return _viaWechat ? '去微信充值' : '立即充值';
-  }
+  // 安卓走微信也保持「立即充值」：去微信的说明在点击后的确认弹窗里。
+  String get _submitLabel =>
+      currency == _StoreCurrency.ticket ? '立即充值' : '立即兑换';
 
   VoidCallback? get _onPressed {
     if (currency != _StoreCurrency.ticket) return onSubmit;

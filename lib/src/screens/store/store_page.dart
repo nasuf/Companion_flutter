@@ -8,6 +8,7 @@ class StorePage extends StatefulWidget {
     this.openTicketRecharge = false,
     this.openExchange = false,
     this.openBundle = false,
+    this.wechatLogin,
   });
 
   final CompanionApi api;
@@ -17,6 +18,9 @@ class StorePage extends StatefulWidget {
 
   /// 从聊天/音乐额度弹框跳转购买礼包（音乐畅听券/补签卡）时打开「礼包」tab。
   final bool openBundle;
+
+  /// 手机号账号去微信付款前的绑定流程；测试注入假网关，默认走真实微信授权。
+  final WeChatLoginService? wechatLogin;
 
   @override
   State<StorePage> createState() => _StorePageState();
@@ -49,6 +53,10 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
   // 安卓商城开关（微信支付入口 / 连续包月档位），只在安卓读取。
   AndroidStoreSettings _androidStore = AndroidStoreSettings.closed;
   bool _openingWechatStore = false;
+  // 当前账号是否已绑定微信。初值来自进入商城时的会话，绑定成功后就地更新。
+  late bool _wechatBound = widget.session.wechatBound;
+  late final WeChatLoginService _wechatLogin =
+      widget.wechatLogin ?? WeChatLoginService();
   bool _paymentRefreshRunning = false;
   bool _paymentAuthorizationRunning = false;
   int _paymentGeneration = 0;
@@ -156,41 +164,48 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
     }
   }
 
+  /// 安卓且后台开了微信支付：购买按钮改走服务号（iOS 永远为 false）。
+  bool get _viaWechatStore =>
+      defaultTargetPlatform == TargetPlatform.android &&
+      _androidStore.wechatPayEnabled;
+
   /// 安卓购买入口：引导用户去服务号付款。
   ///
   /// 安卓没有 Apple 内购，微信 APP 支付又要求 App 先上架，所以只能走服务号
   /// H5。微信 SDK 不开放「在微信内打开指定网页」（实测 bad_param），这里
   /// 只能复制服务号名称 + 拉起微信，剩下的步骤由弹窗文字说明。
-  Future<void> _openWechatStore({required bool forTickets}) async {
+  /// 手机号注册、还没绑定微信的账号先绑定：服务号按微信身份认账号，不绑定
+  /// 付了款也到不了这个账号。
+  Future<void> _openWechatStore(String what) async {
     if (_openingWechatStore) return;
-    final what = forTickets ? '钞票' : '会员';
-    final proceed = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('去微信购买'),
-        content: Text(
-          '安卓版在微信服务号「$kWechatServiceAccountName」里购买$what。\n\n'
-          '1. 点「打开微信」，服务号名称已复制\n'
-          '2. 在微信顶部搜索框粘贴并搜索\n'
-          '3. 进入服务号，点底部菜单进入商城\n\n'
-          '请用与本 App 同一个微信号购买，权益会自动到账。',
-        ),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('打开微信'),
-          ),
-        ],
-      ),
-    );
-    if (proceed != true || !mounted || _openingWechatStore) return;
     _openingWechatStore = true;
     try {
+      if (!await _ensureWechatBound() || !mounted) return;
+      final proceed = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (context) => CupertinoAlertDialog(
+          title: const Text('前往微信服务号支付'),
+          content: Text(
+            '安卓版的$what需要在微信服务号「$kWechatServiceAccountName」内完成支付。\n\n'
+            '1. 点「打开微信」，服务号名称已复制\n'
+            '2. 在微信顶部搜索框粘贴并搜索\n'
+            '3. 进入服务号，点底部菜单进入商城\n\n'
+            '请用与本 App 绑定的同一个微信号购买，权益会自动到账。',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('打开微信'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true || !mounted) return;
       await Clipboard.setData(
         const ClipboardData(text: kWechatServiceAccountName),
       );
@@ -201,6 +216,50 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
       if (mounted) _showToast('无法打开微信，请稍后重试');
     } finally {
       _openingWechatStore = false;
+    }
+  }
+
+  /// 已绑定返回 true；未绑定先弹框让用户在 App 内绑定（与「隐私与安全中心 -
+  /// 绑定微信」同一流程），绑定成功才返回 true。
+  Future<bool> _ensureWechatBound() async {
+    // 不用 /auth/me 复查：它会顺带撤销冷静期内的注销申请。会话过期时
+    // 最多多问一次，重复绑定同一个微信在服务端是幂等的。
+    if (_wechatBound) return true;
+    final bind = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('请先绑定微信'),
+        content: const Text(
+          '微信支付需要先把微信绑定到当前账号，付款后的权益才能自动到账。\n\n'
+          '绑定后也可以用微信登录这个账号。',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('绑定微信'),
+          ),
+        ],
+      ),
+    );
+    if (bind != true || !mounted) return false;
+    try {
+      final updated = await _wechatLogin.bind(api: widget.api);
+      if (!mounted) return false;
+      _wechatBound = updated.wechatBound;
+      if (!_wechatBound) {
+        _showToast('微信绑定未完成，请稍后重试');
+        return false;
+      }
+      _showToast('已绑定微信');
+      return true;
+    } catch (error) {
+      if (mounted) _showToast(_asMessage(error));
+      return false;
     }
   }
 
@@ -1088,7 +1147,7 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
         // 用户看不到「管理订阅」，没有任何地方能停掉扣款。
         showAutoRenewPlan: _showAutoRenewPlan,
         wechatPayEnabled: _androidStore.wechatPayEnabled,
-        onOpenWechatStore: () => _openWechatStore(forTickets: false),
+        onOpenWechatStore: () => _openWechatStore('会员'),
         isVip: _isVip,
         vipUntil: _vipUntil,
         subscribeUi: _subscribeUi,
@@ -1105,7 +1164,8 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
         bottomSpace: subscriptionBottomSpace,
       ),
       _StoreSection.bundle => _BundleStoreView(
-        paymentsEnabled: _realMoneyPaymentsEnabled,
+        // 月度 VIP 体验在安卓走服务号，不受 Apple 内购开关影响。
+        paymentsEnabled: _realMoneyPaymentsEnabled || _viaWechatStore,
         ticketBalance: wallet.ticketBalance,
         vipTrialAvailable: _vipTrialAvailable,
         onBuy: _handleBuyBundle,
@@ -1143,7 +1203,7 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
         submitting: _rechargeSubmitting,
         paymentsEnabled: _realMoneyPaymentsEnabled,
         wechatPayEnabled: _androidStore.wechatPayEnabled,
-        onOpenWechatStore: () => _openWechatStore(forTickets: true),
+        onOpenWechatStore: () => _openWechatStore('钞票'),
         priceLabelFor: (pack) => pack.currency == _StoreCurrency.ticket
             ? _iap.priceLabel(IapProducts.ticket(pack.amount))
             : null,
@@ -1153,6 +1213,10 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
   }
 
   Future<void> _handleBuyBundle(_BundleOffer offer, _BundleTier? tier) async {
+    if (offer.isVipTrial && _viaWechatStore) {
+      await _openWechatStore('月度 VIP 体验');
+      return;
+    }
     if (offer.isVipTrial) {
       // ¥1 体验 = Apple IAP 消耗型商品，到账后端记 30 天 VIP（账号限购一次）。
       if (_subscribing) return;

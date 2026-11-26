@@ -177,6 +177,8 @@ class AuthSession {
       wechatBound: wechatBound,
       wechatNickname: wechatNickname,
       realnameRequired: realnameRequired,
+      // 登录后 ensureConversation 会走 copyWith；丢了它就看不到「注销已撤销」提示。
+      deletionCancelled: deletionCancelled,
     );
   }
 }

@@ -25,6 +25,17 @@ mixin _CompanionApiChat on _CompanionApiCore {
     );
   }
 
+  /// 聊天加号面板的全局功能开关 (后台「全局模块开关」)。读不到或格式不对时
+  /// 一律按关闭处理，宁可少一个入口也不让用户点进必然失败的通话。
+  Future<bool> getVoiceCallEnabled() async {
+    try {
+      final json = await _request('GET', '/chat/features');
+      return json is Map && json['voice_call_enabled'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<String> getWebSocketTicket(String conversationId) async {
     try {
       final json =

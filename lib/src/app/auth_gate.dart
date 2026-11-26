@@ -83,8 +83,10 @@ class _AuthGateState extends State<AuthGate> {
       showCupertinoDialog<void>(
         context: context,
         builder: (context) => CupertinoAlertDialog(
-          title: const Text('已撤销注销'),
-          content: const Text('你在冷静期内重新登录，账号注销申请已自动撤销，数据都还在。'),
+          title: const Text('账号注销已撤销'),
+          content: const Text(
+            '你在 7 天冷静期内重新登录了账号，之前提交的注销申请不会再执行，账号和数据都保留。如仍需注销，请重新提交注销申请。',
+          ),
           actions: [
             CupertinoDialogAction(
               onPressed: () => Navigator.of(context).pop(),
