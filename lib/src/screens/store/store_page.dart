@@ -169,6 +169,12 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
       defaultTargetPlatform == TargetPlatform.android &&
       _androidStore.wechatPayEnabled;
 
+  /// 购买按钮能否点击。安卓只看微信支付开关（没有 Apple 内购，Apple 开关
+  /// 对安卓无意义）；其它平台只看 Apple 内购开关。
+  bool get _purchaseEnabled => defaultTargetPlatform == TargetPlatform.android
+      ? _androidStore.wechatPayEnabled
+      : _realMoneyPaymentsEnabled;
+
   /// 安卓购买入口：引导用户去服务号付款。
   ///
   /// 安卓没有 Apple 内购，微信 APP 支付又要求 App 先上架，所以只能走服务号
@@ -1012,6 +1018,27 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _showVipTrialUnavailable() {
+    return showCupertinoDialog<void>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('月度 VIP 体验'),
+        content: Text(
+          _isVip
+              ? '会员有效期内不能购买体验，会员到期后可以购买。'
+              : '每个账号只能体验一次，你已经体验过了。',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showToast(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1147,7 +1174,7 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
         onRestore: _handleRestore,
         onRedeemCode: _handleRedeemCode,
         subscribing: _subscribing,
-        paymentsEnabled: _realMoneyPaymentsEnabled,
+        paymentsEnabled: _purchaseEnabled,
         // 安卓默认隐藏连续包月（服务号 H5 付款没有自动续费能力）。但已有
         // 活跃续费的账号必须留着这个档位：否则在 iOS 订阅、换到安卓登录的
         // 用户看不到「管理订阅」，没有任何地方能停掉扣款。
@@ -1170,10 +1197,8 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
         bottomSpace: subscriptionBottomSpace,
       ),
       _StoreSection.bundle => _BundleStoreView(
-        // 月度 VIP 体验在安卓走服务号，不受 Apple 内购开关影响。
-        paymentsEnabled: _realMoneyPaymentsEnabled || _viaWechatStore,
+        paymentsEnabled: _purchaseEnabled,
         ticketBalance: wallet.ticketBalance,
-        vipTrialAvailable: _vipTrialAvailable,
         onBuy: _handleBuyBundle,
         isBuying: (offer) => _buyingBundles.contains(offer.kind),
         onInsufficientTickets: _showInsufficientTickets,
@@ -1207,7 +1232,7 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
         onSubmit: _handleRecharge,
         onConvertGamePoints: _openGamePointConvert,
         submitting: _rechargeSubmitting,
-        paymentsEnabled: _realMoneyPaymentsEnabled,
+        paymentsEnabled: _purchaseEnabled,
         wechatPayEnabled: _androidStore.wechatPayEnabled,
         onOpenWechatStore: () => _openWechatStore('钞票'),
         priceLabelFor: (pack) => pack.currency == _StoreCurrency.ticket
@@ -1219,6 +1244,12 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
   }
 
   Future<void> _handleBuyBundle(_BundleOffer offer, _BundleTier? tier) async {
+    // 体验卡账号终身限购 1 次、会员期内不卖：按钮照常可点（与订阅 tab 一致），
+    // 不能买的账号在这里说明原因，不拉起 Apple 支付也不去微信。
+    if (offer.isVipTrial && !_vipTrialAvailable) {
+      await _showVipTrialUnavailable();
+      return;
+    }
     if (offer.isVipTrial && _viaWechatStore) {
       await _openWechatStore('月度 VIP 体验');
       return;

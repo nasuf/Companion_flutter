@@ -4,7 +4,6 @@ class _BundleStoreView extends StatefulWidget {
   const _BundleStoreView({
     required this.paymentsEnabled,
     required this.ticketBalance,
-    required this.vipTrialAvailable,
     required this.onBuy,
     required this.isBuying,
     required this.onInsufficientTickets,
@@ -13,7 +12,6 @@ class _BundleStoreView extends StatefulWidget {
 
   final bool paymentsEnabled;
   final num ticketBalance;
-  final bool vipTrialAvailable;
   final void Function(_BundleOffer offer, _BundleTier? tier) onBuy;
   final bool Function(_BundleOffer offer) isBuying;
   final VoidCallback onInsufficientTickets;
@@ -58,7 +56,6 @@ class _BundleStoreViewState extends State<_BundleStoreView> {
           onInsufficientTickets: widget.onInsufficientTickets,
           busy: widget.isBuying(offer),
           paymentsEnabled: widget.paymentsEnabled,
-          vipTrialAvailable: widget.vipTrialAvailable,
         );
       },
     );
@@ -75,7 +72,6 @@ class _BundleCard extends StatelessWidget {
     required this.onBuy,
     required this.onInsufficientTickets,
     required this.busy,
-    required this.vipTrialAvailable,
   });
 
   final bool paymentsEnabled;
@@ -86,10 +82,6 @@ class _BundleCard extends StatelessWidget {
   final VoidCallback onBuy;
   final VoidCallback onInsufficientTickets;
   final bool busy;
-
-  /// 体验卡是否还能买（账号终身限购 1 次，已是会员期间也不卖）。不可购时卡片
-  /// 照常显示、按钮置灰，而不是整张卡藏起来。
-  final bool vipTrialAvailable;
 
   @override
   Widget build(BuildContext context) {
@@ -156,9 +148,9 @@ class _BundleCard extends StatelessWidget {
             tier: selectedTier,
             busy: busy,
             // 钞票礼包的按钮始终可点；钞票不足在点击后弹「去充值」确认框，
-            // 而不是禁用。体验卡在不可购或付费关闭时置灰。
-            vipTrialAvailable: vipTrialAvailable,
-            onPressed: offer.isVipTrial && (!paymentsEnabled || !vipTrialAvailable)
+            // 而不是禁用。体验卡与订阅 tab 一致：只按付费开关决定能否点击，
+            // 限购（已体验过 / 会员期内）在点击后弹框说明。
+            onPressed: offer.isVipTrial && !paymentsEnabled
                 ? null
                 : affordable
                 ? onBuy
@@ -235,14 +227,12 @@ class _BundleBuyButton extends StatelessWidget {
     required this.tier,
     required this.busy,
     required this.onPressed,
-    this.vipTrialAvailable = true,
   });
 
   final _BundleOffer offer;
   final _BundleTier? tier;
   final bool busy;
   final VoidCallback? onPressed;
-  final bool vipTrialAvailable;
 
   @override
   Widget build(BuildContext context) {
@@ -267,11 +257,7 @@ class _BundleBuyButton extends StatelessWidget {
                   )
                 : offer.isVipTrial
                 ? Text(
-                    // 不可购有两种原因（已体验过 / 当前是会员期间），这里不区分，
-                    // 用中性文案，避免对会员用户说「已体验过」。
-                    vipTrialAvailable
-                        ? '¥${offer.yuanPrice} 立即体验'
-                        : '暂不可购买',
+                    '¥${offer.yuanPrice} 立即体验',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 15,

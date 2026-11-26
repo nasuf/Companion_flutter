@@ -217,7 +217,7 @@ void main() {
   );
 
   testWidgets(
-    'subscription disabled after consent while redemption stays available; remote toggle updates live',
+    'iOS subscription stays disabled after consent; remote toggle updates live',
     (t) async {
       final api = _Api();
       await _show(t, api);
@@ -226,7 +226,6 @@ void main() {
       await t.tap(find.text('已阅读同意'));
       await t.pump();
       expect(_button(t, '立即开通').onPressed, isNull);
-      expect(_button(t, '兑换激活码').onPressed, isNotNull);
       expect(find.text('付费购买暂未开放，激活码兑换仍可使用'), findsNothing);
       api.enabled = true;
       await t.pump(const Duration(seconds: 10));
@@ -237,6 +236,59 @@ void main() {
       await t.pump();
       expect(_button(t, '立即开通').onPressed, isNull);
       expect(api.reads, 3);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
+
+  testWidgets(
+    'Android ignores the Apple flag: purchases follow only WeChat Pay',
+    (t) async {
+      // Apple 内购开、微信支付关：安卓三个入口都不可点，文案保持原样；
+      // 激活码兑换不受影响。
+      final api = _Api()..enabled = true;
+      await _show(t, api);
+      await t.ensureVisible(find.text('已阅读同意'));
+      await t.pump();
+      await t.tap(find.text('已阅读同意'));
+      await t.pump();
+      expect(_button(t, '立即开通').onPressed, isNull);
+      expect(_button(t, '兑换激活码').onPressed, isNotNull);
+
+      await t.tap(find.text('充值'));
+      await t.pumpAndSettle();
+      expect(_button(t, '立即充值').onPressed, isNull);
+
+      await t.tap(find.text('礼包'));
+      await t.pumpAndSettle();
+      final trial = find.text('¥1 立即体验');
+      await t.scrollUntilVisible(
+        trial,
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(_button(t, '¥1 立即体验').onPressed, isNull);
+
+      // 微信支付打开后，安卓三个入口都可点（走服务号引导）。
+      api.android = const AndroidStoreSettings(
+        wechatPayEnabled: true,
+        autoRenewPlanEnabled: false,
+      );
+      await t.pump(const Duration(seconds: 10));
+      await t.pumpAndSettle();
+      expect(_button(t, '¥1 立即体验').onPressed, isNotNull);
+      await t.tap(find.text('充值'));
+      await t.pumpAndSettle();
+      expect(_button(t, '立即充值').onPressed, isNotNull);
+      await t.tap(find.text('订阅'));
+      await t.pumpAndSettle();
+      // 切换 tab 后订阅页重建，协议需要重新勾选。
+      expect(_button(t, '立即开通').onPressed, isNull);
+      await t.ensureVisible(find.text('已阅读同意'));
+      await t.pump();
+      await t.tap(find.text('已阅读同意'));
+      await t.pump();
+      expect(_button(t, '立即开通').onPressed, isNotNull);
+      expect(t.takeException(), isNull);
     },
   );
   testWidgets('agreement links open legal documents without toggling consent', (
@@ -284,7 +336,7 @@ void main() {
     await t.pump(const Duration(seconds: 10));
     await t.pump();
     expect(_button(t, '立即充值').onPressed, isNull);
-  });
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
   testWidgets(
     'internal point conversion remains enabled with real-money switch off',
     (t) async {
@@ -443,35 +495,43 @@ void main() {
     expect(api.meReads, 0);
   });
 
-  testWidgets('a used-up VIP trial stays visible but not purchasable', (
+  testWidgets('VIP trial button follows only the payment flag, like plans', (
     t,
   ) async {
-    // 已体验过 / 已是会员期间都不可购。卡片必须照常显示（与订阅 tab 一致），
-    // 只是按钮置灰，而不是整张卡在 iOS 上消失。
+    // 已体验过：开关打开时按钮照常可点、文案不变，点击后才说明限购，
+    // 不拉起 Apple 支付。
     final api = _Api()
       ..enabled = true
       ..trialAvailable = false;
     await _show(t, api, bundle: true);
     await t.pump();
-    final trial = find.textContaining('暂不可购买');
+    final trial = find.textContaining('立即体验');
     await t.scrollUntilVisible(
       trial,
       200,
       scrollable: find.byType(Scrollable).last,
     );
-    expect(find.text('月度 VIP 体验'), findsOneWidget);
-    expect(
-      t
-          .widget<CupertinoButton>(
-            find.ancestor(of: trial, matching: find.byType(CupertinoButton)).first,
-          )
-          .onPressed,
-      isNull,
-    );
-    // 其它礼包不受影响。
-    expect(_button(t, '购买').onPressed, isNotNull);
+    expect(find.text('¥1 立即体验'), findsOneWidget);
+    expect(find.textContaining('暂不可购买'), findsNothing);
+    final button = find
+        .ancestor(of: trial, matching: find.byType(CupertinoButton))
+        .first;
+    expect(t.widget<CupertinoButton>(button).onPressed, isNotNull);
+    await t.tap(trial);
+    await t.pumpAndSettle();
+    expect(find.text('每个账号只能体验一次，你已经体验过了。'), findsOneWidget);
+    expect(find.textContaining('将支付'), findsNothing);
+    await t.tap(find.text('知道了'));
+    await t.pumpAndSettle();
+
+    // 开关关闭：与订阅 tab 一样只是不可点，文案保持不变。
+    api.enabled = false;
+    await t.pump(const Duration(seconds: 10));
+    await t.pumpAndSettle();
+    expect(find.text('¥1 立即体验'), findsOneWidget);
+    expect(t.widget<CupertinoButton>(button).onPressed, isNull);
     expect(t.takeException(), isNull);
-  });
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 
   testWidgets('Android VIP trial opens the WeChat guide instead of IAP', (
     t,
