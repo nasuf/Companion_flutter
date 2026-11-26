@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 class _Api extends CompanionApi {
   _Api() : super(baseUrl: 'https://synthetic.test');
   bool enabled = false, fails = false, autoRenew = false;
+  bool trialAvailable = true;
   Completer<bool>? gate;
   int reads = 0;
   AndroidStoreSettings android = AndroidStoreSettings.closed;
@@ -48,7 +49,7 @@ class _Api extends CompanionApi {
         vip: VipStatus(
           isVip: autoRenew,
           vipUntil: null,
-          vipTrialAvailable: true,
+          vipTrialAvailable: trialAvailable,
           giftTicketBalance: 0,
           ticketBalance: 1000,
           pointBalance: 1000,
@@ -440,6 +441,36 @@ void main() {
     // 已绑定账号的引导框不重复说「绑定成功」。
     expect(find.textContaining('微信已绑定成功'), findsNothing);
     expect(api.meReads, 0);
+  });
+
+  testWidgets('a used-up VIP trial stays visible but not purchasable', (
+    t,
+  ) async {
+    // 已体验过 / 已是会员期间都不可购。卡片必须照常显示（与订阅 tab 一致），
+    // 只是按钮置灰，而不是整张卡在 iOS 上消失。
+    final api = _Api()
+      ..enabled = true
+      ..trialAvailable = false;
+    await _show(t, api, bundle: true);
+    await t.pump();
+    final trial = find.textContaining('暂不可购买');
+    await t.scrollUntilVisible(
+      trial,
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('月度 VIP 体验'), findsOneWidget);
+    expect(
+      t
+          .widget<CupertinoButton>(
+            find.ancestor(of: trial, matching: find.byType(CupertinoButton)).first,
+          )
+          .onPressed,
+      isNull,
+    );
+    // 其它礼包不受影响。
+    expect(_button(t, '购买').onPressed, isNotNull);
+    expect(t.takeException(), isNull);
   });
 
   testWidgets('Android VIP trial opens the WeChat guide instead of IAP', (
