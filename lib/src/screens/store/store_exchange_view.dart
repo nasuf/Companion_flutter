@@ -1,20 +1,12 @@
 part of 'package:companion_flutter/main.dart';
 
-const _exchangeTabs = [
-  _ExchangeCategory.gift,
-  _ExchangeCategory.blind,
-  _ExchangeCategory.outfit,
-];
-
 const _storeListFade = 28.0;
 
 class _ExchangeStoreView extends StatelessWidget {
   const _ExchangeStoreView({
     required this.points,
     required this.isVip,
-    required this.selectedCategory,
     required this.selectedGiftSubcategory,
-    required this.onCategoryChanged,
     required this.onGiftSubcategoryChanged,
     required this.onInsufficientPoints,
     required this.onExchange,
@@ -24,9 +16,7 @@ class _ExchangeStoreView extends StatelessWidget {
 
   final int points;
   final bool isVip;
-  final _ExchangeCategory selectedCategory;
   final _GiftSubcategory selectedGiftSubcategory;
-  final ValueChanged<_ExchangeCategory> onCategoryChanged;
   final ValueChanged<_GiftSubcategory> onGiftSubcategoryChanged;
   final VoidCallback onInsufficientPoints;
   final ValueChanged<_StoreProduct> onExchange;
@@ -35,38 +25,23 @@ class _ExchangeStoreView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final products = _exchangeProducts.where((item) {
-      if (item.category != selectedCategory) return false;
-      if (selectedCategory == _ExchangeCategory.gift) {
-        return item.giftSubcategory == selectedGiftSubcategory;
-      }
-      return true;
-    }).toList();
+    // 兑换页只卖礼物：礼物的子分类直接作为顶层 tab。
+    final products = _exchangeProducts
+        .where(
+          (item) =>
+              item.category == _ExchangeCategory.gift &&
+              item.giftSubcategory == selectedGiftSubcategory,
+        )
+        .toList();
     return Column(
       children: [
         Padding(
-          // top 与充值页的顶部 tab 对齐（同为 8），切换 tab 时第一级分段栏不上下跳。
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-          child: AnimatedSize(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.topCenter,
-            child: Column(
-              children: [
-                _ExchangeCategoryBar(
-                  selected: selectedCategory,
-                  onSelected: onCategoryChanged,
-                ),
-                if (selectedCategory == _ExchangeCategory.gift) ...[
-                  const SizedBox(height: 8),
-                  _GiftSubcategoryScroller(
-                    key: const ValueKey('gift-subs'),
-                    selected: selectedGiftSubcategory,
-                    onSelected: onGiftSubcategoryChanged,
-                  ),
-                ],
-              ],
-            ),
+          // top 与充值页的顶部 tab 对齐（同为 8），切换 tab 时顶部栏不上下跳。
+          // 不加左右内边距：tab 栏铺满屏宽，"没露全"就是被屏幕边缘截断。
+          padding: const EdgeInsets.only(top: 8, bottom: 4),
+          child: _GiftSubcategoryScroller(
+            selected: selectedGiftSubcategory,
+            onSelected: onGiftSubcategoryChanged,
           ),
         ),
         Expanded(
@@ -113,26 +88,6 @@ class _ExchangeStoreView extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _ExchangeCategoryBar extends StatelessWidget {
-  const _ExchangeCategoryBar({
-    required this.selected,
-    required this.onSelected,
-  });
-
-  final _ExchangeCategory selected;
-  final ValueChanged<_ExchangeCategory> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return _StoreSegmentedLabelBar<_ExchangeCategory>(
-      values: _exchangeTabs,
-      selected: selected,
-      labelFor: (category) => category.label,
-      onSelected: onSelected,
     );
   }
 }
@@ -570,40 +525,45 @@ class _ExchangeProductCard extends StatelessWidget {
                     ),
                   ],
                 ),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                // 系统字体调大时价格等比缩小，不在窄卡片里溢出。
                 child: Center(
-                  child: busy
-                      ? CupertinoActivityIndicator(color: priceTextColor)
-                      : price == 0
-                      ? Text(
-                          '免费',
-                          style: TextStyle(
-                            color: priceTextColor,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0,
-                            decoration: TextDecoration.none,
-                          ),
-                        )
-                      : Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const _CurrencyIcon(
-                              currency: _StoreCurrency.point,
-                              size: 16,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: busy
+                        ? CupertinoActivityIndicator(color: priceTextColor)
+                        : price == 0
+                        ? Text(
+                            '免费',
+                            style: TextStyle(
+                              color: priceTextColor,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0,
+                              decoration: TextDecoration.none,
                             ),
-                            const SizedBox(width: 5),
-                            Text(
-                              '$price',
-                              style: TextStyle(
-                                color: priceTextColor,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0,
-                                decoration: TextDecoration.none,
+                          )
+                        : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const _CurrencyIcon(
+                                currency: _StoreCurrency.point,
+                                size: 16,
                               ),
-                            ),
-                          ],
-                        ),
+                              const SizedBox(width: 5),
+                              Text(
+                                '$price',
+                                style: TextStyle(
+                                  color: priceTextColor,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0,
+                                  decoration: TextDecoration.none,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
                 ),
               ),
             ),
@@ -637,43 +597,47 @@ class _ExchangePriceCaption extends StatelessWidget {
         ),
       );
     }
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          isVip ? '会员' : '会员价',
-          style: TextStyle(
-            color: const Color(0xFF4B9AFF),
-            fontSize: 10,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0,
-            decoration: TextDecoration.none,
+    // 系统字体调大时整行等比缩小，不在窄卡片里溢出。
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            isVip ? '会员' : '会员价',
+            style: TextStyle(
+              color: const Color(0xFF4B9AFF),
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
+              decoration: TextDecoration.none,
+            ),
           ),
-        ),
-        const SizedBox(width: 3),
-        Text(
-          '${product.memberPrice}',
-          style: TextStyle(
-            color: isVip ? w.ink : const Color(0xFF4B9AFF),
-            fontSize: 11,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0,
-            decoration: TextDecoration.none,
+          const SizedBox(width: 3),
+          Text(
+            '${product.memberPrice}',
+            style: TextStyle(
+              color: isVip ? w.ink : const Color(0xFF4B9AFF),
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0,
+              decoration: TextDecoration.none,
+            ),
           ),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          '${product.listPrice}',
-          style: TextStyle(
-            color: w.inkFaint,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0,
-            decoration: TextDecoration.lineThrough,
-            decorationColor: w.inkFaint,
+          const SizedBox(width: 6),
+          Text(
+            '${product.listPrice}',
+            style: TextStyle(
+              color: w.inkFaint,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+              decoration: TextDecoration.lineThrough,
+              decorationColor: w.inkFaint,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -708,9 +672,10 @@ class _StoreEdgeFade extends StatelessWidget {
   }
 }
 
+/// 兑换页顶层 tab：礼物子分类，可左右滑动。点到贴边、没露全的 tab 时，
+/// 把它旁边那个也滚进来，用户能看出那一侧还有更多分类。
 class _GiftSubcategoryScroller extends StatefulWidget {
   const _GiftSubcategoryScroller({
-    super.key,
     required this.selected,
     required this.onSelected,
   });
@@ -724,27 +689,32 @@ class _GiftSubcategoryScroller extends StatefulWidget {
 }
 
 class _GiftSubcategoryScrollerState extends State<_GiftSubcategoryScroller> {
+  // 首个 tab 的文字与下方商品网格左边对齐（10 + tab 内边距 10 = 20）。
+  static const double _edgePadding = 10;
+  // 露出邻居时在它外侧再多留的距离，避免它正好贴着屏幕边缘。
+  static const double _revealMargin = 12;
+
   final _controller = ScrollController();
-  late final List<GlobalKey> _itemKeys;
+  final _itemKeys = [
+    for (var i = 0; i < _GiftSubcategory.values.length; i++) GlobalKey(),
+  ];
 
   @override
   void initState() {
     super.initState();
-    _itemKeys = [
-      for (var i = 0; i < _GiftSubcategory.values.length; i++) GlobalKey(),
-    ];
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _syncScroll(peekNeighbors: true);
-    });
+    // 从别的商城页切回来时保留上次选中项：首帧直接定位，不做动画。
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _reveal(animate: false),
+    );
   }
 
   @override
   void didUpdateWidget(covariant _GiftSubcategoryScroller oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selected != widget.selected) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _syncScroll(peekNeighbors: true);
-      });
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _reveal(animate: true),
+      );
     }
   }
 
@@ -754,128 +724,91 @@ class _GiftSubcategoryScrollerState extends State<_GiftSubcategoryScroller> {
     super.dispose();
   }
 
-  void _syncScroll({required bool peekNeighbors}) {
+  /// tab [index] 在滚动内容里的起止位置；还没布局时返回 null。
+  (double, double)? _extentOf(int index, RenderBox viewportBox) {
+    final box = _itemKeys[index].currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return null;
+    final dx = box.localToGlobal(Offset.zero, ancestor: viewportBox).dx;
+    final start = _controller.offset + dx;
+    return (start, start + box.size.width);
+  }
+
+  void _reveal({required bool animate}) {
     if (!mounted || !_controller.hasClients) return;
     final position = _controller.position;
-    if (!position.hasViewportDimension) return;
-
-    final listBox = context.findRenderObject() as RenderBox?;
-    if (listBox == null) return;
-
-    final viewport = position.viewportDimension;
-    final n = _GiftSubcategory.values.length;
-    final starts = List<double?>.filled(n, null);
-    final widths = List<double?>.filled(n, null);
-    for (var i = 0; i < n; i++) {
-      final box = _itemKeys[i].currentContext?.findRenderObject() as RenderBox?;
-      if (box == null || !box.hasSize) continue;
-      final dx = box.localToGlobal(Offset.zero, ancestor: listBox).dx;
-      starts[i] = position.pixels + dx;
-      widths[i] = box.size.width;
-    }
-
-    bool mostlyVisible(int i) {
-      final start = starts[i];
-      final width = widths[i];
-      if (start == null || width == null || width <= 0) return false;
-      final localStart = start - position.pixels;
-      final localEnd = localStart + width;
-      final visible = math.min(localEnd, viewport) - math.max(localStart, 0);
-      return visible >= width * 0.55;
-    }
-
-    int? firstVisible;
-    int? lastVisible;
-    for (var i = 0; i < n; i++) {
-      if (!mostlyVisible(i)) continue;
-      firstVisible ??= i;
-      lastVisible = i;
-    }
+    final viewportBox = context.findRenderObject();
+    if (!position.hasViewportDimension || viewportBox is! RenderBox) return;
 
     final index = _GiftSubcategory.values.indexOf(widget.selected);
-    if (index < 0 || starts[index] == null || widths[index] == null) return;
+    final last = _GiftSubcategory.values.length - 1;
+    // 要完整可见的区间：选中项连同左右各一个邻居（到头了就只算自己）。
+    final left = _extentOf(index > 0 ? index - 1 : index, viewportBox);
+    final right = _extentOf(index < last ? index + 1 : index, viewportBox);
+    if (left == null || right == null) return;
 
-    final localStart = starts[index]! - position.pixels;
-    int? revealIndex;
-    var alignEnd = false;
-    if (!mostlyVisible(index)) {
-      final clippedLeft = localStart < 0;
-      if (clippedLeft) {
-        revealIndex = peekNeighbors && index > 0 ? index - 1 : index;
-        alignEnd = false;
-      } else {
-        revealIndex = peekNeighbors && index < n - 1 ? index + 1 : index;
-        alignEnd = true;
-      }
-    } else if (peekNeighbors) {
-      if (lastVisible != null && index >= lastVisible && index < n - 1) {
-        revealIndex = index + 1;
-        alignEnd = true;
-      } else if (firstVisible != null && index <= firstVisible && index > 0) {
-        revealIndex = index - 1;
-        alignEnd = false;
-      }
+    final viewport = position.viewportDimension;
+    var target = position.pixels;
+    final wantEnd = right.$2 + _revealMargin;
+    final wantStart = left.$1 - _revealMargin;
+    if (wantEnd > target + viewport) target = wantEnd - viewport;
+    if (wantStart < target) target = wantStart;
+    target = target.clamp(position.minScrollExtent, position.maxScrollExtent);
+    if ((target - position.pixels).abs() < 0.5) return;
+    if (animate) {
+      _controller.animateTo(
+        target,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+    } else {
+      _controller.jumpTo(target);
     }
-    if (revealIndex == null) return;
-    final start = starts[revealIndex];
-    final width = widths[revealIndex];
-    if (start == null || width == null) return;
-
-    const leadingPad = 10.0;
-    const trailingPad = 10.0;
-    final target = alignEnd
-        ? start + width + trailingPad - viewport
-        : start - leadingPad;
-    _controller.animateTo(
-      target.clamp(position.minScrollExtent, position.maxScrollExtent),
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOutCubic,
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     final w = _W2b.resolve(context);
+    const fontSize = 16.0;
+    // 文字 + 间距 + 下划线 + 上下留白；系统字体调大时跟着变高，不溢出。
+    final height = math.max(
+      40.0,
+      MediaQuery.textScalerOf(context).scale(fontSize) + 6 + 3 + 12,
+    );
     return SizedBox(
-      height: 38,
+      height: height,
       child: SingleChildScrollView(
+        key: const ValueKey('exchange-gift-tabs'),
         controller: _controller,
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
-        clipBehavior: Clip.none,
+        padding: const EdgeInsets.symmetric(horizontal: _edgePadding),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (
-              var index = 0;
-              index < _GiftSubcategory.values.length;
-              index++
-            ) ...[
+            for (final (index, category)
+                in _GiftSubcategory.values.indexed) ...[
               if (index > 0) const SizedBox(width: 6),
               GestureDetector(
                 key: _itemKeys[index],
                 behavior: HitTestBehavior.opaque,
-                onTap: () => widget.onSelected(_GiftSubcategory.values[index]),
-                // 二级子 tab：纯文字 + 底部横线高亮，不再用胶囊。选中黑字，
-                // 未选灰字；底下一条蓝色短横线标记当前项。
+                onTap: () => widget.onSelected(category),
+                // 纯文字 + 底部横线高亮：选中黑字，未选灰字，下方蓝色短横线。
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        _GiftSubcategory.values[index].label,
+                        category.label,
                         style: TextStyle(
-                          color:
-                              _GiftSubcategory.values[index] == widget.selected
+                          color: category == widget.selected
                               ? (w.isDark
                                     ? Colors.white
                                     : const Color(0xFF16181C))
                               : w.inkSoft,
-                          fontSize: 15,
+                          fontSize: fontSize,
                           height: 1,
-                          fontWeight:
-                              _GiftSubcategory.values[index] == widget.selected
+                          fontWeight: category == widget.selected
                               ? FontWeight.w900
                               : FontWeight.w700,
                           letterSpacing: 0,
@@ -889,8 +822,7 @@ class _GiftSubcategoryScrollerState extends State<_GiftSubcategoryScroller> {
                         height: 3,
                         width: 20,
                         decoration: BoxDecoration(
-                          color:
-                              _GiftSubcategory.values[index] == widget.selected
+                          color: category == widget.selected
                               ? _kStoreBlue
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(2),

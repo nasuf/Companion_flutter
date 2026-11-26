@@ -24,7 +24,6 @@ class StorePage extends StatefulWidget {
 
 class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
   _StoreSection _section = _StoreSection.subscription;
-  _ExchangeCategory _exchangeCategory = _ExchangeCategory.gift;
   _GiftSubcategory _giftSubcategory = _GiftSubcategory.drink;
   _StoreCurrency _rechargeCurrency = _StoreCurrency.ticket;
   int _selectedPlan = 0; // 默认选中「连续包月（特惠推荐）」
@@ -61,7 +60,6 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
       _rechargeCurrency = _StoreCurrency.ticket;
     } else if (widget.openExchange) {
       _section = _StoreSection.exchange;
-      _exchangeCategory = _ExchangeCategory.gift;
     } else if (widget.openBundle) {
       _section = _StoreSection.bundle;
     }
@@ -1024,9 +1022,7 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
       _StoreSection.exchange => _ExchangeStoreView(
         points: wallet.pointBalance,
         isVip: _isVip,
-        selectedCategory: _exchangeCategory,
         selectedGiftSubcategory: _giftSubcategory,
-        onCategoryChanged: (value) => setState(() => _exchangeCategory = value),
         onGiftSubcategoryChanged: (value) =>
             setState(() => _giftSubcategory = value),
         onInsufficientPoints: _showInsufficientPoints,
