@@ -1,5 +1,13 @@
 part of 'package:companion_flutter/main.dart';
 
+/// 拿不到 onSessionChanged 的页面（如从各处打开的商城）通过它把服务端返回的
+/// 新会话交给 AuthGate，「我的」「隐私与安全中心」等页面才能读到同一份状态。
+final _authSessionUpdates = StreamController<AuthSession>.broadcast();
+
+@visibleForTesting
+Stream<AuthSession> get authSessionUpdatesForTesting =>
+    _authSessionUpdates.stream;
+
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
@@ -15,11 +23,30 @@ class _AuthGateState extends State<AuthGate> {
   AuthSession? _session;
   CompanionApi? _api;
   bool _restoring = true;
+  late final StreamSubscription<AuthSession> _sessionUpdatesSub;
 
   @override
   void initState() {
     super.initState();
+    _sessionUpdatesSub = _authSessionUpdates.stream.listen(
+      _onPublishedSession,
+    );
     unawaited(_restoreSession());
+  }
+
+  @override
+  void dispose() {
+    unawaited(_sessionUpdatesSub.cancel());
+    super.dispose();
+  }
+
+  /// 只接受当前登录账号的更新：退出登录或换号之后迟到的结果直接丢弃。
+  void _onPublishedSession(AuthSession session) {
+    final current = _session;
+    if (!mounted || current == null || current.userId != session.userId) {
+      return;
+    }
+    _onSessionChanged(session);
   }
 
   Future<void> _restoreSession() async {

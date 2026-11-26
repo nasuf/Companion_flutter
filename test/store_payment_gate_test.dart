@@ -416,14 +416,20 @@ void main() {
     expect(find.text('已取消微信登录'), findsOneWidget);
     expect(find.text('前往微信服务号支付'), findsNothing);
     await t.pump(const Duration(seconds: 2));
-    // 绑定成功：紧接着弹出正常的支付引导，之后不再要求绑定。
+    // 绑定成功：紧接着弹出正常的支付引导，引导框里写明已绑定成功（底部提示
+    // 会被弹框盖住），新会话交给 AuthGate，之后不再要求绑定。
     bind.succeed = true;
+    final published = <AuthSession>[];
+    final sub = authSessionUpdatesForTesting.listen(published.add);
+    addTearDown(sub.cancel);
     await t.tap(find.text('立即充值'));
     await t.pumpAndSettle();
     await t.tap(find.text('绑定微信'));
     await t.pumpAndSettle();
     expect(bind.calls, 2);
     expect(find.text('前往微信服务号支付'), findsOneWidget);
+    expect(find.textContaining('微信已绑定成功'), findsOneWidget);
+    expect(published.map((s) => s.wechatBound), [true]);
     await t.tap(find.text('取消'));
     await t.pumpAndSettle();
     await t.pump(const Duration(seconds: 2));
@@ -431,6 +437,8 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('请先绑定微信'), findsNothing);
     expect(find.text('前往微信服务号支付'), findsOneWidget);
+    // 已绑定账号的引导框不重复说「绑定成功」。
+    expect(find.textContaining('微信已绑定成功'), findsNothing);
     expect(api.meReads, 0);
   });
 

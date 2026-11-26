@@ -114,24 +114,41 @@ void main() {
     expect(await api.getVoiceCallEnabled(), isFalse);
   });
 
-  testWidgets('switch off hides the icon and the rest reflow to 4 + 2', (
+  testWidgets('switch off hides the icon and the six left form a 3 x 2 grid', (
     tester,
   ) async {
     final api = _ChatApi();
     await _open(tester, api);
     await _toggleMore(tester);
     expect(find.text('语音通话'), findsNothing);
+    Offset at(String label) => tester.getCenter(find.text(label));
     for (final label in ['图片', '拍摄', '红包', '位置', '查找', '礼物']) {
       expect(find.text(label), findsOneWidget, reason: label);
     }
-    // 第一行 4 个（同一高度），位置顺延到第一行末尾，查找和礼物落到第二行最左。
-    final rowOne = tester.getCenter(find.text('图片')).dy;
-    expect(tester.getCenter(find.text('位置')).dy, rowOne);
-    expect(tester.getCenter(find.text('查找')).dy, greaterThan(rowOne));
-    expect(
-      tester.getCenter(find.text('查找')).dx,
-      moreOrLessEquals(tester.getCenter(find.text('图片')).dx),
-    );
+    // 第一行：图片 拍摄 红包；第二行：位置 查找 礼物，两行列对齐。
+    for (final label in ['拍摄', '红包']) {
+      expect(at(label).dy, at('图片').dy, reason: label);
+    }
+    for (final label in ['查找', '礼物']) {
+      expect(at(label).dy, at('位置').dy, reason: label);
+    }
+    expect(at('位置').dy, greaterThan(at('图片').dy));
+    expect(at('位置').dx, moreOrLessEquals(at('图片').dx));
+    expect(at('查找').dx, moreOrLessEquals(at('拍摄').dx));
+    expect(at('礼物').dx, moreOrLessEquals(at('红包').dx));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _frames(tester);
+  });
+
+  testWidgets('switch on keeps all seven tools as 4 + 3', (tester) async {
+    final api = _ChatApi()..voiceCallEnabled = true;
+    await _open(tester, api);
+    await _toggleMore(tester);
+    Offset at(String label) => tester.getCenter(find.text(label));
+    expect(find.text('语音通话'), findsOneWidget);
+    expect(at('语音通话').dy, at('图片').dy);
+    expect(at('位置').dy, greaterThan(at('图片').dy));
+    expect(at('位置').dx, moreOrLessEquals(at('图片').dx));
     await tester.pumpWidget(const SizedBox.shrink());
     await _frames(tester);
   });

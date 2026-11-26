@@ -180,12 +180,16 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
     if (_openingWechatStore) return;
     _openingWechatStore = true;
     try {
+      final wasBound = _wechatBound;
       if (!await _ensureWechatBound() || !mounted) return;
+      // 刚在这里绑定成功：结果写进引导框，底部提示会被弹框盖住看不到。
+      final boundNotice = wasBound ? '' : '微信已绑定成功，接下来去服务号完成支付。\n\n';
       final proceed = await showCupertinoDialog<bool>(
         context: context,
         builder: (context) => CupertinoAlertDialog(
           title: const Text('前往微信服务号支付'),
           content: Text(
+            '$boundNotice'
             '安卓版的$what需要在微信服务号「$kWechatServiceAccountName」内完成支付。\n\n'
             '1. 点「打开微信」，服务号名称已复制\n'
             '2. 在微信顶部搜索框粘贴并搜索\n'
@@ -255,7 +259,9 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
         _showToast('微信绑定未完成，请稍后重试');
         return false;
       }
-      _showToast('已绑定微信');
+      // 交给 AuthGate：否则「隐私与安全中心」仍显示「去绑定」，下次进商城
+      // 也会再要求绑定一次。
+      _authSessionUpdates.add(updated);
       return true;
     } catch (error) {
       if (mounted) _showToast(_asMessage(error));

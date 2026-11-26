@@ -331,8 +331,7 @@ class _MorePanel extends StatelessWidget {
     _ToolAction.activity,
   );
 
-  /// 语音通话由后台全局开关控制：没有回调就不显示图标，其余工具顺延补位
-  /// （7 个变 6 个，两行 4 + 2）。
+  /// 语音通话由后台全局开关控制：没有回调就不显示图标，其余工具顺延补位。
   List<_ToolSpec> get _visibleTools => activityOnly
       ? const [_activityTool]
       : [
@@ -341,8 +340,17 @@ class _MorePanel extends StatelessWidget {
               tool,
         ];
 
+  /// 6 个图标（语音通话关闭）排成两行三列；7 个排 4 + 3；接管模式只有 1 个，
+  /// 仍按 4 列靠左。
+  int get _columns {
+    final count = _visibleTools.length;
+    return count > 4 && count <= 6 ? 3 : 4;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final tools = _visibleTools;
+    final columns = _columns;
     return LayoutBuilder(
       key: const ValueKey('more'),
       builder: (context, constraints) {
@@ -386,8 +394,8 @@ class _MorePanel extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _ToolRow(
-                  tools: _visibleTools.take(4).toList(),
-                  columns: 4,
+                  tools: tools.take(columns).toList(),
+                  columns: columns,
                   onOpenActivity: onOpenActivity,
                   onPickPhoto: onPickPhoto,
                   onTakePhoto: onTakePhoto,
@@ -398,11 +406,11 @@ class _MorePanel extends StatelessWidget {
                   onSearch: onSearch,
                   onVoiceCall: onVoiceCall,
                 ),
-                if (_visibleTools.length > 4) ...[
+                if (tools.length > columns) ...[
                   const SizedBox(height: 26),
                   _ToolRow(
-                    tools: _visibleTools.skip(4).take(4).toList(),
-                    columns: 4,
+                    tools: tools.skip(columns).take(columns).toList(),
+                    columns: columns,
                     onOpenActivity: onOpenActivity,
                     onPickPhoto: onPickPhoto,
                     onTakePhoto: onTakePhoto,
