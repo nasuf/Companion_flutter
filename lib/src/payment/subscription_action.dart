@@ -68,6 +68,9 @@ const kIapCreditDelayedToast = '到账可能有延迟，请稍后再看';
 
 /// Server `detail` when the transaction's appAccountToken is another user.
 const kIapOwnerMismatchReason = 'transaction_owner_mismatch';
+
+/// ¥1 体验账号终身限购 1 次（Apple 与微信共用），会员期内也不能买。
+const kIapTrialUsedMessage = '每个账号只能体验一次，你已经体验过了。';
 const kIapOwnerMismatchToast = '这笔购买属于本设备登录过的其他账号，请切换回该账号查看到账';
 
 typedef IapMembershipFetcher = Future<IapMembership> Function();

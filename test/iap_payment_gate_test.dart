@@ -86,7 +86,7 @@ void main() {
       final service = IapService(
         iap: sdk,
         onVerify: _verify,
-        beforePurchase: () async {
+        beforePurchase: (_) async {
           checks++;
           if (!enabled) throw const IapPurchaseUnavailable('closed');
         },
@@ -116,9 +116,9 @@ void main() {
   test(
     'missing policy and failed permission requests cannot initiate payment',
     () async {
-      for (final authorize in <Future<void> Function()?>[
+      for (final authorize in <Future<void> Function(String)?>[
         null,
-        () async => throw TimeoutException('offline'),
+        (_) async => throw TimeoutException('offline'),
       ]) {
         final sdk = _Iap();
         final service = IapService(
@@ -146,7 +146,7 @@ void main() {
       final service = IapService(
         iap: sdk,
         onVerify: _verify,
-        beforePurchase: () async {
+        beforePurchase: (_) async {
           checks++;
           throw const IapPurchaseUnavailable('closed');
         },
@@ -170,6 +170,61 @@ void main() {
       expect(checks, 0);
       expect(sdk.restorations, 1);
       expect(sdk.completed, 1);
+      service.dispose();
+      await sdk.stream.close();
+    },
+  );
+  test(
+    'a purchase the server refused to grant is completed but not a success',
+    () async {
+      // 重复购买体验：服务端记 failed、不发权益。交易已有终态，必须出队，
+      // 但不能当作购买成功。
+      final sdk = _Iap();
+      final service = IapService(
+        iap: sdk,
+        onVerify: ({
+          required String productId,
+          required String transactionId,
+          required String signedTransaction,
+        }) async {
+          final granted = await _verify(
+            productId: productId,
+            transactionId: transactionId,
+            signedTransaction: signedTransaction,
+          );
+          return IapVerifyResponse(
+            status: 'failed',
+            kind: 'consumable',
+            wallet: granted.wallet,
+            vip: granted.vip,
+          );
+        },
+        beforePurchase: (_) async {},
+      );
+      final events = <IapEvent>[];
+      final sub = service.events.listen(events.add);
+      await service.init();
+      sdk.stream.add([
+        PurchaseDetails(
+          purchaseID: 'repeat-trial',
+          productID: IapProducts.vipTrial,
+          verificationData: PurchaseVerificationData(
+            localVerificationData: '',
+            serverVerificationData: 'synthetic',
+            source: 'app_store',
+          ),
+          transactionDate: null,
+          status: PurchaseStatus.purchased,
+        )..pendingCompletePurchase = true,
+      ]);
+      await pumpEventQueue();
+      expect(sdk.completed, 1);
+      expect(events.map((e) => e.type), [
+        IapEventType.verifying,
+        IapEventType.error,
+      ]);
+      expect(events.last.message, kIapNotGrantedMessage);
+      await sub.cancel();
       service.dispose();
       await sdk.stream.close();
     },

@@ -275,13 +275,13 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _authorizeRealMoneyPurchase() async {
+  Future<void> _authorizeRealMoneyPurchase(String productId) async {
     _paymentAuthorizationRunning = true;
     final generation = ++_paymentGeneration;
     try {
-      await widget.api.authorizeRealMoneyPurchase().timeout(
-        const Duration(seconds: 5),
-      );
+      await widget.api
+          .authorizeRealMoneyPurchase(productId: productId)
+          .timeout(const Duration(seconds: 5));
       if (!mounted) throw const IapPurchaseUnavailable('购买页面已关闭');
       if (generation != _paymentGeneration) {
         throw const IapPurchaseUnavailable('请重试购买');
@@ -290,6 +290,14 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
         _realMoneyPaymentsEnabled = true;
       });
     } catch (error) {
+      // 体验已用过（任一渠道）或会员期内：服务端在扣款前拒绝。开关没变，
+      // 不能像下面那样把付费按钮置灰。
+      if (error is ApiException &&
+          error.statusCode == 409 &&
+          error.message == 'trial_already_used') {
+        if (mounted) setState(() => _vipTrialAvailable = false);
+        throw const IapPurchaseUnavailable(kIapTrialUsedMessage);
+      }
       final disabled =
           error is ApiException &&
           error.statusCode == 403 &&
@@ -1287,6 +1295,15 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
       setState(() => _subscribing = true);
       try {
         await _iap.buyConsumable(productId);
+      } on IapPurchaseUnavailable catch (e) {
+        if (!mounted) return;
+        setState(() => _subscribing = false);
+        // 服务端在扣款前判定不能买（另一渠道已体验过 / 会员期内）。
+        if (e.message == kIapTrialUsedMessage) {
+          await _showVipTrialUnavailable();
+        } else {
+          _showToast('发起支付失败：$e');
+        }
       } catch (e) {
         if (mounted) {
           setState(() => _subscribing = false);

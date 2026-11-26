@@ -32,9 +32,15 @@ mixin _CompanionApiStore on _CompanionApiCore {
     return json['real_money_payments_enabled'] == true;
   }
 
-  Future<void> authorizeRealMoneyPurchase() async {
+  /// 拉起 StoreKit 前的实时预检。带上 [productId] 时服务端还会检查 ¥1 体验
+  /// 的限购（已体验过或会员期内返回 409 `trial_already_used`）。
+  Future<void> authorizeRealMoneyPurchase({String? productId}) async {
     final json =
-        await _request('POST', '/iap/apple/purchase-permission')
+        await _request(
+              'POST',
+              '/iap/apple/purchase-permission',
+              body: productId == null ? null : {'product_id': productId},
+            )
             as Map<String, dynamic>;
     if (json['real_money_payments_enabled'] != true) {
       throw const ApiException(403, 'real_money_payments_disabled');

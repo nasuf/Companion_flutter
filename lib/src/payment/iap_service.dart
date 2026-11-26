@@ -69,6 +69,9 @@ typedef IapVerifyCallback = Future<IapVerifyResponse> Function({
   required String signedTransaction,
 });
 
+/// 服务端已收到这笔扣款但拒绝发放（如重复购买体验），交易记为 failed。
+const kIapNotGrantedMessage = '这笔购买未能发放权益，可在 App Store 申请退款';
+
 /// A new purchase was denied before StoreKit was invoked.
 class IapPurchaseUnavailable implements Exception {
   const IapPurchaseUnavailable(this.message);
@@ -92,11 +95,11 @@ class IapService {
 
   /// Only new purchases use this gate. Restoration and settlement must not.
   /// An unconfigured initiator fails closed instead of bypassing the policy.
-  final Future<void> Function()? beforePurchase;
-  Future<void> _authorizePurchase() async {
+  final Future<void> Function(String productId)? beforePurchase;
+  Future<void> _authorizePurchase(String productId) async {
     final authorize = beforePurchase;
     if (authorize == null) throw const IapPurchaseUnavailable('购买服务未就绪');
-    await authorize();
+    await authorize(productId);
   }
 
   /// Apple appAccountToken — set to logged-in user UUID so webhook can grant first.
@@ -138,7 +141,7 @@ class IapService {
   bool get hasProducts => _products.isNotEmpty;
 
   Future<void> buyConsumable(String productId) async {
-    await _authorizePurchase();
+    await _authorizePurchase(productId);
     final p = _products[productId];
     if (p == null) {
       _emit(
@@ -155,7 +158,7 @@ class IapService {
   }
 
   Future<void> buySubscription(String productId) async {
-    await _authorizePurchase();
+    await _authorizePurchase(productId);
     final p = _products[productId];
     if (p == null) {
       _emit(
@@ -210,6 +213,16 @@ class IapService {
         signedTransaction: d.verificationData.serverVerificationData,
       );
       await _complete(d); // 只有 verify+到账都成功才 complete
+      if (result.status == 'failed') {
+        // 服务端已记录这笔交易并拒绝发放（如重复购买体验）：交易已有终态，
+        // complete 出队，但不能当作成功。
+        _emit(IapEvent(
+          IapEventType.error,
+          productId: d.productID,
+          message: kIapNotGrantedMessage,
+        ));
+        return;
+      }
       _emit(IapEvent(
         IapEventType.success,
         productId: d.productID,
