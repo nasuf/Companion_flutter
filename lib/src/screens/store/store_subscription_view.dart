@@ -18,6 +18,9 @@ class _SubscriptionStoreView extends StatefulWidget {
     this.subscribing = false,
     this.isVip = false,
     this.vipUntil,
+    this.showAutoRenewPlan = true,
+    this.wechatPayEnabled = false,
+    this.onOpenWechatStore,
   });
 
   final bool paymentsEnabled;
@@ -42,6 +45,18 @@ class _SubscriptionStoreView extends StatefulWidget {
 
   /// 购买+校验进行中：按钮转圈禁用。
   final bool subscribing;
+
+  /// 是否展示「连续包月」档位（`_plans[0]`）。安卓走服务号 H5 付款、没有自动
+  /// 续费能力，由后台开关控制，默认隐藏；iOS 恒为 true。
+  /// 隐藏只影响渲染：`_plans` 的下标保持不变，`selectedPlan` 仍是真实下标，
+  /// 所以 `IapProducts.subscriptionPlans` 与续费判断都不受影响。
+  final bool showAutoRenewPlan;
+
+  /// 安卓专用：服务号 H5 微信支付能否下单。为 true 时购买按钮改成「去微信购买」。
+  final bool wechatPayEnabled;
+
+  /// 安卓专用：点「去微信购买」时调用。
+  final VoidCallback? onOpenWechatStore;
 
   static const _plans = [
     ('连续包月', '¥29', '¥39', '特惠推荐'),
@@ -74,6 +89,35 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
     super.dispose();
   }
 
+  /// 可见档位在 `_plans` 中的真实下标（隐藏连续包月时去掉 0）。
+  List<int> get _visiblePlans => widget.showAutoRenewPlan
+      ? const [0, 1, 2, 3]
+      : const [1, 2, 3];
+
+  /// 安卓的会员购买走服务号微信支付（没有 Apple 内购）。
+  /// 「管理订阅」是 Apple 侧的操作，不走这条路。
+  bool get _viaWechat =>
+      widget.subscribeUi.action != StoreSubscribeAction.manageSubscription &&
+      widget.wechatPayEnabled &&
+      widget.onOpenWechatStore != null &&
+      defaultTargetPlatform != TargetPlatform.iOS;
+
+  String get _buttonLabel =>
+      _viaWechat ? '去微信购买' : widget.subscribeUi.buttonLabel;
+
+  VoidCallback? get _onPressed {
+    if (widget.subscribeUi.action ==
+        StoreSubscribeAction.manageSubscription) {
+      return widget.onSubscribe;
+    }
+    if (_viaWechat) {
+      return _agreementChecked ? widget.onOpenWechatStore : null;
+    }
+    return _agreementChecked && widget.paymentsEnabled
+        ? widget.onSubscribe
+        : null;
+  }
+
   void _selectPlan(int index) {
     widget.onSelectPlan(index);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -89,9 +133,11 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
       // 把选中卡尽量居中：两侧自然露出相邻卡片的一角——选季卡能带出年卡，
       // 选月卡能带出连续包月。末端用 clamp 收住，不会滚过头。
       // _planLeadPadding 是横向列表的左内边距，卡片在滚动内容里的起点。
+      final slot = _visiblePlans.indexOf(index);
+      if (slot < 0) return;
       final cardCenter =
           _planLeadPadding +
-          index * (_planCardWidth + _planGap) +
+          slot * (_planCardWidth + _planGap) +
           _planCardWidth / 2;
       final target = (cardCenter - position.viewportDimension / 2).clamp(
         position.minScrollExtent,
@@ -178,9 +224,10 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
             physics: const BouncingScrollPhysics(),
             clipBehavior: Clip.none,
             padding: const EdgeInsets.fromLTRB(12, 0, 24, 0),
-            itemCount: _SubscriptionStoreView._plans.length,
+            itemCount: _visiblePlans.length,
             separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (context, index) {
+            itemBuilder: (context, slot) {
+              final index = _visiblePlans[slot];
               final plan = _SubscriptionStoreView._plans[index];
               final localized = index < widget.planPrices.length
                   ? widget.planPrices[index]
@@ -201,15 +248,9 @@ class _SubscriptionStoreViewState extends State<_SubscriptionStoreView> {
         Padding(
           padding: edge,
           child: _StorePrimaryButton(
-            label: widget.subscribeUi.buttonLabel,
+            label: _buttonLabel,
             // 未勾选会员协议则置灰不可点（合规要求用户明示同意续费条款）。
-            onPressed:
-                widget.subscribeUi.action ==
-                    StoreSubscribeAction.manageSubscription
-                ? widget.onSubscribe
-                : _agreementChecked && widget.paymentsEnabled
-                ? widget.onSubscribe
-                : null,
+            onPressed: _onPressed,
             loading: widget.subscribing,
             loadingLabel: widget.subscribing ? kIapCreditingLabel : null,
             height: 56,

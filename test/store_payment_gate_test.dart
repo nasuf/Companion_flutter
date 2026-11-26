@@ -12,12 +12,12 @@ class _Api extends CompanionApi {
   bool enabled = false, fails = false, autoRenew = false;
   Completer<bool>? gate;
   int reads = 0;
-  bool wechatPay = false;
-  int wechatPayReads = 0;
+  AndroidStoreSettings android = AndroidStoreSettings.closed;
+  int androidReads = 0;
   @override
-  Future<bool> getWechatPayEnabled() async {
-    wechatPayReads++;
-    return wechatPay;
+  Future<AndroidStoreSettings> getAndroidStoreSettings() async {
+    androidReads++;
+    return android;
   }
 
   @override
@@ -87,6 +87,16 @@ Finder _subscriptionScroll() => find
       (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
     )
     .first;
+
+/// 档位卡的描边宽度：选中 2.4，未选中 1（见 store_subscription_plan.dart）。
+double _planBorderWidth(WidgetTester t, String title) {
+  final box = t.widget<AnimatedContainer>(
+    find
+        .ancestor(of: find.text(title), matching: find.byType(AnimatedContainer))
+        .first,
+  );
+  return ((box.decoration as BoxDecoration).border as Border).top.width;
+}
 
 CupertinoButton _button(WidgetTester t, String label) =>
     t.widget<CupertinoButton>(
@@ -291,31 +301,121 @@ void main() {
     },
   );
 
-  testWidgets('Android recharge shows the WeChat store entry when enabled', (
+  testWidgets('Android routes both purchases to WeChat and hides auto-renew', (
     t,
   ) async {
-    final api = _Api()..wechatPay = true;
+    final api = _Api()..android = const AndroidStoreSettings(
+      wechatPayEnabled: true,
+      autoRenewPlanEnabled: false,
+    );
     await _show(t, api, recharge: true);
     await t.pump();
-    expect(find.text('去微信购买（服务号商城）'), findsOneWidget);
-    api.wechatPay = false;
-    await t.pump(const Duration(seconds: 10));
-    await t.pump();
+    // 充值页：主按钮改文案，不再额外加一行入口。
+    expect(find.text('去微信充值'), findsOneWidget);
+    expect(find.text('立即充值'), findsNothing);
     expect(find.text('去微信购买（服务号商城）'), findsNothing);
+    // Apple 内购关着也能点，因为它走的是微信而不是 StoreKit。
+    expect(_button(t, '去微信充值').onPressed, isNotNull);
+
+    // 订阅页：按钮改文案，连续包月档位按开关隐藏。
+    await t.tap(find.text('订阅'));
+    await t.pumpAndSettle();
+    expect(find.text('连续包月'), findsNothing);
+    expect(find.text('月卡'), findsOneWidget);
+    // 默认选中的是被隐藏的连续包月，必须回退到第一个可见档位（月卡），
+    // 否则没有任何卡片是选中态，按钮打的也是看不见的档位。
+    expect(_planBorderWidth(t, '月卡'), 2.4);
+    expect(find.text('去微信购买'), findsOneWidget);
+    expect(find.text('立即开通'), findsNothing);
+
+    // 开关打开后连续包月回来。
+    api.android = const AndroidStoreSettings(
+      wechatPayEnabled: true,
+      autoRenewPlanEnabled: true,
+    );
+    await t.pump(const Duration(seconds: 10));
+    await t.pumpAndSettle();
+    expect(find.text('连续包月'), findsOneWidget);
+
+    // 微信支付关掉后回到 Apple 内购的文案与置灰逻辑。
+    api.android = AndroidStoreSettings.closed;
+    await t.pump(const Duration(seconds: 10));
+    await t.pumpAndSettle();
+    expect(find.text('立即开通'), findsOneWidget);
+    expect(find.text('去微信购买'), findsNothing);
   });
 
-  testWidgets('iOS never reads or shows the WeChat store entry', (t) async {
+  testWidgets('iOS keeps Apple IAP and never reads the Android flags', (
+    t,
+  ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     try {
-      final api = _Api()..wechatPay = true;
+      final api = _Api()
+        ..enabled = true
+        ..android = const AndroidStoreSettings(
+          wechatPayEnabled: true,
+          autoRenewPlanEnabled: false,
+        );
       await _show(t, api, recharge: true);
       await t.pump(const Duration(seconds: 10));
       await t.pump();
-      expect(find.text('去微信购买（服务号商城）'), findsNothing);
-      expect(api.wechatPayReads, 0);
+      // 安卓开关在 iOS 上既不请求，也不影响任何文案或档位。
+      expect(api.androidReads, 0);
+      expect(find.text('立即充值'), findsOneWidget);
+      expect(find.text('去微信充值'), findsNothing);
+      await t.tap(find.text('订阅'));
+      await t.pumpAndSettle();
+      expect(find.text('连续包月'), findsOneWidget);
+      expect(find.text('去微信购买'), findsNothing);
       await t.pumpWidget(const SizedBox());
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }
+  });
+
+  testWidgets('an active auto-renew keeps its plan visible on Android', (
+    t,
+  ) async {
+    // 在 iOS 订阅、换到安卓登录同一账号：连续包月开关是关的，但档位必须还在，
+    // 否则用户看不到「管理订阅」，没有任何地方能停掉扣款。
+    final api = _Api()
+      ..autoRenew = true
+      ..android = const AndroidStoreSettings(
+        wechatPayEnabled: true,
+        autoRenewPlanEnabled: false,
+      );
+    await _show(t, api);
+    await t.pumpAndSettle();
+    expect(find.text('连续包月'), findsOneWidget);
+    expect(_planBorderWidth(t, '连续包月'), 2.4);
+    // 管理订阅走 Apple，不能被改成「去微信购买」。
+    expect(find.text('去微信购买'), findsNothing);
+    expect(_button(t, '管理订阅').onPressed, isNotNull);
+  });
+
+  testWidgets('the WeChat guidance dialog renders real text, not mojibake', (
+    t,
+  ) async {
+    final api = _Api()..android = const AndroidStoreSettings(
+      wechatPayEnabled: true,
+      autoRenewPlanEnabled: false,
+    );
+    await _show(t, api, recharge: true);
+    await t.pump();
+    await t.tap(find.text('去微信充值'));
+    await t.pumpAndSettle();
+    // 弹窗正文是用户走这条路看到的第一屏，必须可读：不能有替换字符。
+    final body = t
+        .widgetList<Text>(find.byType(Text))
+        .map((w) => w.data ?? '')
+        .join('\n');
+    expect(body.contains('\uFFFD'), isFalse, reason: body);
+    expect(find.textContaining('伴生小助手'), findsOneWidget);
+    expect(find.textContaining('服务号名称已复制'), findsOneWidget);
+    expect(find.text('打开微信'), findsOneWidget);
+    // 取消后不写剪贴板、不拉起微信。
+    await t.tap(find.text('取消'));
+    await t.pumpAndSettle();
+    expect(find.text('打开微信'), findsNothing);
   });
 }

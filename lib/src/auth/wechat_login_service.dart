@@ -207,11 +207,14 @@ String currentWechatPlatform() {
   return 'harmony';
 }
 
-/// 服务号 H5 商城地址，在微信内置浏览器打开后可走 JSAPI 支付。
-const kWechatStoreUrl = 'https://banshengcomp.com/m.html';
+/// 服务号全名，用户要在微信里按这个名字搜索。
+const kWechatServiceAccountName = '伴生小助手';
 
-/// 安卓专用：在微信内置浏览器打开服务号商城。iOS 不调用（App Store 3.1.1）。
-Future<void> openWechatStore() async {
+/// 安卓专用：拉起微信，让用户自己进服务号付款。iOS 不调用（App Store 3.1.1）。
+///
+/// 微信 SDK 的 OpenWebview（在微信内置浏览器直接打开 URL）没有对外开放，
+/// 实测回 bad_param，所以只能把微信拉起来，再靠界面上的步骤引导用户。
+Future<void> openWechatForStore() async {
   final fluwx = Fluwx();
   final registered = await fluwx.registerApi(
     appId: _wechatAppId,
@@ -221,6 +224,7 @@ Future<void> openWechatStore() async {
   if (!await fluwx.isWeChatInstalled) {
     throw const WeChatLoginException('请先安装微信');
   }
-  final opened = await fluwx.open(target: Browser(kWechatStoreUrl));
-  if (!opened) throw const WeChatLoginException('无法打开微信');
+  if (!await fluwx.open(target: WeChatApp())) {
+    throw const WeChatLoginException('无法打开微信');
+  }
 }

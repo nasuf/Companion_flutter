@@ -499,3 +499,32 @@ class StoreExchangeResponse {
     );
   }
 }
+
+/// 安卓商城的两个后台开关。iOS 不读这个接口。
+class AndroidStoreSettings {
+  const AndroidStoreSettings({
+    required this.wechatPayEnabled,
+    required this.autoRenewPlanEnabled,
+  });
+
+  /// 读不到或请求失败时的保守取值：两项都关。
+  static const closed = AndroidStoreSettings(
+    wechatPayEnabled: false,
+    autoRenewPlanEnabled: false,
+  );
+
+  /// 服务号 H5 微信支付能否下单（部署开关 + 后台开关都打开）。
+  final bool wechatPayEnabled;
+
+  /// 订阅页是否展示「连续包月」档位。
+  final bool autoRenewPlanEnabled;
+
+  @override
+  bool operator ==(Object other) =>
+      other is AndroidStoreSettings &&
+      other.wechatPayEnabled == wechatPayEnabled &&
+      other.autoRenewPlanEnabled == autoRenewPlanEnabled;
+
+  @override
+  int get hashCode => Object.hash(wechatPayEnabled, autoRenewPlanEnabled);
+}

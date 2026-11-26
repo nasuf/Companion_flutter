@@ -26,7 +26,8 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
   _StoreSection _section = _StoreSection.subscription;
   _GiftSubcategory _giftSubcategory = _GiftSubcategory.drink;
   _StoreCurrency _rechargeCurrency = _StoreCurrency.ticket;
-  int _selectedPlan = 0; // 默认选中「连续包月（特惠推荐）」
+  // 用户主动点过的档位；null = 还没点，用 _selectedPlan 的默认值。
+  int? _pickedPlan;
   int _selectedRecharge = 0;
   bool _isVip = false;
   DateTime? _vipUntil; // 会员到期时间（本地显示用），null=未开通/未拉到
@@ -45,8 +46,8 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
   StreamSubscription<IapEvent>? _iapSub;
   Timer? _paymentSettingsTimer;
   bool _realMoneyPaymentsEnabled = false;
-  // 服务号 H5 微信支付开关，只在安卓读取并展示「去微信购买」入口。
-  bool _wechatPayEnabled = false;
+  // 安卓商城开关（微信支付入口 / 连续包月档位），只在安卓读取。
+  AndroidStoreSettings _androidStore = AndroidStoreSettings.closed;
   bool _openingWechatStore = false;
   bool _paymentRefreshRunning = false;
   bool _paymentAuthorizationRunning = false;
@@ -78,7 +79,7 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
     _initIap();
     WidgetsBinding.instance.addObserver(this);
     unawaited(_refreshPaymentSettings());
-    unawaited(_refreshWechatPayEnabled());
+    unawaited(_refreshAndroidStoreSettings());
     _startPaymentSettingsTimer();
   }
 
@@ -98,7 +99,7 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
     _paymentSettingsTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (mounted && (ModalRoute.of(context)?.isCurrent ?? true)) {
         unawaited(_refreshPaymentSettings());
-        unawaited(_refreshWechatPayEnabled());
+        unawaited(_refreshAndroidStoreSettings());
       }
     });
   }
@@ -110,7 +111,7 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
         _realMoneyPaymentsEnabled = false;
       });
       unawaited(_refreshPaymentSettings());
-      unawaited(_refreshWechatPayEnabled());
+      unawaited(_refreshAndroidStoreSettings());
       _startPaymentSettingsTimer();
     } else {
       _paymentSettingsTimer?.cancel();
@@ -139,27 +140,61 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _refreshWechatPayEnabled() async {
+  Future<void> _refreshAndroidStoreSettings() async {
     // iOS 不读也不展示（App Store 3.1.1）。
     if (defaultTargetPlatform != TargetPlatform.android) return;
-    bool enabled;
+    AndroidStoreSettings settings;
     try {
-      enabled = await widget.api.getWechatPayEnabled().timeout(
+      settings = await widget.api.getAndroidStoreSettings().timeout(
         const Duration(seconds: 5),
       );
     } catch (_) {
-      enabled = false;
+      settings = AndroidStoreSettings.closed;
     }
-    if (mounted && enabled != _wechatPayEnabled) {
-      setState(() => _wechatPayEnabled = enabled);
+    if (mounted && settings != _androidStore) {
+      setState(() => _androidStore = settings);
     }
   }
 
-  Future<void> _openWechatStore() async {
+  /// 安卓购买入口：引导用户去服务号付款。
+  ///
+  /// 安卓没有 Apple 内购，微信 APP 支付又要求 App 先上架，所以只能走服务号
+  /// H5。微信 SDK 不开放「在微信内打开指定网页」（实测 bad_param），这里
+  /// 只能复制服务号名称 + 拉起微信，剩下的步骤由弹窗文字说明。
+  Future<void> _openWechatStore({required bool forTickets}) async {
     if (_openingWechatStore) return;
+    final what = forTickets ? '钞票' : '会员';
+    final proceed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('去微信购买'),
+        content: Text(
+          '安卓版在微信服务号「$kWechatServiceAccountName」里购买$what。\n\n'
+          '1. 点「打开微信」，服务号名称已复制\n'
+          '2. 在微信顶部搜索框粘贴并搜索\n'
+          '3. 进入服务号，点底部菜单进入商城\n\n'
+          '请用与本 App 同一个微信号购买，权益会自动到账。',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('打开微信'),
+          ),
+        ],
+      ),
+    );
+    if (proceed != true || !mounted || _openingWechatStore) return;
     _openingWechatStore = true;
     try {
-      await openWechatStore();
+      await Clipboard.setData(
+        const ClipboardData(text: kWechatServiceAccountName),
+      );
+      await openWechatForStore();
     } on WeChatLoginException catch (error) {
       if (mounted) _showToast(error.message);
     } catch (_) {
@@ -207,6 +242,23 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
     setState(() => _iapReady = _iap.hasProducts);
     // StoreKit 重放完成后用服务端权威状态刷新（避免只信 verify 回放快照）。
     await _loadMembership();
+  }
+
+  /// 安卓默认隐藏连续包月（服务号 H5 付款没有自动续费能力）。但已有活跃续费
+  /// 的账号必须留着这个档位：否则在 iOS 订阅、换到安卓登录的用户看不到
+  /// 「管理订阅」，没有任何地方能停掉扣款。
+  bool get _showAutoRenewPlan =>
+      defaultTargetPlatform != TargetPlatform.android ||
+      _androidStore.autoRenewPlanEnabled ||
+      _autoRenewActive;
+
+  /// 选中的档位。连续包月是 `_plans[0]`，它被隐藏时落到月卡，避免选中一个
+  /// 界面上不存在的档位。开关与会员状态都是异步到的、后台还能随时改，所以
+  /// 这里每次按当前可见性重算：用户点过连续包月后开关又被关掉，也会回到月卡。
+  int get _selectedPlan {
+    final picked = _pickedPlan;
+    if (picked == 0 && !_showAutoRenewPlan) return 1;
+    return picked ?? (_showAutoRenewPlan ? 0 : 1);
   }
 
   StoreSubscribeUiState get _subscribeUi => resolveStoreSubscribeUi(
@@ -1025,12 +1077,18 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
     return switch (section) {
       _StoreSection.subscription => _SubscriptionStoreView(
         selectedPlan: _selectedPlan,
-        onSelectPlan: (value) => setState(() => _selectedPlan = value),
+        onSelectPlan: (value) => setState(() => _pickedPlan = value),
         onSubscribe: _handleSubscribe,
         onRestore: _handleRestore,
         onRedeemCode: _handleRedeemCode,
         subscribing: _subscribing,
         paymentsEnabled: _realMoneyPaymentsEnabled,
+        // 安卓默认隐藏连续包月（服务号 H5 付款没有自动续费能力）。但已有
+        // 活跃续费的账号必须留着这个档位：否则在 iOS 订阅、换到安卓登录的
+        // 用户看不到「管理订阅」，没有任何地方能停掉扣款。
+        showAutoRenewPlan: _showAutoRenewPlan,
+        wechatPayEnabled: _androidStore.wechatPayEnabled,
+        onOpenWechatStore: () => _openWechatStore(forTickets: false),
         isVip: _isVip,
         vipUntil: _vipUntil,
         subscribeUi: _subscribeUi,
@@ -1084,8 +1142,8 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
         onConvertGamePoints: _openGamePointConvert,
         submitting: _rechargeSubmitting,
         paymentsEnabled: _realMoneyPaymentsEnabled,
-        wechatPayEnabled: _wechatPayEnabled,
-        onOpenWechatStore: _openWechatStore,
+        wechatPayEnabled: _androidStore.wechatPayEnabled,
+        onOpenWechatStore: () => _openWechatStore(forTickets: true),
         priceLabelFor: (pack) => pack.currency == _StoreCurrency.ticket
             ? _iap.priceLabel(IapProducts.ticket(pack.amount))
             : null,

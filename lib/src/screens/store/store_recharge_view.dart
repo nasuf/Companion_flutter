@@ -44,6 +44,24 @@ class _RechargeStoreView extends StatelessWidget {
   /// 安卓专用：点击「去微信购买」时调用。
   final VoidCallback? onOpenWechatStore;
 
+  /// 安卓的钞票充值走服务号微信支付（没有 Apple 内购）。
+  bool get _viaWechat =>
+      currency == _StoreCurrency.ticket &&
+      wechatPayEnabled &&
+      onOpenWechatStore != null &&
+      defaultTargetPlatform != TargetPlatform.iOS;
+
+  String get _submitLabel {
+    if (currency != _StoreCurrency.ticket) return '立即兑换';
+    return _viaWechat ? '去微信充值' : '立即充值';
+  }
+
+  VoidCallback? get _onPressed {
+    if (currency != _StoreCurrency.ticket) return onSubmit;
+    if (_viaWechat) return onOpenWechatStore;
+    return paymentsEnabled ? onSubmit : null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final balance = currency == _StoreCurrency.ticket
@@ -96,25 +114,14 @@ class _RechargeStoreView extends StatelessWidget {
             ),
           ),
           // 两个入口都固定在套餐上方，位置在两个 tab 之间保持一致。
-          if (currency == _StoreCurrency.ticket) ...[
+          if (currency == _StoreCurrency.ticket)
             _StoreActionRow(
               icon: CupertinoIcons.play_rectangle_fill,
               label: '看广告得免费钞票',
               enabled: false,
               onTap: () {},
-            ),
-            // 安卓专用入口，iOS 不渲染（App Store 3.1.1 不允许引导外部支付）。
-            if (wechatPayEnabled &&
-                onOpenWechatStore != null &&
-                defaultTargetPlatform != TargetPlatform.iOS) ...[
-              const SizedBox(height: 10),
-              _StoreActionRow(
-                icon: FontAwesomeIcons.weixin.data,
-                label: '去微信购买（服务号商城）',
-                onTap: onOpenWechatStore!,
-              ),
-            ],
-          ] else if (onConvertGamePoints != null)
+            )
+          else if (onConvertGamePoints != null)
             _StoreActionRow(
               icon: CupertinoIcons.gamecontroller_fill,
               label: '用游戏积分兑换积分',
@@ -138,10 +145,8 @@ class _RechargeStoreView extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           _StorePrimaryButton(
-            label: currency == _StoreCurrency.ticket ? '立即充值' : '立即兑换',
-            onPressed: currency == _StoreCurrency.ticket && !paymentsEnabled
-                ? null
-                : onSubmit,
+            label: _submitLabel,
+            onPressed: _onPressed,
             loading: submitting,
             loadingLabel: submitting ? kIapCreditingLabel : null,
           ),

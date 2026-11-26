@@ -41,11 +41,15 @@ mixin _CompanionApiStore on _CompanionApiCore {
     }
   }
 
-  /// 服务号 H5 微信支付是否可以下单（部署开关 + 后台开关都打开）。
-  /// 只用来决定安卓商城是否展示「去微信购买」入口；读不到按关闭处理。
-  Future<bool> getWechatPayEnabled() async {
-    final json = await _request('GET', '/pay/wechat/catalog');
-    return json is Map && json['enabled'] == true;
+  /// 安卓商城开关：能否走服务号 H5 付款、是否展示连续包月档位。
+  /// 只在安卓调用；读不到时两项都按关闭处理（见 AndroidStoreSettings.closed）。
+  Future<AndroidStoreSettings> getAndroidStoreSettings() async {
+    final json = await _request('GET', '/store/android-settings');
+    if (json is! Map) return AndroidStoreSettings.closed;
+    return AndroidStoreSettings(
+      wechatPayEnabled: json['wechat_pay_purchases_enabled'] == true,
+      autoRenewPlanEnabled: json['android_auto_renew_enabled'] == true,
+    );
   }
 
   Future<WalletBalance> getWallet({String? agentId}) async {
