@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:companion_flutter/companion_api.dart';
 import 'package:companion_flutter/main.dart';
 import 'package:companion_flutter/models.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +12,14 @@ class _Api extends CompanionApi {
   bool enabled = false, fails = false, autoRenew = false;
   Completer<bool>? gate;
   int reads = 0;
+  bool wechatPay = false;
+  int wechatPayReads = 0;
+  @override
+  Future<bool> getWechatPayEnabled() async {
+    wechatPayReads++;
+    return wechatPay;
+  }
+
   @override
   Future<bool> getRealMoneyPaymentsEnabled() async {
     reads++;
@@ -281,4 +290,32 @@ void main() {
       expect(t.takeException(), isNull);
     },
   );
+
+  testWidgets('Android recharge shows the WeChat store entry when enabled', (
+    t,
+  ) async {
+    final api = _Api()..wechatPay = true;
+    await _show(t, api, recharge: true);
+    await t.pump();
+    expect(find.text('去微信购买（服务号商城）'), findsOneWidget);
+    api.wechatPay = false;
+    await t.pump(const Duration(seconds: 10));
+    await t.pump();
+    expect(find.text('去微信购买（服务号商城）'), findsNothing);
+  });
+
+  testWidgets('iOS never reads or shows the WeChat store entry', (t) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      final api = _Api()..wechatPay = true;
+      await _show(t, api, recharge: true);
+      await t.pump(const Duration(seconds: 10));
+      await t.pump();
+      expect(find.text('去微信购买（服务号商城）'), findsNothing);
+      expect(api.wechatPayReads, 0);
+      await t.pumpWidget(const SizedBox());
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
 }

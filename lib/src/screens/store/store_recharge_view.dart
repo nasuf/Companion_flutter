@@ -15,6 +15,8 @@ class _RechargeStoreView extends StatelessWidget {
     this.onConvertGamePoints,
     this.priceLabelFor,
     this.submitting = false,
+    this.wechatPayEnabled = false,
+    this.onOpenWechatStore,
   });
 
   final bool paymentsEnabled;
@@ -34,6 +36,13 @@ class _RechargeStoreView extends StatelessWidget {
 
   /// 充值购买进行中：按钮转圈禁用，防重复下单。
   final bool submitting;
+
+  /// 安卓专用：服务号 H5 微信支付开关（后台 + 部署开关都打开才为 true）。
+  /// iOS 上始终为 false，不显示该入口。
+  final bool wechatPayEnabled;
+
+  /// 安卓专用：点击「去微信购买」时调用。
+  final VoidCallback? onOpenWechatStore;
 
   @override
   Widget build(BuildContext context) {
@@ -87,14 +96,25 @@ class _RechargeStoreView extends StatelessWidget {
             ),
           ),
           // 两个入口都固定在套餐上方，位置在两个 tab 之间保持一致。
-          if (currency == _StoreCurrency.ticket)
+          if (currency == _StoreCurrency.ticket) ...[
             _StoreActionRow(
               icon: CupertinoIcons.play_rectangle_fill,
               label: '看广告得免费钞票',
               enabled: false,
               onTap: () {},
-            )
-          else if (onConvertGamePoints != null)
+            ),
+            // 安卓专用入口，iOS 不渲染（App Store 3.1.1 不允许引导外部支付）。
+            if (wechatPayEnabled &&
+                onOpenWechatStore != null &&
+                defaultTargetPlatform != TargetPlatform.iOS) ...[
+              const SizedBox(height: 10),
+              _StoreActionRow(
+                icon: FontAwesomeIcons.weixin.data,
+                label: '去微信购买（服务号商城）',
+                onTap: onOpenWechatStore!,
+              ),
+            ],
+          ] else if (onConvertGamePoints != null)
             _StoreActionRow(
               icon: CupertinoIcons.gamecontroller_fill,
               label: '用游戏积分兑换积分',

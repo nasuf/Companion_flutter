@@ -45,6 +45,9 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
   StreamSubscription<IapEvent>? _iapSub;
   Timer? _paymentSettingsTimer;
   bool _realMoneyPaymentsEnabled = false;
+  // 服务号 H5 微信支付开关，只在安卓读取并展示「去微信购买」入口。
+  bool _wechatPayEnabled = false;
+  bool _openingWechatStore = false;
   bool _paymentRefreshRunning = false;
   bool _paymentAuthorizationRunning = false;
   int _paymentGeneration = 0;
@@ -75,6 +78,7 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
     _initIap();
     WidgetsBinding.instance.addObserver(this);
     unawaited(_refreshPaymentSettings());
+    unawaited(_refreshWechatPayEnabled());
     _startPaymentSettingsTimer();
   }
 
@@ -94,6 +98,7 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
     _paymentSettingsTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (mounted && (ModalRoute.of(context)?.isCurrent ?? true)) {
         unawaited(_refreshPaymentSettings());
+        unawaited(_refreshWechatPayEnabled());
       }
     });
   }
@@ -105,6 +110,7 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
         _realMoneyPaymentsEnabled = false;
       });
       unawaited(_refreshPaymentSettings());
+      unawaited(_refreshWechatPayEnabled());
       _startPaymentSettingsTimer();
     } else {
       _paymentSettingsTimer?.cancel();
@@ -130,6 +136,36 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
       });
     } finally {
       _paymentRefreshRunning = false;
+    }
+  }
+
+  Future<void> _refreshWechatPayEnabled() async {
+    // iOS 不读也不展示（App Store 3.1.1）。
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    bool enabled;
+    try {
+      enabled = await widget.api.getWechatPayEnabled().timeout(
+        const Duration(seconds: 5),
+      );
+    } catch (_) {
+      enabled = false;
+    }
+    if (mounted && enabled != _wechatPayEnabled) {
+      setState(() => _wechatPayEnabled = enabled);
+    }
+  }
+
+  Future<void> _openWechatStore() async {
+    if (_openingWechatStore) return;
+    _openingWechatStore = true;
+    try {
+      await openWechatStore();
+    } on WeChatLoginException catch (error) {
+      if (mounted) _showToast(error.message);
+    } catch (_) {
+      if (mounted) _showToast('无法打开微信，请稍后重试');
+    } finally {
+      _openingWechatStore = false;
     }
   }
 
@@ -1048,6 +1084,8 @@ class _StorePageState extends State<StorePage> with WidgetsBindingObserver {
         onConvertGamePoints: _openGamePointConvert,
         submitting: _rechargeSubmitting,
         paymentsEnabled: _realMoneyPaymentsEnabled,
+        wechatPayEnabled: _wechatPayEnabled,
+        onOpenWechatStore: _openWechatStore,
         priceLabelFor: (pack) => pack.currency == _StoreCurrency.ticket
             ? _iap.priceLabel(IapProducts.ticket(pack.amount))
             : null,

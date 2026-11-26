@@ -206,3 +206,21 @@ String currentWechatPlatform() {
   if (Platform.isAndroid) return 'android';
   return 'harmony';
 }
+
+/// 服务号 H5 商城地址，在微信内置浏览器打开后可走 JSAPI 支付。
+const kWechatStoreUrl = 'https://banshengcomp.com/m.html';
+
+/// 安卓专用：在微信内置浏览器打开服务号商城。iOS 不调用（App Store 3.1.1）。
+Future<void> openWechatStore() async {
+  final fluwx = Fluwx();
+  final registered = await fluwx.registerApi(
+    appId: _wechatAppId,
+    universalLink: _wechatUniversalLink,
+  );
+  if (!registered) throw const WeChatLoginException('微信初始化失败');
+  if (!await fluwx.isWeChatInstalled) {
+    throw const WeChatLoginException('请先安装微信');
+  }
+  final opened = await fluwx.open(target: Browser(kWechatStoreUrl));
+  if (!opened) throw const WeChatLoginException('无法打开微信');
+}
