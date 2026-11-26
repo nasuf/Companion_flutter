@@ -1366,8 +1366,14 @@ class _CredentialField extends StatelessWidget {
       inputFormatters: inputFormatters,
       autocorrect: false,
       enableSuggestions: !obscureText,
+      // 登录 sheet 固定是浅色底（白色输入框），文字/标签/光标都不能跟随深色
+      // 主题，否则深色模式下是浅色字落在白底上，看不清输入的内容。
+      style: const TextStyle(color: Color(0xFF111111), fontSize: 16),
+      cursorColor: const Color(0xFF06C893),
       decoration: InputDecoration(
         labelText: label,
+        labelStyle: const TextStyle(color: Color(0xFF7B8582)),
+        floatingLabelStyle: const TextStyle(color: Color(0xFF06C893)),
         prefixIcon: Icon(icon, color: const Color(0xFF7B8582), size: 20),
         suffixIcon: trailing,
         filled: true,
