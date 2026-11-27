@@ -73,8 +73,10 @@ python3 scripts/verify_android_aot.py build/app/outputs/flutter-apk/app-prod-rel
 会被拒绝，须先增加 build number，防止已分发链接悄悄变成另一个包。
 
 生成和上传固定的 `bansheng-latest.qr.svg`，二维码始终指向
-`https://banshengcomp.com/downloads/android/bansheng-latest.apk`。
+`https://dl.banshengcomp.com/downloads/android/bansheng-latest.apk`。
 以后发布新版无需替换二维码，已保存或打印的这张固定二维码继续下载最新版本。
+2026-11-27 起公开链接改走 CDN 域名 `dl.banshengcomp.com`，之前印出的
+`banshengcomp.com` 旧二维码仍能下载，只是直连源站、不经过 CDN。
 历史版本二维码仍保留其原有含义；迁移前已分发的版本二维码需要换成新的固定二维码一次。
 QR 编码由本地固定版本 `qrcode==8.2` 生成，不使用第三方二维码服务。
 首次运行发布脚本会自动准备小型 Python 工具环境，默认保存在
@@ -105,14 +107,33 @@ Web 首页读取同一份 latest.json，下载按钮显示当前版本，二维�
 下载链接：
 
 ```text
-https://banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk
-https://banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk.sha256
-https://banshengcomp.com/downloads/android/bansheng-latest.apk
-https://banshengcomp.com/downloads/android/bansheng-latest.qr.svg
-https://banshengcomp.com/downloads/android/latest.json
+https://dl.banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk
+https://dl.banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk.sha256
+https://dl.banshengcomp.com/downloads/android/bansheng-latest.apk
+https://dl.banshengcomp.com/downloads/android/bansheng-latest.qr.svg
+https://dl.banshengcomp.com/downloads/android/latest.json
 ```
 
 可以把链接中的 `%2B` 写成 `+`。微信内置浏览器可能限制 APK 下载，可选择在系统浏览器中打开。
+
+## CDN（dl.banshengcomp.com）
+
+源站服务器公网出口约 5 Mbps，因此公开下载走腾讯云 CDN：
+- 加速类型为"CDN 下载大文件"，源站为自有源 `106.52.115.80:443`，HTTPS 回源，回源 HOST 为
+  `banshengcomp.com`（源站证书只覆盖这个域名）。
+- 缓存规则（越往下优先级越高）：全部文件不缓存；`apk;sha256` 强制缓存 365 天；
+  `bansheng-latest.qr.svg` 强制缓存 1 天；`bansheng-latest.apk` 强制缓存 30 天；`latest.json` 不缓存。
+  源站返回 `no-store`，所以必须开启"强制缓存"。缓存键忽略全部参数，并开启分片回源。
+- 用量封顶为每天 50GB，超出后返回 404。大规模推广前需先调高。
+- 发布第 6 步会通过 SSH 执行 `sudo -n /usr/local/sbin/tencent-cdn refresh`：刷新固定下载地址后再预热。
+  CDN 刷新失败时，发布本身不回滚，只给出警告，需要在 CDN 控制台手动刷新和预热。
+  设置 `APK_CDN_REFRESH=0` 可跳过这一步。
+- HTTPS 证书由服务器上的 certbot（webroot）签发。续期后，`renew_hook` 会执行
+  `/usr/local/sbin/tencent-cdn deploy-cert`，把新证书推送到 CDN。
+- `/usr/local/sbin/tencent-cdn` 的源码在 `deploy/tencent_cdn.py`，修改后需用 `sudo install -m 0755` 重新安装。
+  它只能操作 `dl.banshengcomp.com` 和固定的下载地址。
+  密钥保存在 `/etc/letsencrypt/tencentcloud.env`（root 0600）。CAM 子账号只需要
+  `cdn:UpdateDomainConfig`、`cdn:PurgeUrlsCache`、`cdn:PushUrlsCache` 三个权限。
 
 ## 服务器与凭据
 
@@ -154,8 +175,9 @@ ssh -i ~/.ssh/companion_tencent -o BatchMode=yes -o StrictHostKeyChecking=yes \
 发布后的手动检查示例（需要 curl）：
 
 ```bash
-curl -I 'https://banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk'
-curl -f 'https://banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk.sha256'
+curl -I 'https://dl.banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk'
+curl -sI 'https://dl.banshengcomp.com/downloads/android/bansheng-latest.apk' | grep -i x-cache-lookup
+curl -f 'https://dl.banshengcomp.com/downloads/android/bansheng-0.6.1%2B8.apk.sha256'
 ```
 
 ## 自动化验证

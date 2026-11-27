@@ -125,7 +125,8 @@ if [[ "$key" == '~/'* ]]; then key="$HOME/${key:2}"; fi
 [[ -f "$key" ]] || fail "SSH identity file missing: $key"
 ssh_options=(-i "$key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15
   -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
-base_url="${APK_PUBLIC_BASE_URL:-https://banshengcomp.com/downloads/android}"
+# Public links go through the CDN; the origin (banshengcomp.com) still serves the same paths.
+base_url="${APK_PUBLIC_BASE_URL:-https://dl.banshengcomp.com/downloads/android}"
 while [[ "$base_url" == */ ]]; do base_url="${base_url%/}"; done
 jq -en --arg url "$base_url" '$url | test("^https://[^/?#@[:space:]]+(/[^?#[:space:]]*)?$")' >/dev/null \
   || fail "APK_PUBLIC_BASE_URL must be an HTTPS directory URL without credentials/query/fragment."
@@ -253,19 +254,32 @@ jq -n --arg version "$version" --arg filename "$name" --arg qr_filename "$qr_nam
   '{schema_version:1,version:$version,filename:$filename,qr_filename:$qr_filename,sha256:$sha256,
     qr_sha256:$qr_sha256,size_bytes:$size_bytes,url:$url,qr_url:$qr_url,download_url:$download_url}' > "$work_dir/release.json"
 verify_snapshot
-step 6 "更新固定下载链接与版本信息"
+step 6 "更新固定下载链接与版本信息，刷新并预热 CDN"
 remote activate "$(jq -c '{release:.}' "$work_dir/release.json")" > "$work_dir/activated.json"
 latest_url="$base_url/latest.json"
 jq -e --slurpfile expected "$work_dir/release.json" \
   '. as $actual | $expected[0] | to_entries | all(.[]; . as $field | $actual[$field.key] == $field.value)' \
   "$work_dir/activated.json" >/dev/null || fail "Server activation response does not match the verified release."
+# The CDN force-caches the stable URL for 30 days, so it must be purged after
+# every release. The release itself is already live on the origin, so a CDN
+# failure only warns; the URL is fixed server-side in /usr/local/sbin/tencent-cdn.
+cdn_refreshed=false
+if [[ "${APK_CDN_REFRESH:-1}" == "0" ]]; then
+  echo "已按 APK_CDN_REFRESH=0 跳过 CDN 刷新。" >&2
+elif run_bounded 60 ssh "${ssh_options[@]}" -p "$port" "$host" "sudo -n /usr/local/sbin/tencent-cdn refresh" > "$work_dir/cdn.json"; then
+  cdn_refreshed=true
+  echo "CDN 已刷新并开始预热：$(cat "$work_dir/cdn.json")" >&2
+else
+  echo "Warning: CDN 刷新失败，CDN 可能仍在分发上一个版本。请在腾讯云 CDN 控制台手动刷新并预热 $download_url" >&2
+fi
 
 step 7 "保存发布记录并清理暂存文件"
 receipt="$apk.publish.json"
 jq --arg package com.bansheng.prod --arg certificate_sha256 "$RELEASE_CERT_SHA256" \
-  --arg latest_url "$latest_url" --arg remote_path "$remote_path" \
+  --arg latest_url "$latest_url" --arg remote_path "$remote_path" --argjson cdn_refreshed "$cdn_refreshed" \
   '{version,package:$package,url,sha256,size_bytes,certificate_sha256:$certificate_sha256,
-    download_url,qr_url,qr_sha256,latest_url:$latest_url,remote_path:$remote_path,verified_at:(now|todateiso8601),
+    download_url,qr_url,qr_sha256,latest_url:$latest_url,remote_path:$remote_path,cdn_refreshed:$cdn_refreshed,
+    verified_at:(now|todateiso8601),
     verification_scope:"server_files",download_verified:false}' \
   "$work_dir/release.json" > "$work_dir/receipt.json"
 cp "$work_dir/qr.svg" "$(dirname "$apk")/$qr_name"

@@ -38,6 +38,11 @@ elif tool == 'apksigner':
     certificate = '0'*64 if enabled('WRONG_CERT') else os.environ['CERT']
     print('Signer #1 certificate SHA-256 digest: ' + certificate)
     if enabled('MULTIPLE_SIGNERS'): print('Signer #2 certificate SHA-256 digest: ' + certificate)
+elif tool == 'ssh' and args[-1] == 'sudo -n /usr/local/sbin/tencent-cdn refresh':
+    assert 'StrictHostKeyChecking=yes' in args
+    (root / 'cdn_refreshed').write_text('1')
+    if enabled('FAIL_CDN'): sys.exit(33)
+    print('{"purge_task":"p-1","push_task":"q-1"}')
 elif tool == 'ssh':
     words = shlex.split(args[-1])
     assert words[:2] == ['python3', '-']
@@ -157,6 +162,9 @@ class ShellPublisherTests(unittest.TestCase):
         self.assertEqual(receipt['certificate_sha256'], CERT)
         self.assertFalse(receipt['download_verified'])
         self.assertEqual(receipt['verification_scope'], 'server_files')
+        self.assertTrue(receipt['cdn_refreshed'])
+        cdn_calls = [call for call in calls if call[0] == 'ssh' and call[-1].endswith('tencent-cdn refresh')]
+        self.assertEqual(len(cdn_calls), 1)
         self.assertFalse(any(call[0] == 'curl' for call in calls))
         self.assertIn('50%', result.stderr)
         self.assertIn('MiB/s', result.stderr)
@@ -219,6 +227,19 @@ class ShellPublisherTests(unittest.TestCase):
                 self.assertEqual(names[-1], 'cleanup')
                 self.assertNotIn('activate', names)
                 self.assertIsNone(receipt)
+
+    def test_cdn_refresh_failure_keeps_published_release_and_warns(self):
+        result, actions, _, receipt, _ = self.fixture(FAIL_CDN='1')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([a[0] for a in actions], ['prepare', 'publish', 'activate', 'cleanup'])
+        self.assertFalse(receipt['cdn_refreshed'])
+        self.assertIn('CDN 刷新失败', result.stderr)
+
+    def test_cdn_refresh_can_be_skipped(self):
+        result, _, calls, receipt, _ = self.fixture(APK_CDN_REFRESH='0')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(receipt['cdn_refreshed'])
+        self.assertFalse(any(call[0] == 'ssh' and call[-1].endswith('tencent-cdn refresh') for call in calls))
 
     def test_activation_failures_do_not_write_success_receipt(self):
         for option in ('FAIL_ACTIVATE', 'WRONG_ACTIVATION'):
